@@ -37,6 +37,32 @@ def _get_buddy_opt_path() -> str:
     return os.path.join(path, "buddy-opt")
 
 
+def _get_buddy_translate_path() -> str:
+    """Path to buddy-translate (from buddy-mlir build)."""
+    path = os.getenv("BUDDY_MLIR_BINARY_DIR", "")
+    if path == "":
+        raise Exception("BUDDY_MLIR_BINARY_DIR is not set.")
+    return os.path.join(path, "buddy-translate")
+
+
+def _get_buddy_llc_path() -> str:
+    """Path to buddy-llc (from buddy-mlir build)."""
+    path = os.getenv("BUDDY_MLIR_BINARY_DIR", "")
+    if path == "":
+        raise Exception("BUDDY_MLIR_BINARY_DIR is not set.")
+    return os.path.join(path, "buddy-llc")
+
+
+def _use_ime_pipeline() -> bool:
+    """Return True when the IME (RISC-V matrix-extension) lowering path should be used.
+
+    Set the environment variable TRITON_RISCV_USE_IME=1 to activate.  The IME
+    pipeline lowers linalg.matmul to ime.vfmadot (fp16) / ime.vmadot (int)
+    instructions via buddy-mlir and cross-compiles to a RISC-V ELF object.
+    """
+    return os.getenv("TRITON_RISCV_USE_IME", "") == "1"
+
+
 def _dump_ir_if_needed(files):
     path = os.getenv("TRITON_SHARED_DUMP_PATH", "")
     if not path:
@@ -100,52 +126,102 @@ def _ttsharedir_to_llir(ttsharedir: str):
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(ttshared_path).write_text(ttsharedir)
         buddy_opt_path = _get_buddy_opt_path()
-        # TritonShared-MLIR to LLVM-MLIR
-        subprocess.check_call(
-            [
-                buddy_opt_path,
-                ttshared_path,
-                "--convert-linalg-to-affine-loops",
-                # Note: eliminate-empty-tensors fails when there are multiple func.return ops
-                # in a single kernel which are the results of early returns.
-                # See python/examples/test_early_return.py for examples.
-                # We disable this pass for now since performance on CPU isn't the main
-                # focus at the moment.
-                # "--eliminate-empty-tensors",
-                "--empty-tensor-to-alloc-tensor",
-                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                "--matmul-vectorization",
-                "--lower-affine",
-                "--convert-linalg-to-loops",
-                "--expand-strided-metadata",
-                "--convert-scf-to-cf",
-                "--convert-arith-to-llvm",
-                "--convert-math-to-llvm",
-                "--convert-complex-to-llvm",
-                "--convert-vector-to-llvm",
-                "--convert-index-to-llvm",
-                "--memref-expand",
-                "--finalize-memref-to-llvm",
-                "--convert-func-to-llvm",
-                "--convert-cf-to-llvm",
-                # Lowering memrefs creates more affine.apply ops.
-                # Lowering these affine ops again creates further arith ops,
-                # so we have to run these two passes again here.
-                "--lower-affine",
-                "--convert-arith-to-llvm",
-                # Remove all unrealized casts created
-                "--reconcile-unrealized-casts",
-                "--mlir-print-debuginfo",
-                "-o",
-                llmlir_path,
-            ]
-        )
 
-        # LLVM-MLIR to LLVM-IR
-        mlir_translate_path = _get_llvm_bin_path("mlir-translate")
-        subprocess.check_call(
-            [mlir_translate_path, llmlir_path, "--mlir-to-llvmir", "-o", llir_path]
-        )
+        if _use_ime_pipeline():
+            # ---------------------------------------------------------------
+            # IME path: Triton-Shared MLIR → buddy-mlir IME dialect → LLVM IR
+            # Lowers linalg.matmul (f16) to ime.vfmadot via buddy-mlir passes,
+            # then cross-compiles to a RISC-V ELF object with +buddyext.
+            # ---------------------------------------------------------------
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    ttshared_path,
+                    # Bufferize tensor ops before IME lowering
+                    "--empty-tensor-to-alloc-tensor",
+                    "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    # Lower linalg.matmul (memref) → ime.vfmadot / ime.vmadot
+                    "--lower-linalg-to-ime",
+                    # Lower IME dialect → vector / loop ops
+                    "--lower-ime",
+                    # Lower any remaining linalg / affine / SCF ops
+                    "--convert-linalg-to-loops",
+                    "--lower-affine",
+                    "--expand-strided-metadata",
+                    "--convert-scf-to-cf",
+                    # Lower to LLVM dialect
+                    "--convert-cf-to-llvm",
+                    "--convert-arith-to-llvm",
+                    "--convert-math-to-llvm",
+                    "--convert-complex-to-llvm",
+                    "--convert-vector-to-llvm",
+                    "--convert-index-to-llvm",
+                    "--convert-func-to-llvm",
+                    "--memref-expand",
+                    "--finalize-memref-to-llvm",
+                    # Lowering memrefs creates more affine.apply ops; run again.
+                    "--lower-affine",
+                    "--convert-arith-to-llvm",
+                    "--reconcile-unrealized-casts",
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    llmlir_path,
+                ]
+            )
+            # LLVM-MLIR → LLVM-IR via buddy-translate (handles buddyext dialect)
+            buddy_translate_path = _get_buddy_translate_path()
+            subprocess.check_call(
+                [buddy_translate_path, "--buddy-to-llvmir", llmlir_path, "-o", llir_path]
+            )
+        else:
+            # ---------------------------------------------------------------
+            # Standard path: buddy-mlir vectorisation → host LLVM IR
+            # ---------------------------------------------------------------
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    ttshared_path,
+                    "--convert-linalg-to-affine-loops",
+                    # Note: eliminate-empty-tensors fails when there are multiple func.return ops
+                    # in a single kernel which are the results of early returns.
+                    # See python/examples/test_early_return.py for examples.
+                    # We disable this pass for now since performance on CPU isn't the main
+                    # focus at the moment.
+                    # "--eliminate-empty-tensors",
+                    "--empty-tensor-to-alloc-tensor",
+                    "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    "--matmul-vectorization",
+                    "--lower-affine",
+                    "--convert-linalg-to-loops",
+                    "--expand-strided-metadata",
+                    "--convert-scf-to-cf",
+                    "--convert-arith-to-llvm",
+                    "--convert-math-to-llvm",
+                    "--convert-complex-to-llvm",
+                    "--convert-vector-to-llvm",
+                    "--convert-index-to-llvm",
+                    "--memref-expand",
+                    "--finalize-memref-to-llvm",
+                    "--convert-func-to-llvm",
+                    "--convert-cf-to-llvm",
+                    # Lowering memrefs creates more affine.apply ops.
+                    # Lowering these affine ops again creates further arith ops,
+                    # so we have to run these two passes again here.
+                    "--lower-affine",
+                    "--convert-arith-to-llvm",
+                    # Remove all unrealized casts created
+                    "--reconcile-unrealized-casts",
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    llmlir_path,
+                ]
+            )
+            # LLVM-MLIR to LLVM-IR
+            mlir_translate_path = _get_llvm_bin_path("mlir-translate")
+            subprocess.check_call(
+                [mlir_translate_path, llmlir_path, "--mlir-to-llvmir", "-o", llir_path]
+            )
+
         _dump_ir_if_needed([ttshared_path, llmlir_path, llir_path])
         return Path(llir_path).read_text()
 
@@ -210,6 +286,41 @@ def _llir_to_bin(llir: str, metadata):
                 subprocess_args.extend(["-g", "-fsanitize=thread"])
 
             subprocess.check_call(subprocess_args)
+        elif _use_ime_pipeline():
+            # IME path: cross-compile to RISC-V with buddyext (vfmadot / vmadot).
+            # buddy-llc understands the RISC-V IME intrinsics produced by
+            # buddy-translate and generates correct machine code.
+            # On non-RISC-V hosts (e.g. x86_64) the IR contains RVV scalable
+            # vectors that the host llc cannot handle.  Dump is already done;
+            # skip compilation and surface a clean error.
+            if platform.machine() != "riscv64":
+                # buddy-llc is cross-compilation capable (x86 binary → RISC-V ELF),
+                # but the resulting .obj cannot be linked or executed on this host.
+                # Import pytest lazily so this module stays usable outside pytest.
+                try:
+                    import pytest
+                    pytest.skip(
+                        f"IME pipeline requires RISC-V hardware for execution "
+                        f"(current host: {platform.machine()}). "
+                        "Intermediate IR files dumped to TRITON_SHARED_DUMP_PATH (if set)."
+                    )
+                except ImportError:
+                    raise NotImplementedError(
+                        "IME pipeline: Cannot link/run RISC-V scalable-vector IR on "
+                        f"{platform.machine()}. Run on RISC-V hardware."
+                    )
+            buddy_llc_path = _get_buddy_llc_path()
+            llc_args = [
+                buddy_llc_path,
+                src_path,
+                "-filetype=obj",
+                "-mtriple=riscv64",
+                "-mattr=+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb,+buddyext",
+                "-relocation-model=pic",
+                "-o",
+                dst_path,
+            ]
+            subprocess.check_call(llc_args)
         else:
             llc_path = _get_llvm_bin_path("llc")
             llc_args = [
