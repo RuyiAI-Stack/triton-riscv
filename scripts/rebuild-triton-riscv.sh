@@ -56,15 +56,30 @@ fi
 cd "${TRITON_DIR}"
 PIP_DISABLE_PIP_VERSION_CHECK=1 "${TRITON_VENV}/bin/pip" install --no-build-isolation -vvv .
 
-if [[ -z "${BUILD_DIR:-}" || ! -d "${BUILD_DIR}" ]]; then
+if [[ -z "${BUILD_DIR:-}" || ! -d "${BUILD_DIR}" || ! -x "${TRITON_SHARED_OPT_PATH:-}" ]]; then
   BUILD_DIR="$(
-    find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name 'cmake.linux-*-cpython-*' | sort | head -n1
+    find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name "cmake.linux-*-cpython-${_expected_python_tag}" | sort | head -n1
   )"
+  if [[ -z "${BUILD_DIR:-}" ]]; then
+    BUILD_DIR="$(
+      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name 'cmake.linux-*-cpython-*' | sort | head -n1
+    )"
+  fi
   export BUILD_DIR
   export TRITON_SHARED_OPT_PATH="${BUILD_DIR}/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt"
 fi
 
-python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
+if [[ -z "${BUILD_DIR:-}" || ! -d "${BUILD_DIR}" ]]; then
+  echo "Unable to locate Triton build directory under ${TRITON_DIR}/build" >&2
+  exit 1
+fi
+
+if [[ ! -x "${TRITON_SHARED_OPT_PATH:-}" ]]; then
+  echo "triton-shared-opt not found or not executable: ${TRITON_SHARED_OPT_PATH:-}" >&2
+  exit 1
+fi
+
+"${TRITON_VENV}/bin/python" -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
 "${TRITON_SHARED_OPT_PATH}" --version
 
 unset _cached_build_root

@@ -68,6 +68,7 @@ By default it assumes:
 - `TRITON_VENV=$TRITON_RISCV_DIR/.venv`
 - `BUDDY_DIR=$TRITON_RISCV_DIR/../buddy-mlir`
 - `BUILD_DIR` is auto-detected from `$TRITON_DIR/build/cmake.linux-*-cpython-*`
+- runtime cache and dump directories default to `~/.triton`
 
 It exports:
 
