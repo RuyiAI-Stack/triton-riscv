@@ -14,27 +14,7 @@ import functools
 import triton
 from pathlib import Path
 
-
-def _get_triton_shared_opt_path() -> str:
-    path = os.getenv("TRITON_SHARED_OPT_PATH", "")
-    if path == "":
-        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
-    return path
-
-
-def _get_llvm_bin_path(bin_name: str) -> str:
-    path = os.getenv("LLVM_BINARY_DIR", "")
-    if path == "":
-        raise Exception("LLVM_BINARY_DIR is not set.")
-    return os.path.join(path, bin_name)
-
-
-def _get_buddy_opt_path() -> str:
-    """Path to buddy-opt (from buddy-mlir build)."""
-    path = os.getenv("BUDDY_MLIR_BINARY_DIR", "")
-    if path == "":
-        raise Exception("BUDDY_MLIR_BINARY_DIR is not set.")
-    return os.path.join(path, "buddy-opt")
+from .paths import _get_buddy_opt_path, _get_llvm_bin_path, _get_triton_shared_opt_path
 
 
 def _dump_ir_if_needed(files):
