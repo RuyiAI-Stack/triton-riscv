@@ -1,0 +1,21 @@
+diff --git a/setup.py b/setup.py
+--- a/setup.py
++++ b/setup.py
+@@ -744,12 +744,15 @@
+ 
+ 
+ def get_entry_points():
+-    entry_points = {}
++    entry_points = {"console_scripts": []}
+     if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
+-        entry_points["console_scripts"] = [
++        entry_points["console_scripts"] += [
+             "proton-viewer = triton.profiler.viewer:main",
+             "proton = triton.profiler.proton:main",
+         ]
++    entry_points["console_scripts"] += [
++        "triton-shared-opt = triton.backends.triton_shared.cli:triton_shared_opt",
++    ]
+     entry_points["triton.backends"] = [f"{b.name} = triton.backends.{b.name}" for b in backends]
+     return entry_points
+ 

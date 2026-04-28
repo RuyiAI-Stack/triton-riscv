@@ -11,13 +11,7 @@ from pathlib import Path
 from triton.runtime.cache import get_cache_manager
 from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
-
-
-def _get_llvm_bin_path(bin_name: str) -> str:
-    path = os.getenv("LLVM_BINARY_DIR", "")
-    if path == "":
-        raise Exception("LLVM_BINARY_DIR is not set.")
-    return os.path.join(path, bin_name)
+from .paths import _get_llvm_bin_path
 
 
 def _get_sanitizer_type():
@@ -375,6 +369,7 @@ def compile_module(launcher_src, kernel_placeholder_name):
                     # Compile it together.
                     if sanitizer_type != "":
                         clang_path = _get_llvm_bin_path("clang++")
+                        llvm_root = Path(clang_path).resolve().parent.parent
 
                         subprocess_args = [
                             clang_path,
@@ -407,9 +402,7 @@ def compile_module(launcher_src, kernel_placeholder_name):
                         elif sanitizer_type == "tsan":
                             # ensure that openmp is available
                             libomp_path = next(
-                                Path(Path(_get_llvm_bin_path("")).parent).rglob(
-                                    "libomp.so"
-                                ),
+                                llvm_root.rglob("libomp.so"),
                                 None,
                             )
 

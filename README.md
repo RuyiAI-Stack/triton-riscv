@@ -113,10 +113,11 @@ Build artifacts are placed under `triton/build/{current_cmake_version}/third_par
 ## Verify the build
 
 ```sh
-cd /path/to/triton-riscv
-source scripts/triton-riscv-env.sh
-python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-"$TRITON_SHARED_OPT_PATH" --version
+# Directory containing buddy-opt (buddy-mlir build's bin/).
+export BUDDY_MLIR_BINARY_DIR=/path/to/buddy-mlir/build/bin
+
+# Directory containing mlir-translate, llc, opt, clang++ (LLVM build's bin/).
+export LLVM_BINARY_DIR=/path/to/buddy-mlir/llvm/build/bin
 ```
 
 If you change the buddy-opt pass pipeline or cached compilation behavior, clear Triton's cache after sourcing the environment:
