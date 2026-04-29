@@ -1286,6 +1286,28 @@ private:
     auto loc = op->getLoc();
     auto tensorType = cast<RankedTensorType>(op.getType());
     int64_t rank = tensorType.getRank();
+    if (rank == 1) {
+      auto alloc = rewriter.create<memref::AllocOp>(
+          loc, MemRefType::get(tensorType.getShape(), tensorType.getElementType()));
+
+      if (Value other = op.getOther()) {
+        fillWithValue(loc, alloc, other, tensorType.getShape(),
+                      op.getMixedMaskDims(), op.getStaticMaskDims(), rewriter);
+      }
+
+      SmallVector<OpFoldResult> copyDims = op.getMixedMaskDims();
+      auto srcSubview = getSubview(rank, copyDims, ptr, loc, rewriter);
+      auto dstSubview = getSubview(rank, copyDims, alloc, loc, rewriter);
+      Value copyLen = ofrToIndexValue(copyDims[0], loc, rewriter);
+      emit1DMemrefToMemrefCopyLoop(loc, srcSubview, dstSubview, copyLen,
+                                   rewriter);
+
+      Value tensor = rewriter.create<bufferization::ToTensorOp>(
+          loc, tensorType, alloc, true /*restrict*/, true /*writable*/);
+      rewriter.replaceOp(op, tensor);
+      return success();
+    }
+
     SmallVector<OpFoldResult> mixedDims = op.getMixedMaskDims();
     SmallVector<OpFoldResult> offsets(rank, rewriter.getIndexAttr(0));
     SmallVector<OpFoldResult> strides(rank, rewriter.getIndexAttr(1));
@@ -1895,6 +1917,15 @@ private:
       return failure();
     }
     auto rank = storeTensorType.getRank();
+    if (rank == 1) {
+      SmallVector<OpFoldResult> mixedDims = op.getMixedMaskDims();
+      auto dstSubview = getSubview(rank, mixedDims, ptr, loc, rewriter);
+      Value copyLen = ofrToIndexValue(mixedDims[0], loc, rewriter);
+      emit1DTensorToMemrefStoreLoop(loc, stVal, dstSubview, copyLen, rewriter);
+      rewriter.eraseOp(op);
+      return success();
+    }
+
     auto mixedDims = op.getMixedMaskDims();
     auto srcSlice = getExtractSlice(rank, mixedDims, stVal, loc, rewriter);
     auto dstSubview = getSubview(rank, mixedDims, ptr, loc, rewriter);
