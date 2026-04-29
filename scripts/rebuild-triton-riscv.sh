@@ -54,7 +54,46 @@ if [[ -n "${BUILD_DIR:-}" && -d "${BUILD_DIR}" ]]; then
 fi
 
 cd "${TRITON_DIR}"
+
+# setuptools/wheel may reuse stale Python staging directories under build/.
+# If an earlier build accidentally staged experiment dumps under
+# triton/backends/triton_shared, bdist_wheel will copy them into the new wheel
+# even after the source backend no longer contains those files.
+if [[ -d build ]]; then
+  find build -maxdepth 1 -type d \( -name 'lib.*' -o -name 'bdist.*' \) -print -exec rm -rf {} +
+fi
+
 PIP_DISABLE_PIP_VERSION_CHECK=1 "${TRITON_VENV}/bin/pip" install --no-build-isolation -vvv .
+
+"${TRITON_VENV}/bin/python" - "${TRITON_RISCV_DIR}" <<'PY'
+import pathlib
+import shutil
+import sys
+
+import triton.backends.triton_shared.compiler as compiler
+
+repo_root = pathlib.Path(sys.argv[1]).resolve()
+src_dir = repo_root / "backend"
+dst_dir = pathlib.Path(compiler.__file__).resolve().parent
+
+for name in ("compiler.py", "driver.py"):
+    src = src_dir / name
+    dst = dst_dir / name
+    if not src.is_file():
+        raise SystemExit(f"Missing backend source file: {src}")
+    if src.resolve() != dst.resolve():
+        shutil.copy2(src, dst)
+    if src.read_bytes() != dst.read_bytes():
+        raise SystemExit(f"Installed backend file does not match source: {dst}")
+
+pycache = dst_dir / "__pycache__"
+if pycache.is_dir():
+    for pattern in ("compiler*.pyc", "driver*.pyc"):
+        for pyc in pycache.glob(pattern):
+            pyc.unlink()
+
+print(f"Synced triton_shared backend Python files to {dst_dir}")
+PY
 
 if [[ -z "${BUILD_DIR:-}" || ! -d "${BUILD_DIR}" || ! -x "${TRITON_SHARED_OPT_PATH:-}" ]]; then
   BUILD_DIR="$(
