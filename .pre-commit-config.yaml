@@ -22,32 +22,14 @@ repos:
   #         - --warnings-as-errors=*
   #         - --extra-arg=-I.
 
-  - repo: https://github.com/psf/black
-    rev: 24.10.0  # Use the latest stable version
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.10
     hooks:
-      - id: black
-        language_version: python3.10
-
-  # a comprehensive tool for checking the style and quality of Python code.
-  # It combines three popular Python tools:
-  # PyFlakes: Checks for logical errors in the code.
-  # pycodestyle (formerly known as pep8): Checks for adherence to the PEP 8 style guide.
-  # McCabe Complexity Checker: Measures the complexity of your code.
-  - repo: https://github.com/PyCQA/flake8
-    rev: 6.1.0  # Set the rev to match the desired flake8 version
-    hooks:
-      - id: flake8
-        args:
-          - --max-line-length=120  # Adjust as per your style guide
-          - --ignore=F821,F403,F405,F401,W503,E203,E402,E401,W605,E712,E711,F841
-          # W503: Line break before binary operator
-          # E203: Whitespace before colon
-          # E402: Module level import not at top of file
-          # E401: Multiple imports on one line
-          # W605: Invalid escape sequence
-          # E712: Comparison to True/False
-          # E711: Comparison to None
-          # F841: Unused variable
+    # Run the linter.
+    - id: ruff-check
+      args: [ --fix ]
+    # Run the formatter.
+    - id: ruff-format
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0  # Updated to the latest version

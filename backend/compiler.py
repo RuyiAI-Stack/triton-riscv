@@ -144,6 +144,7 @@ def _optimize_llir(llir: str):
     #     return Path(lliropt_path).read_text()
     return llir
 
+
 def _ttsharedir_to_vectorir(ttsharedir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
@@ -172,6 +173,7 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
         )
         _dump_ir_if_needed([vector_path])
         return Path(vector_path).read_text()
+
 
 def _vectorir_to_llir(vectorir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -228,6 +230,7 @@ def _vectorir_to_llir(vectorir: str):
         )
         _dump_ir_if_needed([llmlir_path, llir_path])
         return Path(llir_path).read_text()
+
 
 def _llir_to_bin(llir: str, metadata):
     pattern = r"define void @(\w+)\(.+"
@@ -391,7 +394,9 @@ class CPUBackend(BaseBackend):
 
     def add_stages(self, stages, options, language):
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+        stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
+            _ttir_to_ttsharedir(src)
+        )
         stages["vectorir"] = lambda src, metadata: _ttsharedir_to_vectorir(src)
         stages["llir"] = lambda src, metadata: _optimize_llir(_vectorir_to_llir(src))
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata)

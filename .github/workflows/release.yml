@@ -1,0 +1,85 @@
+name: Release Wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version tag
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare_release:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Prepare variables
+        id: vars
+        run: |
+          echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+      - name: Create draft release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          draft: true
+
+  wheel:
+    name: Build (${{ matrix.target_arch }}, py${{ matrix.python }})
+    needs:
+      - prepare_release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, riscv64]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - arch: x64
+            target_arch: x86_64
+            runner: ubuntu-24.04
+          - arch: riscv64
+            target_arch: riscv64
+            runner: ubuntu-24.04-riscv
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Prepare variables
+        run: |
+          PY_NODOT="${{ matrix.python }}"
+          PY_NODOT="${PY_NODOT//./}"
+          echo "TRITON_PYTHON_TAG=cp${PY_NODOT}-cp${PY_NODOT}" >> "$GITHUB_ENV"
+
+      - name: Build wheel
+        run: ./scripts/release.sh "${TRITON_PYTHON_TAG}" "${{ matrix.target_arch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target_arch }}-${{ env.TRITON_PYTHON_TAG }}
+          path: build/release/${{ matrix.target_arch }}/${{ env.TRITON_PYTHON_TAG }}/*.whl
+
+  publish:
+    needs:
+      - prepare_release
+      - wheel
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: wheels-*
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare_release.outputs.tag }}
+          draft: true
+          files: dist/*.whl

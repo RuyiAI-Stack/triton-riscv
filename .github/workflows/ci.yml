@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, riscv64]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - arch: x64
+            target_arch: x86_64
+            runner: ubuntu-24.04
+          - arch: riscv64
+            target_arch: riscv64
+            runner: ubuntu-24.04-riscv
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Prepare variables
+        run: |
+          PY_NODOT="${{ matrix.python }}"
+          PY_NODOT="${PY_NODOT//./}"
+          echo "TRITON_PYTHON_TAG=cp${PY_NODOT}-cp${PY_NODOT}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build ccache
+
+      - name: Build Triton with triton-riscv
+        run: ./scripts/build.sh
+
+      - name: Install test dependencies (riscv64)
+        if: matrix.arch == 'riscv64'
+        run: |
+          ./.venv/bin/python -m pip install torch --index-url https://ruyirepo.ruyicommunity.cn/pypi/simple
+
+      - name: Install test dependencies
+        if: matrix.arch != 'riscv64'
+        run: |
+          ./.venv/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Export toolchain environment
+        run: |
+          echo "TRITON_PLUGIN_DIRS=${GITHUB_WORKSPACE}" >> "$GITHUB_ENV"
+          echo "LLVM_BINARY_DIR=${GITHUB_WORKSPACE}/.cache/llvm/bin" >> "$GITHUB_ENV"
+          echo "LLVM_SYSPATH=${GITHUB_WORKSPACE}/.cache/llvm" >> "$GITHUB_ENV"
+          echo "BUDDY_MLIR_BINARY_DIR=${GITHUB_WORKSPACE}/.cache/buddy/bin" >> "$GITHUB_ENV"
+
+      - name: Run example test suite
+        run: |
+          rm -rf "${HOME}/.triton/cache"
+          cd triton
+          ../.venv/bin/python -m pytest ../python/examples/ \
+            --ignore=../python/examples/test_core.py \
+            --ignore=../python/examples/test_annotations.py \
+            -v
