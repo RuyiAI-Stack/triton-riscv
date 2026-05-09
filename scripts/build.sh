@@ -79,16 +79,15 @@ echo "Installing Triton into ${PYTHON_BIN}..."
 
 case "$(uname -m)" in
     riscv64)
-        pip install numpy --index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple
+        "${PYTHON_BIN}" -m pip install numpy "cmake>=3.20,<4.0" --index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple
         ;;
     *)
-        pip install numpy
+        "${PYTHON_BIN}" -m pip install numpy "cmake>=3.20,<4.0"
         ;;
 esac
 
 "${PYTHON_BIN}" -m pip install -U \
     "setuptools>=40.8.0" \
-    "cmake>=3.20,<4.0" \
     "ninja>=1.11.1" \
     "pybind11>=2.13.1" \
     "pytest"

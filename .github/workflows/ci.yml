@@ -62,7 +62,6 @@ jobs:
 
       - name: Run example test suite
         run: |
-          rm -rf "${HOME}/.triton/cache"
           cd triton
           ../.venv/bin/python -m pytest ../python/examples/ \
             --ignore=../python/examples/test_core.py \
