@@ -1,8 +1,9 @@
 import hashlib
 import tempfile
-import sysconfig
 
-import os, subprocess, platform
+import os
+import subprocess
+import platform
 import importlib.util
 import sys
 
@@ -152,7 +153,7 @@ static void _launch(int gridX, int gridY, int gridZ, {arg_decls}) {{
       for(int y = 0; y < gridY; y++) {{
         for(int z = 0; z < gridZ; z++) {{
           // Use some random type "char" here.
-          {' '.join(f'StridedMemRefType<char, 0> ptr_arg{i} = {{static_cast<char *>(arg{i}), static_cast<char *>(arg{i}), 0}};' for i, ty in signature.items() if i not in constants and ty[0] == "*")}
+          {" ".join(f"StridedMemRefType<char, 0> ptr_arg{i} = {{static_cast<char *>(arg{i}), static_cast<char *>(arg{i}), 0}};" for i, ty in signature.items() if i not in constants and ty[0] == "*")}
           {kernel_name}({kernel_parameters}
                         gridX, gridY, gridZ, x, y, z);
         }}
@@ -205,7 +206,7 @@ static PyObject* launch(PyObject* self, PyObject* args) {{
   PyObject *launch_exit_hook = NULL;
   PyObject *kernel_metadata = NULL;
   PyObject *launch_metadata = NULL;
-  {' '.join([f"{_extracted_type(ty)} _arg{i}; " for i, ty in signature.items()])}
+  {" ".join([f"{_extracted_type(ty)} _arg{i}; " for i, ty in signature.items()])}
   if(!PyArg_ParseTuple(args, \"{format}\", &gridX, &gridY, &gridZ,
                                            &kernel_metadata, &launch_metadata,
                                            &launch_enter_hook, &launch_exit_hook {args_list})) {{
@@ -463,7 +464,6 @@ def compile_module(launcher_src, kernel_placeholder_name):
 
 
 class CPULauncher(object):
-
     def __init__(self, src, metadata):
         kernel_placeholder_name = "KERNEL_NAME_PLACEHOLDER"
 
@@ -524,7 +524,6 @@ class CPUUtils(object):
 
 
 class CPUDriver(DriverBase):
-
     def __init__(self):
         super().__init__()
         self.utils = CPUUtils()
