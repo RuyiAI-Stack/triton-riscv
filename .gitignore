@@ -1,5 +1,6 @@
 *.pyc
 .cache
+/backend/bin/
 compile_commands.json
 build/*
 .vscode/*
@@ -9,3 +10,4 @@ build/*
 *.log
 .venv/
 .omx/
+triton
