@@ -47,6 +47,11 @@ def _dump_ir_if_needed(files):
             shutil.copy(f, os.path.join(path, os.path.basename(f)))
 
 
+def _debug_info_enabled():
+    value = os.getenv("TRITON_SHARED_DEBUG_INFO", "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _get_sanitizer_type():
     # returns "" if not set
     # throws error if set to something other than "asan" or "tsan"
@@ -59,7 +64,10 @@ def _get_sanitizer_type():
     return sanitizer_type
 
 
-def _ttir_to_ttsharedir(mod):
+def _ttir_to_ttsharedir(mod, debug_info=None):
+    if debug_info is None:
+        debug_info = _debug_info_enabled()
+
     # Get Triton-MLIR as string
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -78,10 +86,12 @@ def _ttir_to_ttsharedir(mod):
             dst_path,
         ]
 
-        if _get_sanitizer_type() != "":
+        sanitizer_type = _get_sanitizer_type()
+        if sanitizer_type != "":
             print("Building with sanitizer support...")
 
-            # has to run before the other passes as operates on the tt dialect
+        if sanitizer_type != "" or debug_info:
+            # Has to run before the other passes as it operates on the tt dialect.
             subprocess_args.insert(2, "--add-llvm-debug-info")
 
         subprocess.check_call(subprocess_args)
@@ -330,6 +340,7 @@ def _llir_to_bin(llir: str, metadata):
 @dataclass(frozen=True)
 class CPUOptions:
     debug: bool = False
+    debug_info: bool = False
     arch: str = None
     num_warps: int = 0
     num_ctas: int = 0
@@ -369,6 +380,7 @@ class CPUBackend(BaseBackend):
         args.update(
             {k: opts[k] for k in CPUOptions.__dataclass_fields__.keys() if k in opts}
         )
+        args["debug_info"] = _debug_info_enabled()
         return CPUOptions(**args)
 
     def get_codegen_implementation(self, options):
@@ -414,7 +426,9 @@ class CPUBackend(BaseBackend):
 
     def add_stages(self, stages, options, language):
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+        stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
+            _ttir_to_ttsharedir(src, options.debug_info)
+        )
         stages["vectorir"] = lambda src, metadata: _ttsharedir_to_vectorir(src)
         stages["llir"] = lambda src, metadata: _optimize_llir(_vectorir_to_llir(src))
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata)

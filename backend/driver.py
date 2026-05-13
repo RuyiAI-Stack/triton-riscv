@@ -32,6 +32,11 @@ def _get_sanitizer_type():
     return sanitizer_type
 
 
+def _debug_info_enabled():
+    value = os.getenv("TRITON_SHARED_DEBUG_INFO", "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _sanitizer_available(sanitizer_type):
     if "LD_PRELOAD" not in os.environ:
         return False
@@ -323,7 +328,10 @@ def compile_module(launcher_src, kernel_placeholder_name):
         kernel_name = kernel_metadata[6]  # see pack_metadata in compiler.py
         src = launcher_src.replace(kernel_placeholder_name, kernel_name)
 
-        key = hashlib.sha256(src.encode("utf-8") + kernel_obj).hexdigest()
+        debug_info_key = f"debug-info={_debug_info_enabled()}".encode("utf-8")
+        key = hashlib.sha256(
+            src.encode("utf-8") + kernel_obj + debug_info_key
+        ).hexdigest()
         cache = get_cache_manager(key)
         name = "__triton_shared_ref_cpu_kernel_launcher"
 
@@ -429,22 +437,23 @@ def compile_module(launcher_src, kernel_placeholder_name):
 
                         subprocess.check_call(subprocess_args)
                     else:
-                        subprocess.check_call(
-                            [
-                                "g++",
-                                "-std=c++17",
-                                launcher_src_path,
-                                obj_path,
-                                f"-I{py_include_dir}",
-                                f"-I{include_dir}",
-                                f"-L{py_lib_dir}",
-                                "-shared",
-                                f"-l{py_lib}",
-                                "-fPIC",
-                                "-o",
-                                so_path,
-                            ]
-                        )
+                        subprocess_args = [
+                            "g++",
+                            "-std=c++17",
+                            launcher_src_path,
+                            obj_path,
+                            f"-I{py_include_dir}",
+                            f"-I{include_dir}",
+                            f"-L{py_lib_dir}",
+                            "-shared",
+                            f"-l{py_lib}",
+                            "-fPIC",
+                            "-o",
+                            so_path,
+                        ]
+                        if _debug_info_enabled():
+                            subprocess_args.insert(1, "-g")
+                        subprocess.check_call(subprocess_args)
 
                 with open(so_path, "rb") as f:
                     cache_path = cache.put(f.read(), filename, binary=True)
