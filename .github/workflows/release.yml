@@ -7,6 +7,8 @@ on:
         description: Release version tag
         required: true
         type: string
+  schedule:
+    - cron: '0 0 * * 1'
 
 permissions:
   contents: write
@@ -21,7 +23,15 @@ jobs:
       - name: Prepare variables
         id: vars
         run: |
-          echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          # tigger by hand
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            DATE=$(date +'%Y-%m-%d')
+            SHA=$(git rev-parse --short=7 HEAD)
+            TAG_NAME="Nightly Release ${DATE}-${SHA}"
+            echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create draft release
         id: create_release
         uses: softprops/action-gh-release@v2

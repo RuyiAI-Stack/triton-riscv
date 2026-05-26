@@ -61,9 +61,17 @@ if [ -f /opt/rh/gcc-toolset-14/enable ]; then
 fi
 
 dnf install -y clang lld git
-"${PYBIN}" -m pip install --upgrade pip setuptools wheel auditwheel ninja cmake pybind11 >/dev/null
+"${PYBIN}" -m pip install --upgrade pip
+case "$(uname -m)" in
+    riscv64)
+        # Connection to https://ruyirepo.ruyicommunity.cn/pypi/simple/ is poor
+        "${PYBIN}" -m pip install numpy "cmake>=3.20,<4.0" --index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple
+        ;;
+    *)
+        "${PYBIN}" -m pip install numpy "cmake>=3.20,<4.0"
+        ;;
+esac
 
-export PYTHON_BIN="${PYBIN}"
 export TRITON_PYTHON_TAG="${PY_TAG}"
 export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 export TRITON_BUILD_WITH_CLANG_LLD=1

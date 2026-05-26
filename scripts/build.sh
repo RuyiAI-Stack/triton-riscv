@@ -8,7 +8,7 @@ TRITON_RISCV_DIR="${ROOT_DIR}"
 TRITON_DIR="${ROOT_DIR}/triton"
 TRITON_HASH="$(cat "${TRITON_RISCV_DIR}/triton-hash.txt")"
 
-PYTHON_BIN="${PYTHON_BIN:-${ROOT_DIR}/.venv/bin/python}"
+PYTHON="${PYTHON:-${ROOT_DIR}/.venv/bin/python}"
 
 TOOLCHAIN_DIR="${TRITON_RISCV_DIR}/.cache"
 LLVM_EXTRACT_DIR="${TOOLCHAIN_DIR}/llvm"
@@ -35,7 +35,7 @@ esac
 LLVM_URL="${TRITON_LLVM_PACKAGE_URL:-${LLVM_DEFAULT_URL}}"
 BUDDY_URL="${TRITON_BUDDY_PACKAGE_URL:-${BUDDY_DEFAULT_URL}}"
 
-if [ ! -x "${PYTHON_BIN}" ]; then
+if [ ! -x "${PYTHON}" ]; then
     python3 -m venv "${ROOT_DIR}/.venv"
 fi
 
@@ -74,21 +74,22 @@ export LLVM_SYSPATH="$(dirname "${LLVM_BINARY_DIR}")"
 export BUDDY_MLIR_BINARY_DIR
 
 cd "${TRITON_DIR}"
-echo "Installing Triton into ${PYTHON_BIN}..."
+echo "Installing Triton into ${PYTHON}..."
 
-
+"${PYTHON}" -m pip install --upgrade pip
 case "$(uname -m)" in
     riscv64)
-        "${PYTHON_BIN}" -m pip install numpy "cmake>=3.20,<4.0" --index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple
+        # Connection to https://ruyirepo.ruyicommunity.cn/pypi/simple/ is poor
+        "${PYTHON}" -m pip install numpy "cmake>=3.20,<4.0" --index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple
         ;;
     *)
-        "${PYTHON_BIN}" -m pip install numpy "cmake>=3.20,<4.0"
+        "${PYTHON}" -m pip install numpy "cmake>=3.20,<4.0"
         ;;
 esac
 
-"${PYTHON_BIN}" -m pip install -U \
+"${PYTHON}" -m pip install -U \
     "setuptools>=40.8.0" \
     "ninja>=1.11.1" \
     "pybind11>=2.13.1" \
     "pytest"
-"${PYTHON_BIN}" -m pip install --no-build-isolation -e .
+"${PYTHON}" -m pip install --no-build-isolation -e .
