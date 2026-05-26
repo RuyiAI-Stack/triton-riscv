@@ -1,8 +1,8 @@
 name: Nightly Tests
 
 on:
-  schedule:
-    - cron: '23 10 * * *'  # random time in the middle of the night PT
+  # schedule:
+  #   - cron: '23 10 * * *'  # random time in the middle of the night PT
   workflow_dispatch:
     inputs:
       notify-on-failure:
