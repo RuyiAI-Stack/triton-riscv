@@ -1,0 +1,44 @@
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def _functional_sym_constrain_range_for_size_kernel(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    tl.store(y_ptr + offsets, x, mask=mask)
+
+
+def _functional_sym_constrain_range_for_size(*args, **kwargs):
+    tensor_arg = None
+    for a in args:
+        if isinstance(a, torch.Tensor):
+            tensor_arg = a
+            break
+    if tensor_arg is None:
+        for v in kwargs.values():
+            if isinstance(v, torch.Tensor):
+                tensor_arg = v
+                break
+
+    if tensor_arg is not None:
+        if tensor_arg.is_contiguous():
+            n_elements = tensor_arg.numel()
+            if n_elements > 0:
+                BLOCK_SIZE = 1024
+                grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+                _functional_sym_constrain_range_for_size_kernel[grid](
+                    tensor_arg, tensor_arg, n_elements, BLOCK_SIZE=BLOCK_SIZE
+                )
+        return tensor_arg
+
+    return args[0] if len(args) > 0 else None
