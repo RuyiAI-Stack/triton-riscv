@@ -1271,10 +1271,61 @@ private:
     return tensor;
   }
 
+  bool needsTensorFirstLoadSnapshot(tts::LoadOp op) const {
+    Value loadResult = op.getResult();
+    Operation *loadOperation = op.getOperation();
+    Operation *lastUseInBlock = nullptr;
+
+    for (Operation *it = loadOperation->getNextNode(); it;
+         it = it->getNextNode()) {
+      for (Value operand : it->getOperands()) {
+        if (operand == loadResult) {
+          lastUseInBlock = it;
+          break;
+        }
+      }
+    }
+
+    if (!lastUseInBlock) {
+      return false;
+    }
+
+    Value loadPtr = op.getPtr();
+    for (Operation *it = loadOperation->getNextNode();
+         it && it != lastUseInBlock; it = it->getNextNode()) {
+      if (auto store = dyn_cast<tts::StoreOp>(it)) {
+        if (store.getPtr() == loadPtr) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   LogicalResult rewriteTensorFirstUnmaskedLoad(
       tts::LoadOp op, Value ptr, ConversionPatternRewriter &rewriter) const {
     auto tensorType = cast<RankedTensorType>(op.getType());
-    Value tensor = createTensorFromMemref(op, ptr, tensorType, rewriter);
+
+    if (!needsTensorFirstLoadSnapshot(op)) {
+      Value tensor = createTensorFromMemref(op, ptr, tensorType, rewriter);
+      rewriter.replaceOp(op, tensor);
+      return success();
+    }
+
+    auto loc = op->getLoc();
+    auto ptrType = cast<MemRefType>(ptr.getType());
+    auto allocType = MemRefType::get(ptrType.getShape(), ptrType.getElementType());
+    SmallVector<Value> dynamicDims;
+    dynamicDims.reserve(ptrType.getNumDynamicDims());
+    for (int64_t i = 0, e = ptrType.getRank(); i < e; ++i) {
+      if (ptrType.isDynamicDim(i)) {
+        dynamicDims.push_back(rewriter.create<memref::DimOp>(loc, ptr, i));
+      }
+    }
+    auto alloc = rewriter.create<memref::AllocOp>(loc, allocType, dynamicDims);
+    rewriter.create<memref::CopyOp>(loc, ptr, alloc);
+    Value tensor = createTensorFromMemref(op, alloc, tensorType, rewriter);
     rewriter.replaceOp(op, tensor);
     return success();
   }
