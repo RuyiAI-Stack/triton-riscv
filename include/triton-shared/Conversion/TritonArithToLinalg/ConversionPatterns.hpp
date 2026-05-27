@@ -1182,10 +1182,27 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
         rewriter.create<linalg::FillOp>(loc, ValueRange{zero}, ValueRange{init})
             .result();
 
-    auto res = rewriter
-                   .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
-                                             ValueRange{zeroes})
-                   .getResult(0);
+    // For mixed-precision integer matmul (e.g. i8 x i8 -> i32), linalg.matmul
+    // requires a cast attribute so the inner multiply can promote i8 operands
+    // to the i32 accumulator type.  Without it the op verifier rejects the IR.
+    Value res;
+    auto aElemType =
+        cast<RankedTensorType>(opa.getType()).getElementType();
+    bool isMixedIntPrecision = integers && (aElemType != elementType);
+    if (isMixedIntPrecision) {
+      auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
+                                              linalg::TypeFn::cast_signed);
+      res = rewriter
+                .create<linalg::MatmulOp>(loc, TypeRange{zeroes.getType()},
+                                          ValueRange{opa, opb},
+                                          ValueRange{zeroes}, castAttr)
+                .getResult(0);
+    } else {
+      res = rewriter
+                .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
+                                          ValueRange{zeroes})
+                .getResult(0);
+    }
 
     if (!skipC) {
       if (integers) {
