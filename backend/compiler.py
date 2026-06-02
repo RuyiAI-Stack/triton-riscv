@@ -52,6 +52,11 @@ def _debug_info_enabled():
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def _get_openmp_num_threads():
+    value = os.getenv("OPENMP_NUM_THREADS", "")
+    return value if value else "1"
+
+
 def _get_sanitizer_type():
     # returns "" if not set
     # throws error if set to something other than "asan" or "tsan"
@@ -104,62 +109,6 @@ def _optimize_ttsharedir(ttsharedir: str):
     return ttsharedir
 
 
-def _ttsharedir_to_llir(ttsharedir: str):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
-        llmlir_path = os.path.join(tmpdir, "ll.mlir")
-        llir_path = os.path.join(tmpdir, "ll.ir")
-        Path(ttshared_path).write_text(ttsharedir)
-        buddy_opt_path = _get_buddy_opt_path()
-        # TritonShared-MLIR to LLVM-MLIR
-        subprocess.check_call(
-            [
-                buddy_opt_path,
-                ttshared_path,
-                "--convert-linalg-to-affine-loops",
-                # Note: eliminate-empty-tensors fails when there are multiple func.return ops
-                # in a single kernel which are the results of early returns.
-                # See python/examples/test_early_return.py for examples.
-                # We disable this pass for now since performance on CPU isn't the main
-                # focus at the moment.
-                # "--eliminate-empty-tensors",
-                "--empty-tensor-to-alloc-tensor",
-                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                "--matmul-vectorization",
-                "--lower-affine",
-                "--convert-linalg-to-loops",
-                "--expand-strided-metadata",
-                "--convert-scf-to-cf",
-                "--convert-arith-to-llvm",
-                "--convert-math-to-llvm",
-                "--convert-complex-to-llvm",
-                "--convert-vector-to-llvm",
-                "--convert-index-to-llvm",
-                "--memref-expand",
-                "--finalize-memref-to-llvm",
-                "--convert-func-to-llvm",
-                "--convert-cf-to-llvm",
-                # Lowering memrefs creates more affine.apply ops.
-                # Lowering these affine ops again creates further arith ops,
-                # so we have to run these two passes again here.
-                "--lower-affine",
-                "--convert-arith-to-llvm",
-                # Remove all unrealized casts created
-                "--reconcile-unrealized-casts",
-                "--mlir-print-debuginfo",
-                "-o",
-                llmlir_path,
-            ]
-        )
-
-        # LLVM-MLIR to LLVM-IR
-        mlir_translate_path = _get_llvm_bin_path("mlir-translate")
-        subprocess.check_call(
-            [mlir_translate_path, llmlir_path, "--mlir-to-llvmir", "-o", llir_path]
-        )
-        _dump_ir_if_needed([ttshared_path, llmlir_path, llir_path])
-        return Path(llir_path).read_text()
-
 
 def _optimize_llir(llir: str):
     # with tempfile.TemporaryDirectory() as tmpdir:
@@ -210,6 +159,7 @@ def _vectorir_to_llir(vectorir: str):
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(vector_path).write_text(vectorir)
         buddy_opt_path = _get_buddy_opt_path()
+        openmp_num_threads = _get_openmp_num_threads()
         # TritonShared-MLIR to LLVM-MLIR
         subprocess.check_call(
             [
@@ -233,6 +183,8 @@ def _vectorir_to_llir(vectorir: str):
                 "--convert-vector-to-scf",
                 "--convert-vector-to-llvm=vector-transpose-lowering=eltwise",
                 "--convert-ub-to-llvm",
+                f"--convert-scf-to-openmp=num-threads={openmp_num_threads}",
+                "--convert-openmp-to-llvm",
                 "--convert-scf-to-cf",
                 "--convert-cf-to-llvm",
                 "--convert-arith-to-llvm",

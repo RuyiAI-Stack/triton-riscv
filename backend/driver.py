@@ -37,6 +37,18 @@ def _debug_info_enabled():
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def _get_openmp_runtime_lib_dir():
+    libomp_path = next(
+        Path(Path(_get_llvm_bin_path("")).parent).rglob("libomp.so"),
+        None,
+    )
+
+    if not libomp_path:
+        raise Exception("libomp.so does not exist.")
+
+    return str(libomp_path.parent)
+
+
 def _sanitizer_available(sanitizer_type):
     if "LD_PRELOAD" not in os.environ:
         return False
@@ -328,9 +340,15 @@ def compile_module(launcher_src, kernel_placeholder_name):
         kernel_name = kernel_metadata[6]  # see pack_metadata in compiler.py
         src = launcher_src.replace(kernel_placeholder_name, kernel_name)
 
+        openmp_runtime_lib_dir = ""
+        if platform.system() != "Windows":
+            openmp_runtime_lib_dir = _get_openmp_runtime_lib_dir()
+        openmp_runtime_key = f"openmp-runtime={openmp_runtime_lib_dir}".encode(
+            "utf-8"
+        )
         debug_info_key = f"debug-info={_debug_info_enabled()}".encode("utf-8")
         key = hashlib.sha256(
-            src.encode("utf-8") + kernel_obj + debug_info_key
+            src.encode("utf-8") + kernel_obj + debug_info_key + openmp_runtime_key
         ).hexdigest()
         cache = get_cache_manager(key)
         name = "__triton_shared_ref_cpu_kernel_launcher"
@@ -413,25 +431,12 @@ def compile_module(launcher_src, kernel_placeholder_name):
                                 ["-g", "-fsanitize=address", "-mllvm", "-asan-stack=0"]
                             )
                         elif sanitizer_type == "tsan":
-                            # ensure that openmp is available
-                            libomp_path = next(
-                                Path(Path(_get_llvm_bin_path("")).parent).rglob(
-                                    "libomp.so"
-                                ),
-                                None,
-                            )
-
-                            if not libomp_path:
-                                raise Exception("libomp.so does not exist.")
-
-                            libomp_path = str(libomp_path.parent)
-
                             subprocess_args.extend(
                                 [
                                     "-g",
                                     "-fsanitize=thread",
                                     "-fopenmp",
-                                    f"-Wl,-rpath,{libomp_path}",
+                                    f"-Wl,-rpath,{openmp_runtime_lib_dir}",
                                 ]
                             )
 
@@ -445,8 +450,11 @@ def compile_module(launcher_src, kernel_placeholder_name):
                             f"-I{py_include_dir}",
                             f"-I{include_dir}",
                             f"-L{py_lib_dir}",
+                            f"-L{openmp_runtime_lib_dir}",
                             "-shared",
                             f"-l{py_lib}",
+                            "-lomp",
+                            f"-Wl,-rpath,{openmp_runtime_lib_dir}",
                             "-fPIC",
                             "-o",
                             so_path,
