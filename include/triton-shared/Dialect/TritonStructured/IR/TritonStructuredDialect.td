@@ -2,6 +2,7 @@
 #define TRITON_STRUCTURED_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "triton/Dialect/Triton/IR/TritonAttrDefs.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -233,8 +234,8 @@ def TTS_GetStructuredStateOp : TTS_Op<"get_structured_state", [AttrSizedResultSe
   let summary = "Placeholder for the structured pointer states computed during PtrAnalysis.";
   let description = "Used to pass the offsets and strides to scf.for op to simplify IR rewrites.";
 
-  let arguments = (ins AnyTypeOf<[TT_PtrLike, I32Tensor]>:$input);
-  let results = (outs AnyTypeOf<[TT_PtrLike, I32Tensor]>:$structured, Variadic<Index>:$offsets, Variadic<Index>:$strides);
+  let arguments = (ins AnyTypeOf<[TT_PtrLike, TT_IntTensor]>:$input);
+  let results = (outs AnyTypeOf<[TT_PtrLike, TT_IntTensor]>:$structured, Variadic<Index>:$offsets, Variadic<Index>:$strides);
 
   let builders = [
     OpBuilder<(ins "Value":$input)>,
@@ -294,6 +295,57 @@ def TTS_ScatterOp : TTS_Op<"scatter", [
   let assemblyFormat = [{
     $value `into` $ptr `[` $offset `]` (`mask` `=` $mask^)?
     attr-dict `:` type($value) `into` ` ` `(` type($ptr) `,` type($offset) `)`
+  }];
+}
+
+def TTS_AtomicRMWOp : TTS_Op<"atomic_rmw", [
+  MemoryEffects<[MemRead, MemWrite]>,
+  OptionalTypesMatchWith<"mask type matches offset type", "offset", "mask",
+                 "triton::getI1SameShape($_self)">
+]> {
+  let summary = "atomically update data through an unstructured pointer";
+
+  let arguments = (
+    ins
+    TT_AtomicRMWAttr:$atomic_rmw_op,
+    TT_Ptr:$ptr,
+    TT_IntLike:$offset,
+    TT_Type:$val,
+    Optional<TT_BoolLike>:$mask,
+    TT_MemSemanticAttr:$sem,
+    TT_MemSyncScopeAttr:$scope
+  );
+
+  let results = (outs TT_Type:$result);
+
+  let assemblyFormat = [{
+    $atomic_rmw_op `,` $sem `,` $scope `,` $val `into` $ptr `[` $offset `]`
+    (`mask` `=` $mask^)? attr-dict `:` type($val) `into` ` `
+    `(` type($ptr) `,` type($offset) `)` `->` type($result)
+  }];
+}
+
+def TTS_AtomicCASOp : TTS_Op<"atomic_cas", [
+  MemoryEffects<[MemRead, MemWrite]>
+]> {
+  let summary = "compare-and-swap through an unstructured pointer";
+
+  let arguments = (
+    ins
+    TT_Ptr:$ptr,
+    TT_IntLike:$offset,
+    TT_Type:$cmp,
+    TT_Type:$val,
+    TT_MemSemanticAttr:$sem,
+    TT_MemSyncScopeAttr:$scope
+  );
+
+  let results = (outs TT_Type:$result);
+
+  let assemblyFormat = [{
+    $sem `,` $scope `,` $cmp `,` $val `into` $ptr `[` $offset `]`
+    attr-dict `:` type($cmp) `,` type($val) `into` ` `
+    `(` type($ptr) `,` type($offset) `)` `->` type($result)
   }];
 }
 

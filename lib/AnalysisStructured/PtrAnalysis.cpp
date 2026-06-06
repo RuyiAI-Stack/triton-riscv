@@ -39,6 +39,14 @@
 
 using namespace mlir;
 
+static void ensureMaskDimsCoverRank(triton::MaskState &mstate,
+                                    ArrayRef<int64_t> sizes,
+                                    OpBuilder &builder) {
+  while (mstate.dims.size() < sizes.size()) {
+    mstate.dims.push_back(builder.getIndexAttr(sizes[mstate.dims.size()]));
+  }
+}
+
 // Try to apply unstructured mask on the ptr.
 static Value applyUnstructuredMask(Operation *op, Value ptr,
                                    triton::MaskState &mstate, Location loc,
@@ -72,6 +80,7 @@ static Value applyUnstructuredMask(Operation *op, Value ptr,
                 gatherScatterPtr.getSizes(), gatherScatterPtr.getMixedStrides(),
                 gatherScatterPtr.getMixedOffsets())
             .getResult();
+    ensureMaskDimsCoverRank(mstate, gatherScatterPtr.getSizes(), builder);
   } else if (auto structuredPtr = ptr.getDefiningOp<tts::MakeTensorPtrOp>()) {
     auto ofrToI32Value = [&](OpFoldResult ofr) {
       Value v = dyn_cast<Value>(ofr);
@@ -117,6 +126,7 @@ static Value applyUnstructuredMask(Operation *op, Value ptr,
                   structuredPtr.getMixedStrides(),
                   structuredPtr.getMixedOffsets())
               .getResult();
+    ensureMaskDimsCoverRank(mstate, structuredPtr.getSizes(), builder);
   } else {
     return nullptr;
   }
@@ -1958,9 +1968,8 @@ LogicalResult PtrAnalysis::rewriteOp(Operation *rootOp, bool useUnsafeMask) {
               if (!knownPtrs.contains(tritonValue)) {
                 PtrState state;
                 OpBuilder b(getStateOp);
-                if (succeeded(
-                        visitOperand(tritonValue, state, getStateOp->getLoc(),
-                                     b))) {
+                if (succeeded(visitOperand(tritonValue, state,
+                                           getStateOp->getLoc(), b))) {
                   knownPtrs[tritonValue] = state;
                 } else {
                   LLVM_DEBUG(getStateOp->emitRemark(
