@@ -95,14 +95,10 @@ def embedding_grad_scale_kernel(
         mask = tl.arange(0, BLOCK_SIZE) < N
         embedding_grad = tl.load(grad_out + row_idx * N + cols, mask=mask)
         scaled_embedding_grad = embedding_grad * embedding_scale
-        tl.store(
-            grad_out + row_idx * N + cols, scaled_embedding_grad, mask=mask
-        )
+        tl.store(grad_out + row_idx * N + cols, scaled_embedding_grad, mask=mask)
 
 
-def embedding(
-    weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False
-):
+def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()
@@ -111,9 +107,7 @@ def embedding(
     BLOCK_SIZE = triton.next_power_of_2(N)
     indices = indices.contiguous()
     weight = weight.contiguous()
-    output = torch.empty(
-        (*indices.shape, N), device=indices.device, dtype=weight.dtype
-    )
+    output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
 
     grid = (M,)
     embedding_kernel[grid](output, indices, weight, N, BLOCK_SIZE)
@@ -154,9 +148,7 @@ def embedding_backward(
         INDICE_BLOCK_SIZE = 256
         indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
 
-        indice_freq_kernel[indice_grid](
-            indice_freq, indices, M, INDICE_BLOCK_SIZE
-        )
+        indice_freq_kernel[indice_grid](indice_freq, indices, M, INDICE_BLOCK_SIZE)
     else:
         indice_freq = None
 

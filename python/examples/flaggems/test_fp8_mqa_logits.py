@@ -23,13 +23,7 @@ def test_fp8_mqa_logits(M, H, D, N):
         clean_logits=False,
     )
 
-    # Reference: manual computation
-    score = torch.zeros(M, N, dtype=torch.float32)
-    for h in range(H):
-        q_h = q[:, h, :]
-        score_h = torch.mm(q_h, k.T)
-        score_h = torch.relu(score_h)
-        score += score_h * weights[:, h : h + 1]
-    ref = score
+    logits = torch.einsum("mhd,nd->mhn", q, k)
+    ref = torch.sum(torch.mul(torch.relu(logits), weights.unsqueeze(-1)), dim=1)
 
     torch.testing.assert_close(tri, ref, rtol=1e-3, atol=1e-3)

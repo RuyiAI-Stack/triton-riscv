@@ -43,22 +43,16 @@ def replication_pad1d_kernel(
     tl.store(ptrs_out, x, mask=mask)
 
 
-def _launch_replication_pad1d_kernel(
-    input: torch.Tensor, padding, out: torch.Tensor
-):
+def _launch_replication_pad1d_kernel(input: torch.Tensor, padding, out: torch.Tensor):
     if isinstance(padding, torch.Tensor):
         padding = tuple(padding.tolist())
     left, right = int(padding[0]), int(padding[1])
     if left < 0 or right < 0:
-        raise ValueError(
-            "Padding values must be non-negative for replication_pad1d"
-        )
+        raise ValueError("Padding values must be non-negative for replication_pad1d")
 
     dim = input.dim()
     if dim not in (2, 3):
-        raise ValueError(
-            "replication_pad1d expects 2D (C, W) or 3D (N, C, W) input"
-        )
+        raise ValueError("replication_pad1d expects 2D (C, W) or 3D (N, C, W) input")
 
     if dim == 3:
         N, C, W_in = input.shape
@@ -128,9 +122,7 @@ def replication_pad1d(input: torch.Tensor, padding):
             layout=input.layout,
         )
     else:
-        raise ValueError(
-            "replication_pad1d expects 2D (C, W) or 3D (N, C, W) input"
-        )
+        raise ValueError("replication_pad1d expects 2D (C, W) or 3D (N, C, W) input")
     return _launch_replication_pad1d_kernel(input, (left, right), out)
 
 

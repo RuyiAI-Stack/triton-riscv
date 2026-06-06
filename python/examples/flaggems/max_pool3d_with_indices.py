@@ -101,27 +101,13 @@ def max_pool3d_forward_kernel(
         d_valid = (d_in >= 0) & (d_in < in_d)
         for kh in tl.static_range(0, kernel_h):
             for kw in tl.static_range(0, kernel_w):
-                h_in = (
-                    h_out_offsets[:, None] * stride_h
-                    - padding_h
-                    + kh * dilation_h
-                )
-                w_in = (
-                    w_out_offsets[None, :] * stride_w
-                    - padding_w
-                    + kw * dilation_w
-                )
+                h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
+                w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
                 in_mask = (
-                    d_valid
-                    & (h_in >= 0)
-                    & (h_in < in_h)
-                    & (w_in >= 0)
-                    & (w_in < in_w)
+                    d_valid & (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
                 )
                 input_offset = (
-                    d_in * in_stride_d
-                    + h_in * in_stride_h
-                    + w_in * in_stride_w
+                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
                 )
                 current_val = tl.load(
                     input_base_ptr + input_offset, mask=in_mask, other=min_val
@@ -130,9 +116,7 @@ def max_pool3d_forward_kernel(
 
                 is_new_max = current_val > max_val_acc
                 max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
-                max_idx_acc = tl.where(
-                    is_new_max & in_mask, current_idx, max_idx_acc
-                )
+                max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
 
     out_spatial = out_h * out_w
     out_base_offset = pid_nc * out_d * out_spatial + d_out * out_spatial
@@ -144,14 +128,10 @@ def max_pool3d_forward_kernel(
         out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
     )
     indices_block_ptr = (
-        indices_base_ptr
-        + out_h_offsets[:, None] * out_w
-        + out_w_offsets[None, :]
+        indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
     )
 
-    out_mask = (out_h_offsets[:, None] < out_h) & (
-        out_w_offsets[None, :] < out_w
-    )
+    out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
     tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
 
@@ -201,9 +181,7 @@ def max_pool3d_backward_kernel(
     w_in_offsets = w_block_idx * BLOCK_IN_W + tl.arange(0, BLOCK_IN_W)
 
     current_input_flat_idx = (
-        d_in_idx * in_h * in_w
-        + h_in_offsets[:, None] * in_w
-        + w_in_offsets[None, :]
+        d_in_idx * in_h * in_w + h_in_offsets[:, None] * in_w + w_in_offsets[None, :]
     )
     grad_acc = tl.zeros((BLOCK_IN_H, BLOCK_IN_W), dtype=tl.float32)
 
@@ -219,12 +197,8 @@ def max_pool3d_backward_kernel(
 
         for kh in tl.static_range(0, kernel_h):
             for kw in tl.static_range(0, kernel_w):
-                numerator_h = (
-                    h_in_offsets[:, None] + padding_h - kh * dilation_h
-                )
-                numerator_w = (
-                    w_in_offsets[None, :] + padding_w - kw * dilation_w
-                )
+                numerator_h = h_in_offsets[:, None] + padding_h - kh * dilation_h
+                numerator_w = w_in_offsets[None, :] + padding_w - kw * dilation_w
 
                 valid_map_mask = (
                     d_valid
@@ -234,10 +208,7 @@ def max_pool3d_backward_kernel(
                 h_out = numerator_h // stride_h
                 w_out = numerator_w // stride_w
                 out_bounds_mask = (
-                    (h_out >= 0)
-                    & (h_out < out_h)
-                    & (w_out >= 0)
-                    & (w_out < out_w)
+                    (h_out >= 0) & (h_out < out_h) & (w_out >= 0) & (w_out < out_w)
                 )
                 load_mask = valid_map_mask & out_bounds_mask
 
@@ -245,9 +216,7 @@ def max_pool3d_backward_kernel(
                 safe_w_out = tl.where(load_mask, w_out, 0)
                 safe_d_out = tl.where(load_mask, d_out, 0)
                 out_offsets = (
-                    safe_d_out * out_stride_d
-                    + safe_h_out * out_stride_h
-                    + safe_w_out
+                    safe_d_out * out_stride_d + safe_h_out * out_stride_h + safe_w_out
                 )
 
                 indices_block = tl.load(
@@ -265,16 +234,10 @@ def max_pool3d_backward_kernel(
     in_spatial = in_h * in_w
     grad_input_base_ptr = grad_input_ptr + nc_idx * in_d * in_spatial
     grad_input_offsets = (
-        d_in_idx * in_spatial
-        + h_in_offsets[:, None] * in_w
-        + w_in_offsets[None, :]
+        d_in_idx * in_spatial + h_in_offsets[:, None] * in_w + w_in_offsets[None, :]
     )
-    store_mask = (h_in_offsets[:, None] < in_h) & (
-        w_in_offsets[None, :] < in_w
-    )
-    tl.store(
-        grad_input_base_ptr + grad_input_offsets, grad_acc, mask=store_mask
-    )
+    store_mask = (h_in_offsets[:, None] < in_h) & (w_in_offsets[None, :] < in_w)
+    tl.store(grad_input_base_ptr + grad_input_offsets, grad_acc, mask=store_mask)
 
 
 def _parse_pool3d_params(kernel_size, stride, padding, dilation):
@@ -293,9 +256,7 @@ def _parse_pool3d_params(kernel_size, stride, padding, dilation):
     dd, dh, dw = _parse_param(dilation, "dilation", default=(1, 1, 1))
 
     if sd <= 0 or sh <= 0 or sw <= 0:
-        raise ValueError(
-            f"stride must be positive, but got stride=({sd}, {sh}, {sw})"
-        )
+        raise ValueError(f"stride must be positive, but got stride=({sd}, {sh}, {sw})")
     if pd < 0 or ph < 0 or pw < 0:
         raise ValueError(
             f"padding must be non-negative, but got padding=({pd}, {ph}, {pw})"

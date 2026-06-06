@@ -69,7 +69,7 @@ def act_quant_triton_kernel(
         # scale = tl.math.exp2(log2_ceil)
         scale = fast_round_scale(amax, FP8_MAX_INV)
     else:
-        scale = amax * FP8_MAX_INV
+        scale = amax / FP8_MAX
 
     y = x / scale[:, None]
     y = tl.clamp(y, -FP8_MAX, FP8_MAX)

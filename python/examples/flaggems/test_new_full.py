@@ -16,12 +16,8 @@ from .new_full import new_full
 )
 def test_new_full_float(shape, fill_value):
     self = torch.empty(0, dtype=torch.float32, device="cpu")
-    tri_out = new_full(
-        self, shape, fill_value, dtype=torch.float32, device="cpu"
-    )
-    ref_out = self.new_full(
-        shape, fill_value, dtype=torch.float32, device="cpu"
-    )
+    tri_out = new_full(self, shape, fill_value, dtype=torch.float32, device="cpu")
+    ref_out = self.new_full(shape, fill_value, dtype=torch.float32, device="cpu")
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
@@ -35,9 +31,7 @@ def test_new_full_float(shape, fill_value):
 )
 def test_new_full_int(shape, fill_value):
     self = torch.empty(0, dtype=torch.int64, device="cpu")
-    tri_out = new_full(
-        self, shape, fill_value, dtype=torch.int64, device="cpu"
-    )
+    tri_out = new_full(self, shape, fill_value, dtype=torch.int64, device="cpu")
     ref_out = self.new_full(shape, fill_value, dtype=torch.int64, device="cpu")
     torch.testing.assert_close(tri_out, ref_out)
 

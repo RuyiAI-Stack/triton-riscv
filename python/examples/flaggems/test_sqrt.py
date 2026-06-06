@@ -15,6 +15,7 @@ def test_sqrt(shape):
 
 def test_sqrt_inplace():
     x = torch.tensor([0.25, 1.0, 4.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().sqrt_()
+    x_ref = x.clone()
+    torch.sqrt(x_ref, out=x_ref)
     sqrt_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)

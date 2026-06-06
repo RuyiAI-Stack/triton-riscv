@@ -97,9 +97,7 @@ def gcd_kernel_i16(
     both_min = special_mask & min_x & min_y
     one_min = special_mask & (~both_min)
     other_abs = tl.where(min_x, tl.abs(y_i32), tl.abs(x_i32))
-    special_res = tl.load(lut_ptr + other_abs, mask=one_min, other=0).to(
-        tl.int32
-    )
+    special_res = tl.load(lut_ptr + other_abs, mask=one_min, other=0).to(tl.int32)
     special_res = tl.where(both_min, min_value, special_res)
 
     out = tl.where(special_mask, special_res, normal_res)
@@ -136,9 +134,7 @@ def gcd_kernel_i32(
     sb = ay_native.to(tl.int32)
     special = special_mask & (sa != 0)
     while tl.sum(special.to(tl.int32), axis=0) > 0:
-        next_sa = tl.where(
-            special, _c_rem_i32(sb, tl.where(special, sa, 1)), sa
-        )
+        next_sa = tl.where(special, _c_rem_i32(sb, tl.where(special, sa, 1)), sa)
         sb = tl.where(special, sa, sb)
         sa = next_sa
         special = special & (sa != 0)
@@ -174,9 +170,7 @@ def gcd_kernel_i64(
     sb = ay
     special = special_mask & (sa != 0)
     while tl.sum(special.to(tl.int32), axis=0) > 0:
-        next_sa = tl.where(
-            special, _c_rem_i64(sb, tl.where(special, sa, 1)), sa
-        )
+        next_sa = tl.where(special, _c_rem_i64(sb, tl.where(special, sa, 1)), sa)
         sb = tl.where(special, sa, sb)
         sa = next_sa
         special = special & (sa != 0)
@@ -224,9 +218,7 @@ def _launch_gcd(lhs, rhs, out):
     grid = (triton.cdiv(numel, block),)
     if out.dtype == torch.int16:
         lut = _get_i16_min_lut(out.device)
-        kernel[grid](
-            lhs, rhs, lut, out, numel, BLOCK=block, num_warps=num_warps
-        )
+        kernel[grid](lhs, rhs, lut, out, numel, BLOCK=block, num_warps=num_warps)
     else:
         kernel[grid](lhs, rhs, out, numel, BLOCK=block, num_warps=num_warps)
     return out

@@ -5,9 +5,7 @@ from .isneginf import isneginf, isneginf_out
 
 
 @pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
 def test_isneginf(shape, dtype):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device="cpu")
@@ -20,9 +18,7 @@ def test_isneginf(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
 def test_isneginf_out(shape, dtype):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device="cpu")

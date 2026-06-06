@@ -79,9 +79,7 @@ def rms_norm_loop_kernel(
     start_n = (num_steps - 1) * TILE_N
     n_offsets = start_n + tl.arange(0, TILE_N)
     mask = n_offsets < N
-    x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(
-        tl.float32
-    )
+    x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
     acc += x * x
 
     var = tl.sum(acc, axis=0) / N
@@ -307,11 +305,7 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
         ROW_BLOCK_SIZE=ROW_BLOCK_SIZE,
         COL_BLOCK_SIZE=COL_BLOCK_SIZE,
     )
-    dw = (
-        torch.sum(partial_buffer, dim=0, dtype=torch.float32)
-        .to(x.dtype)
-        .reshape(-1)
-    )
+    dw = torch.sum(partial_buffer, dim=0, dtype=torch.float32).to(x.dtype).reshape(-1)
 
     return dx, dw
 
@@ -331,9 +325,7 @@ class RmsNorm(torch.autograd.Function):
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
 
-        dx, dw = rms_norm_backward(
-            dy, x, inv_rms, normalized_shape, weight, eps
-        )
+        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
 
 

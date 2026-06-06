@@ -25,9 +25,7 @@ def logsumexp_kernel_non_inner(
         inp_offset = pid_m * N * K + n_offsets * K + k_offsets
         mask = (n_offsets < N) & (k_offsets < K)
         input_ptrs = input_ptr + inp_offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            tl.float32
-        )
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, axis=0, keep_dims=True)
         safe_m = tl.where(m == float("-inf"), tl.zeros_like(m), m)
         e = tl.exp(inp - safe_m)
@@ -45,14 +43,12 @@ def logsumexp_kernel_non_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
             mask = (n_offsets < N) & (k_offsets < K)
-            inp = tl.load(
-                input_ptr + inp_offsets, mask=mask, other=-float("inf")
-            ).to(tl.float32)
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
-            z = tl.where(
-                all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            )
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, axis=0, keep_dims=True)
@@ -80,9 +76,7 @@ def logsumexp_kernel_inner(
         offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            tl.float32
-        )
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, axis=0)
         safe_m = tl.where(m == float("-inf"), 0.0, m)
         e = tl.exp(inp - safe_m)
@@ -99,14 +93,12 @@ def logsumexp_kernel_inner(
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets, mask=mask, other=-float("inf")
-            ).to(tl.float32)
+            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
-            z = tl.where(
-                all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            )
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, axis=0)

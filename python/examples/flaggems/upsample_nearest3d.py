@@ -106,9 +106,7 @@ def upsample_nearest3d(
     reciprocal_scale_h = calculate_scale(IH, OH, scales_h)
     reciprocal_scale_w = calculate_scale(IW, OW, scales_w)
 
-    output = torch.empty(
-        (N, C, OD, OH, OW), device=input.device, dtype=input.dtype
-    )
+    output = torch.empty((N, C, OD, OH, OW), device=input.device, dtype=input.dtype)
 
     total_threads = OD * OH * OW
     grid = (

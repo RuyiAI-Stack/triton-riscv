@@ -14,17 +14,10 @@ def test_rrelu_with_noise_backward(size, training):
     lower = 0.125
     upper = 0.33333
 
-    # Reference: manual computation
-    slope = (lower + upper) * 0.5
-    if training:
-        ref_out = grad_output * noise
-    else:
-        ref_out = grad_output * torch.where(
-            inp > 0, torch.ones_like(inp), torch.full_like(inp, slope)
-        )
-
-    tri_out = rrelu_with_noise_backward(
-        grad_output, inp, noise, lower, upper, training
+    ref_out = torch.ops.aten.rrelu_with_noise_backward.default(
+        grad_output, inp, noise, lower, upper, training, False
     )
+
+    tri_out = rrelu_with_noise_backward(grad_output, inp, noise, lower, upper, training)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)

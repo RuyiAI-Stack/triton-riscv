@@ -42,19 +42,13 @@ def threshold(self, threshold, value):
     n_elements = x.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    threshold_kernel[grid](
-        x, out, n_elements, threshold, value, BLOCK_SIZE=BLOCK_SIZE
-    )
+    threshold_kernel[grid](x, out, n_elements, threshold, value, BLOCK_SIZE=BLOCK_SIZE)
     return out.view_as(self)
 
 
 def threshold_backward(grad_output, self, threshold):
     x = self.contiguous() if not self.is_contiguous() else self
-    gy = (
-        grad_output.contiguous()
-        if not grad_output.is_contiguous()
-        else grad_output
-    )
+    gy = grad_output.contiguous() if not grad_output.is_contiguous() else grad_output
     gx = torch.empty_like(x)
     n_elements = x.numel()
     BLOCK_SIZE = 1024

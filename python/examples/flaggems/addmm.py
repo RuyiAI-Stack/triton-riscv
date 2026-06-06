@@ -33,12 +33,8 @@ def addmm_kernel(
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + (
-        offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
-    )
-    b_ptrs = b_ptr + (
-        offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
-    )
+    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
     if IS_FP64:
         accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float64)
@@ -48,14 +44,12 @@ def addmm_kernel(
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl.load(
             a_ptrs,
-            mask=(offs_am[:, None] < M)
-            & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
             other=0.0,
         )
         b = tl.load(
             b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K)
-            & (offs_bn[None, :] < N),
+            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
             other=0.0,
         )
         if IS_FP64:
@@ -67,13 +61,9 @@ def addmm_kernel(
 
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    c_ptrs = (
-        c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    )
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    i_ptrs = (
-        i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    )
+    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
     bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
     accumulator = accumulator * alpha + bias * beta
@@ -179,9 +169,7 @@ def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
         device=mat1.device,
         dtype=out_dtype,
     )
-    return addmm_dtype_out(
-        bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
-    )
+    return addmm_dtype_out(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out)
 
 
 def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
@@ -196,17 +184,14 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     if not (
         out_dtype == mat1.dtype
         or (
-            out_dtype == torch.float32
-            and mat1.dtype in (torch.float16, torch.bfloat16)
+            out_dtype == torch.float32 and mat1.dtype in (torch.float16, torch.bfloat16)
         )
     ):
         raise RuntimeError(
             "out_dtype must be the same as input dtype or fp32 for fp16/bf16 inputs"
         )
     if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
-        raise RuntimeError(
-            "self dtype must match either out_dtype or mat1 dtype"
-        )
+        raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
 
     bias_c = bias.to(out_dtype)
     return addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)

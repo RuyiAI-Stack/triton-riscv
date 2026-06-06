@@ -123,9 +123,7 @@ def tile_size_fwd_sm90(
             return 192, (128 if (is_local or paged_kv_non_TMA) else 144)
         elif headdim <= 128:
             if use_one_mma_wg:
-                return 64, (
-                    128 if (is_causal or is_local or paged_kv_non_TMA) else 176
-                )
+                return 64, (128 if (is_causal or is_local or paged_kv_non_TMA) else 176)
             else:
                 return 128, (
                     128 if (is_causal or is_local or paged_kv_non_TMA) else 176
@@ -150,9 +148,7 @@ def tile_size_fwd_sm90(
                 else (192 if (v_colmajor or (softcap and is_local)) else 224)
             )
         elif headdim <= 192:
-            return 128, (
-                128 if ((paged_kv_non_TMA or softcap) and is_local) else 160
-            )
+            return 128, (128 if ((paged_kv_non_TMA or softcap) and is_local) else 160)
         else:
             return 128, (64 if is_local else 128)
 
@@ -498,20 +494,12 @@ def _prepare_pass1_kernel(
         k_len = nxt - cur
     else:
         k_len = tl.load(seqlen_k_ptr + b_offs, mask=mask, other=0)
-    left = (
-        tl.load(leftpad_k_ptr + b_offs, mask=mask, other=0)
-        if HAS_LEFT_PAD
-        else 0
-    )
+    left = tl.load(leftpad_k_ptr + b_offs, mask=mask, other=0) if HAS_LEFT_PAD else 0
 
     if HAS_K_NEW:
         if HAS_CU_SEQLENS_K_NEW:
-            cur_new = tl.load(
-                cu_seqlens_k_new_ptr + b_offs, mask=mask, other=0
-            )
-            nxt_new = tl.load(
-                cu_seqlens_k_new_ptr + b_offs + 1, mask=mask, other=0
-            )
+            cur_new = tl.load(cu_seqlens_k_new_ptr + b_offs, mask=mask, other=0)
+            nxt_new = tl.load(cu_seqlens_k_new_ptr + b_offs + 1, mask=mask, other=0)
             k_len += nxt_new - cur_new
         else:
             k_len += max_seqlen_k_new
@@ -545,17 +533,13 @@ def _prepare_pass2_kernel(
 
     blocks_per_sm = tl.maximum(1, blocks_per_sm)
 
-    num_n_blocks = tl.load(
-        num_n_blocks_per_seq_ptr + b_offsets, mask=b_mask, other=0
-    )
+    num_n_blocks = tl.load(num_n_blocks_per_seq_ptr + b_offsets, mask=b_mask, other=0)
     num_splits_dynamic = (num_n_blocks + blocks_per_sm - 1) // blocks_per_sm
 
     num_splits_dynamic = tl.minimum(num_splits_dynamic, num_splits_static)
     num_splits_dynamic = tl.maximum(1, num_splits_dynamic)
 
-    tl.store(
-        num_splits_dynamic_ptr + b_offsets, num_splits_dynamic, mask=b_mask
-    )
+    tl.store(num_splits_dynamic_ptr + b_offsets, num_splits_dynamic, mask=b_mask)
 
 
 def get_pack_gqa(
@@ -729,9 +713,7 @@ def get_scheduler_metadata(
     seqlen_q = (
         seqused_q
         if seqused_q is not None
-        else torch.full(
-            (batch_size,), max_seqlen_q, dtype=dtype, device=device
-        )
+        else torch.full((batch_size,), max_seqlen_q, dtype=dtype, device=device)
     )
     seqlen_k = seqused_k
     seqlen_knew = (
@@ -906,18 +888,12 @@ def get_scheduler_metadata(
     else:
         final_num_splits_for_sem_check = eff_num_splits
 
-    scheduler_needs_semaphore = (
-        arch >= 90 or final_num_splits_for_sem_check > 1
-    )
+    scheduler_needs_semaphore = arch >= 90 or final_num_splits_for_sem_check > 1
 
-    alloc_size = (
-        int(scheduler_needs_semaphore) + int(use_dynamic_split) * batch_size
-    )
+    alloc_size = int(scheduler_needs_semaphore) + int(use_dynamic_split) * batch_size
 
     if alloc_size > 0:
-        scheduler_metadata = torch.empty(
-            alloc_size, dtype=torch.int32, device=device
-        )
+        scheduler_metadata = torch.empty(alloc_size, dtype=torch.int32, device=device)
         offset = 0
         if scheduler_needs_semaphore:
             scheduler_metadata[offset] = 0

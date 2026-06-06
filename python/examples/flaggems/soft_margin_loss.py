@@ -84,9 +84,7 @@ def _check_tensors(input: torch.Tensor, target: torch.Tensor):
     return input, target
 
 
-def soft_margin_loss(
-    input: torch.Tensor, target: torch.Tensor, reduction="mean"
-):
+def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"):
     input_c, target_c = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input_c.numel()

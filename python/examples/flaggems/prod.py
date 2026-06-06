@@ -113,7 +113,5 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     def grid(meta):
         return (triton.cdiv(M, meta["BLOCK_M"]),)
 
-    prod_dim_kernel[grid](
-        inp, out, M, N, BLOCK_M=1, BLOCK_N=triton.next_power_of_2(N)
-    )
+    prod_dim_kernel[grid](inp, out, M, N, BLOCK_M=1, BLOCK_N=triton.next_power_of_2(N))
     return out

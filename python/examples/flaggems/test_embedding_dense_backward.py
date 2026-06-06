@@ -22,9 +22,7 @@ def test_embedding_dense_backward(
     torch.manual_seed(0)
     device = "cpu"
 
-    indices = torch.randint(
-        0, num_embeddings, shape, dtype=torch.int64, device=device
-    )
+    indices = torch.randint(0, num_embeddings, shape, dtype=torch.int64, device=device)
     grad_output = torch.randn(
         (*shape, embedding_dim), dtype=torch.float32, device=device
     )
@@ -56,6 +54,4 @@ def test_embedding_dense_backward(
         scale_grad_by_freq=scale_grad_by_freq,
     )
 
-    torch.testing.assert_close(
-        tri_grad_weight, ref_grad_weight, rtol=1e-3, atol=1e-3
-    )
+    torch.testing.assert_close(tri_grad_weight, ref_grad_weight, rtol=1e-3, atol=1e-3)

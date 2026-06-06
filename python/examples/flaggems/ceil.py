@@ -15,9 +15,7 @@ def ceil_kernel(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    tl.store(
-        out_ptr + offsets, tl.ceil(x.to(tl.float32)).to(x.dtype), mask=mask
-    )
+    tl.store(out_ptr + offsets, tl.ceil(x.to(tl.float32)).to(x.dtype), mask=mask)
 
 
 def ceil(A):

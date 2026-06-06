@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .rand import philox_backend_seed_offset
+
 
 @triton.jit
 def multinomial_with_replacement(
@@ -65,7 +67,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     )
 
     if (not with_replacement) or n_samples == 1:
-        q = torch.empty_like(prob).exponential_(1.0)
+        q = torch.empty_like(prob).exponential_(1.0, generator=gen)
         s = torch.div(prob, q, out=q)
         if n_samples == 1:
             return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
@@ -80,12 +82,10 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         out = torch.empty((n_samples,), device=prob.device, dtype=torch.int64)
     else:
         n_dist = cum_prob.size(0)
-        out = torch.empty(
-            (n_dist, n_samples), device=prob.device, dtype=torch.int64
-        )
+        out = torch.empty((n_dist, n_samples), device=prob.device, dtype=torch.int64)
 
-    philox_seed = torch.initial_seed()
-    philox_offset = 0
+    increment = n_dist * n_samples
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
 
     def grid(META):
         return (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)

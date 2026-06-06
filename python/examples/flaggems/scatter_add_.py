@@ -38,8 +38,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -65,15 +64,9 @@ def scatter_add_kernel_1(
     for loop_iter in tl.static_range(LOOP):
         src_index_offsets = block_start + arange
         src_tensor = tl.load(src_ptr + src_index_offsets, mask=mask, other=0)
-        index_tensor = tl.load(
-            index_ptr + src_index_offsets, mask=mask, other=0
-        )
-        out_offsets = (
-            src_index_offsets // index_dim_n * inp_dim_n + index_tensor
-        )
-        tl.atomic_add(
-            out_ptr + out_offsets, src_tensor, mask=mask, sem="relaxed"
-        )
+        index_tensor = tl.load(index_ptr + src_index_offsets, mask=mask, other=0)
+        out_offsets = src_index_offsets // index_dim_n * inp_dim_n + index_tensor
+        tl.atomic_add(out_ptr + out_offsets, src_tensor, mask=mask, sem="relaxed")
         block_start += BLOCK_SIZE
 
 
@@ -133,7 +126,9 @@ def generate_scatter_kernel(
     code += "        cur_index = tl.load(index + idx_offsets, mask=mask, other=0)\n"
     code += "        dim_offsets = cur_index * stride_dim\n"
     code += "        inp_offsets += dim_offsets\n"
-    code += "        tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')\n"
+    code += (
+        "        tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')\n"
+    )
     code += "        offsets += BLOCK\n\n"
     return code
 
@@ -195,9 +190,7 @@ def generate_code(
 
     code = generate_imports(code)
     code = generate_scatter_kernel(rank, kernel_name, code)
-    code = generate_destination_passing_wrapper(
-        rank, wrapper_name, kernel_name, code
-    )
+    code = generate_destination_passing_wrapper(rank, wrapper_name, kernel_name, code)
     return code
 
 
@@ -243,8 +236,7 @@ _scatter_func = ScatterFunction()
 def clip_tensor_to_shape(b, a):
     target_shape = a.shape
     slices = [
-        slice(0, min(b.shape[i], target_shape[i]))
-        for i in range(len(target_shape))
+        slice(0, min(b.shape[i], target_shape[i])) for i in range(len(target_shape))
     ]
     clipped_b = b[tuple(slices)]
     return clipped_b
@@ -281,6 +273,7 @@ def scatter_add_0(inp, dim, index, src):
 def scatter_add_1(x, dim, index, src):
     index_dim_n = index.size(dim)
     inp_dim_n = x.size(dim)
+    origin = x
     if dim != x.ndim - 1:
         x = dim_compress(x, dim)
     if dim != x.ndim - 1:
@@ -305,11 +298,11 @@ def scatter_add_1(x, dim, index, src):
     if dim != x.ndim - 1:
         order = [i for i in range(x.ndim - 1)]
         order.insert(dim, x.ndim - 1)
-        if dtype_convert:
-            return inp.copy_(x.to(src.dtype).permute(order))
-        return x.permute(order)
-    else:
-        return x.to(src.dtype) if dtype_convert else x
+        result = x.to(src.dtype) if dtype_convert else x
+        return origin.copy_(result.permute(order))
+    if dtype_convert:
+        return origin.copy_(x.to(src.dtype))
+    return x
 
 
 def scatter_add_(x, dim, index, src):
@@ -327,17 +320,11 @@ def scatter_add_(x, dim, index, src):
             if index.size(dim) >= x.size(dim):
                 equal_count += 1
 
-    if (
-        equal_count == x.dim()
-        and index.shape == src.shape
-        and dim == x.ndim - 1
-    ):
+    if equal_count == x.dim() and index.shape == src.shape and dim == x.ndim - 1:
         return scatter_add_1(x, dim, index, src)
-    if (
-        index.shape == src.shape
-        and index.shape == x.shape
-        and dim != x.ndim - 1
-    ) or (x.shape[0] == 4096 and x.numel() >= 9437184 and dim != x.ndim - 1):
+    if (index.shape == src.shape and index.shape == x.shape and dim != x.ndim - 1) or (
+        x.shape[0] == 4096 and x.numel() >= 9437184 and dim != x.ndim - 1
+    ):
         if index.shape != src.shape:
             src = clip_tensor_to_shape(src, index)
         return scatter_add_1(x, dim, index, src)

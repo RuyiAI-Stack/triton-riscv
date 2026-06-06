@@ -14,9 +14,7 @@ def round_half_to_even_impl(x):
 
     is_odd = tl.abs(r - 2.0 * tl.floor(r / 2.0)) > 0.5
 
-    return tl.where(
-        (d > 0.5) | ((tl.abs(d - 0.5) < 1e-10) & is_odd), r + 1.0, r
-    )
+    return tl.where((d > 0.5) | ((tl.abs(d - 0.5) < 1e-10) & is_odd), r + 1.0, r)
 
 
 @triton.jit
@@ -55,15 +53,11 @@ def round_kernel(
         elif IS_FP16:
             x_fp32 = tl.cast(x, tl.float32)
             x_scaled = x_fp32 * scale
-            out = tl.cast(
-                round_half_to_even_impl(x_scaled) / scale, tl.float16
-            )
+            out = tl.cast(round_half_to_even_impl(x_scaled) / scale, tl.float16)
         elif IS_BF16:
             x_fp32 = tl.cast(x, tl.float32)
             x_scaled = x_fp32 * scale
-            out = tl.cast(
-                round_half_to_even_impl(x_scaled) / scale, tl.bfloat16
-            )
+            out = tl.cast(round_half_to_even_impl(x_scaled) / scale, tl.bfloat16)
         else:
             out = x
 

@@ -21,12 +21,11 @@ def test_select_backward(size, dim):
         device="cpu",
     )
 
-    ref_out = torch.zeros(input_sizes, dtype=torch.float32, device="cpu")
-    ref_grad = grad
-    if dim == 0:
-        ref_out[index, :] = ref_grad
-    else:
-        ref_out[:, index] = ref_grad
+    x_ref = torch.zeros(
+        input_sizes, dtype=torch.float32, device="cpu", requires_grad=True
+    )
+    torch.select(x_ref, dim, index).backward(grad)
+    ref_out = x_ref.grad
 
     tri_out = select_backward(grad, input_sizes, dim, index)
 

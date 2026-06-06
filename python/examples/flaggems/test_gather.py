@@ -8,9 +8,7 @@ from .gather import gather
 def test_gather_forward_1d(shape):
     inp = torch.randn(shape, device="cpu", dtype=torch.float32)
     dim = 0
-    index = torch.randint(
-        0, shape[dim], shape, device="cpu", dtype=torch.int64
-    )
+    index = torch.randint(0, shape[dim], shape, device="cpu", dtype=torch.int64)
     ref = torch.gather(inp, dim, index)
     out = gather(inp, dim, index)
     assert torch.allclose(out, ref, atol=1e-5, rtol=1e-5)
@@ -20,9 +18,7 @@ def test_gather_forward_1d(shape):
 def test_gather_forward_2d(shape):
     inp = torch.randn(shape, device="cpu", dtype=torch.float32)
     for dim in [0, 1]:
-        index = torch.randint(
-            0, shape[dim], shape, device="cpu", dtype=torch.int64
-        )
+        index = torch.randint(0, shape[dim], shape, device="cpu", dtype=torch.int64)
         ref = torch.gather(inp, dim, index)
         out = gather(inp, dim, index)
         assert torch.allclose(out, ref, atol=1e-5, rtol=1e-5)
@@ -53,13 +49,9 @@ def test_gather_negative_index():
 @pytest.mark.parametrize("shape", [(128, 512), (64, 256)])
 def test_gather_backward(shape):
     torch.manual_seed(0)
-    inp = torch.randn(
-        shape, device="cpu", dtype=torch.float32, requires_grad=True
-    )
+    inp = torch.randn(shape, device="cpu", dtype=torch.float32, requires_grad=True)
     dim = 0
-    index = torch.randint(
-        0, shape[dim], shape, device="cpu", dtype=torch.int64
-    )
+    index = torch.randint(0, shape[dim], shape, device="cpu", dtype=torch.int64)
 
     # Reference backward via torch
     ref_out = torch.gather(inp, dim, index)

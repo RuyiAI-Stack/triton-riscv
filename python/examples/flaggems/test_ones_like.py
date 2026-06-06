@@ -8,9 +8,7 @@ from .ones_like import ones_like
     "shape",
     [(16, 256), (4, 128), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_ones_like(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device="cpu")
     tri_out = ones_like(x)

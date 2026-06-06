@@ -39,9 +39,7 @@ def _check_supported_dtype(t: torch.Tensor):
         )
 
 
-def _launch_softshrink_kernel(
-    x: torch.Tensor, out: torch.Tensor, lambd: float
-):
+def _launch_softshrink_kernel(x: torch.Tensor, out: torch.Tensor, lambd: float):
     n_elements = x.numel()
     if n_elements == 0:
         return

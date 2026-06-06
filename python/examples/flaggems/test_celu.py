@@ -15,9 +15,7 @@ def test_celu_forward(shape, alpha):
 
 
 def test_celu_inplace():
-    x = torch.tensor(
-        [-2.0, -0.5, 0.0, 1.0, 3.0], dtype=torch.float32, device="cpu"
-    )
+    x = torch.tensor([-2.0, -0.5, 0.0, 1.0, 3.0], dtype=torch.float32, device="cpu")
     x_ref = x.clone()
     torch.nn.functional.celu_(x_ref, alpha=1.0)
     celu_(x, alpha=1.0)

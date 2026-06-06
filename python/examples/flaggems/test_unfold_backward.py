@@ -25,13 +25,11 @@ def test_unfold_backward(size):
     step = 2
     D = size
     input_sizes = [D]
-    x = torch.randn(
-        size, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(size, dtype=torch.float32, device="cpu", requires_grad=True)
     x_unfolded = x.unfold(0, window_size, step)
     grad_in = torch.randn(x_unfolded.shape, dtype=torch.float32, device="cpu")
 
-    x_unfolded.sum().backward()
+    x_unfolded.backward(grad_in)
     ref_grad = x.grad
     tri_grad = unfold_backward(grad_in, input_sizes, 0, window_size, step)
 
@@ -45,13 +43,11 @@ def test_unfold_backward_2d(size):
     step = 2
     D = size
     input_sizes = [2, D]
-    x = torch.randn(
-        2, D, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(2, D, dtype=torch.float32, device="cpu", requires_grad=True)
     x_unfolded = x.unfold(1, window_size, step)
     grad_in = torch.randn(x_unfolded.shape, dtype=torch.float32, device="cpu")
 
-    x_unfolded.sum().backward()
+    x_unfolded.backward(grad_in)
     ref_grad = x.grad
     tri_grad = unfold_backward(grad_in, input_sizes, 1, window_size, step)
 
@@ -79,9 +75,7 @@ def test_unfold_backward_compare_ref():
     step = 1
     D = 10
     input_sizes = [D]
-    grad_in = torch.randn(
-        D - window_size + 1, window_size, dtype=torch.float32
-    )
+    grad_in = torch.randn(D - window_size + 1, window_size, dtype=torch.float32)
 
     ref = ref_unfold_backward(grad_in, input_sizes, 0, window_size, step)
     tri = unfold_backward(grad_in, input_sizes, 0, window_size, step)

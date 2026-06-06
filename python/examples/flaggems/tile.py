@@ -18,8 +18,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -109,9 +108,7 @@ def generate_destination_passing_tile_wrapper(
     if rank > 0:
         code += "    tile_size = min(512, triton.next_power_of_2(num_tasks))\n"
         code += "    num_warps = 4\n"
-        code += (
-            "    num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))\n"
-        )
+        code += "    num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))\n"
         code += "    tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)\n"
         code += "    grid = (num_ctas,)\n\n"
         code += "    in0_strides = in0.stride()\n"

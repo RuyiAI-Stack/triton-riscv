@@ -10,9 +10,7 @@ def test_upsample_bicubic2d_aa_backward_correctness():
     input_size = (N, C, H_in, W_in)
     output_size = (H_out, W_out)
 
-    grad_output = torch.randn(
-        N, C, H_out, W_out, dtype=torch.float32, device="cpu"
-    )
+    grad_output = torch.randn(N, C, H_out, W_out, dtype=torch.float32, device="cpu")
 
     result = _upsample_bicubic2d_aa_backward(
         grad_output, output_size, input_size, align_corners=False
@@ -29,9 +27,7 @@ def test_upsample_bicubic2d_aa_backward_batch():
     input_size = (N, C, H_in, W_in)
     output_size = (H_out, W_out)
 
-    grad_output = torch.randn(
-        N, C, H_out, W_out, dtype=torch.float32, device="cpu"
-    )
+    grad_output = torch.randn(N, C, H_out, W_out, dtype=torch.float32, device="cpu")
 
     result = _upsample_bicubic2d_aa_backward(
         grad_output, output_size, input_size, align_corners=False

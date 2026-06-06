@@ -8,12 +8,14 @@ from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 @pytest.mark.parametrize("channels", [1, 3])
 def test_upsample_bicubic2d_aa_correctness(batch_size, channels):
     torch.manual_seed(0)
-    x = torch.randn(
-        batch_size, channels, 4, 4, dtype=torch.float32, device="cpu"
-    )
+    x = torch.randn(batch_size, channels, 4, 4, dtype=torch.float32, device="cpu")
 
     ref = torch.nn.functional.interpolate(
-        x, size=(8, 8), mode="bicubic", align_corners=False
+        x,
+        size=(8, 8),
+        mode="bicubic",
+        align_corners=False,
+        antialias=True,
     )
     tri = _upsample_bicubic2d_aa(x, (8, 8), align_corners=False)
 
@@ -25,7 +27,11 @@ def test_upsample_bicubic2d_aa_align_corners():
     x = torch.randn(1, 1, 4, 4, dtype=torch.float32, device="cpu")
 
     ref = torch.nn.functional.interpolate(
-        x, size=(8, 8), mode="bicubic", align_corners=True
+        x,
+        size=(8, 8),
+        mode="bicubic",
+        align_corners=True,
+        antialias=True,
     )
     tri = _upsample_bicubic2d_aa(x, (8, 8), align_corners=True)
 
@@ -37,7 +43,11 @@ def test_upsample_bicubic2d_aa_downsample():
     x = torch.randn(1, 1, 8, 8, dtype=torch.float32, device="cpu")
 
     ref = torch.nn.functional.interpolate(
-        x, size=(4, 4), mode="bicubic", align_corners=False
+        x,
+        size=(4, 4),
+        mode="bicubic",
+        align_corners=False,
+        antialias=True,
     )
     tri = _upsample_bicubic2d_aa(x, (4, 4), align_corners=False)
 

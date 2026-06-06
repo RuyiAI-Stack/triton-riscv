@@ -122,8 +122,8 @@ def mac_loop(
         # handle the last iter
         rk = prev_multiple + tl.arange(0, BLOCK_K)
         mask_k = rk < K
-        a = tl.load(A_base + rk[None, :] * stride_ak, mask=mask_k[None, :])
-        b = tl.load(B_base + rk[:, None] * stride_bk, mask=mask_k[:, None])
+        a = tl.load(A_base + rk[None, :] * stride_ak, mask=mask_k[None, :], other=0.0)
+        b = tl.load(B_base + rk[:, None] * stride_bk, mask=mask_k[:, None], other=0.0)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     rm1 = tl.arange(0, BLOCK_M)
@@ -131,11 +131,7 @@ def mac_loop(
 
     # the first situation: not the starting parts. only need to store the data on P
     if start_iter % iters_per_tile != 0:
-        P_ptr = (
-            P
-            + pid * BLOCK_M * BLOCK_N
-            + (rm1[:, None] * BLOCK_N + rn1[None, :])
-        )
+        P_ptr = P + pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
         tl.store(P_ptr, acc, cache_modifier=".cg")
         tl.atomic_xchg(locks + pid, 1)
     else:  # the first part of certain grids. shoud read datas and merge datas
@@ -191,9 +187,7 @@ def first_wave(
 ):
     pid = tl.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * iters_per_pid + tl.minimum(pid, iters_remaining)
-    last_iter = (pid + 1) * iters_per_pid + tl.minimum(
-        pid + 1, iters_remaining
-    )
+    last_iter = (pid + 1) * iters_per_pid + tl.minimum(pid + 1, iters_remaining)
     while start_iter < last_iter:
         iter_offset_in_tile = start_iter % iters_per_tile
         # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
@@ -248,9 +242,7 @@ def first_wave(
             )  # compute inside the if/else to avoid spilling!
             mask = (rm < M)[:, None] & (rn < N)[None, :]
             tl.store(C_ptr, acc, mask=mask)
-            if (
-                iter_offset_in_tile != 0
-            ):  # only if tile has been partially processed
+            if iter_offset_in_tile != 0:  # only if tile has been partially processed
                 tl.atomic_xchg(locks + tile_id, 1)
         else:
             while tl.atomic_cas(locks + tile_id, 1, 1) != 1:
@@ -297,9 +289,7 @@ def first_wave_for_bf16(
 ):
     pid = tl.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * iters_per_pid + tl.minimum(pid, iters_remaining)
-    last_iter = (pid + 1) * iters_per_pid + tl.minimum(
-        pid + 1, iters_remaining
-    )
+    last_iter = (pid + 1) * iters_per_pid + tl.minimum(pid + 1, iters_remaining)
     while start_iter < last_iter:
         iter_offset_in_tile = start_iter % iters_per_tile
         # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
@@ -353,9 +343,7 @@ def first_wave_for_bf16(
         # the first situation: not the starting parts. only need to store the data on P
         if start_iter % iters_per_tile != 0:
             P_ptr = (
-                P
-                + pid * BLOCK_M * BLOCK_N
-                + (rm1[:, None] * BLOCK_N + rn1[None, :])
+                P + pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
             )
             tl.store(P_ptr, acc, cache_modifier=".cg")
             tl.atomic_xchg(locks + pid, 1)
@@ -429,10 +417,12 @@ def classic_mm(
     a = tl.load(
         A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
         mask=mask_k[None, :],
+        other=0.0,
     )
     b = tl.load(
         B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
         mask=mask_k[:, None],
+        other=0.0,
     )
     if a.dtype != b.dtype:
         a = a.to(C.dtype.element_ty)
@@ -466,6 +456,11 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
     elif number_other_tiles > 0 and number_cooperative_tiles > sm_count * 0.8:
         number_cooperative_tiles = 0
 
+    # The triton-shared CPU launcher executes program instances sequentially.
+    # Stream-K's inter-program spin locks can therefore deadlock on this backend;
+    # use the native Triton tiled matmul path for RISC-V.
+    number_cooperative_tiles = 0
+
     if number_cooperative_tiles > 0:
         # mini wave
         total_iters_streamk = number_cooperative_tiles * iters_per_tile
@@ -474,9 +469,7 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
         even_k = K % BLOCK_K == 0
 
         if a.dtype == torch.bfloat16:
-            locks = torch.zeros(
-                (tiles_per_wave,), device=a.device, dtype=torch.int32
-            )
+            locks = torch.zeros((tiles_per_wave,), device=a.device, dtype=torch.int32)
             P = torch.empty(
                 (tiles_per_wave, BLOCK_M, BLOCK_N),
                 device=a.device,

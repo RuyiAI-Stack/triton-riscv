@@ -16,3 +16,22 @@ def test_rand(shape):
     assert out_triton.dtype == torch.float32
     assert torch.all(out_triton >= 0.0)
     assert torch.all(out_triton < 1.0)
+
+
+def test_rand_repeated_calls_advance_philox_offset():
+    torch.manual_seed(0)
+
+    first = rand((1024,), dtype=torch.float32)
+    second = rand((1024,), dtype=torch.float32)
+
+    assert not torch.equal(first, second)
+
+
+def test_rand_empty_does_not_advance_default_generator():
+    torch.manual_seed(0)
+    state_before = torch.random.get_rng_state()
+
+    out = rand((0,), dtype=torch.float32)
+
+    assert out.numel() == 0
+    torch.testing.assert_close(torch.random.get_rng_state(), state_before)

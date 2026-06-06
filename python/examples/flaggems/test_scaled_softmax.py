@@ -8,10 +8,6 @@ from .scaled_softmax import (
 )
 
 
-def torch_scaled_softmax(x, scale_factor):
-    return torch.nn.functional.softmax(x * scale_factor, dim=-1)
-
-
 @pytest.mark.parametrize("query_seq_len", [16, 64])
 @pytest.mark.parametrize("key_seq_len", [512, 1024, 2048])
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -21,7 +17,7 @@ def test_scaled_softmax_forward(query_seq_len, key_seq_len, dtype):
     scale_factor = 0.5
 
     out_triton = scaled_softmax(x, scale_factor)
-    out_torch = torch_scaled_softmax(x, scale_factor)
+    out_torch = torch.nn.functional.softmax(x * scale_factor, dim=-1)
 
     torch.testing.assert_close(out_triton, out_torch, rtol=1e-3, atol=1e-3)
 
@@ -40,7 +36,7 @@ def test_scaled_softmax_varied(shape, scale_factor, dtype):
     x = torch.randn(shape, dtype=dtype, device="cpu")
 
     out_triton = scaled_softmax(x, scale_factor)
-    out_torch = torch_scaled_softmax(x, scale_factor)
+    out_torch = torch.nn.functional.softmax(x * scale_factor, dim=-1)
 
     torch.testing.assert_close(out_triton, out_torch, rtol=1e-3, atol=1e-3)
 
@@ -60,7 +56,7 @@ def test_scaled_softmax_backward(query_seq_len, key_seq_len, dtype):
     x = torch.randn(shape, dtype=dtype, device="cpu", requires_grad=True)
     scale_factor = 0.5
 
-    out = torch_scaled_softmax(x, scale_factor)
+    out = torch.nn.functional.softmax(x * scale_factor, dim=-1)
     grad_output = torch.randn_like(out)
     out.backward(grad_output)
     ref_grad = x.grad.clone()

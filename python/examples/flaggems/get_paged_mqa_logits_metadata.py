@@ -66,9 +66,7 @@ def get_paged_mqa_logits_metadata(
 
     BLOCK_SIZE = triton.next_power_of_2(max(16, batch_size))
 
-    schedule_metadata = torch.zeros(
-        (num_sms + 1, 2), dtype=torch.int32, device=device
-    )
+    schedule_metadata = torch.zeros((num_sms + 1, 2), dtype=torch.int32, device=device)
 
     _paged_mqa_logits_metadata_kernel[grid](
         effective_context_lens,

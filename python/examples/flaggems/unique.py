@@ -20,9 +20,9 @@ def simple_unique_flat_kernel(
     mask = i0 < num_tasks
 
     # load
-    a = tl.load(sorted_data_ptr + i0, mask=mask)
+    a = tl.load(sorted_data_ptr + i0, mask=mask, other=0)
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
-    b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
+    b = tl.load(sorted_data_ptr + i0_prev, mask=mask, other=0)
 
     # ne & cumsum
     ne_result = tl.where(i0 > 0, a != b, 0)
@@ -30,16 +30,14 @@ def simple_unique_flat_kernel(
 
     # unique_size
     unique_size_mask = i0 == tile_size - 1
-    tl.store(
-        unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask
-    )
+    tl.store(unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask)
 
     # data_out: scatter_(to=cumsum, sorted_data)
     tl.store(data_out_ptr + cumsum, a, mask=mask)
 
     # inverse_indices: scatter_(to=sorted_indices, cumsum)
     if return_inverse:
-        sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask)
+        sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask, other=0)
         tl.store(inverse_indices_ptr + sorted_indices, cumsum, mask=mask)
 
     # idx
@@ -62,17 +60,15 @@ def output_counts_flat_impl(
     # load idx
     i0 = global_pid * tile_size + r
     mask = i0 < num_tasks
-    idx = tl.load(idx_ptr + i0, mask=mask)
+    idx = tl.load(idx_ptr + i0, mask=mask, other=0)
 
     # load idx_next
     i0_next = i0 + 1
     next_mask = i0_next < num_tasks
-    idx_next = tl.load(idx_ptr + i0_next, mask=next_mask)
+    idx_next = tl.load(idx_ptr + i0_next, mask=next_mask, other=0)
 
     # diff
-    counts = tl.where(
-        i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx
-    )
+    counts = tl.where(i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx)
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
@@ -118,23 +114,21 @@ def quick_output_flat_impl(
     # load idx
     i0 = global_pid * tile_size + r
     mask = i0 < num_tasks
-    idx = tl.load(idx_ptr + i0, mask=mask)
+    idx = tl.load(idx_ptr + i0, mask=mask, other=0)
 
     # load idx_next
     i0_next = i0 + 1
     next_mask = i0_next < num_tasks
-    idx_next = tl.load(idx_ptr + i0_next, mask=next_mask)
+    idx_next = tl.load(idx_ptr + i0_next, mask=next_mask, other=0)
 
     # diff
-    counts = tl.where(
-        i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx
-    )
+    counts = tl.where(i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx)
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
 
     # data_out: gather(sorted_data, from=idx)
-    sorted_data = tl.load(sorted_data_ptr + idx, mask=mask)
+    sorted_data = tl.load(sorted_data_ptr + idx, mask=mask, other=0)
     tl.store(data_out_ptr + i0, sorted_data, mask=mask)
 
 
@@ -184,9 +178,9 @@ def local_quick_unique_flat_impl(
     mask = i0 < num_tasks
 
     # load
-    a = tl.load(sorted_data_ptr + i0, mask=mask)
+    a = tl.load(sorted_data_ptr + i0, mask=mask, other=0)
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
-    b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
+    b = tl.load(sorted_data_ptr + i0_prev, mask=mask, other=0)
 
     # ne & cumsum
     ne_result = tl.where(i0 > 0, a != b, 0)
@@ -197,9 +191,7 @@ def local_quick_unique_flat_impl(
     local_unique_mask = (local_unique_offset >= 0) & mask
     if return_counts:
         # origin_idx: scatter_(to=cumsum, i0)
-        origin_idx_mask = (
-            (i0 == 0) | ne_result.to(tl.int1)
-        ) & local_unique_mask
+        origin_idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & local_unique_mask
         tl.store(
             origin_idx_ptr + (offset + local_unique_offset),
             i0,
@@ -283,26 +275,24 @@ def global_quick_unique_flat_impl(
     )
     pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
     cur_tile_sum_mask = global_pid < global_ctas_num
-    cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=cur_tile_sum_mask)
+    cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=cur_tile_sum_mask, other=0)
 
     # total
     total += tl.sum(pre_tile_sum)
     if global_pid == global_ctas_num - 1:
         last_tile_sum_mask = p == global_pid
-        tl.store(
-            tile_sum_ptr + p, total + cur_tile_sum, mask=last_tile_sum_mask
-        )
+        tl.store(tile_sum_ptr + p, total + cur_tile_sum, mask=last_tile_sum_mask)
 
     # idx or data_out
     tile_mask = r < cur_tile_sum
     out_offset = total + r
     if return_counts:
         # move origin_idx to idx_ptr
-        origin_idx = tl.load(origin_idx_ptr + i0, mask=mask)
+        origin_idx = tl.load(origin_idx_ptr + i0, mask=mask, other=0)
         tl.store(idx_ptr + out_offset, origin_idx, mask=tile_mask)
     else:
         # move local_unique to data_out_ptr
-        local_unique = tl.load(local_unique_ptr + i0, mask=mask)
+        local_unique = tl.load(local_unique_ptr + i0, mask=mask, other=0)
         tl.store(data_out_ptr + out_offset, local_unique, mask=tile_mask)
 
     return total
@@ -467,8 +457,8 @@ def local_ne_flat_impl(
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
 
     # load
-    a = tl.load(sorted_data_ptr + i0, mask=mask)
-    b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
+    a = tl.load(sorted_data_ptr + i0, mask=mask, other=0)
+    b = tl.load(sorted_data_ptr + i0_prev, mask=mask, other=0)
 
     # compute
     ne_result = tl.where(i0 > 0, a != b, 0)
@@ -532,8 +522,8 @@ def global_cumsum_flat_impl(
     mask = i0 < num_tasks
 
     # load sorted_data, sorted_indices
-    sorted_data = tl.load(sorted_data_ptr + i0, mask=mask)
-    sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask)
+    sorted_data = tl.load(sorted_data_ptr + i0, mask=mask, other=0)
+    sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask, other=0)
 
     # load tile_sum
     p = tl.arange(0, next_power_global_ctas_num)
@@ -547,7 +537,7 @@ def global_cumsum_flat_impl(
 
     # cumsum
     total += tl.sum(pre_tile_sum)
-    ne_result = tl.load(ne_result_ptr + i0, mask=mask)
+    ne_result = tl.load(ne_result_ptr + i0, mask=mask, other=0)
     ne_result_i1 = ne_result.to(tl.int1)
     ne_result = ne_result.to(tl.int32)
     cumsum = tl.cumsum(ne_result)
@@ -737,9 +727,7 @@ def simple_unique_flat(
         idx = torch.empty_like(sorted_data, dtype=torch.int64)
     else:
         idx = None
-    unique_size = torch.empty(
-        [1], dtype=torch.int64, device=sorted_data.device
-    )
+    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
     simple_unique_flat_kernel[grid](
@@ -795,8 +783,6 @@ def _unique2(
         )
     return (
         data_out,
-        inverse_indices
-        if inverse_indices is None
-        else inverse_indices.view_as(in0),
+        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
         counts,
     )

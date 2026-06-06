@@ -70,9 +70,7 @@ def _add_internal(A, B, alpha=1):
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        add_kernel_tt[grid](
-            A_c, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE
-        )
+        add_kernel_tt[grid](A_c, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(A)
     elif isinstance(A, torch.Tensor):
         A_c = A.contiguous()
@@ -81,9 +79,7 @@ def _add_internal(A, B, alpha=1):
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        add_kernel_ts[grid](
-            A_c, B, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE
-        )
+        add_kernel_ts[grid](A_c, B, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(A)
     elif isinstance(B, torch.Tensor):
         B_c = B.contiguous()
@@ -92,21 +88,19 @@ def _add_internal(A, B, alpha=1):
         n_elements = B_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        add_kernel_st[grid](
-            A, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE
-        )
+        add_kernel_st[grid](A, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(B)
     else:
         return torch.tensor(A + B * alpha)
 
 
 def add(A, B, *, alpha=1):
-    A_is_complex = (
-        isinstance(A, torch.Tensor) and A.is_complex()
-    ) or isinstance(A, complex)
-    B_is_complex = (
-        isinstance(B, torch.Tensor) and B.is_complex()
-    ) or isinstance(B, complex)
+    A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
+        A, complex
+    )
+    B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(
+        B, complex
+    )
     if A_is_complex or B_is_complex:
         if A_is_complex and B_is_complex:
             Ar = torch.view_as_real(A)
@@ -121,9 +115,7 @@ def add(A, B, *, alpha=1):
                 Br = torch.view_as_real(B.to(A.dtype))
             else:
                 Br = torch.view_as_real(
-                    torch.tensor(B, dtype=A.dtype, device=A.device).expand_as(
-                        A
-                    )
+                    torch.tensor(B, dtype=A.dtype, device=A.device).expand_as(A)
                 )
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)
@@ -135,9 +127,7 @@ def add(A, B, *, alpha=1):
                 Ar = torch.view_as_real(A.to(B.dtype))
             else:
                 Ar = torch.view_as_real(
-                    torch.tensor(A, dtype=B.dtype, device=B.device).expand_as(
-                        B
-                    )
+                    torch.tensor(A, dtype=B.dtype, device=B.device).expand_as(B)
                 )
             common_dtype = torch.promote_types(Ar.dtype, Br.dtype)
             Ar, Br = Ar.to(common_dtype), Br.to(common_dtype)

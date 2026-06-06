@@ -15,6 +15,7 @@ def test_cos(shape):
 
 def test_cos_inplace():
     x = torch.tensor([0.0, 1.0, -1.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().cos_()
+    x_ref = x.clone()
+    torch.cos(x_ref, out=x_ref)
     cos_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)

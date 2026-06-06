@@ -28,9 +28,7 @@ def bitwise_right_shift(A, B):
     n_elements = A_c.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    bitwise_right_shift_kernel[grid](
-        A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    bitwise_right_shift_kernel[grid](A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out.view_as(A)
 
 

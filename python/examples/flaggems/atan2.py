@@ -19,9 +19,6 @@ def atan2_kernel_tt(
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    # NOTE: tl.math.atan2 is NOT available in the triton-riscv MLIR backend.
-    # The backend only supports basic arithmetic ops. Polynomial approximation
-    # was attempted but insufficient accuracy (error > 1e-3).
     res = tl.math.atan2(x.to(tl.float32), y.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
@@ -69,9 +66,7 @@ def _atan2_internal(A, B, out=None):
         B_c = B.contiguous()
 
         if out is None:
-            out = torch.empty_like(
-                A_c, dtype=torch.promote_types(A.dtype, B.dtype)
-            )
+            out = torch.empty_like(A_c, dtype=torch.promote_types(A.dtype, B.dtype))
             out_c = out
         else:
             out_c = out if out.is_contiguous() else out.contiguous()
@@ -79,9 +74,7 @@ def _atan2_internal(A, B, out=None):
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        atan2_kernel_tt[grid](
-            A_c, B_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        atan2_kernel_tt[grid](A_c, B_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
         if out_c.data_ptr() != out.data_ptr():
             out.copy_(out_c)

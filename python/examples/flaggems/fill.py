@@ -56,9 +56,7 @@ def fill_tensor(input, value):
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](
-        out, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    fill_scalar_kernel[grid](out, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out
 
 
@@ -77,9 +75,7 @@ def fill_tensor_out(input, value, *, out=None):
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](
-        out, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    fill_scalar_kernel[grid](out, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out
 
 
@@ -96,9 +92,7 @@ def fill_tensor_(self, value):
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](
-        self, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    fill_scalar_kernel[grid](self, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return self
 
 

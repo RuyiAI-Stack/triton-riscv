@@ -78,3 +78,26 @@ def test_normal_tensor_tensor(shape):
     assert tri_out.dtype == torch.float32
     assert abs(tri_out.mean().item() - 2.0) < 0.6
     assert abs(tri_out.std().item() - 3.0) < 0.6
+
+
+def test_normal_repeated_calls_advance_philox_offset():
+    torch.manual_seed(0)
+    mean = torch.zeros((1024,), dtype=torch.float32, device="cpu")
+
+    first = normal_tensor_float(mean, 1.0)
+    second = normal_tensor_float(mean, 1.0)
+
+    assert not torch.equal(first, second)
+
+
+def test_normal_generator_state_is_consumed():
+    mean = torch.zeros((1024,), dtype=torch.float32, device="cpu")
+    first_generator = torch.Generator(device="cpu").manual_seed(0)
+    second_generator = torch.Generator(device="cpu").manual_seed(0)
+
+    first = normal_tensor_float(mean, 1.0, generator=first_generator)
+    repeat_from_same_seed = normal_tensor_float(mean, 1.0, generator=second_generator)
+    second = normal_tensor_float(mean, 1.0, generator=first_generator)
+
+    torch.testing.assert_close(first, repeat_from_same_seed)
+    assert not torch.equal(first, second)

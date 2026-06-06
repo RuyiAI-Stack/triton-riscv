@@ -17,8 +17,8 @@ def masked_select_single_pass_kernel(
 ):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp = tl.load(inp_ptr + offsets, mask=offsets < N)
-    mask = tl.load(mask_ptr + offsets, mask=offsets < N).to(tl.int1)
+    inp = tl.load(inp_ptr + offsets, mask=offsets < N, other=0)
+    mask = tl.load(mask_ptr + offsets, mask=offsets < N, other=0).to(tl.int1)
     mask_ints = mask.to(tl.int32)
     out_offsets = tl.cumsum(mask_ints, axis=0) - 1
 
@@ -56,8 +56,6 @@ def mask_part_sum_kernel(
     NP_BLOCK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    nr = num_blocks
-    row_stride = num_blocks_per_row
     row_id = tl.program_id(0)
     start_block = row_id * num_blocks_per_row
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -80,7 +78,7 @@ def mask_part_sum_kernel(
     np = tl.num_programs(0)
     if count == np - 1:
         mask = tl.arange(0, NP_BLOCK) < np
-        part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask)
+        part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask, other=0)
         final_sum = tl.sum(part_sums, axis=0)
         pre_sums = tl.cumsum(part_sums, axis=0)
         tl.store(
@@ -114,18 +112,14 @@ def write_back_kernel(
     for block_id in range(start_block, last_block_id):
         inp = tl.load(inp_ptr + offset)
         select_mask = tl.load(mask_ptr + offset).to(tl.int1)
-        select_ints = select_mask.to(
-            tl.constexpr(part_sums_ptr.dtype.element_ty)
-        )
+        select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
         out_ptr += advance
         advance = tl.sum(select_ints, axis=0)
         pre_sums = tl.cumsum(select_ints, axis=0) - 1
         tl.store(out_ptr + pre_sums, inp, mask=select_mask)
         offset += BLOCK_SIZE
-    inp = tl.load(inp_ptr + offset, mask=offset < N)
-    select_mask = tl.load(mask_ptr + offset, mask=offset < N, other=0).to(
-        tl.int1
-    )
+    inp = tl.load(inp_ptr + offset, mask=offset < N, other=0)
+    select_mask = tl.load(mask_ptr + offset, mask=offset < N, other=0).to(tl.int1)
     select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
     out_ptr += advance
     pre_sums = tl.cumsum(select_ints, axis=0) - 1
@@ -140,9 +134,7 @@ def masked_select(inp, mask):
 
     N = inp.numel()
     if N <= 4096:
-        out = torch.empty(
-            mask.sum().item(), dtype=inp.dtype, device=inp.device
-        )
+        out = torch.empty(mask.sum().item(), dtype=inp.dtype, device=inp.device)
         return masked_select_single_pass(inp, mask, out, N)
 
     BLOCK_SIZE = _bracket_next_power_of_2(N, 128, 4096)
@@ -172,9 +164,7 @@ def masked_select(inp, mask):
         num_warps=num_warps,
     )
 
-    out = torch.empty(
-        part_sums[-1].item(), dtype=inp.dtype, device=mask.device
-    )
+    out = torch.empty(part_sums[-1].item(), dtype=inp.dtype, device=mask.device)
     write_back_kernel[(np,)](
         inp,
         mask,

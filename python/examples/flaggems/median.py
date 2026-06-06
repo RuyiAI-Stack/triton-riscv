@@ -67,9 +67,7 @@ def median_small_dim_kernel(
     outer_offsets = out_offsets // inner_size
 
     reduction_offsets = tl.arange(0, BLOCK_N)
-    sample_mask = (reduction_offsets[None, :] < reduction_size) & out_mask[
-        :, None
-    ]
+    sample_mask = (reduction_offsets[None, :] < reduction_size) & out_mask[:, None]
     sample_ptrs = (
         inp
         + outer_offsets[:, None] * reduction_size * inner_size
@@ -92,9 +90,7 @@ def median_small_dim_kernel(
     ordered = tl.sort(sortable, dim=1, descending=False)
     rank = (reduction_size - 1) // 2
     rank_mask = reduction_offsets[None, :] == rank
-    median_values = tl.sum(
-        tl.where(rank_mask, ordered, tl.zeros_like(ordered)), axis=1
-    )
+    median_values = tl.sum(tl.where(rank_mask, ordered, tl.zeros_like(ordered)), axis=1)
 
     first_match = tl.argmax(
         (sample_mask & (samples == median_values[:, None])).to(tl.int32),
@@ -240,9 +236,7 @@ def median_bool_dim_count_chunks_kernel(
     true_mask = valid & data
     false_mask = valid & ~data
     true_count = tl.sum(true_mask.to(tl.int64), axis=0)
-    first_false_idx = tl.min(
-        tl.where(false_mask, cols, reduction_size), axis=0
-    )
+    first_false_idx = tl.min(tl.where(false_mask, cols, reduction_size), axis=0)
     first_true_idx = tl.min(tl.where(true_mask, cols, reduction_size), axis=0)
 
     tl.store(counts + pid, true_count)
@@ -272,9 +266,7 @@ def median_bool_dim_reduce_chunks_kernel(
     first_false = tl.load(
         first_false_in + in_base, mask=valid, other=9223372036854775807
     )
-    first_true = tl.load(
-        first_true_in + in_base, mask=valid, other=9223372036854775807
-    )
+    first_true = tl.load(first_true_in + in_base, mask=valid, other=9223372036854775807)
 
     true_count = tl.sum(counts, axis=0)
     first_false_idx = tl.min(first_false, axis=0)
@@ -307,12 +299,8 @@ def median_bool_dim_finish_kernel(
     rank = (reduction_size - 1) // 2
     median_value = rank >= false_count
 
-    false_indices = tl.load(
-        first_false + base, mask=valid, other=9223372036854775807
-    )
-    true_indices = tl.load(
-        first_true + base, mask=valid, other=9223372036854775807
-    )
+    false_indices = tl.load(first_false + base, mask=valid, other=9223372036854775807)
+    true_indices = tl.load(first_true + base, mask=valid, other=9223372036854775807)
     first_false_idx = tl.min(false_indices, axis=0)
     first_true_idx = tl.min(true_indices, axis=0)
     first_match = tl.where(median_value, first_true_idx, first_false_idx)
@@ -343,9 +331,7 @@ def median_lastdim_sort_kernel(
         tl.where(cols == rank, ordered, tl.zeros_like(ordered)), axis=0
     )
 
-    first_match = tl.argmax(
-        (valid & (data == median_value)).to(tl.int32), axis=0
-    )
+    first_match = tl.argmax((valid & (data == median_value)).to(tl.int32), axis=0)
     nan_i32 = nan_mask.to(tl.int32)
     has_nan = tl.max(nan_i32, axis=0) != 0
     first_nan = tl.argmax(nan_i32, axis=0)
@@ -383,17 +369,13 @@ def median_int_lastdim_select_kernel(
     rank = (WIDTH - 1) // 2
     for _ in tl.static_range(0, SEARCH_STEPS):
         mid = lo + ((hi - lo) // 2)
-        le_count = tl.sum(
-            (valid & (data <= mid.to(dtype))).to(tl.int32), axis=0
-        )
+        le_count = tl.sum((valid & (data <= mid.to(dtype))).to(tl.int32), axis=0)
         take_left = le_count > rank
         hi = tl.where(take_left, mid, hi)
         lo = tl.where(take_left, lo, mid + 1)
 
     median_value = lo.to(dtype)
-    first_match = tl.argmax(
-        (valid & (data == median_value)).to(tl.int32), axis=0
-    )
+    first_match = tl.argmax((valid & (data == median_value)).to(tl.int32), axis=0)
     tl.store(values + row, median_value)
     tl.store(indices + row, first_match.to(tl.int64))
 
@@ -489,12 +471,8 @@ def median_f16_key_select_kernel(
     pos_inf_value = tl.load(base + first_pos_inf, mask=take_pos_inf, other=0.0)
     selected_value = tl.where(take_neg_inf, neg_inf_value, selected_value)
     selected_value = tl.where(take_pos_inf, pos_inf_value, selected_value)
-    selected_key_first = tl.where(
-        take_neg_inf, first_neg_inf, selected_key_first
-    )
-    selected_key_first = tl.where(
-        take_pos_inf, first_pos_inf, selected_key_first
-    )
+    selected_key_first = tl.where(take_neg_inf, first_neg_inf, selected_key_first)
+    selected_key_first = tl.where(take_pos_inf, first_pos_inf, selected_key_first)
 
     selected_value = tl.where(has_nan, nan_value, selected_value)
     first_match = tl.where(has_nan, first_nan, selected_key_first)
@@ -648,9 +626,7 @@ def median_f16_strided_key_select_kernel(
     rank = (reduction_size - 1) // 2
     for _ in tl.static_range(0, 16):
         mid = lo + ((hi - lo) >> 1)
-        le_count = tl.sum(
-            (finite & (keys <= mid[:, None])).to(tl.int32), axis=1
-        )
+        le_count = tl.sum((finite & (keys <= mid[:, None])).to(tl.int32), axis=1)
         take_left = le_count > rank
         hi = tl.where(take_left, mid, hi)
         lo = tl.where(take_left, lo, mid + 1)
@@ -723,9 +699,7 @@ def median_fp32_strided_key_select_kernel(
     rank = (reduction_size - 1) // 2
     for _ in tl.static_range(0, 32):
         mid = lo + ((hi - lo) >> 1)
-        le_count = tl.sum(
-            (finite & (keys <= mid[:, None])).to(tl.int32), axis=1
-        )
+        le_count = tl.sum((finite & (keys <= mid[:, None])).to(tl.int32), axis=1)
         take_left = le_count > rank
         hi = tl.where(take_left, mid, hi)
         lo = tl.where(take_left, lo, mid + 1)
@@ -805,9 +779,7 @@ def _raise_dim_dtype(dtype):
         torch.complex128: "ComplexDouble",
     }
     dtype_name = dtype_names.get(dtype, str(dtype).removeprefix("torch."))
-    raise NotImplementedError(
-        f'"median_out_impl" not implemented for {dtype_name!r}'
-    )
+    raise NotImplementedError(f'"median_out_impl" not implemented for {dtype_name!r}')
 
 
 def _int_search_steps(dtype):
@@ -819,9 +791,7 @@ def _int_search_steps(dtype):
         return 32
     if dtype == torch.int64:
         return 64
-    raise NotImplementedError(
-        f"median integer selection not implemented for {dtype}"
-    )
+    raise NotImplementedError(f"median integer selection not implemented for {dtype}")
 
 
 def _unsupported_width(dtype, width):
@@ -877,9 +847,7 @@ def _median_bool_flat(inp):
     )
     while counts.numel() > _BOOL_COUNT_REDUCE_BLOCK:
         reduced_blocks = triton.cdiv(counts.numel(), _BOOL_COUNT_REDUCE_BLOCK)
-        reduced = torch.empty(
-            (reduced_blocks,), dtype=torch.int64, device=inp.device
-        )
+        reduced = torch.empty((reduced_blocks,), dtype=torch.int64, device=inp.device)
         median_bool_reduce_counts_kernel[(reduced_blocks,)](
             counts,
             reduced,
@@ -910,9 +878,7 @@ def _median_bool_dim(inp, dim, output_shape):
     chunks = triton.cdiv(reduction_size, block)
     chunk_shape = (total_outputs, chunks)
     counts = torch.empty(chunk_shape, dtype=torch.int64, device=inp.device)
-    first_false = torch.empty(
-        chunk_shape, dtype=torch.int64, device=inp.device
-    )
+    first_false = torch.empty(chunk_shape, dtype=torch.int64, device=inp.device)
     first_true = torch.empty(chunk_shape, dtype=torch.int64, device=inp.device)
 
     median_bool_dim_count_chunks_kernel[(total_outputs * chunks,)](
@@ -974,16 +940,10 @@ def _median_bool_dim(inp, dim, output_shape):
 def _median_lastdim_sort(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(
-        output_shape, dtype=row_data.dtype, device=row_data.device
-    )
-    indices = torch.empty(
-        output_shape, dtype=torch.int64, device=row_data.device
-    )
+    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
-    num_warps = (
-        8 if rows == 1 and block >= 1024 else min(8, max(4, block // 512))
-    )
+    num_warps = 8 if rows == 1 and block >= 1024 else min(8, max(4, block // 512))
     median_lastdim_sort_kernel[(rows,)](
         row_data.reshape(rows, width),
         values.reshape(rows),
@@ -1068,12 +1028,8 @@ def _median_float_key_select_dim(work, dim, output_shape, keepdim):
 def _median_int_lastdim_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(
-        output_shape, dtype=row_data.dtype, device=row_data.device
-    )
-    indices = torch.empty(
-        output_shape, dtype=torch.int64, device=row_data.device
-    )
+    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     search_steps = _int_search_steps(row_data.dtype)
     median_int_lastdim_select_kernel[(rows,)](
@@ -1091,12 +1047,8 @@ def _median_int_lastdim_select(row_data, output_shape):
 def _median_f16_key_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(
-        output_shape, dtype=row_data.dtype, device=row_data.device
-    )
-    indices = torch.empty(
-        output_shape, dtype=torch.int64, device=row_data.device
-    )
+    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 1 if block <= 1024 else 2 if block <= 2048 else 4
     median_f16_key_select_kernel[(rows,)](
@@ -1119,9 +1071,7 @@ def _median_f16_strided_key_select(inp, dim, output_shape):
     block = triton.next_power_of_2(reduction_size)
     block_out = 2
     num_warps = 1 if block <= 1024 else 2 if block <= 2048 else 4
-    median_f16_strided_key_select_kernel[
-        (triton.cdiv(total_outputs, block_out),)
-    ](
+    median_f16_strided_key_select_kernel[(triton.cdiv(total_outputs, block_out),)](
         inp,
         values.reshape(-1),
         indices.reshape(-1),
@@ -1138,12 +1088,8 @@ def _median_f16_strided_key_select(inp, dim, output_shape):
 def _median_fp32_key_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(
-        output_shape, dtype=row_data.dtype, device=row_data.device
-    )
-    indices = torch.empty(
-        output_shape, dtype=torch.int64, device=row_data.device
-    )
+    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 2 if block <= 1024 else 8
     median_fp32_key_select_kernel[(rows,)](
@@ -1160,12 +1106,8 @@ def _median_fp32_key_select(row_data, output_shape):
 def _median_fp64_key_select(row_data, output_shape):
     width = row_data.shape[-1]
     rows = row_data.numel() // width
-    values = torch.empty(
-        output_shape, dtype=row_data.dtype, device=row_data.device
-    )
-    indices = torch.empty(
-        output_shape, dtype=torch.int64, device=row_data.device
-    )
+    values = torch.empty(output_shape, dtype=row_data.dtype, device=row_data.device)
+    indices = torch.empty(output_shape, dtype=torch.int64, device=row_data.device)
     block = triton.next_power_of_2(width)
     num_warps = 2 if block <= 1024 else 8
     median_fp64_key_select_kernel[(rows,)](
@@ -1188,9 +1130,7 @@ def _median_fp32_strided_key_select(inp, dim, output_shape):
     block = triton.next_power_of_2(reduction_size)
     block_out = 2
     num_warps = 2 if block <= 1024 else 8
-    median_fp32_strided_key_select_kernel[
-        (triton.cdiv(total_outputs, block_out),)
-    ](
+    median_fp32_strided_key_select_kernel[(triton.cdiv(total_outputs, block_out),)](
         inp,
         values.reshape(-1),
         indices.reshape(-1),
@@ -1260,10 +1200,7 @@ def median(inp):
     if _use_float_key_select(inp.dtype, inp.numel()):
         values, _ = _median_float_key_select_rows(row_data, ())
         return values.reshape(())
-    if (
-        inp.dtype in _DIRECT_REDUCTION_DTYPES
-        and inp.numel() <= _DIRECT_FLAT_LIMIT
-    ):
+    if inp.dtype in _DIRECT_REDUCTION_DTYPES and inp.numel() <= _DIRECT_FLAT_LIMIT:
         return _median_small_flat(flat)
     if inp.dtype == torch.bool:
         return _median_bool_flat(flat)
@@ -1316,19 +1253,13 @@ def median_dim(inp, dim=0, keepdim=False):
     output_names = _kept_names(names, dim, keepdim)
 
     if work.numel() == 0:
-        values = torch.empty(
-            output_shape, dtype=work.dtype, device=work.device
-        )
-        indices = torch.empty(
-            output_shape, dtype=torch.int64, device=work.device
-        )
+        values = torch.empty(output_shape, dtype=work.dtype, device=work.device)
+        indices = torch.empty(output_shape, dtype=torch.int64, device=work.device)
     else:
         if work.dtype.is_complex:
             _raise_dim_dtype(work.dtype)
         if work.dtype == torch.bool:
-            values, indices = _median_bool_dim(
-                work.contiguous(), dim, output_shape
-            )
+            values, indices = _median_bool_dim(work.contiguous(), dim, output_shape)
         elif _use_float_key_select(work.dtype, work.shape[dim]):
             values, indices = _median_float_key_select_dim(
                 work, dim, output_shape, keepdim
@@ -1337,9 +1268,7 @@ def median_dim(inp, dim=0, keepdim=False):
             work.shape[dim] <= _DIRECT_REDUCTION_LIMIT
             and work.dtype in _DIRECT_REDUCTION_DTYPES
         ):
-            values, indices = _median_direct_dim(
-                work.contiguous(), dim, output_shape
-            )
+            values, indices = _median_direct_dim(work.contiguous(), dim, output_shape)
         elif (
             dim != work.ndim - 1
             and work.is_contiguous()
@@ -1353,30 +1282,14 @@ def median_dim(inp, dim=0, keepdim=False):
                 values, indices = _median_fp32_strided_key_select(
                     work, dim, output_shape
                 )
-        elif dim == work.ndim - 1 and _use_f16_key_select(
-            work.dtype, work.shape[dim]
-        ):
-            values, indices = _median_f16_key_select(
-                work.contiguous(), output_shape
-            )
-        elif dim == work.ndim - 1 and _use_lastdim_sort(
-            work.dtype, work.shape[dim]
-        ):
-            values, indices = _median_lastdim_sort(
-                work.contiguous(), output_shape
-            )
-        elif dim == work.ndim - 1 and _use_fp32_key_select(
-            work.dtype, work.shape[dim]
-        ):
-            values, indices = _median_fp32_key_select(
-                work.contiguous(), output_shape
-            )
-        elif dim == work.ndim - 1 and _use_fp64_key_select(
-            work.dtype, work.shape[dim]
-        ):
-            values, indices = _median_fp64_key_select(
-                work.contiguous(), output_shape
-            )
+        elif dim == work.ndim - 1 and _use_f16_key_select(work.dtype, work.shape[dim]):
+            values, indices = _median_f16_key_select(work.contiguous(), output_shape)
+        elif dim == work.ndim - 1 and _use_lastdim_sort(work.dtype, work.shape[dim]):
+            values, indices = _median_lastdim_sort(work.contiguous(), output_shape)
+        elif dim == work.ndim - 1 and _use_fp32_key_select(work.dtype, work.shape[dim]):
+            values, indices = _median_fp32_key_select(work.contiguous(), output_shape)
+        elif dim == work.ndim - 1 and _use_fp64_key_select(work.dtype, work.shape[dim]):
+            values, indices = _median_fp64_key_select(work.contiguous(), output_shape)
         elif (
             dim == work.ndim - 1
             and work.shape[dim] <= _INT_LASTDIM_SELECT_LIMIT
@@ -1390,26 +1303,18 @@ def median_dim(inp, dim=0, keepdim=False):
             row_output_shape = rows.shape[:-1]
             row_width = rows.shape[-1]
             if _use_f16_key_select(rows.dtype, row_width):
-                values, indices = _median_f16_key_select(
-                    rows, row_output_shape
-                )
+                values, indices = _median_f16_key_select(rows, row_output_shape)
             elif _use_lastdim_sort(rows.dtype, row_width):
                 values, indices = _median_lastdim_sort(rows, row_output_shape)
             elif _use_fp32_key_select(rows.dtype, row_width):
-                values, indices = _median_fp32_key_select(
-                    rows, row_output_shape
-                )
+                values, indices = _median_fp32_key_select(rows, row_output_shape)
             elif _use_fp64_key_select(rows.dtype, row_width):
-                values, indices = _median_fp64_key_select(
-                    rows, row_output_shape
-                )
+                values, indices = _median_fp64_key_select(rows, row_output_shape)
             elif (
                 row_width <= _INT_LASTDIM_SELECT_LIMIT
                 and rows.dtype in _INT_LASTDIM_SELECT_DTYPES
             ):
-                values, indices = _median_int_lastdim_select(
-                    rows, row_output_shape
-                )
+                values, indices = _median_int_lastdim_select(rows, row_output_shape)
             else:
                 values, indices = _median_from_rows(rows, row_output_shape)
             if keepdim:

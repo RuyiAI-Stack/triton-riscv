@@ -49,19 +49,13 @@ def vdot_kernel_complex(
     acc_imag = tl.zeros([], dtype=tl.float32)
 
     for current_start in range(0, n_elements // 2, grid_stride):
-        complex_idx = (
-            current_start + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        )
+        complex_idx = current_start + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = complex_idx < n_elements // 2
 
         real_offset = complex_idx * 2
 
-        inp_real = tl.load(
-            inp_ptr + real_offset * inp_stride, mask=mask, other=0.0
-        )
-        inp_imag = tl.load(
-            inp_ptr + real_offset * inp_stride + 1, mask=mask, other=0.0
-        )
+        inp_real = tl.load(inp_ptr + real_offset * inp_stride, mask=mask, other=0.0)
+        inp_imag = tl.load(inp_ptr + real_offset * inp_stride + 1, mask=mask, other=0.0)
 
         other_real = tl.load(
             other_ptr + real_offset * other_stride, mask=mask, other=0.0
@@ -108,9 +102,9 @@ def dot_kernel(
         cur_offsets = current_start + offsets
         mask = cur_offsets < n_elements
 
-        inp = tl.load(
-            inp_ptr + inp_stride * cur_offsets, mask=mask, other=0.0
-        ).to(tl.float32)
+        inp = tl.load(inp_ptr + inp_stride * cur_offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
         other = tl.load(
             other_ptr + other_stride * cur_offsets, mask=mask, other=0.0
         ).to(tl.float32)
@@ -169,8 +163,8 @@ def dot_kernel_fp32(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp = tl.load(inp_ptr + inp_stride * offset, mask=mask)
-    other = tl.load(other_ptr + other_stride * offset, mask=mask)
+    inp = tl.load(inp_ptr + inp_stride * offset, mask=mask, other=0.0)
+    other = tl.load(other_ptr + other_stride * offset, mask=mask, other=0.0)
 
     out = tl.sum(inp * other)
     tl.atomic_add(out_ptr, out)
@@ -261,9 +255,7 @@ def vdot(input: torch.Tensor, other: torch.Tensor):
         grid_size = min(num_blocks, 1024)
 
         grid = (num_blocks,)
-        partial_sums = torch.empty(
-            grid_size, dtype=torch.float32, device=inp.device
-        )
+        partial_sums = torch.empty(grid_size, dtype=torch.float32, device=inp.device)
 
         dot_kernel[grid](
             inp,

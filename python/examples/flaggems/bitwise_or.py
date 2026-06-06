@@ -47,9 +47,7 @@ def _bitwise_or_impl(A, B, out=None):
         out_c = out if out.is_contiguous() else out.contiguous()
         n_elements = A_c.numel()
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        bitwise_or_kernel_tt[grid](
-            A_c, B_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        bitwise_or_kernel_tt[grid](A_c, B_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         if out_c.data_ptr() != out.data_ptr():
             out.copy_(out_c)
         return out
@@ -60,9 +58,7 @@ def _bitwise_or_impl(A, B, out=None):
         out_c = out if out.is_contiguous() else out.contiguous()
         n_elements = A_c.numel()
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        bitwise_or_kernel_ts[grid](
-            A_c, B, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        bitwise_or_kernel_ts[grid](A_c, B, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         if out_c.data_ptr() != out.data_ptr():
             out.copy_(out_c)
         return out
@@ -73,9 +69,7 @@ def _bitwise_or_impl(A, B, out=None):
         out_c = out if out.is_contiguous() else out.contiguous()
         n_elements = B_c.numel()
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        bitwise_or_kernel_ts[grid](
-            B, A, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        bitwise_or_kernel_ts[grid](B, A, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         if out_c.data_ptr() != out.data_ptr():
             out.copy_(out_c)
         return out

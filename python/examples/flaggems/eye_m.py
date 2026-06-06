@@ -26,18 +26,14 @@ def eye_kernel(
     tl.store(out_ptr + off_ij, val, mask=mask)
 
 
-def eye_m(
-    n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=None
-):
+def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=None):
     """Triton-based implementation of torch.eye_m(n, m)."""
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
         device = "cpu"
     if layout != torch.strided:
-        raise ValueError(
-            "Currently only strided layout is supported for eye_m."
-        )
+        raise ValueError("Currently only strided layout is supported for eye_m.")
 
     out = torch.empty(
         (n, m),

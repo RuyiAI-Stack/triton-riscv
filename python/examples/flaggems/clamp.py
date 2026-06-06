@@ -138,16 +138,8 @@ def _clamp_launch_tensor(A, min_tensor, max_tensor, kernel):
     n_elements = A_c.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    min_c = (
-        min_tensor.expand_as(A_c).contiguous()
-        if min_tensor is not None
-        else None
-    )
-    max_c = (
-        max_tensor.expand_as(A_c).contiguous()
-        if max_tensor is not None
-        else None
-    )
+    min_c = min_tensor.expand_as(A_c).contiguous() if min_tensor is not None else None
+    max_c = max_tensor.expand_as(A_c).contiguous() if max_tensor is not None else None
     if min_c is not None and max_c is not None:
         kernel[grid](A_c, min_c, max_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     elif min_c is not None:

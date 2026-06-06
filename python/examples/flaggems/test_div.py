@@ -24,9 +24,7 @@ from .div import (
     [(16, 256), (4, 128), (512, 64), (1023, 64), (1024, 64)],
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_div_mode_tt(shape, rounding_mode, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -47,9 +45,7 @@ def test_div_mode_tt(shape, rounding_mode, dtype):
     [(16, 256), (4, 128), (512,), (1023,), (1024,)],
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_div_mode_ts(shape, rounding_mode, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -70,9 +66,7 @@ def test_div_mode_ts(shape, rounding_mode, dtype):
     [(16, 256), (512,), (1023,), (1024,)],
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_div_mode_st(shape, rounding_mode, dtype):
     torch.manual_seed(0)
     x = 5.0
@@ -88,12 +82,26 @@ def test_div_mode_st(shape, rounding_mode, dtype):
     torch.testing.assert_close(tri_out, ref_out, rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize(
-    "shape", [(16, 256), (512, 64), (1023, 64), (1024, 64)]
-)
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("operand_kind", ["tt", "ts", "st"])
+def test_div_mode_integer_trunc(dtype, operand_kind):
+    numerator = torch.tensor([7, -7, 9, -9], dtype=dtype)
+    denominator = torch.tensor([3, 3, -4, -4], dtype=dtype)
+    if operand_kind == "tt":
+        lhs, rhs = numerator, denominator
+    elif operand_kind == "ts":
+        lhs, rhs = numerator, 3
+    else:
+        lhs, rhs = 7, denominator
+
+    ref_out = torch.div(lhs, rhs, rounding_mode="trunc")
+    tri_out = div(lhs, rhs, rounding_mode="trunc")
+
+    torch.testing.assert_close(tri_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", [(16, 256), (512, 64), (1023, 64), (1024, 64)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_remainder_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -115,9 +123,7 @@ def test_remainder_tt(shape, dtype):
     [(16, 256), (512, 64), (1023, 64), (1024, 64)],
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_div_mode_inplace_tt(shape, rounding_mode, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -139,9 +145,7 @@ def test_div_mode_inplace_tt(shape, rounding_mode, dtype):
     [(16, 256), (512,), (1023,), (1024,)],
 )
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_div_mode_inplace_ts(shape, rounding_mode, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -167,9 +171,7 @@ def test_div_mode_inplace_ts(shape, rounding_mode, dtype):
     "shape",
     [(16, 256), (512, 64), (1023, 64), (1024, 64)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_floor_divide_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -185,9 +187,7 @@ def test_floor_divide_tt(shape, dtype):
     "shape",
     [(16, 256), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_floor_divide_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -203,9 +203,7 @@ def test_floor_divide_ts(shape, dtype):
     "shape",
     [(16, 256), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_floor_divide_st(shape, dtype):
     torch.manual_seed(0)
     x = 5.0
@@ -256,9 +254,7 @@ def test_floor_divide_int_ts(shape):
     "shape",
     [(16, 256), (512, 64), (1023, 64), (1024, 64)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_floor_divide_inplace_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -275,9 +271,7 @@ def test_floor_divide_inplace_tt(shape, dtype):
     "shape",
     [(16, 256), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_floor_divide_inplace_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -299,9 +293,7 @@ def test_floor_divide_inplace_ts(shape, dtype):
     "shape",
     [(512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_remainder_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -317,9 +309,7 @@ def test_remainder_ts(shape, dtype):
     "shape",
     [(512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_remainder_st(shape, dtype):
     torch.manual_seed(0)
     x = 5.0
@@ -336,12 +326,8 @@ def test_remainder_st(shape, dtype):
 # =============================================================================
 
 
-@pytest.mark.parametrize(
-    "shape", [(16, 256), (512, 64), (1023, 64), (1024, 64)]
-)
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("shape", [(16, 256), (512, 64), (1023, 64), (1024, 64)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_remainder_inplace_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -358,9 +344,7 @@ def test_remainder_inplace_tt(shape, dtype):
     "shape",
     [(16, 256), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_remainder_inplace_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -382,9 +366,7 @@ def test_remainder_inplace_ts(shape, dtype):
     "shape",
     [(16, 256), (4, 128), (512, 64), (1023, 64), (1024, 64)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -400,9 +382,7 @@ def test_true_divide_tt(shape, dtype):
     "shape",
     [(16, 256), (4, 128), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -418,9 +398,7 @@ def test_true_divide_ts(shape, dtype):
     "shape",
     [(16, 256), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_st(shape, dtype):
     torch.manual_seed(0)
     x = 5.0
@@ -441,9 +419,7 @@ def test_true_divide_st(shape, dtype):
     "shape",
     [(16, 256), (512, 64), (1023, 64), (1024, 64)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_inplace_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -460,9 +436,7 @@ def test_true_divide_inplace_tt(shape, dtype):
     "shape",
     [(16, 256), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_inplace_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -484,9 +458,7 @@ def test_true_divide_inplace_ts(shape, dtype):
     "shape",
     [(16, 256), (512, 64), (1023, 64)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_out_tt(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -503,9 +475,7 @@ def test_true_divide_out_tt(shape, dtype):
     "shape",
     [(512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_out_ts(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 10 + 1
@@ -522,9 +492,7 @@ def test_true_divide_out_ts(shape, dtype):
     "shape",
     [(512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_true_divide_out_st(shape, dtype):
     torch.manual_seed(0)
     x = 5.0

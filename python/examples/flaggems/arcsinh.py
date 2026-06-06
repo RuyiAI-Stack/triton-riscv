@@ -49,9 +49,7 @@ def _arcsinh_impl(input_tensor: torch.Tensor, out_tensor: torch.Tensor = None):
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    arcsinh_kernel[grid](
-        x_contig, out_contig, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    arcsinh_kernel[grid](x_contig, out_contig, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
     if out_contig.data_ptr() != out.data_ptr():
         out.copy_(out_contig)

@@ -30,9 +30,7 @@ def _resolve_dtype(x: torch.Tensor, dtype: torch.dtype | None) -> torch.dtype:
     raise TypeError(f"Unsupported dtype argument type: {type(dtype)!r}")
 
 
-def _resolve_device(
-    x: torch.Tensor, device: torch.device | None
-) -> torch.device:
+def _resolve_device(x: torch.Tensor, device: torch.device | None) -> torch.device:
     if device is None:
         return x.device
     return torch.device(device)
@@ -46,14 +44,10 @@ def _normalize_memory_format(
     return memory_format
 
 
-def _allocate_preserve_format(
-    x: torch.Tensor, empty_kwargs: dict
-) -> torch.Tensor:
+def _allocate_preserve_format(x: torch.Tensor, empty_kwargs: dict) -> torch.Tensor:
     if torch.ops.aten.is_non_overlapping_and_dense(x):
         return torch.empty_strided(x.size(), x.stride(), **empty_kwargs)
-    return torch.empty_like(
-        x, memory_format=torch.preserve_format, **empty_kwargs
-    )
+    return torch.empty_like(x, memory_format=torch.preserve_format, **empty_kwargs)
 
 
 def to_copy(
@@ -66,20 +60,12 @@ def to_copy(
     non_blocking=False,
     memory_format=None,
 ):
-    if (
-        layout is not None and layout != torch.strided
-    ) or x.layout != torch.strided:
-        raise NotImplementedError(
-            "to_copy currently supports strided tensors only."
-        )
+    if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
+        raise NotImplementedError("to_copy currently supports strided tensors only.")
     if pin_memory is not None:
-        raise NotImplementedError(
-            "to_copy does not yet support pin_memory=True."
-        )
+        raise NotImplementedError("to_copy does not yet support pin_memory=True.")
     if x.is_quantized:
-        raise NotImplementedError(
-            "Quantized tensors are not supported in to_copy yet."
-        )
+        raise NotImplementedError("Quantized tensors are not supported in to_copy yet.")
 
     target_dtype = _resolve_dtype(x, dtype)
     target_device = _resolve_device(x, device)
@@ -116,9 +102,7 @@ def to_copy(
     if target_memory_format is torch.preserve_format:
         out = _allocate_preserve_format(x, empty_kwargs)
     else:
-        out = torch.empty_like(
-            x, memory_format=target_memory_format, **empty_kwargs
-        )
+        out = torch.empty_like(x, memory_format=target_memory_format, **empty_kwargs)
 
     n_elements = x.numel()
     if n_elements == 0:

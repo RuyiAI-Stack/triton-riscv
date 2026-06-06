@@ -24,7 +24,7 @@ def test_triu_inplace(shape, diagonal, dtype):
     inp_clone = inp.clone()
 
     out_triton = triu_(inp, diagonal)
-    out_torch = inp_clone.triu_(diagonal)
+    out_torch = torch.triu(inp_clone, diagonal, out=inp_clone)
 
     torch.testing.assert_close(out_triton, out_torch, rtol=1e-4, atol=1e-4)
     torch.testing.assert_close(inp, inp_clone, rtol=1e-4, atol=1e-4)

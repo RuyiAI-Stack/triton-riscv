@@ -15,9 +15,7 @@ def test_groupnorm_forward(size):
     weight = torch.randn(C, device="cpu", dtype=torch.float32)
     bias = torch.randn(C, device="cpu", dtype=torch.float32)
 
-    ref = torch.nn.functional.group_norm(
-        input, num_groups, weight, bias, eps=1e-5
-    )
+    ref = torch.nn.functional.group_norm(input, num_groups, weight, bias, eps=1e-5)
     y, mean, rstd = group_norm(input, weight, bias, N, C, HxW, num_groups)
 
     torch.testing.assert_close(y[0], ref[0], rtol=1e-4, atol=1e-4)
@@ -32,17 +30,11 @@ def test_groupnorm_backward(size):
     input = torch.randn(
         N, C, HxW, device="cpu", dtype=torch.float32, requires_grad=True
     )
-    weight = torch.randn(
-        C, device="cpu", dtype=torch.float32, requires_grad=True
-    )
-    bias = torch.randn(
-        C, device="cpu", dtype=torch.float32, requires_grad=True
-    )
+    weight = torch.randn(C, device="cpu", dtype=torch.float32, requires_grad=True)
+    bias = torch.randn(C, device="cpu", dtype=torch.float32, requires_grad=True)
 
     # Reference backward via torch
-    ref_out = torch.nn.functional.group_norm(
-        input, num_groups, weight, bias, eps=1e-5
-    )
+    ref_out = torch.nn.functional.group_norm(input, num_groups, weight, bias, eps=1e-5)
     grad_out = torch.randn_like(ref_out)
     ref_out.backward(grad_out)
     ref_dx = input.grad.clone()
@@ -82,9 +74,7 @@ def test_groupnorm_no_weight_bias():
     num_groups = 3
     input = torch.randn(N, C, HxW, device="cpu", dtype=torch.float32)
 
-    ref = torch.nn.functional.group_norm(
-        input, num_groups, None, None, eps=1e-5
-    )
+    ref = torch.nn.functional.group_norm(input, num_groups, None, None, eps=1e-5)
     y, mean, rstd = group_norm(input, None, None, N, C, HxW, num_groups)
 
     torch.testing.assert_close(y, ref, rtol=1e-4, atol=1e-4)

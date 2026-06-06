@@ -42,14 +42,8 @@ def test_elu_scale_input_scale():
     torch.manual_seed(0)
     x = torch.randn(128, dtype=torch.float32, device="cpu")
 
-    # scale=2.0, input_scale=0.5: forward verification via manual computation
     tri = elu(x, alpha=1.0, scale=2.0, input_scale=0.5)
-    x_f32 = x.to(torch.float32)
-    ref = torch.where(
-        x > 0,
-        2.0 * 0.5 * x_f32,
-        2.0 * 1.0 * (torch.exp(x_f32 * 0.5) - 1.0),
-    ).to(x.dtype)
+    ref = torch.mul(torch.nn.functional.elu(torch.mul(x, 0.5)), 2.0)
 
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
@@ -71,17 +65,13 @@ def test_elu_backward(is_result):
 
     if is_result:
         y = torch.nn.functional.elu(x)
-        ref_grad = torch.where(
-            y > 0,
-            grad_output,
-            grad_output * (y + 1.0),
+        ref_grad = torch.ops.aten.elu_backward.default(
+            grad_output, 1.0, 1.0, 1.0, is_result, y
         )
         tri_grad = elu_backward(grad_output, 1.0, 1.0, 1.0, is_result, y)
     else:
-        ref_grad = torch.where(
-            x > 0,
-            grad_output,
-            grad_output * torch.exp(x),
+        ref_grad = torch.ops.aten.elu_backward.default(
+            grad_output, 1.0, 1.0, 1.0, is_result, x
         )
         tri_grad = elu_backward(grad_output, 1.0, 1.0, 1.0, is_result, x)
 

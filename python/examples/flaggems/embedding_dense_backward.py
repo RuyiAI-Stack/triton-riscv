@@ -101,9 +101,7 @@ def embedding_dense_backward(
     N = idx.numel()
 
     assert go.shape[0] == N, "indices number must match grad_output rows."
-    grad_weight_fp32 = torch.zeros(
-        (num_weights, D), device=device, dtype=torch.float32
-    )
+    grad_weight_fp32 = torch.zeros((num_weights, D), device=device, dtype=torch.float32)
 
     BLOCK_D = 128
     grid = (N, triton.cdiv(D, BLOCK_D))

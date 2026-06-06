@@ -139,9 +139,7 @@ def mean_dim_kernel_non_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
             mask = (n_offsets < N) & (k_offsets < K)
-            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(
-                cdtype
-            )
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
             sum_tile += inp
         summed = tl.sum(sum_tile, axis=0, keep_dims=True)
         out = summed / N
@@ -184,9 +182,7 @@ def mean_dim_kernel_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             inp_offsets = pid_m * N + n_offsets
             mask = n_offsets < N
-            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(
-                cdtype
-            )
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
             sum_vec += inp
         summed = tl.sum(sum_vec, axis=0)
         out = summed / N

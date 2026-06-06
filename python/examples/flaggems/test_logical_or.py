@@ -11,20 +11,16 @@ def test_logical_or(shape, dtype):
     x = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
     y = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
 
-    ref = x.logical_or(y)
+    ref = torch.logical_or(x, y)
     tri = logical_or(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
 
 
 def test_logical_or_bool():
-    x = torch.tensor(
-        [True, False, True, False], dtype=torch.bool, device="cpu"
-    )
-    y = torch.tensor(
-        [True, True, False, False], dtype=torch.bool, device="cpu"
-    )
-    ref = x.logical_or(y)
+    x = torch.tensor([True, False, True, False], dtype=torch.bool, device="cpu")
+    y = torch.tensor([True, True, False, False], dtype=torch.bool, device="cpu")
+    ref = torch.logical_or(x, y)
     tri = logical_or(x, y)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
 
@@ -37,7 +33,7 @@ def test_logical_or_inplace(shape, dtype):
     y = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
     x_clone = x.clone()
 
-    ref = x_clone.logical_or(y)
+    ref = torch.logical_or(x_clone, y, out=x_clone)
     tri = logical_or_(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
@@ -50,7 +46,7 @@ def test_logical_or_int32(shape):
     x = torch.randint(0, 5, shape, dtype=torch.int32, device="cpu")
     y = torch.randint(0, 5, shape, dtype=torch.int32, device="cpu")
 
-    ref = x.logical_or(y)
+    ref = torch.logical_or(x, y)
     tri = logical_or(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)

@@ -153,9 +153,7 @@ def upsample_bicubic2d(
     if input.dim() != 4:
         raise ValueError("input must be a 4D tensor (N, C, H, W)")
     if output_size is None and scale_factors is None:
-        raise ValueError(
-            "Either output_size or scale_factors must be provided"
-        )
+        raise ValueError("Either output_size or scale_factors must be provided")
 
     N, C, H_in, W_in = input.shape
 
@@ -171,9 +169,7 @@ def upsample_bicubic2d(
         elif len(scale_factors) == 1:
             sh = sw = float(scale_factors[0])
         else:
-            raise ValueError(
-                "scale_factors must have length 1 or 2 for 2D upsampling"
-            )
+            raise ValueError("scale_factors must have length 1 or 2 for 2D upsampling")
         H_out = max(int(math.floor(H_in * sh)), 1)
         W_out = max(int(math.floor(W_in * sw)), 1)
 
@@ -187,9 +183,7 @@ def upsample_bicubic2d(
         scale_h = float(H_in) / float(H_out)
         scale_w = float(W_in) / float(W_out)
 
-    out = torch.empty(
-        (N, C, H_out, W_out), dtype=input.dtype, device=input.device
-    )
+    out = torch.empty((N, C, H_out, W_out), dtype=input.dtype, device=input.device)
 
     sN, sC, sH, sW = input.stride()
     oN, oC, oH, oW = out.stride()

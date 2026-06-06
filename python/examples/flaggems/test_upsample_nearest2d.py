@@ -11,9 +11,7 @@ def test_upsample_nearest2d(size):
     x = torch.randn(N, C, size, size, device="cpu", dtype=torch.float32)
     output_size = (size * 2, size * 2)
 
-    ref_out = torch.nn.functional.interpolate(
-        x, size=output_size, mode="nearest"
-    )
+    ref_out = torch.nn.functional.interpolate(x, size=output_size, mode="nearest")
     tri_out = upsample_nearest2d(x, output_size=output_size)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=0, atol=0)

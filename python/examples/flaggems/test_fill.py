@@ -15,9 +15,7 @@ from .fill import (
     "shape",
     [(16, 256), (4, 128), (512,), (1023,), (1024,), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 @pytest.mark.parametrize("value", [0.0, 1.5, -3.14])
 def test_fill_scalar(shape, dtype, value):
     torch.manual_seed(0)
@@ -37,9 +35,7 @@ def test_fill_scalar(shape, dtype, value):
     "shape",
     [(16, 256), (4, 128), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 @pytest.mark.parametrize("value", [0.0, 1.5, -3.14])
 def test_fill_tensor(shape, dtype, value):
     torch.manual_seed(0)

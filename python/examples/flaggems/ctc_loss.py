@@ -35,9 +35,7 @@ def _logaddexp3(a, b, c, use_c):
     c = tl.where(use_c, c, -float("inf"))
     max_abc = tl.maximum(tl.maximum(a, b), c)
     safe_max = tl.where(max_abc == -float("inf"), 0.0, max_abc)
-    exp_sum = (
-        tl.exp(a - safe_max) + tl.exp(b - safe_max) + tl.exp(c - safe_max)
-    )
+    exp_sum = tl.exp(a - safe_max) + tl.exp(b - safe_max) + tl.exp(c - safe_max)
     return tl.where(
         max_abc == -float("inf"),
         -float("inf"),
@@ -101,9 +99,7 @@ def _ctc_loss_forward_kernel(
         mask=init_state & stored_state & t0_active,
         other=0.0,
     ).to(tl.float32)
-    alpha = tl.where(
-        init_state & valid_state & t0_active, init_logp, -float("inf")
-    )
+    alpha = tl.where(init_state & valid_state & t0_active, init_logp, -float("inf"))
     tl.store(
         log_alpha + batch * T * STATE_COUNT_MAX + states,
         alpha,
@@ -112,12 +108,10 @@ def _ctc_loss_forward_kernel(
     # _debug_barrier()  # removed: gpu.barrier not supported on triton-riscv
 
     for t in tl.range(1, T):
-        prev_base = (
-            log_alpha + batch * T * STATE_COUNT_MAX + (t - 1) * STATE_COUNT_MAX
+        prev_base = log_alpha + batch * T * STATE_COUNT_MAX + (t - 1) * STATE_COUNT_MAX
+        prev0 = tl.load(prev_base + states, mask=stored_state, other=-float("inf")).to(
+            tl.float32
         )
-        prev0 = tl.load(
-            prev_base + states, mask=stored_state, other=-float("inf")
-        ).to(tl.float32)
         prev1 = tl.load(
             prev_base + tl.where(states > 0, states - 1, 0),
             mask=(states > 0) & stored_state,
@@ -136,9 +130,7 @@ def _ctc_loss_forward_kernel(
             other=BLANK,
         )
         skip_allowed = (
-            (~is_blank_state)
-            & (target_index > 0)
-            & (target_value != prev_target_value)
+            (~is_blank_state) & (target_index > 0) & (target_value != prev_target_value)
         )
 
         acc = _logaddexp3(prev0, prev1, prev2, skip_allowed)
@@ -148,14 +140,9 @@ def _ctc_loss_forward_kernel(
             mask=valid_state & (t < input_len),
             other=0.0,
         ).to(tl.float32)
-        alpha = tl.where(
-            valid_state & (t < input_len), acc + logp, -float("inf")
-        )
+        alpha = tl.where(valid_state & (t < input_len), acc + logp, -float("inf"))
         tl.store(
-            log_alpha
-            + batch * T * STATE_COUNT_MAX
-            + t * STATE_COUNT_MAX
-            + states,
+            log_alpha + batch * T * STATE_COUNT_MAX + t * STATE_COUNT_MAX + states,
             alpha,
             mask=stored_state,
         )
@@ -166,9 +153,7 @@ def _ctc_loss_forward_kernel(
     else:
         # _debug_barrier()  # removed: gpu.barrier not supported on triton-riscv
         final_base = (
-            log_alpha
-            + batch * T * STATE_COUNT_MAX
-            + (input_len - 1) * STATE_COUNT_MAX
+            log_alpha + batch * T * STATE_COUNT_MAX + (input_len - 1) * STATE_COUNT_MAX
         )
         last = tl.load(final_base + state_count - 1).to(tl.float32)
         prev_last = tl.load(
@@ -240,9 +225,9 @@ def _ctc_loss_forward_no_grad_kernel(
     for t in tl.range(1, T):
         prev_base = scratch_batch + ((t - 1) % 2) * STATE_COUNT_MAX
         cur_base = scratch_batch + (t % 2) * STATE_COUNT_MAX
-        prev0 = tl.load(
-            prev_base + states, mask=stored_state, other=-float("inf")
-        ).to(tl.float32)
+        prev0 = tl.load(prev_base + states, mask=stored_state, other=-float("inf")).to(
+            tl.float32
+        )
         prev1 = tl.load(
             prev_base + tl.where(states > 0, states - 1, 0),
             mask=(states > 0) & stored_state,
@@ -261,9 +246,7 @@ def _ctc_loss_forward_no_grad_kernel(
             other=BLANK,
         )
         skip_allowed = (
-            (~is_blank_state)
-            & (target_index > 0)
-            & (target_value != prev_target_value)
+            (~is_blank_state) & (target_index > 0) & (target_value != prev_target_value)
         )
 
         acc = _logaddexp3(prev0, prev1, prev2, skip_allowed)
@@ -272,9 +255,7 @@ def _ctc_loss_forward_no_grad_kernel(
             mask=valid_state & (t < input_len),
             other=0.0,
         ).to(tl.float32)
-        alpha = tl.where(
-            valid_state & (t < input_len), acc + logp, -float("inf")
-        )
+        alpha = tl.where(valid_state & (t < input_len), acc + logp, -float("inf"))
         tl.store(cur_base + states, alpha, mask=stored_state & (t < input_len))
         # _debug_barrier()  # removed: gpu.barrier not supported on triton-riscv
 
@@ -349,9 +330,9 @@ def _ctc_loss_forward_full_length_reduce_kernel(
     for t in tl.range(1, T):
         prev_base = scratch_batch + ((t - 1) % 2) * STATE_COUNT_MAX
         cur_base = scratch_batch + (t % 2) * STATE_COUNT_MAX
-        prev0 = tl.load(
-            prev_base + states, mask=stored_state, other=-float("inf")
-        ).to(tl.float32)
+        prev0 = tl.load(prev_base + states, mask=stored_state, other=-float("inf")).to(
+            tl.float32
+        )
         prev1 = tl.load(
             prev_base + tl.where(states > 0, states - 1, 0),
             mask=(states > 0) & stored_state,
@@ -370,9 +351,7 @@ def _ctc_loss_forward_full_length_reduce_kernel(
             other=BLANK,
         )
         skip_allowed = (
-            (~is_blank_state)
-            & (target_index > 0)
-            & (target_value != prev_target_value)
+            (~is_blank_state) & (target_index > 0) & (target_value != prev_target_value)
         )
 
         acc = _logaddexp3(prev0, prev1, prev2, skip_allowed)
@@ -426,14 +405,10 @@ def _ctc_loss_init_grad_kernel(
 
     input_len = tl.load(input_lengths + batch, mask=mask, other=0)
     target_len = tl.load(target_lengths + batch, mask=mask, other=1)
-    nll = tl.load(neg_log_likelihood + batch, mask=mask, other=0.0).to(
-        tl.float32
-    )
+    nll = tl.load(neg_log_likelihood + batch, mask=mask, other=0.0).to(tl.float32)
 
     if REDUCTION == 0:
-        scale = tl.load(grad_output + batch, mask=mask, other=0.0).to(
-            tl.float32
-        )
+        scale = tl.load(grad_output + batch, mask=mask, other=0.0).to(tl.float32)
     else:
         scale = tl.load(grad_output).to(tl.float32)
         if REDUCTION == 1:
@@ -443,9 +418,7 @@ def _ctc_loss_init_grad_kernel(
     if ZERO_INFINITY:
         scale = tl.where(nll == float("inf"), 0.0, scale)
 
-    logp = tl.load(log_probs + offsets, mask=mask, other=-float("inf")).to(
-        tl.float32
-    )
+    logp = tl.load(log_probs + offsets, mask=mask, other=-float("inf")).to(tl.float32)
     grad = tl.where((t < input_len) & mask, tl.exp(logp) * scale, 0.0)
     nan_grad = float("nan")
     grad = tl.where(
@@ -454,9 +427,7 @@ def _ctc_loss_init_grad_kernel(
         grad,
     )
     if not ZERO_INFINITY:
-        grad = tl.where(
-            (t < input_len) & mask & (nll == float("inf")), nan_grad, grad
-        )
+        grad = tl.where((t < input_len) & mask & (nll == float("inf")), nan_grad, grad)
     tl.store(grad_input + offsets, grad, mask=mask)
 
 
@@ -537,10 +508,7 @@ def _ctc_loss_backward_kernel(
         scale = tl.where(nll == float("inf"), 0.0, scale)
 
     beta_init = tl.where(
-        (
-            (states == state_count - 1)
-            | ((states == state_count - 2) & (target_len > 0))
-        )
+        ((states == state_count - 1) | ((states == state_count - 2) & (target_len > 0)))
         & valid_state
         & (input_len > 0),
         0.0,
@@ -558,15 +526,12 @@ def _ctc_loss_backward_kernel(
         safe_t = tl.where(active, t, 0)
         beta_base = scratch_batch + (step % 2) * STATE_COUNT_MAX
         next_beta_base = scratch_batch + ((step + 1) % 2) * STATE_COUNT_MAX
-        beta = tl.load(
-            beta_base + states, mask=stored_state, other=-float("inf")
-        ).to(tl.float32)
+        beta = tl.load(beta_base + states, mask=stored_state, other=-float("inf")).to(
+            tl.float32
+        )
 
         alpha_t = tl.load(
-            log_alpha
-            + batch * T * STATE_COUNT_MAX
-            + safe_t * STATE_COUNT_MAX
-            + states,
+            log_alpha + batch * T * STATE_COUNT_MAX + safe_t * STATE_COUNT_MAX + states,
             mask=active & stored_state,
             other=-float("inf"),
         ).to(tl.float32)
@@ -677,9 +642,7 @@ def _length_stats(lengths):
         if cached is not None:
             return cached[1]
 
-    stats_tensor = torch.stack(
-        (lengths.min(), lengths.max(), lengths.sum())
-    ).cpu()
+    stats_tensor = torch.stack((lengths.min(), lengths.max(), lengths.sum())).cpu()
     stats = tuple(int(value) for value in stats_tensor.tolist())
     if key is not None:
         if len(_LENGTH_STATS_CACHE) >= _LENGTH_STATS_CACHE_LIMIT:
@@ -708,9 +671,7 @@ class CtcLossFunction(torch.autograd.Function):
     ):
         reduction = _reduction_enum(reduction)
         if reduction not in (_REDUCTION_NONE, _REDUCTION_MEAN, _REDUCTION_SUM):
-            raise ValueError(
-                f"ctc_loss got invalid reduction enum {reduction}"
-            )
+            raise ValueError(f"ctc_loss got invalid reduction enum {reduction}")
 
         if log_probs.ndim not in (2, 3):
             raise RuntimeError(
@@ -718,9 +679,7 @@ class CtcLossFunction(torch.autograd.Function):
                 f"but got {log_probs.ndim}D"
             )
         if not torch.is_floating_point(log_probs):
-            raise RuntimeError(
-                f'"ctc_loss" not implemented for {log_probs.dtype}'
-            )
+            raise RuntimeError(f'"ctc_loss" not implemented for {log_probs.dtype}')
         if blank < 0 or blank >= log_probs.shape[-1]:
             raise RuntimeError("blank must be in label range")
 
@@ -739,9 +698,7 @@ class CtcLossFunction(torch.autograd.Function):
         elif _is_integral_dtype(targets.dtype):
             work_targets = targets.contiguous()
         else:
-            raise RuntimeError(
-                "ctc_loss targets must be integral or floating point"
-            )
+            raise RuntimeError("ctc_loss targets must be integral or floating point")
         work_input_lengths = _lengths_to_tensor(
             input_lengths, log_probs.device, "input_lengths"
         )
@@ -758,9 +715,7 @@ class CtcLossFunction(torch.autograd.Function):
                 f"ctc_loss expected target_lengths to have size {batch_size}, "
                 f"but got {work_target_lengths.numel()}"
             )
-        min_input_length, max_input_length, _ = _length_stats(
-            work_input_lengths
-        )
+        min_input_length, max_input_length, _ = _length_stats(work_input_lengths)
         min_target_length, max_target, total_target_length = _length_stats(
             work_target_lengths
         )

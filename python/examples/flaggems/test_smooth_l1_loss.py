@@ -28,9 +28,7 @@ def test_smooth_l1_loss(size, beta, reduction_str):
 @pytest.mark.parametrize("beta", [0.0, 1.0])
 def test_smooth_l1_loss_backward(size, beta):
     torch.manual_seed(0)
-    input = torch.randn(
-        size, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    input = torch.randn(size, dtype=torch.float32, device="cpu", requires_grad=True)
     target = torch.randn(size, dtype=torch.float32, device="cpu")
 
     loss = torch.nn.functional.smooth_l1_loss(
@@ -58,8 +56,6 @@ def test_smooth_l1_loss_out(size, beta):
         input, target, reduction="none", beta=beta
     )
     out = torch.empty(size, dtype=torch.float32, device="cpu")
-    tri_out = smooth_l1_loss_out(
-        input, target, reduction="none", beta=beta, out=out
-    )
+    tri_out = smooth_l1_loss_out(input, target, reduction="none", beta=beta, out=out)
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
     torch.testing.assert_close(out, ref_out, rtol=1e-4, atol=1e-4)

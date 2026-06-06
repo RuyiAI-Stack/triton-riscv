@@ -85,25 +85,13 @@ def avg_pool3d_forward_kernel(
         d_valid = (d_in >= 0) & (d_in < in_d)
         for kh in range(0, kernel_h):
             for kw in range(0, kernel_w):
-                h_in = (
-                    h_out_offsets[:, None] * stride_h
-                    - padding_h
-                    + kh * dilation_h
-                )
-                w_in = (
-                    w_out_offsets[None, :] * stride_w
-                    - padding_w
-                    + kw * dilation_w
-                )
-                hw_mask = (
-                    (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-                )
+                h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
+                w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
+                hw_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
                 in_mask = hw_mask & d_valid
 
                 input_offset = (
-                    d_in * in_stride_d
-                    + h_in * in_stride_h
-                    + w_in * in_stride_w
+                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
                 )
                 current_val = tl.load(
                     input_base_ptr + input_offset, mask=in_mask, other=0.0
@@ -113,48 +101,40 @@ def avg_pool3d_forward_kernel(
                 count_acc += in_mask.to(tl.int32)
 
     if divisor_override != 0:
-        divisor = tl.full(
-            (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
-        )
+        divisor = tl.full((BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
     elif COUNT_INCLUDE_PAD:
         d_start_fwd = d_idx * stride_d - padding_d
-        d_padded_count = tl.minimum(
-            d_start_fwd + kernel_d, in_d + padding_d
-        ) - (tl.maximum(d_start_fwd, -padding_d))
+        d_padded_count = tl.minimum(d_start_fwd + kernel_d, in_d + padding_d) - (
+            tl.maximum(d_start_fwd, -padding_d)
+        )
         d_padded_count = tl.maximum(d_padded_count, 0)
 
         h_start_fwd = h_out_offsets[:, None] * stride_h - padding_h
-        h_padded_count = tl.minimum(
-            h_start_fwd + kernel_h, in_h + padding_h
-        ) - (tl.maximum(h_start_fwd, -padding_h))
+        h_padded_count = tl.minimum(h_start_fwd + kernel_h, in_h + padding_h) - (
+            tl.maximum(h_start_fwd, -padding_h)
+        )
         h_padded_count = tl.maximum(h_padded_count, 0)
 
         w_start_fwd = w_out_offsets[None, :] * stride_w - padding_w
-        w_padded_count = tl.minimum(
-            w_start_fwd + kernel_w, in_w + padding_w
-        ) - (tl.maximum(w_start_fwd, -padding_w))
+        w_padded_count = tl.minimum(w_start_fwd + kernel_w, in_w + padding_w) - (
+            tl.maximum(w_start_fwd, -padding_w)
+        )
         w_padded_count = tl.maximum(w_padded_count, 0)
 
-        divisor = (d_padded_count * h_padded_count * w_padded_count).to(
-            tl.float32
-        )
+        divisor = (d_padded_count * h_padded_count * w_padded_count).to(tl.float32)
     else:
         divisor = count_acc.to(tl.float32)
 
     output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
 
-    out_base_ptr = (
-        output_ptr + pid_nc * out_d * out_h * out_w + d_idx * out_h * out_w
-    )
+    out_base_ptr = output_ptr + pid_nc * out_d * out_h * out_w + d_idx * out_h * out_w
     out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
     output_block_ptr = (
         out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
     )
 
-    out_mask = (out_h_offsets[:, None] < out_h) & (
-        out_w_offsets[None, :] < out_w
-    )
+    out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
     tl.store(
         output_block_ptr,
         output_vals.to(output_ptr.type.element_ty),
@@ -212,12 +192,8 @@ def avg_pool3d_backward_kernel(
     n_idx = pid_nc // in_c
     c_idx = pid_nc % in_c
 
-    grad_input_base = (
-        grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-    )
-    grad_output_base = (
-        grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
-    )
+    grad_input_base = grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+    grad_output_base = grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
 
     h_in_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     w_in_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
@@ -242,11 +218,7 @@ def avg_pool3d_backward_kernel(
                 w_out = w_out_num // stride_w
 
                 out_mask = (
-                    d_out_valid
-                    & h_valid
-                    & w_valid
-                    & (h_out < out_h)
-                    & (w_out < out_w)
+                    d_out_valid & h_valid & w_valid & (h_out < out_h) & (w_out < out_w)
                 )
 
                 if divisor_override != 0:
@@ -275,21 +247,21 @@ def avg_pool3d_backward_kernel(
                     divisor = (d_pc * h_pc * w_pc).to(tl.float32)
                 else:
                     d_start = d_out * stride_d - padding_d
-                    d_count = tl.minimum(
-                        d_start + kernel_d, in_d
-                    ) - tl.maximum(d_start, 0)
+                    d_count = tl.minimum(d_start + kernel_d, in_d) - tl.maximum(
+                        d_start, 0
+                    )
                     d_count = tl.maximum(d_count, 0)
 
                     h_start = h_out * stride_h - padding_h
-                    h_count = tl.minimum(
-                        h_start + kernel_h, in_h
-                    ) - tl.maximum(h_start, 0)
+                    h_count = tl.minimum(h_start + kernel_h, in_h) - tl.maximum(
+                        h_start, 0
+                    )
                     h_count = tl.maximum(h_count, 0)
 
                     w_start = w_out * stride_w - padding_w
-                    w_count = tl.minimum(
-                        w_start + kernel_w, in_w
-                    ) - tl.maximum(w_start, 0)
+                    w_count = tl.minimum(w_start + kernel_w, in_w) - tl.maximum(
+                        w_start, 0
+                    )
                     w_count = tl.maximum(w_count, 0)
 
                     divisor = (d_count * h_count * w_count).to(tl.float32)
@@ -311,9 +283,7 @@ def avg_pool3d_backward_kernel(
         + h_in_offsets[:, None] * in_stride_h
         + w_in_offsets[None, :] * in_stride_w
     )
-    in_write_mask = (h_in_offsets[:, None] < in_h) & (
-        w_in_offsets[None, :] < in_w
-    )
+    in_write_mask = (h_in_offsets[:, None] < in_h) & (w_in_offsets[None, :] < in_w)
     tl.store(
         grad_input_store_ptr,
         grad_acc.to(grad_input_ptr.type.element_ty),
@@ -351,9 +321,7 @@ def _parse_pool3d_params(kernel_size, stride, padding):
         or padding_h > kernel_h // 2
         or padding_w > kernel_w // 2
     ):
-        raise ValueError(
-            "pad should be smaller than or equal to half of kernel size"
-        )
+        raise ValueError("pad should be smaller than or equal to half of kernel size")
 
     return (
         kernel_d,
@@ -452,9 +420,7 @@ def avg_pool3d(
         dilation_h,
         dilation_w,
         COUNT_INCLUDE_PAD=count_include_pad,
-        divisor_override=divisor_override
-        if divisor_override is not None
-        else 0.0,
+        divisor_override=divisor_override if divisor_override is not None else 0.0,
         BLOCK_H=BLOCK_H,
         BLOCK_W=BLOCK_W,
     )
@@ -539,9 +505,7 @@ def avg_pool3d_backward(
         padding_h,
         padding_w,
         COUNT_INCLUDE_PAD=count_include_pad,
-        divisor_override=divisor_override
-        if divisor_override is not None
-        else 0.0,
+        divisor_override=divisor_override if divisor_override is not None else 0.0,
         BLOCK_H=BLOCK_H,
         BLOCK_W=BLOCK_W,
     )

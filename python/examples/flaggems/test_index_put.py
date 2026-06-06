@@ -64,9 +64,7 @@ def test_index_put(shape, idx):
         out = index_put(x, (idx_t,), vals)
     else:
         idx_t = torch.tensor(idx, dtype=torch.long, device="cpu")
-        vals = torch.randn(
-            len(idx), shape[1], dtype=torch.float32, device="cpu"
-        )
+        vals = torch.randn(len(idx), shape[1], dtype=torch.float32, device="cpu")
         x_ref[idx_t] = vals
         out = index_put(x, (idx_t,), vals)
     torch.testing.assert_close(out, x_ref, rtol=1e-4, atol=1e-4)
@@ -97,9 +95,7 @@ def test_index_put_inplace(shape, idx):
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     x_ref = x.clone()
     idx_t = torch.tensor(idx[0], dtype=torch.long, device="cpu")
-    vals = torch.randn(
-        len(idx[0]), shape[1], dtype=torch.float32, device="cpu"
-    )
+    vals = torch.randn(len(idx[0]), shape[1], dtype=torch.float32, device="cpu")
 
     x_ref[idx_t] = vals
     index_put_(x, (idx_t,), vals)

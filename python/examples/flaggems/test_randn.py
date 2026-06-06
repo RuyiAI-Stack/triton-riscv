@@ -13,3 +13,12 @@ def test_randn(shape):
     # For random functions, we check basic properties.
     assert out_triton.shape == shape
     assert out_triton.dtype == torch.float32
+
+
+def test_randn_repeated_calls_advance_philox_offset():
+    torch.manual_seed(0)
+
+    first = randn((1024,), dtype=torch.float32)
+    second = randn((1024,), dtype=torch.float32)
+
+    assert not torch.equal(first, second)

@@ -4,9 +4,7 @@ import torch
 from .sub import sub, sub_
 
 
-@pytest.mark.parametrize(
-    "shape", [(16, 256), (4, 128), (512,), (1023,), (1024,)]
-)
+@pytest.mark.parametrize("shape", [(16, 256), (4, 128), (512,), (1023,), (1024,)])
 @pytest.mark.parametrize("alpha", [1.0, 2.5])
 def test_sub_tt(shape, alpha):
     torch.manual_seed(0)
@@ -19,9 +17,7 @@ def test_sub_tt(shape, alpha):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    "shape", [(16, 256), (4, 128), (512,), (1023,), (1024,)]
-)
+@pytest.mark.parametrize("shape", [(16, 256), (4, 128), (512,), (1023,), (1024,)])
 @pytest.mark.parametrize("alpha", [1.0, 2.5])
 def test_sub_ts(shape, alpha):
     torch.manual_seed(0)
@@ -34,9 +30,7 @@ def test_sub_ts(shape, alpha):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    "shape", [(16, 256), (4, 128), (512,), (1023,), (1024,)]
-)
+@pytest.mark.parametrize("shape", [(16, 256), (4, 128), (512,), (1023,), (1024,)])
 @pytest.mark.parametrize("alpha", [1.0, 2.5])
 def test_sub_st(shape, alpha):
     torch.manual_seed(0)
@@ -49,9 +43,7 @@ def test_sub_st(shape, alpha):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    "shape_A, shape_B", [((16, 256), (256,)), ((4, 1), (4, 128))]
-)
+@pytest.mark.parametrize("shape_A, shape_B", [((16, 256), (256,)), ((4, 1), (4, 128))])
 @pytest.mark.parametrize("alpha", [1.0, 2.5])
 def test_sub_broadcast(shape_A, shape_B, alpha):
     torch.manual_seed(0)

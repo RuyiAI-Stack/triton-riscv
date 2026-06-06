@@ -27,8 +27,7 @@ def i0_kernel(
         + y
         * (
             3.0899424
-            + y
-            * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))
+            + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))
         )
     )
 
@@ -48,8 +47,7 @@ def i0_kernel(
                     + yb
                     * (
                         -0.02057706
-                        + yb
-                        * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))
+                        + yb * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))
                     )
                 )
             )
@@ -69,9 +67,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     assert out.numel() == x.numel(), (
         "Input and output must have the same number of elements"
     )
-    assert out.device == x.device, (
-        "Input and output must be on the same device"
-    )
+    assert out.device == x.device, "Input and output must be on the same device"
 
     x_in = x
     out_in = out
@@ -105,9 +101,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 def i0(x: torch.Tensor):
     # Result dtype follows PyTorch's floating type behavior
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
-    out = torch.empty_like(
-        x.to(dtype=out_dtype), dtype=out_dtype, device=x.device
-    )
+    out = torch.empty_like(x.to(dtype=out_dtype), dtype=out_dtype, device=x.device)
     _launch_i0(out, x)
     return out
 

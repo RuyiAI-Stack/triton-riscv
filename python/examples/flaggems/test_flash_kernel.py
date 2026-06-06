@@ -11,9 +11,9 @@ from .flash_kernel import (
 @pytest.mark.parametrize("B, H, Q, K, D", [(1, 2, 16, 16, 32)])
 def test_flash_kernel_compile_small(B, H, Q, K, D):
     """Compile test for flash_fwd_kernel with minimal shape."""
-    q = torch.randn(B, H, Q, D, dtype=torch.float16)
-    k = torch.randn(B, H, Q, D, dtype=torch.float16)
-    v = torch.randn(B, H, Q, D, dtype=torch.float16)
+    q = torch.randn(B, Q, H, D, dtype=torch.float16)
+    k = torch.randn(B, K, H, D, dtype=torch.float16)
+    v = torch.randn(B, K, H, D, dtype=torch.float16)
     out = torch.empty_like(q)
     lse = torch.empty((B, H, Q), dtype=torch.float32)
 
@@ -97,13 +97,11 @@ def test_varlen_fwd_kernel_compile_small(B, H, total_q, K, D):
     k = torch.randn(total_q, H, D, dtype=torch.float16)
     v = torch.randn(total_q, H, D, dtype=torch.float16)
     out = torch.empty_like(q)
-    cu_seqlens_q = torch.arange(B + 1, dtype=torch.int32) * (
-        total_q // (B + 1)
-    )
+    cu_seqlens_q = torch.arange(B + 1, dtype=torch.int32) * (total_q // (B + 1))
     cu_seqlens_q[-1] = total_q
     cu_seqlens_k = cu_seqlens_q.clone()
     lse = torch.empty((H, total_q), dtype=torch.float32)
-    max_seqlen_q = total_q // (B + 1)
+    max_seqlen_q = total_q // B
     max_seqlen_k = max_seqlen_q
 
     seqlen_q_rounded = ((max_seqlen_q + 127) // 128) * 128

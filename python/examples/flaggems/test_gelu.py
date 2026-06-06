@@ -39,25 +39,19 @@ def test_gelu_inplace():
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_gelu_backward(shape, approximate):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
     grad_output = torch.randn(shape, dtype=torch.float32, device="cpu")
 
     ref = torch.nn.functional.gelu(x, approximate=approximate)
     ref.backward(grad_output)
     x_grad_ref = x.grad.clone()
 
-    x_grad_tri = gelu_backward(
-        grad_output, x.detach(), approximate=approximate
-    )
+    x_grad_tri = gelu_backward(grad_output, x.detach(), approximate=approximate)
 
     torch.testing.assert_close(x_grad_tri, x_grad_ref, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
 def test_gelu_dtype(dtype):
     torch.manual_seed(0)
     x = torch.randn(1024, dtype=dtype, device="cpu")

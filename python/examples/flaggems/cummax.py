@@ -50,9 +50,7 @@ def maximum_with_index_tie_break_right(a_value, a_index, b_value, b_index):
 
 @triton.jit
 def tl_cummax(input, index, axis=0):
-    return tl.associative_scan(
-        (input, index), axis, maximum_with_index_tie_break_right
-    )
+    return tl.associative_scan((input, index), axis, maximum_with_index_tie_break_right)
 
 
 @triton.jit
@@ -158,9 +156,7 @@ def scan_part_max_kernel(
         tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
 
 
-def scan_then_fan_col(
-    inp, out, out_indices, n_ele, dtype, use_out_indices=False
-):
+def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False):
     BLOCK_SIZE = 1024
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
@@ -324,18 +320,14 @@ def add_base_max_abc_kernel(
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
 
-def scan_then_fan(
-    inp, out, out_indices, A, B, C, dtype, use_out_indices=False
-):
+def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     BLOCK_SIZE = 1024
     if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     need_partial = True if part_num >= 2 else False
     if need_partial:
-        partial_max = torch.empty(
-            A, part_num, C, dtype=dtype, device=inp.device
-        )
+        partial_max = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
         partial_max_indices = torch.empty(
             A, part_num, C, dtype=torch.int64, device=inp.device
         )
@@ -402,13 +394,9 @@ def scan_part_max_abc_loop_kernel(
 
     min_value = get_dtype_min(inp.type.element_ty)
 
-    if tl.constexpr(
-        inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()
-    ):
+    if tl.constexpr(inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()):
         compute_dtype = tl.float32
-    elif tl.constexpr(
-        inp.type.element_ty.is_int8() or inp.type.element_ty.is_int16()
-    ):
+    elif tl.constexpr(inp.type.element_ty.is_int8() or inp.type.element_ty.is_int16()):
         compute_dtype = tl.int32
     else:
         compute_dtype = inp.type.element_ty
@@ -438,21 +426,15 @@ def scan_part_max_abc_loop_kernel(
             prev_is_nan = prev_max_val != prev_max_val
             result_is_nan = result != result
             prev_nan_mask = tl.broadcast_to(prev_is_nan, (BLOCK_SIZE,))
-            use_result = result_is_nan | (
-                ~prev_nan_mask & (result >= prev_max_val_b)
-            )
+            use_result = result_is_nan | (~prev_nan_mask & (result >= prev_max_val_b))
         else:
             use_result = result >= prev_max_val_b
 
         final_vals = tl.where(use_result, result, prev_max_val_b)
-        final_indices = tl.where(
-            use_result, cummax_indices, prev_max_val_idx_b
-        )
+        final_indices = tl.where(use_result, cummax_indices, prev_max_val_idx_b)
 
         prev_max_val = tl.sum(tl.where(last_mask, final_vals, 0), axis=0)
-        prev_max_val_idx = tl.sum(
-            tl.where(last_mask, final_indices, 0), axis=0
-        )
+        prev_max_val_idx = tl.sum(tl.where(last_mask, final_indices, 0), axis=0)
 
         tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
         tl.store(out_indices + offset, final_indices, mask=mask)

@@ -132,9 +132,7 @@ def sum_dim_kernel_non_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
             mask = (n_offsets < N) & (k_offsets < K)
-            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(
-                cdtype
-            )
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
             sum += inp
         out = tl.sum(sum, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
@@ -175,9 +173,7 @@ def sum_dim_kernel_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             inp_offsets = pid_m * N + n_offsets
             mask = n_offsets < N
-            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(
-                cdtype
-            )
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
             sum += inp
         out = tl.sum(sum, axis=0)
         out_offset = pid_m
@@ -186,9 +182,7 @@ def sum_dim_kernel_inner(
 
 
 @triton.jit
-def sum_dim_kernel(
-    inp, out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
-):
+def sum_dim_kernel(inp, out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
@@ -294,9 +288,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             if keepdim:
                 out.resize_(shape)
             else:
-                out.resize_(
-                    [s for i, s in enumerate(shape) if i not in dim_set]
-                )
+                out.resize_([s for i, s in enumerate(shape) if i not in dim_set])
         else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 

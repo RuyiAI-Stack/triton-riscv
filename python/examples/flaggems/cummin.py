@@ -50,9 +50,7 @@ def minimum_with_index_tie_break_right(a_value, a_index, b_value, b_index):
 
 @triton.jit
 def tl_cummin(input, index, axis=0):
-    return tl.associative_scan(
-        (input, index), axis, minimum_with_index_tie_break_right
-    )
+    return tl.associative_scan((input, index), axis, minimum_with_index_tie_break_right)
 
 
 @triton.jit
@@ -158,9 +156,7 @@ def scan_part_min_kernel(
         tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
 
 
-def scan_then_fan_col(
-    inp, out, out_indices, n_ele, dtype, use_out_indices=False
-):
+def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False):
     BLOCK_SIZE = 1024
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
@@ -340,9 +336,7 @@ def scan_then_fan(
     part_num = math.ceil(B / BLOCK_SIZE)
     need_partial = True if part_num >= 2 else False
     if need_partial:
-        partial_min = torch.empty(
-            A, part_num, C, dtype=dtype, device=inp.device
-        )
+        partial_min = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
         partial_min_indices = torch.empty(
             A, part_num, C, dtype=torch.int64, device=inp.device
         )
@@ -409,13 +403,9 @@ def scan_part_min_abc_loop_kernel(
 
     max_value = get_dtype_max(inp.type.element_ty)
 
-    if tl.constexpr(
-        inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()
-    ):
+    if tl.constexpr(inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()):
         compute_dtype = tl.float32
-    elif tl.constexpr(
-        inp.type.element_ty.is_int8() or inp.type.element_ty.is_int16()
-    ):
+    elif tl.constexpr(inp.type.element_ty.is_int8() or inp.type.element_ty.is_int16()):
         compute_dtype = tl.int32
     else:
         compute_dtype = inp.type.element_ty
@@ -445,21 +435,15 @@ def scan_part_min_abc_loop_kernel(
             prev_is_nan = prev_min_val != prev_min_val
             result_is_nan = result != result
             prev_nan_mask = tl.broadcast_to(prev_is_nan, (BLOCK_SIZE,))
-            use_result = result_is_nan | (
-                ~prev_nan_mask & (result <= prev_min_val_b)
-            )
+            use_result = result_is_nan | (~prev_nan_mask & (result <= prev_min_val_b))
         else:
             use_result = result <= prev_min_val_b
 
         final_vals = tl.where(use_result, result, prev_min_val_b)
-        final_indices = tl.where(
-            use_result, cummin_indices, prev_min_val_idx_b
-        )
+        final_indices = tl.where(use_result, cummin_indices, prev_min_val_idx_b)
 
         prev_min_val = tl.sum(tl.where(last_mask, final_vals, 0), axis=0)
-        prev_min_val_idx = tl.sum(
-            tl.where(last_mask, final_indices, 0), axis=0
-        )
+        prev_min_val_idx = tl.sum(tl.where(last_mask, final_indices, 0), axis=0)
 
         tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
         tl.store(out_indices + offset, final_indices, mask=mask)

@@ -12,15 +12,10 @@ from .grid_sample import grid_sample
         (1, 1, 8, 8, 16, 16),
     ],
 )
-def test_grid_sample_2d_nearest_zeros(
-    N, C, H_in, W_in, H_out, W_out, align_corners
-):
+def test_grid_sample_2d_nearest_zeros(N, C, H_in, W_in, H_out, W_out, align_corners):
     torch.manual_seed(0)
     input = torch.randn(N, C, H_in, W_in, device="cpu", dtype=torch.float32)
-    grid = (
-        torch.rand(N, H_out, W_out, 2, device="cpu", dtype=torch.float32) * 2
-        - 1
-    )
+    grid = torch.rand(N, H_out, W_out, 2, device="cpu", dtype=torch.float32) * 2 - 1
 
     ref = torch.nn.functional.grid_sample(
         input,
@@ -45,10 +40,7 @@ def test_grid_sample_2d_bilinear_zeros(align_corners):
     torch.manual_seed(0)
     N, C, H_in, W_in, H_out, W_out = 1, 2, 8, 8, 10, 12
     input = torch.randn(N, C, H_in, W_in, device="cpu", dtype=torch.float32)
-    grid = (
-        torch.rand(N, H_out, W_out, 2, device="cpu", dtype=torch.float32) * 2
-        - 1
-    )
+    grid = torch.rand(N, H_out, W_out, 2, device="cpu", dtype=torch.float32) * 2 - 1
 
     ref = torch.nn.functional.grid_sample(
         input,

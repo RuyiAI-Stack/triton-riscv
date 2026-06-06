@@ -20,17 +20,11 @@ def check_dtype(fill_value, dtype, device):
             fill_value = int(fill_value)
     elif (
         dtype in ALL_INT_DTYPES
-        and (
-            fill_value < torch.iinfo(dtype).min
-            or fill_value > torch.iinfo(dtype).max
-        )
+        and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
     ) or (
         dtype in ALL_FLOAT_DTYPES
         and not (math.isinf(fill_value) or math.isnan(fill_value))
-        and (
-            fill_value < torch.finfo(dtype).min
-            or fill_value > torch.finfo(dtype).max
-        )
+        and (fill_value < torch.finfo(dtype).min or fill_value > torch.finfo(dtype).max)
     ):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
@@ -55,9 +49,7 @@ def full_kernel(
     tl.store(out_ptr + offsets, fill_val, mask=mask)
 
 
-def full(
-    size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None
-):
+def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
@@ -81,7 +73,5 @@ def full(
 
     BLOCK_SIZE = 1024
     num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
-    full_kernel[(num_blocks,)](
-        out, fill_tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    full_kernel[(num_blocks,)](out, fill_tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out

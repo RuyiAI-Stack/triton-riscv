@@ -76,3 +76,13 @@ def test_feature_dropout_inplace(shape, p):
                     pass
                 else:
                     torch.testing.assert_close(channel_x, channel_copy * scale)
+
+
+def test_feature_dropout_repeated_calls_advance_philox_offset():
+    torch.manual_seed(0)
+    x = torch.ones((128, 32), dtype=torch.float32, device="cpu")
+
+    first = feature_dropout(x, 0.5, train=True)
+    second = feature_dropout(x, 0.5, train=True)
+
+    assert not torch.equal(first, second)

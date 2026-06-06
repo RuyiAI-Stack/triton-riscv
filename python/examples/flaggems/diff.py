@@ -28,17 +28,11 @@ def diff_kernel_inner(
 
         mask = row_mask[:, None] & col_mask[None, :]
 
-        input_offsets_next = row_offsets[:, None] * N + (
-            col_offsets[None, :] + 1
-        )
+        input_offsets_next = row_offsets[:, None] * N + (col_offsets[None, :] + 1)
         input_offsets_curr = row_offsets[:, None] * N + col_offsets[None, :]
 
-        inp_next = tl.load(
-            input_ptr + input_offsets_next, mask=mask, other=0.0
-        )
-        inp_curr = tl.load(
-            input_ptr + input_offsets_curr, mask=mask, other=0.0
-        )
+        inp_next = tl.load(input_ptr + input_offsets_next, mask=mask, other=0.0)
+        inp_curr = tl.load(input_ptr + input_offsets_curr, mask=mask, other=0.0)
 
         diff_val = inp_next - inp_curr
 
@@ -69,12 +63,8 @@ def diff_kernel_non_inner(
         input_offset_next = pid_m * N * K + (n + 1) * K + k_offsets
         input_offset_curr = pid_m * N * K + n * K + k_offsets
 
-        inp_next = tl.load(
-            input_ptr + input_offset_next, mask=k_mask, other=0.0
-        )
-        inp_curr = tl.load(
-            input_ptr + input_offset_curr, mask=k_mask, other=0.0
-        )
+        inp_next = tl.load(input_ptr + input_offset_next, mask=k_mask, other=0.0)
+        inp_curr = tl.load(input_ptr + input_offset_curr, mask=k_mask, other=0.0)
 
         diff_val = inp_next - inp_curr
 
@@ -143,9 +133,7 @@ def diff(
 
     ndim = inp.ndim
     if ndim == 0:
-        raise RuntimeError(
-            "diff requires input to be at least one-dimensional"
-        )
+        raise RuntimeError("diff requires input to be at least one-dimensional")
 
     dim = dim % ndim
 

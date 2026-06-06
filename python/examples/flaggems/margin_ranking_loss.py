@@ -78,15 +78,11 @@ class MarginRankingLossOp(torch.autograd.Function):
         if isinstance(reduction, int):
             reduction = {0: "none", 1: "mean", 2: "sum"}.get(reduction, "mean")
         if reduction not in ("none", "mean", "sum"):
-            raise ValueError(
-                "reduction must be one of 'none', 'mean', or 'sum'"
-            )
+            raise ValueError("reduction must be one of 'none', 'mean', or 'sum'")
 
         x1_b, x2_b, tgt_b = torch.broadcast_tensors(x1, x2, target)
 
-        common_dtype = (
-            x1_b.dtype if x1_b.is_floating_point() else torch.float32
-        )
+        common_dtype = x1_b.dtype if x1_b.is_floating_point() else torch.float32
         x1_b = x1_b.to(dtype=common_dtype)
         x2_b = x2_b.to(dtype=common_dtype)
         tgt_b = tgt_b.to(dtype=common_dtype)

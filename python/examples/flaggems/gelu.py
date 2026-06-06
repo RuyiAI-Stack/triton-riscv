@@ -81,8 +81,7 @@ def gelu_backward_tanh_kernel(
     exp2x = tl.exp(2.0 * tanh_arg)
     tanh_out = (exp2x - 1.0) / (exp2x + 1.0)
     dydx = 0.5 * x_f32 * (
-        (1.0 - tanh_out * tanh_out)
-        * (0.79788456 + 0.1070322243 * x_f32 * x_f32)
+        (1.0 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x_f32 * x_f32)
     ) + 0.5 * (1.0 + tanh_out)
     tl.store(dx_ptr + offsets, dydx * dy, mask=mask)
 

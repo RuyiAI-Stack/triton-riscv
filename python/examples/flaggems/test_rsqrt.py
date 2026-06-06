@@ -15,6 +15,7 @@ def test_rsqrt(shape):
 
 def test_rsqrt_inplace():
     x = torch.tensor([0.25, 1.0, 4.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().rsqrt_()
+    x_ref = x.clone()
+    torch.rsqrt(x_ref, out=x_ref)
     rsqrt_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)

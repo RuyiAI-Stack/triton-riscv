@@ -46,8 +46,7 @@ def elu_backward_kernel_with_self(
     grad = tl.where(
         x > 0,
         grad_output * scale * input_scale,
-        grad_output
-        * (scale * alpha * tl.exp(x_fp32 * input_scale) * input_scale),
+        grad_output * (scale * alpha * tl.exp(x_fp32 * input_scale) * input_scale),
     )
     tl.store(grad_input_ptr + offsets, grad, mask=mask)
 
@@ -104,8 +103,7 @@ def elu_grad_kernel(
         grad = tl.where(
             v > 0,
             grad_output * scale * input_scale,
-            grad_output
-            * (scale * alpha * tl.exp(v_fp32 * input_scale) * input_scale),
+            grad_output * (scale * alpha * tl.exp(v_fp32 * input_scale) * input_scale),
         )
     tl.store(grad_input_ptr + offsets, grad, mask=mask)
 
@@ -128,9 +126,7 @@ def elu_(x, alpha=1.0, scale=1.0, input_scale=1.0):
     return x
 
 
-def elu_backward(
-    grad_output, alpha, scale, input_scale, is_result, self_or_result
-):
+def elu_backward(grad_output, alpha, scale, input_scale, is_result, self_or_result):
     A_c = grad_output.contiguous()
     B_c = self_or_result.contiguous()
     grad_input = torch.empty_like(A_c)

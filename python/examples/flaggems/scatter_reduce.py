@@ -3,14 +3,10 @@
 Supports all reduce modes: sum, prod, mean, amax, amin.
 Handles 1D-5D tensors with up to 5D coordinate decoding via padding.
 
-Vendor compatibility:
-  - NVIDIA: native atomic_max/min for amax/amin reduce
-  - Iluvatar: CAS-based fallback for atomic_max/min (no native support)
-  - Metax: larger BLOCK=256 for better occupancy
-
 Performance notes:
   - Sum/mean use tl.atomic_add with relaxed semantics for throughput
   - Prod uses CAS loop with NaN detection guard (no tl.atomic_mul exists)
+  - Floating amax/amin use CAS to preserve NaN and signed-zero semantics
   - All offset arithmetic uses int64 to avoid overflow for N > 2^31
   - LOOP=4: each program processes LOOP*BLOCK elements to amortize launch overhead
   - 2D fast path: specialized kernels for 2D tensors avoid 5D coordinate decoding
@@ -55,15 +51,6 @@ def _pad5(lst, fill):
     return [fill] * (5 - len(lst)) + lst if len(lst) < 5 else lst
 
 
-def _needs_cas_fallback():
-    """Check if the current vendor needs CAS-based fallback for atomic_max/min.
-
-    Iluvatar GPUs lack native tl.atomic_max/min, so we fall back to a
-    CAS (Compare-And-Swap) loop for amax/amin reduce modes.
-    """
-    return False
-
-
 # ---------------------------------------------------------------------------
 # 2D Fast Path Kernels with LOOP
 # Specialized for 2D tensors to avoid 5D coordinate decoding overhead.
@@ -97,27 +84,19 @@ def scatter_reduce_sum_2d_kernel(
 
         if DIM == 0:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
         tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -146,20 +125,14 @@ def scatter_reduce_prod_2d_kernel(
 
         if DIM == 0:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
         # CAS loop for product
         stop = tl.where(mask, 0, 1).to(tl.int1)
@@ -167,19 +140,17 @@ def scatter_reduce_prod_2d_kernel(
         while not block_stop:
             cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
             new_val = tl.where(stop, cur_val, cur_val * src_val)
-            is_nan = new_val != new_val
-            new_val = tl.where(is_nan, src_val, new_val)
             cas_res = tl.atomic_cas(
                 out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
             )
-            stop |= (cur_val == cas_res) | is_nan
+            stop |= cur_val.to(tl.int32, bitcast=True) == cas_res.to(
+                tl.int32, bitcast=True
+            )
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -209,32 +180,22 @@ def scatter_reduce_mean_2d_kernel(
 
         if DIM == 0:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
         tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
         ones_f = tl.full((BLOCK,), 1.0, dtype=tl.float32)
-        tl.atomic_add(
-            count_ptr + out_offsets, ones_f, mask=mask, sem="relaxed"
-        )
+        tl.atomic_add(count_ptr + out_offsets, ones_f, mask=mask, sem="relaxed")
 
         if USE_MASK:
             ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones_i, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones_i, mask=mask, sem="relaxed")
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -265,50 +226,44 @@ def scatter_reduce_amax_2d_kernel(
 
         if DIM == 0:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = idx * out_ncols + col
         else:
             src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(
-                tl.int64
-            )
+            idx = tl.load(index_ptr + src_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
         if USE_CAS:
             stop = tl.where(mask, 0, 1).to(tl.int1)
             block_stop = False
             while not block_stop:
                 cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
+                cur_bits = cur_val.to(tl.int32, bitcast=True)
+                src_bits = src_val.to(tl.int32, bitcast=True)
                 if IS_AMAX:
-                    new_val = tl.maximum(cur_val, src_val)
+                    ordered_bits = tl.where(src_val > cur_val, src_bits, cur_bits)
                 else:
-                    new_val = tl.minimum(cur_val, src_val)
+                    ordered_bits = tl.where(src_val < cur_val, src_bits, cur_bits)
+                new_bits = tl.where(src_val != src_val, src_bits, ordered_bits)
+                new_bits = tl.where(cur_val != cur_val, cur_bits, new_bits)
+                new_bits = tl.where(stop, cur_bits, new_bits)
+                new_val = new_bits.to(tl.float32, bitcast=True)
                 cas_res = tl.atomic_cas(
                     out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
                 )
-                stop |= cur_val == cas_res
+                stop |= cur_bits == cas_res.to(tl.int32, bitcast=True)
                 block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
         else:
             if IS_AMAX:
-                tl.atomic_max(
-                    out_ptr + out_offsets, src_val, mask=mask, sem="relaxed"
-                )
+                tl.atomic_max(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
             else:
-                tl.atomic_min(
-                    out_ptr + out_offsets, src_val, mask=mask, sem="relaxed"
-                )
+                tl.atomic_min(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
 
 
 # ---------------------------------------------------------------------------
@@ -361,12 +316,8 @@ def scatter_reduce_sum_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
-        remaining = remaining % (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
+        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
+        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
         coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
         remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
         coord2 = remaining // (src_shape_3 * src_shape_4)
@@ -432,16 +383,12 @@ def scatter_reduce_sum_kernel(
                 + idx * out_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
         tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -488,12 +435,8 @@ def scatter_reduce_prod_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
-        remaining = remaining % (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
+        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
+        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
         coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
         remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
         coord2 = remaining // (src_shape_3 * src_shape_4)
@@ -559,32 +502,25 @@ def scatter_reduce_prod_kernel(
                 + idx * out_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
-        # CAS loop for product. NaN/Inf guard: if cur_val is NaN, mark as done
-        # to prevent infinite spin (NaN != NaN causes CAS to always fail).
+        # CAS loop for product.
         stop = tl.where(mask, 0, 1).to(tl.int1)
         block_stop = False
         while not block_stop:
             cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
             new_val = tl.where(stop, cur_val, cur_val * src_val)
-            # Detect NaN: if new_val != new_val (NaN check), use src_val directly
-            is_nan = new_val != new_val
-            new_val = tl.where(is_nan, src_val, new_val)
             cas_res = tl.atomic_cas(
                 out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
             )
-            # Mark done if CAS succeeded OR if value is NaN (can't recover)
-            stop |= (cur_val == cas_res) | is_nan
+            stop |= cur_val.to(tl.int32, bitcast=True) == cas_res.to(
+                tl.int32, bitcast=True
+            )
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -632,12 +568,8 @@ def scatter_reduce_mean_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
-        remaining = remaining % (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
+        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
+        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
         coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
         remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
         coord2 = remaining // (src_shape_3 * src_shape_4)
@@ -703,21 +635,15 @@ def scatter_reduce_mean_kernel(
                 + idx * out_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
         tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
         ones_f = tl.full((BLOCK,), 1.0, dtype=tl.float32)
-        tl.atomic_add(
-            count_ptr + out_offsets, ones_f, mask=mask, sem="relaxed"
-        )
+        tl.atomic_add(count_ptr + out_offsets, ones_f, mask=mask, sem="relaxed")
 
         if USE_MASK:
             ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones_i, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones_i, mask=mask, sem="relaxed")
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -766,12 +692,8 @@ def scatter_reduce_amax_kernel(
         mask = offsets < N
 
         remaining = offsets
-        coord0 = remaining // (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
-        remaining = remaining % (
-            src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
-        )
+        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
+        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
         coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
         remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
         coord2 = remaining // (src_shape_3 * src_shape_4)
@@ -837,39 +759,37 @@ def scatter_reduce_amax_kernel(
                 + idx * out_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
-            tl.float32
-        )
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
         if USE_CAS:
             stop = tl.where(mask, 0, 1).to(tl.int1)
             block_stop = False
             while not block_stop:
                 cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
+                cur_bits = cur_val.to(tl.int32, bitcast=True)
+                src_bits = src_val.to(tl.int32, bitcast=True)
                 if IS_AMAX:
-                    new_val = tl.maximum(cur_val, src_val)
+                    ordered_bits = tl.where(src_val > cur_val, src_bits, cur_bits)
                 else:
-                    new_val = tl.minimum(cur_val, src_val)
+                    ordered_bits = tl.where(src_val < cur_val, src_bits, cur_bits)
+                new_bits = tl.where(src_val != src_val, src_bits, ordered_bits)
+                new_bits = tl.where(cur_val != cur_val, cur_bits, new_bits)
+                new_bits = tl.where(stop, cur_bits, new_bits)
+                new_val = new_bits.to(tl.float32, bitcast=True)
                 cas_res = tl.atomic_cas(
                     out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
                 )
-                stop |= cur_val == cas_res
+                stop |= cur_bits == cas_res.to(tl.int32, bitcast=True)
                 block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
         else:
             if IS_AMAX:
-                tl.atomic_max(
-                    out_ptr + out_offsets, src_val, mask=mask, sem="relaxed"
-                )
+                tl.atomic_max(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
             else:
-                tl.atomic_min(
-                    out_ptr + out_offsets, src_val, mask=mask, sem="relaxed"
-                )
+                tl.atomic_min(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(
-                mask_ptr + out_offsets, ones, mask=mask, sem="relaxed"
-            )
+            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
 
 
 # ---------------------------------------------------------------------------
@@ -901,10 +821,9 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
         "amax",
         "amin",
     ), f"Unsupported reduce: {reduce}"
-    assert inp.ndim <= 5, (
-        f"scatter_reduce supports up to 5D tensors, got {inp.ndim}D"
-    )
+    assert inp.ndim <= 5, f"scatter_reduce supports up to 5D tensors, got {inp.ndim}D"
 
+    inp.size(dim)
     dim = dim % inp.ndim
     padded_dim = dim + (5 - inp.ndim)
 
@@ -930,13 +849,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
             out = torch.full_like(inp_f32, float("inf"))
 
     if N == 0:
-        return out.to(inp.dtype) if not include_self else inp_f32.to(inp.dtype)
+        return inp_f32.to(inp.dtype)
 
     use_mask = not include_self
     if use_mask:
-        reduced_mask = torch.zeros(
-            out.shape, dtype=torch.int32, device=inp.device
-        )
+        reduced_mask = torch.zeros(out.shape, dtype=torch.int32, device=inp.device)
 
     if reduce == "mean":
         if include_self:
@@ -1018,6 +935,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 BLOCK=128,
                 LOOP=4,
             )
+    elif reduce == "prod":
         if use_2d:
             src_ncols = src.shape[1]
             out_ncols = out.shape[1]
@@ -1070,6 +988,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 BLOCK=128,
                 LOOP=4,
             )
+    elif reduce == "mean":
         if use_2d:
             src_ncols = src.shape[1]
             out_ncols = out.shape[1]
@@ -1124,11 +1043,12 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
                 BLOCK=128,
                 LOOP=4,
             )
+        has_contributions = count > 0
         count = torch.clamp(count, min=1.0)
         out = out / count
         out = torch.where(has_contributions, out, inp_f32)
     elif reduce in ("amax", "amin"):
-        use_cas = _needs_cas_fallback()
+        use_cas = inp.dtype.is_floating_point
         if use_2d:
             src_ncols = src.shape[1]
             out_ncols = out.shape[1]
@@ -1195,20 +1115,14 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
-    result = scatter_reduce(
-        inp, dim, index, src, reduce, include_self=include_self
-    )
+    result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     inp.copy_(result)
     return inp
 
 
-def scatter_reduce_out(
-    inp, dim, index, src, reduce, *, include_self=True, out=None
-):
+def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
-    result = scatter_reduce(
-        inp, dim, index, src, reduce, include_self=include_self
-    )
+    result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:
         out.copy_(result)
         return out

@@ -14,9 +14,7 @@ def test_count_nonzero(shape):
     ref = torch.count_nonzero(x)
     tri = count_nonzero(x)
 
-    assert tri == ref, (
-        f"count_nonzero failed for shape {shape}: tri={tri}, ref={ref}"
-    )
+    assert tri == ref, f"count_nonzero failed for shape {shape}: tri={tri}, ref={ref}"
 
 
 @pytest.mark.parametrize("shape", [(4, 128), (8, 256)])
