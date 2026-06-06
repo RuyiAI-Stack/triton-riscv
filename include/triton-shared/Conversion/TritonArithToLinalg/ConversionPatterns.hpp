@@ -1022,11 +1022,13 @@ struct CatConverter : public OpConversionPattern<triton::CatOp> {
   LogicalResult
   matchAndRewrite(triton::CatOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    auto operands = adaptor.getOperands();
+    if (operands.empty())
+      return failure();
+
     auto replacement = rewriter.create<tensor::ConcatOp>(
-        op.getLoc(), 0 /* concat dimension */, adaptor.getOperands());
-
-    rewriter.replaceOp(op, replacement);
-
+        op.getLoc(), op.getType(), (uint64_t)0, operands);
+    rewriter.replaceOp(op, replacement.getResult());
     return success();
   }
 };
@@ -1076,7 +1078,9 @@ struct JoinConverter : public OpConversionPattern<triton::JoinOp> {
   LogicalResult
   matchAndRewrite(triton::JoinOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    ValueRange inputs = op.getOperands();
+    auto inputs = adaptor.getOperands();
+    if (inputs.size() != 2)
+      return failure();
 
     auto resultType = cast<RankedTensorType>(op.getResult().getType());
 
@@ -1085,20 +1089,18 @@ struct JoinConverter : public OpConversionPattern<triton::JoinOp> {
         loc, resultType.getShape(), resultType.getElementType());
 
     auto shape = resultType.getShape();
+    int64_t rank = resultType.getRank();
 
-    SmallVector<OpFoldResult> offsets(shape.size(), rewriter.getIndexAttr(0));
-    SmallVector<OpFoldResult> strides(shape.size(), rewriter.getIndexAttr(1));
+    SmallVector<OpFoldResult> offsets(rank, rewriter.getIndexAttr(0));
+    SmallVector<OpFoldResult> strides(rank, rewriter.getIndexAttr(1));
     SmallVector<OpFoldResult> sizes = llvm::to_vector(
         llvm::map_range(shape, [&](int64_t dim) -> OpFoldResult {
           return rewriter.getIndexAttr(dim);
         }));
 
     for (int i = 0; i < 2; ++i) {
-      offsets.pop_back();
-      sizes.pop_back();
-
-      offsets.push_back(rewriter.getIndexAttr(i));
-      sizes.push_back(rewriter.getIndexAttr(1));
+      offsets[rank - 1] = rewriter.getIndexAttr(i);
+      sizes[rank - 1] = rewriter.getIndexAttr(1);
       result = rewriter.create<tensor::InsertSliceOp>(loc, inputs[i], result,
                                                       offsets, sizes, strides);
     }
@@ -1160,14 +1162,15 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
   matchAndRewrite(triton::DotOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
-    auto opa = op.getA();
-    auto opb = op.getB();
-    auto opc = op.getC();
+    auto opa = adaptor.getA();
+    auto opb = adaptor.getB();
+    auto opc = adaptor.getC();
 
     auto dstType = cast<RankedTensorType>(op.getType());
     auto elementType = dstType.getElementType();
     bool integers = elementType.isInteger();
     bool skipC = isZeroTensor(opc, integers);
+
     auto init =
         rewriter.create<tensor::EmptyOp>(loc, dstType.getShape(), elementType);
     TypedAttr constantAttr =
@@ -1182,12 +1185,23 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
         rewriter.create<linalg::FillOp>(loc, ValueRange{zero}, ValueRange{init})
             .result();
 
-    // For mixed-precision integer matmul (e.g. i8 x i8 -> i32), linalg.matmul
-    // requires a cast attribute so the inner multiply can promote i8 operands
-    // to the i32 accumulator type.  Without it the op verifier rejects the IR.
     Value res;
-    auto aElemType =
-        cast<RankedTensorType>(opa.getType()).getElementType();
+    auto aElemType = cast<RankedTensorType>(opa.getType()).getElementType();
+    auto bElemType = cast<RankedTensorType>(opb.getType()).getElementType();
+
+    if (!integers && aElemType != elementType) {
+      // Promote float operands to accumulator type
+      auto opaType = cast<RankedTensorType>(opa.getType());
+      auto promotedAType =
+          RankedTensorType::get(opaType.getShape(), elementType);
+      opa = rewriter.create<arith::ExtFOp>(loc, promotedAType, opa);
+
+      auto opbType = cast<RankedTensorType>(opb.getType());
+      auto promotedBType =
+          RankedTensorType::get(opbType.getShape(), elementType);
+      opb = rewriter.create<arith::ExtFOp>(loc, promotedBType, opb);
+    }
+
     bool isMixedIntPrecision = integers && (aElemType != elementType);
     if (isMixedIntPrecision) {
       auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
@@ -1295,30 +1309,52 @@ private:
   }
 
   bool requiresF32Conversion(const Type elemType, Operation *redOp) const {
-    unsigned width =
-        cast<FloatType>(Float32Type::get(elemType.getContext())).getWidth();
-    return isa<FloatType>(elemType) &&
-           elemType.getIntOrFloatBitWidth() < width &&
-           isa<arith::AddFOp>(redOp);
+    if (auto floatType = dyn_cast<FloatType>(elemType)) {
+      bool widthOk = floatType.getWidth() < 32;
+      bool opOk = isa<arith::AddFOp>(redOp) || isa<arith::MulFOp>(redOp) ||
+                  isa<arith::MaximumFOp>(redOp) || isa<arith::MinimumFOp>(redOp);
+      return widthOk && opOk;
+    }
+    return false;
   }
 
   Value getRedElement(Value lhs, Value rhs, const Location loc,
                       Operation *redOp, OpBuilder &b,
                       const bool convertLhsToF32Precision) const {
+    Type accType = rhs.getType();
+    if (auto addf = dyn_cast<arith::AddFOp>(redOp)) {
+      if (lhs.getType() != accType)
+        lhs = b.create<arith::ExtFOp>(loc, accType, lhs);
+      return b.create<arith::AddFOp>(loc, accType, lhs, rhs,
+                                     addf.getFastmathAttr());
+    }
+    if (auto mulf = dyn_cast<arith::MulFOp>(redOp)) {
+      if (lhs.getType() != accType)
+        lhs = b.create<arith::ExtFOp>(loc, accType, lhs);
+      return b.create<arith::MulFOp>(loc, accType, lhs, rhs,
+                                     mulf.getFastmathAttr());
+    }
+    if (auto maxf = dyn_cast<arith::MaximumFOp>(redOp)) {
+      if (lhs.getType() != accType)
+        lhs = b.create<arith::ExtFOp>(loc, accType, lhs);
+      return b.create<arith::MaximumFOp>(loc, accType, lhs, rhs,
+                                         maxf.getFastmathAttr());
+    }
+    if (auto minf = dyn_cast<arith::MinimumFOp>(redOp)) {
+      if (lhs.getType() != accType)
+        lhs = b.create<arith::ExtFOp>(loc, accType, lhs);
+      return b.create<arith::MinimumFOp>(loc, accType, lhs, rhs,
+                                         minf.getFastmathAttr());
+    }
+
     return llvm::TypeSwitch<Operation *, Value>(redOp)
-        .Case<arith::AddFOp, arith::MulFOp>([&](auto redOp) {
-          if (convertLhsToF32Precision) {
-            lhs = b.create<arith::ExtFOp>(loc, Float32Type::get(b.getContext()),
-                                          lhs);
-          }
-          return b.create<decltype(redOp)>(loc, lhs, rhs);
-        })
-        .Case<arith::AddIOp, arith::AndIOp, arith::XOrIOp, arith::MaximumFOp,
-              arith::MaxNumFOp, arith::MulIOp, arith::MinimumFOp,
-              arith::MinNumFOp, arith::MinSIOp, arith::MinUIOp, arith::MaxSIOp,
-              arith::MaxUIOp, arith::OrIOp>([&](auto redOp) {
-          return b.create<decltype(redOp)>(loc, lhs, rhs);
-        })
+        .Case<arith::AddIOp, arith::MulIOp, arith::AndIOp, arith::OrIOp,
+              arith::XOrIOp, arith::MaxSIOp, arith::MaxUIOp, arith::MinSIOp,
+              arith::MinUIOp, arith::MinimumFOp, arith::MinNumFOp,
+              arith::MaximumFOp, arith::MaxNumFOp>(
+            [&](auto redOp) {
+              return b.create<decltype(redOp)>(loc, lhs, rhs);
+            })
         .Default([](Operation *op) {
           op->dump();
           llvm_unreachable("Reduction op not yet supported");
@@ -1326,40 +1362,54 @@ private:
         });
   }
 
+  SmallVector<Value> cloneReduceBody(triton::ReduceOp op, ValueRange current,
+                                     ValueRange accumulated, OpBuilder &builder,
+                                     Location loc) const {
+    Block *reduceBlock = op.getBody();
+    IRMapping mapping;
+    for (auto [arg, value] : llvm::zip_equal(
+             reduceBlock->getArguments().take_front(current.size()), current)) {
+      mapping.map(arg, value);
+    }
+    for (auto [arg, value] :
+         llvm::zip_equal(reduceBlock->getArguments().drop_front(current.size()),
+                         accumulated)) {
+      mapping.map(arg, value);
+    }
+
+    for (auto &innerOp : reduceBlock->without_terminator())
+      builder.clone(innerOp, mapping);
+
+    auto terminator =
+        cast<triton::ReduceReturnOp>(reduceBlock->getTerminator());
+    return llvm::map_to_vector(terminator.getOperands(), [&](Value operand) {
+      return mapping.lookup(operand);
+    });
+  }
+
   LogicalResult
   convertToLinalgReduce(triton::ReduceOp op,
                         typename triton::ReduceOp::Adaptor adaptor,
                         ConversionPatternRewriter &rewriter) const {
-    auto source = adaptor.getOperands().front();
-    auto sourceType = cast<RankedTensorType>(source.getType());
-    auto elemType = sourceType.getElementType();
-    auto resType = op.getResult().front().getType();
+    SmallVector<Value> operands(adaptor.getOperands().begin(),
+                                adaptor.getOperands().end());
+    if (operands.empty())
+      return failure();
+
+    auto firstSource = operands.front();
+    auto firstSourceType = cast<RankedTensorType>(firstSource.getType());
     auto loc = op.getLoc();
     auto reductionOps = getRedOps(op);
 
-    // Reduction of arbitrary operations isn't supported because using the first
-    // element across the reduction dimension requires us to iterate over a
-    // subview that skips over each first element.
-    if (reductionOps.size() != 1 ||
-        !isReductionOpSupported(reductionOps.front())) {
-      return rewriter.notifyMatchFailure(
-          op, "Only support lowering reduction with body "
-              "containing 1 max(i/f), addf, ori, or mulf.");
-    }
-
-    auto rop = reductionOps.front();
     auto axis = op.getAxis();
-    auto rank = sourceType.getRank();
+    auto rank = firstSourceType.getRank();
     auto isVectorReduce = (rank == 1);
+    auto resType = op.getResult().front().getType();
 
     // For now we are transposing reductions from Triton Shared as an
     // optimization. This should not be the job of Triton Shared so moving
-    // forward this will be removed. Doing the transpose here lacks a wider
-    // scope of analysis that might indicate that the transpose to a given axis
-    // is not optimal.
+    // forward this will be removed.
     if (transposeToRank0) {
-      // if it is not a vector reduce, we can transpose the source
-      // so that the reduction axis is the first dimension.
       if (!isVectorReduce && axis != 0) {
         SmallVector<int32_t> order;
         order.reserve(rank);
@@ -1369,70 +1419,136 @@ private:
             order.push_back(i);
           }
         }
-        source = getTransposedValue(source, op.getLoc(), rewriter, order);
+        for (Value &operand : operands) {
+          operand = getTransposedValue(operand, loc, rewriter, order);
+        }
         axis = 0;
       }
     } else {
-      // preserving old behavior until we remove the transpose entirely.
       if (axis == rank - 1 && !isVectorReduce) {
-        source = getTransposedValue(source, op.getLoc(), rewriter);
+        for (Value &operand : operands) {
+          operand = getTransposedValue(operand, loc, rewriter);
+        }
         axis = rank - 2;
       }
     }
 
-    bool convertToF32Precision = requiresF32Conversion(resType, rop);
+    // Determine if we can use a simple initialization with linalg.fill
+    bool isSimpleReduction = (reductionOps.size() == 1 &&
+                              operands.size() == 1 &&
+                              isReductionOpSupported(reductionOps.front()));
 
-    auto constantType = convertToF32Precision
-                            ? Float32Type::get(rewriter.getContext())
-                            : elemType;
+    SmallVector<Value> initTensors;
+    SmallVector<Value> reductionInputs;
 
-    auto accBaseConstOp = getRedBaseConstOp(rewriter, rop, constantType);
-    Value initTensor;
+    if (isSimpleReduction) {
+      auto rop = reductionOps.front();
+      auto resType = op.getResult().front().getType();
+      bool convertToF32Precision = requiresF32Conversion(resType, rop);
+      auto constantType = convertToF32Precision
+                              ? Float32Type::get(rewriter.getContext())
+                              : firstSourceType.getElementType();
+      auto accBaseConstOp = getRedBaseConstOp(rewriter, rop, constantType);
 
-    if (isVectorReduce) {
-      // The affine vectorizer cannot vectorize affine loops generated from
-      // linalg.reduce for the vector reduce case, so we must rewrite the
-      // linalg.reduce to affine loops manually. Here we lower to AllocTensor
-      // directly instead of EmptyOp so that the subsequent pass can recognize
-      // the patterns (EmptyOp is susceptible to being CSE'd away, making it
-      // harder to match the patterns correctly).
-      initTensor = rewriter.create<bufferization::AllocTensorOp>(
-          loc, RankedTensorType::get({}, constantType), ValueRange{});
-      initTensor = rewriter.create<tensor::InsertOp>(loc, accBaseConstOp,
-                                                     initTensor, ValueRange{});
+      if (isVectorReduce) {
+        Value init = rewriter.create<tensor::EmptyOp>(
+            loc, RankedTensorType::get({}, constantType), ValueRange{});
+        initTensors.push_back(
+            rewriter
+                .create<linalg::FillOp>(loc, ValueRange{accBaseConstOp},
+                                        ValueRange{init})
+                .result());
+      } else {
+        Value init = rewriter.create<tensor::EmptyOp>(
+            loc, cast<RankedTensorType>(resType).getShape(), constantType);
+        initTensors.push_back(
+            rewriter
+                .create<linalg::FillOp>(loc, ValueRange{accBaseConstOp},
+                                        ValueRange{init})
+                .result());
+      }
+      reductionInputs.push_back(operands.front());
     } else {
-      Value init = rewriter.create<tensor::EmptyOp>(
-          loc, cast<RankedTensorType>(resType).getShape(), constantType);
-      initTensor = rewriter
-                       .create<linalg::FillOp>(loc, ValueRange{accBaseConstOp},
-                                               ValueRange{init})
-                       .result();
+      // Generic reduction: use the first element along reduction axis as init
+      for (auto [input, result] : llvm::zip_equal(operands, op.getResults())) {
+        auto inputType = cast<RankedTensorType>(input.getType());
+        auto resType = result.getType();
+        auto shape = inputType.getShape();
+
+        // Slice first element along axis
+        SmallVector<OpFoldResult> offsets(rank, rewriter.getIndexAttr(0));
+        SmallVector<OpFoldResult> sizes;
+        for (int64_t s : shape)
+          sizes.push_back(rewriter.getIndexAttr(s));
+        sizes[axis] = rewriter.getIndexAttr(1);
+        SmallVector<OpFoldResult> strides(rank, rewriter.getIndexAttr(1));
+
+        SmallVector<int64_t> slicedShape;
+        for (int i = 0; i < rank; ++i) {
+          if (i != axis)
+            slicedShape.push_back(shape[i]);
+        }
+        auto slicedType =
+            RankedTensorType::get(slicedShape, inputType.getElementType());
+
+        Value first = rewriter.create<tensor::ExtractSliceOp>(
+            loc, slicedType, input, offsets, sizes, strides);
+        initTensors.push_back(first);
+
+        // Slice remaining elements
+        offsets[axis] = rewriter.getIndexAttr(1);
+        sizes[axis] = rewriter.getIndexAttr(shape[axis] - 1);
+        SmallVector<int64_t> restShape(shape.begin(), shape.end());
+        restShape[axis] -= 1;
+        auto restRankedType =
+            RankedTensorType::get(restShape, inputType.getElementType());
+
+        Value rest = rewriter.create<tensor::ExtractSliceOp>(
+            loc, restRankedType, input, offsets, sizes, strides);
+        reductionInputs.push_back(rest);
+      }
     }
 
-    Value finalResult =
-        rewriter
-            .create<linalg::ReduceOp>(
-                loc, ValueRange{source}, ValueRange{initTensor},
-                SmallVector<int64_t>{axis},
-                [&](OpBuilder &opBuilder, Location loc, ValueRange inputs) {
-                  assert(inputs.size() == 2);
-                  Value result =
-                      getRedElement(inputs[0], inputs[1], loc, rop, opBuilder,
-                                    convertToF32Precision);
-                  opBuilder.create<linalg::YieldOp>(loc, result);
-                })
-            .getResult(0);
+    auto linalgOp = rewriter.create<linalg::ReduceOp>(
+        loc, reductionInputs, initTensors, SmallVector<int64_t>{axis},
+        [&](OpBuilder &b, Location loc, ValueRange inputs) {
+          // inputs are [ins..., outs...]
+          unsigned numInputs = reductionInputs.size();
+          ValueRange current = inputs.take_front(numInputs);
+          ValueRange accumulated = inputs.drop_front(numInputs);
 
-    if (isVectorReduce) {
-      finalResult =
-          rewriter.create<tensor::ExtractOp>(loc, constantType, finalResult);
+          if (isSimpleReduction) {
+            auto rop = reductionOps.front();
+            Value result = getRedElement(current[0], accumulated[0], loc, rop, b,
+                                         requiresF32Conversion(resType, rop));
+            b.create<linalg::YieldOp>(loc, result);
+          } else {
+            SmallVector<Value> nextAccs =
+                cloneReduceBody(op, current, accumulated, b, loc);
+            b.create<linalg::YieldOp>(loc, nextAccs);
+          }
+        });
+
+    SmallVector<Value> finalResults;
+    for (auto [res, tritonRes] :
+         llvm::zip_equal(linalgOp.getResults(), op.getResults())) {
+      Value val = res;
+      if (isVectorReduce) {
+        val = rewriter.create<tensor::ExtractOp>(loc, val, ValueRange{});
+      }
+
+      // Handle precision conversion for the simple path if it was used
+      if (isSimpleReduction) {
+        auto rop = reductionOps.front();
+        auto resType = op.getResult().front().getType();
+        if (requiresF32Conversion(resType, rop)) {
+          val = rewriter.create<arith::TruncFOp>(loc, resType, val);
+        }
+      }
+      finalResults.push_back(val);
     }
 
-    if (convertToF32Precision) {
-      finalResult = rewriter.create<arith::TruncFOp>(loc, resType, finalResult);
-    }
-
-    rewriter.replaceOp(op, finalResult);
+    rewriter.replaceOp(op, finalResults);
     return success();
   }
 
@@ -1595,7 +1711,12 @@ class ArgMinMaxBaseConverter : public OpConversionPattern<triton::ReduceOp> {
   }
 
 public:
-  ArgMinMaxBaseConverter(MLIRContext *context) : OpConversionPattern(context) {}
+  ArgMinMaxBaseConverter(MLIRContext *context, bool transposeToRank0 = true)
+      : OpConversionPattern<triton::ReduceOp>(context),
+        transposeToRank0(transposeToRank0) {}
+
+private:
+  bool transposeToRank0;
 
   LogicalResult
   matchAndRewrite(ReduceOp op, OpAdaptor adaptor,
@@ -1661,6 +1782,38 @@ public:
 
     auto elemTypes = op.getElementTypes();
 
+    SmallVector<Value> operands(adaptor.getOperands().begin(),
+                                adaptor.getOperands().end());
+    auto axis = adaptor.getAxis();
+    auto firstSource = operands.front();
+    auto firstSourceType = cast<RankedTensorType>(firstSource.getType());
+    auto rank = firstSourceType.getRank();
+    auto isVectorReduce = (rank == 1);
+
+    if (transposeToRank0) {
+      if (!isVectorReduce && axis != 0) {
+        SmallVector<int32_t> order;
+        order.reserve(rank);
+        order.push_back(axis);
+        for (int i = 0; i < rank; ++i) {
+          if (i != axis) {
+            order.push_back(i);
+          }
+        }
+        for (Value &operand : operands) {
+          operand = getTransposedValue(operand, loc, rewriter, order);
+        }
+        axis = 0;
+      }
+    } else {
+      if (axis == rank - 1 && !isVectorReduce) {
+        for (Value &operand : operands) {
+          operand = getTransposedValue(operand, loc, rewriter);
+        }
+        axis = rank - 2;
+      }
+    }
+
     // Set the initial value of the rank-0 tensor containing
     // the result value to either -inf or +inf depending on
     // whether we're dealing with argmax or argmin
@@ -1689,8 +1842,7 @@ public:
         getInitTensor(rewriter, reductionResultShape, indicesAccBaseVal, loc)};
 
     auto linalgOp = rewriter.create<linalg::ReduceOp>(
-        loc, adaptor.getOperands(), outputs,
-        SmallVector<int64_t>{adaptor.getAxis()},
+        loc, operands, outputs, SmallVector<int64_t>{axis},
         [&](OpBuilder &b, Location loc, ValueRange inputs) {
           assert(inputs.size() == 4);
 
@@ -1751,7 +1903,8 @@ struct ArgMaxConverter : public ArgMinMaxBaseConverter<ArgMaxConverter> {
     return -std::numeric_limits<float>::infinity();
   }
 
-  ArgMaxConverter(MLIRContext *context) : ArgMinMaxBaseConverter(context) {}
+  ArgMaxConverter(MLIRContext *context, bool transposeToRank0 = true)
+      : ArgMinMaxBaseConverter(context, transposeToRank0) {}
 };
 
 struct ArgMinConverter : public ArgMinMaxBaseConverter<ArgMinConverter> {
@@ -1782,7 +1935,8 @@ struct ArgMinConverter : public ArgMinMaxBaseConverter<ArgMinConverter> {
     return std::numeric_limits<float>::infinity();
   }
 
-  ArgMinConverter(MLIRContext *context) : ArgMinMaxBaseConverter(context) {}
+  ArgMinConverter(MLIRContext *context, bool transposeToRank0 = true)
+      : ArgMinMaxBaseConverter(context, transposeToRank0) {}
 };
 
 // get_program_id and get_num_programs:
@@ -1958,66 +2112,217 @@ struct DenseConstantConverter : public OpConversionPattern<arith::ConstantOp> {
 class CumSumConverter : public OpConversionPattern<triton::ScanOp> {
   using OpConversionPattern<triton::ScanOp>::OpConversionPattern;
 
-  // CumSum is a specific instance of Scan that looks like the following:
-  //       %1 = "tt.scan"(%0) <{axis = 1 : i32}> ({
-  //       ^bb0(%arg0: f32, %arg1: f32):
-  //         %2 = arith.addf %arg0, %arg1 : f32
-  //         tt.scan.return %2 : f32
-  //       }) : (tensor<4x4xf32>) -> tensor<4x4xf32>
-  bool isCumSum(triton::ScanOp op) const {
-    auto scanBlock = op.getBody();
-    auto ops = llvm::map_to_vector(scanBlock->without_terminator(),
-                                   [](Operation &op) { return &op; });
-
-    if (ops.size() != 1) {
-      return false;
+  SmallVector<Value> cloneScanBody(triton::ScanOp op, ValueRange accumulated,
+                                   ValueRange current,
+                                   OpBuilder &builder) const {
+    Block *scanBlock = op.getBody();
+    IRMapping mapping;
+    for (auto [arg, value] : llvm::zip_equal(
+             scanBlock->getArguments().take_front(accumulated.size()),
+             accumulated)) {
+      mapping.map(arg, value);
+    }
+    for (auto [arg, value] : llvm::zip_equal(
+             scanBlock->getArguments().drop_front(accumulated.size()),
+             current)) {
+      mapping.map(arg, value);
     }
 
-    auto addOp = ops.front();
-    if (isa<arith::AddFOp, arith::AddIOp>(addOp)) {
-      if (addOp->getResult(0) != scanBlock->getTerminator()->getOperand(0)) {
-        return false;
-      }
+    for (auto &innerOp : scanBlock->without_terminator())
+      builder.clone(innerOp, mapping);
 
-      auto blockArgs =
-          llvm::map_range(scanBlock->getArguments(), [](BlockArgument arg) {
-            return dyn_cast<Value>(arg);
-          });
-
-      auto addArgs = addOp->getOperands();
-
-      return DenseSet<Value>(blockArgs.begin(), blockArgs.end()) ==
-             DenseSet<Value>(addArgs.begin(), addArgs.end());
-    }
-
-    return false;
+    auto terminator = cast<triton::ScanReturnOp>(scanBlock->getTerminator());
+    return llvm::map_to_vector(terminator.getOperands(), [&](Value operand) {
+      return mapping.lookup(operand);
+    });
   }
 
 public:
   LogicalResult
   matchAndRewrite(triton::ScanOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!isCumSum(op)) {
+    ValueRange inputs = adaptor.getSrcs();
+    if (inputs.empty())
+      return failure();
+
+    unsigned numSrcs = inputs.size();
+    if (op.getNumResults() != numSrcs) {
       return rewriter.notifyMatchFailure(
-          op, "Only support cumsum variant of scan op");
+          op, "scan lowering expects one result per input");
     }
 
-    auto input = op.getOperand(0);
-    auto axis = op.getAxis();
-    auto type = dyn_cast<RankedTensorType>(input.getType());
+    Block *scanBlock = op.getBody();
+    if (scanBlock->getNumArguments() != numSrcs * 2) {
+      return rewriter.notifyMatchFailure(
+          op, "scan combine block argument count mismatch");
+    }
 
-    if (type.getRank() != 1 && type.getRank() != 2 &&
+    auto axis = op.getAxis();
+    auto type = dyn_cast<RankedTensorType>(inputs.front().getType());
+    if (!type)
+      return failure();
+
+    if ((type.getRank() != 1 && type.getRank() != 2) ||
         axis != type.getRank() - 1) {
       return rewriter.notifyMatchFailure(
-          op, "Only support lowering scan op to cumsum with rank "
+          op, "Only support lowering scan op with rank "
               "= {1, 2} and axis = rank - 1");
     }
 
-    Value init = rewriter.create<tensor::EmptyOp>(op.getLoc(), type.getShape(),
-                                                  type.getElementType());
+    if (llvm::any_of(type.getShape(), ShapedType::isDynamic))
+      return rewriter.notifyMatchFailure(
+          op, "Only support lowering scan op with static shape");
 
-    rewriter.replaceOpWithNewOp<ttx::CumSumOp>(
-        op, input, rewriter.getUI32IntegerAttr(axis), init);
+    if (type.getDimSize(axis) <= 0)
+      return rewriter.notifyMatchFailure(
+          op, "Only support lowering scan op with non-empty scan axis");
+
+    for (Value input : inputs) {
+      auto inputType = dyn_cast<RankedTensorType>(input.getType());
+      if (!inputType || inputType.getRank() != type.getRank() ||
+          inputType.getShape() != type.getShape()) {
+        return rewriter.notifyMatchFailure(
+            op, "scan inputs must have the same static shape");
+      }
+    }
+
+    Location loc = op.getLoc();
+    int64_t rank = type.getRank();
+    ArrayRef<int64_t> shape = type.getShape();
+
+    SmallVector<Value> initTensors;
+    initTensors.reserve(op.getNumResults());
+    for (Value result : op.getResults()) {
+      auto resultType = dyn_cast<RankedTensorType>(result.getType());
+      if (!resultType || resultType.getRank() != rank ||
+          resultType.getShape() != shape) {
+        return rewriter.notifyMatchFailure(
+            op, "scan results must have the same static shape as inputs");
+      }
+      initTensors.push_back(rewriter.create<tensor::EmptyOp>(
+          loc, resultType.getShape(), resultType.getElementType()));
+    }
+
+    Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+
+    if (rank == 1) {
+      Value n = rewriter.create<arith::ConstantIndexOp>(loc, shape[0]);
+
+      SmallVector<Value> initialAccs;
+      initialAccs.reserve(numSrcs);
+      for (Value input : inputs)
+        initialAccs.push_back(
+            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange{c0}));
+
+      SmallVector<Value> firstResults;
+      firstResults.reserve(numSrcs);
+      for (auto [initTensor, initialAcc] :
+           llvm::zip_equal(initTensors, initialAccs)) {
+        firstResults.push_back(rewriter.create<tensor::InsertOp>(
+            loc, initialAcc, initTensor, ValueRange{c0}));
+      }
+
+      SmallVector<Value> iterArgs = initialAccs;
+      iterArgs.append(firstResults.begin(), firstResults.end());
+
+      auto loop = rewriter.create<scf::ForOp>(loc, c1, n, c1, iterArgs);
+      {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(loop.getBody());
+        Value i = loop.getInductionVar();
+
+        SmallVector<Value> current;
+        current.reserve(numSrcs);
+        for (Value input : inputs)
+          current.push_back(
+              rewriter.create<tensor::ExtractOp>(loc, input, ValueRange{i}));
+
+        SmallVector<Value> nextAccs =
+            cloneScanBody(op, loop.getRegionIterArgs().take_front(numSrcs),
+                          current, rewriter);
+
+        SmallVector<Value> nextResults;
+        nextResults.reserve(numSrcs);
+        for (auto [resultTensor, nextAcc] : llvm::zip_equal(
+                 loop.getRegionIterArgs().drop_front(numSrcs), nextAccs)) {
+          nextResults.push_back(rewriter.create<tensor::InsertOp>(
+              loc, nextAcc, resultTensor, ValueRange{i}));
+        }
+
+        SmallVector<Value> yieldValues = nextAccs;
+        yieldValues.append(nextResults.begin(), nextResults.end());
+        rewriter.create<scf::YieldOp>(loc, yieldValues);
+      }
+
+      SmallVector<Value> results;
+      for (Value result : loop.getResults().drop_front(numSrcs))
+        results.push_back(result);
+      rewriter.replaceOp(op, results);
+      return success();
+    }
+
+    Value m = rewriter.create<arith::ConstantIndexOp>(loc, shape[0]);
+    Value n = rewriter.create<arith::ConstantIndexOp>(loc, shape[1]);
+    auto outerLoop = rewriter.create<scf::ForOp>(loc, c0, m, c1, initTensors);
+    {
+      OpBuilder::InsertionGuard outerGuard(rewriter);
+      rewriter.setInsertionPointToStart(outerLoop.getBody());
+      Value i = outerLoop.getInductionVar();
+
+      SmallVector<Value> initialAccs;
+      initialAccs.reserve(numSrcs);
+      for (Value input : inputs)
+        initialAccs.push_back(
+            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange{i, c0}));
+
+      SmallVector<Value> firstResults;
+      firstResults.reserve(numSrcs);
+      for (auto [outputTensor, initialAcc] :
+           llvm::zip_equal(outerLoop.getRegionIterArgs(), initialAccs)) {
+        firstResults.push_back(rewriter.create<tensor::InsertOp>(
+            loc, initialAcc, outputTensor, ValueRange{i, c0}));
+      }
+
+      SmallVector<Value> iterArgs = initialAccs;
+      iterArgs.append(firstResults.begin(), firstResults.end());
+
+      auto innerLoop = rewriter.create<scf::ForOp>(loc, c1, n, c1, iterArgs);
+      {
+        OpBuilder::InsertionGuard innerGuard(rewriter);
+        rewriter.setInsertionPointToStart(innerLoop.getBody());
+        Value j = innerLoop.getInductionVar();
+
+        SmallVector<Value> current;
+        current.reserve(numSrcs);
+        for (Value input : inputs)
+          current.push_back(
+              rewriter.create<tensor::ExtractOp>(loc, input, ValueRange{i, j}));
+
+        SmallVector<Value> nextAccs =
+            cloneScanBody(op, innerLoop.getRegionIterArgs().take_front(numSrcs),
+                          current, rewriter);
+
+        SmallVector<Value> nextResults;
+        nextResults.reserve(numSrcs);
+        for (auto [resultTensor, nextAcc] : llvm::zip_equal(
+                 innerLoop.getRegionIterArgs().drop_front(numSrcs), nextAccs)) {
+          nextResults.push_back(rewriter.create<tensor::InsertOp>(
+              loc, nextAcc, resultTensor, ValueRange{i, j}));
+        }
+
+        SmallVector<Value> yieldValues = nextAccs;
+        yieldValues.append(nextResults.begin(), nextResults.end());
+        rewriter.create<scf::YieldOp>(loc, yieldValues);
+      }
+
+      SmallVector<Value> outerYieldValues;
+      for (Value result : innerLoop.getResults().drop_front(numSrcs))
+        outerYieldValues.push_back(result);
+      rewriter.create<scf::YieldOp>(loc, outerYieldValues);
+    }
+
+    rewriter.replaceOp(op, outerLoop.getResults());
 
     return success();
   }

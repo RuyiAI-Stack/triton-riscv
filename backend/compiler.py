@@ -437,6 +437,7 @@ class CPUOptions:
     # Target specific backends can eanble it with supported types.
     supported_fp8_dtypes: Tuple[str] = ()
     allow_fp8e4nv: bool = False
+    max_num_imprecise_acc_default: int = 0
     allowed_dot_input_precisions: Tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
 
