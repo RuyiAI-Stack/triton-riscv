@@ -1,4 +1,5 @@
-"""FP8 Matrix Multiplication — Triton Kernel (Block-wise Scaling)
+"""FP8 Matrix Multiplication — Triton Kernel (Block-wise Scaling).
+
 Fixed config version for H20 deployment (no autotune warmup).
 
 API:
@@ -7,7 +8,7 @@ API:
     a:   (..., K)                    float8_e4m3fn, contiguous
     a_s: (..., K // group_size)      float32, per-token-group scale
     b:   (N, K)                      float8_e4m3fn, contiguous
-    b_s: (N // group_size, K // group_size)  float32, per-block scale
+    b_s: (ceil(N / group_size), ceil(K / group_size))  float32, per-block scale
     group_size = 128
 
     Returns: (..., N) bfloat16
@@ -74,8 +75,10 @@ def fp8_matmul_kernel(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_m = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
-    offs_n = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
+    offs_m_raw = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n_raw = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_m = offs_m_raw % M
+    offs_n = offs_n_raw % N
     offs_k = tl.arange(0, BLOCK_K)
 
     a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
@@ -115,7 +118,8 @@ def fp8_matmul_kernel(
 
     c = acc.to(tl.bfloat16)
     c_ptrs = C + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
-    tl.store(c_ptrs, c)
+    store_mask = (offs_m_raw[:, None] < M) & (offs_n_raw[None, :] < N)
+    tl.store(c_ptrs, c, mask=store_mask)
 
 
 def fp8_matmul(
@@ -131,7 +135,10 @@ def fp8_matmul(
         a:   (..., K)                        float8_e4m3fn, contiguous
         a_s: (..., K // 128)                 float32, per-token-group scale
         b:   (N, K)                          float8_e4m3fn, contiguous
-        b_s: (N // 128, K // 128)            float32, per-block scale
+        b_s: (ceil(N / 128), ceil(K / 128))  float32, per-block scale
+        scale_dtype: Scale storage dtype. float8_e8m0fnu scales are converted
+            to float32 before launch.
+
     Returns:
         (..., N) bfloat16
     """
@@ -143,6 +150,12 @@ def fp8_matmul(
     M = a.numel() // K
     N, K2 = b.shape
     assert K == K2
+    k_groups = triton.cdiv(K, GROUP_SIZE)
+    n_groups = triton.cdiv(N, GROUP_SIZE)
+    assert a_s.size(-1) >= k_groups
+    assert (
+        b_s.ndim == 2 and b_s.size(0) >= n_groups and b_s.size(1) >= k_groups
+    )
 
     if scale_dtype == torch.float8_e8m0fnu:
         a_s = a_s.to(torch.float32)

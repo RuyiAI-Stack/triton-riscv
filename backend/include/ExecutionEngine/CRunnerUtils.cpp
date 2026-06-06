@@ -29,8 +29,10 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <random>
 #include <string.h>
 
@@ -38,6 +40,15 @@
 
 namespace {
 template <typename V> void stdSort(uint64_t n, V *p) { std::sort(p, p + n); }
+
+uint32_t roundToNearestEven(float value) {
+  float floored = std::floor(value);
+  uint32_t rounded = static_cast<uint32_t>(floored);
+  float fraction = value - floored;
+  if (fraction > 0.5f || (fraction == 0.5f && (rounded & 1u)))
+    ++rounded;
+  return rounded;
+}
 
 } // namespace
 
@@ -110,6 +121,61 @@ extern "C" void memrefCopy(int64_t elemSize, UnrankedMemRefType<char> *srcArg,
       writeIndex -= dst.sizes[axis] * dstStrides[axis];
     }
   }
+}
+
+extern "C" float __triton_shared_fp8e4nv_to_f32(uint8_t bits) {
+  uint8_t sign = bits & 0x80u;
+  uint8_t exponent = (bits >> 3) & 0x0fu;
+  uint8_t mantissa = bits & 0x07u;
+
+  float value;
+  if (exponent == 0) {
+    value = std::ldexp(static_cast<float>(mantissa), -9);
+  } else if (exponent == 0x0f && mantissa == 0x07) {
+    value = std::numeric_limits<float>::quiet_NaN();
+  } else {
+    value = std::ldexp(static_cast<float>(8u + mantissa), exponent - 10);
+  }
+
+  return sign ? -value : value;
+}
+
+extern "C" uint8_t __triton_shared_f32_to_fp8e4nv(float value) {
+  uint8_t sign = std::signbit(value) ? 0x80u : 0u;
+  float magnitude = std::fabs(value);
+
+  if (std::isnan(value) || std::isinf(value) || magnitude > 464.0f)
+    return sign | 0x7fu;
+  if (magnitude == 0.0f)
+    return sign;
+
+  constexpr float minNormal = 0.015625f; // 2^-6
+  if (magnitude < minNormal) {
+    uint32_t subnormal = roundToNearestEven(magnitude * 512.0f);
+    if (subnormal > 8u)
+      subnormal = 8u;
+    return sign | static_cast<uint8_t>(subnormal);
+  }
+
+  int frexpExponent = 0;
+  std::frexp(magnitude, &frexpExponent);
+  int exponent = frexpExponent - 1;
+  uint32_t significand =
+      roundToNearestEven(std::ldexp(magnitude, 3 - exponent));
+  if (significand == 16u) {
+    significand = 8u;
+    ++exponent;
+  }
+
+  int encodedExponent = exponent + 7;
+  if (encodedExponent >= 16)
+    return sign | 0x7fu;
+
+  uint32_t mantissa = significand - 8u;
+  if (encodedExponent == 15 && mantissa >= 7u)
+    return sign | 0x7fu;
+
+  return sign | static_cast<uint8_t>((encodedExponent << 3) | mantissa);
 }
 
 /// Prints GFLOPS rating.

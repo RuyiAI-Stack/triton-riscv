@@ -225,6 +225,7 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         vector_path = os.path.join(tmpdir, "vector.mlir")
+        fp8_expanded_vector_path = os.path.join(tmpdir, "vector-fp8-expanded.mlir")
         Path(ttshared_path).write_text(ttsharedir)
         buddy_opt_path = _get_buddy_opt_path()
         subprocess.check_call(
@@ -254,9 +255,25 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
 def _vectorir_to_llir(vectorir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         vector_path = os.path.join(tmpdir, "vector.mlir")
+        fp8_expanded_vector_path = os.path.join(tmpdir, "vector-fp8-expanded.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(vector_path).write_text(vectorir)
+        if "f8E4M3FN" in vectorir:
+            triton_shared_opt_path = _get_triton_shared_opt_path()
+            subprocess.check_call(
+                [
+                    triton_shared_opt_path,
+                    vector_path,
+                    "--expand-float8-conversions",
+                    "--canonicalize",
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    fp8_expanded_vector_path,
+                ]
+            )
+            _dump_ir_if_needed([fp8_expanded_vector_path])
+            vector_path = fp8_expanded_vector_path
         buddy_opt_path = _get_buddy_opt_path()
         # TritonShared-MLIR to LLVM-MLIR
         subprocess.check_call(
@@ -433,10 +450,11 @@ class CPUOptions:
     extern_libs = None
     cluster_dims: tuple = (1, 1, 1)
     shared: bool = False
-    # Disable FP8 here since this is a sample CPU backend.
-    # Target specific backends can eanble it with supported types.
-    supported_fp8_dtypes: Tuple[str] = ()
-    allow_fp8e4nv: bool = False
+    # The RISC-V backend supports fp8_e4m3fn storage/conversion through
+    # Triton's fp8e4nv IR type. Keep the list explicit so unsupported fp8
+    # variants still fail at frontend type legalization.
+    supported_fp8_dtypes: Tuple[str] = ("fp8e4nv",)
+    allow_fp8e4nv: bool = True
     allowed_dot_input_precisions: Tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
 
