@@ -43,6 +43,8 @@ if [ ! -d "${TRITON_DIR}" ]; then
     git clone https://github.com/triton-lang/triton.git "${TRITON_DIR}"
 fi
 
+git config --global --add safe.directory "${TRITON_RISCV_DIR}"
+git config --global --add safe.directory "${TRITON_DIR}"
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
 
 "${TRITON_RISCV_DIR}/scripts/apply_patches.sh" "${TRITON_DIR}"
