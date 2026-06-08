@@ -2,48 +2,87 @@ name: Release Wheels
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: Release version tag
-        required: true
-        type: string
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: "30 18 * * 0"
 
 permissions:
   contents: write
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   prepare_release:
     runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.vars.outputs.tag }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag_name: ${{ steps.vars.outputs.tag_name }}
+      name: ${{ steps.vars.outputs.name }}
+      draft: ${{ steps.vars.outputs.draft }}
+      prerelease: ${{ steps.vars.outputs.prerelease }}
+      make_latest: ${{ steps.vars.outputs.make_latest }}
+
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - name: Prepare variables
         id: vars
         run: |
-          # tigger by hand
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          DATE="$(date -u +'%Y%m%d')"
+          DISPLAY_DATE="$(date -u +'%Y-%m-%d')"
+          SHA="$(git rev-parse --short=7 HEAD)"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            NAME="triton-riscv ${DISPLAY_DATE}-${SHA}"
+            TAG_NAME="release/${DATE}-${SHA}"
+            DRAFT="true"
+            PRERELEASE="false"
+            MAKE_LATEST="true"
           else
-            DATE=$(date +'%Y-%m-%d')
-            SHA=$(git rev-parse --short=7 HEAD)
-            TAG_NAME="Nightly Release ${DATE}-${SHA}"
-            echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+            NAME="Nightly ${DISPLAY_DATE}-${SHA}"
+            TAG_NAME="nightly/${DATE}-${SHA}"
+            DRAFT="false"
+            PRERELEASE="true"
+            MAKE_LATEST="false"
           fi
-      - name: Create draft release
-        id: create_release
+
+          {
+            echo "tag_name=${TAG_NAME}"
+            echo "name=${NAME}"
+            echo "draft=${DRAFT}"
+            echo "prerelease=${PRERELEASE}"
+            echo "make_latest=${MAKE_LATEST}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release page
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          draft: true
+          tag_name: ${{ steps.vars.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.vars.outputs.name }}
+          draft: ${{ steps.vars.outputs.draft }}
+          append_body: false
+          overwrite_files: true
+          prerelease: ${{ steps.vars.outputs.prerelease }}
+          make_latest: ${{ steps.vars.outputs.make_latest }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   wheel:
-    name: Build (${{ matrix.target_arch }}, py${{ matrix.python }})
-    needs:
-      - prepare_release
-    runs-on: ${{ matrix.runner }}
+    needs: prepare_release
+    name: Build (${{ matrix.arch }}, py${{ matrix.python }})
+    timeout-minutes: 360
+    continue-on-error: false
+
+    concurrency:
+      group: triton-riscv-manylinux-${{ matrix.arch }}-py${{ matrix.python }}-${{ needs.prepare_release.outputs.tag_name }}
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
       matrix:
@@ -56,40 +95,49 @@ jobs:
           - arch: riscv64
             target_arch: riscv64
             runner: ubuntu-24.04-riscv
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
-          python-version: ${{ matrix.python }}
+          submodules: "false"
 
       - name: Prepare variables
+        id: vars
         run: |
-          PY_NODOT="${{ matrix.python }}"
-          PY_NODOT="${PY_NODOT//./}"
-          echo "TRITON_PYTHON_TAG=cp${PY_NODOT}-cp${PY_NODOT}" >> "$GITHUB_ENV"
+          set -euo pipefail
+
+          PY_VER="${{ matrix.python }}"
+          PY_NODOT="${PY_VER//./}"
+          PY_TAG="cp${PY_NODOT}-cp${PY_NODOT}"
+          WHEEL_DIR="build/release/${{ matrix.target_arch }}/${PY_TAG}"
+
+          {
+            echo "py_tag=${PY_TAG}"
+            echo "wheel_dir=${WHEEL_DIR}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build wheel
-        run: ./scripts/release.sh "${TRITON_PYTHON_TAG}" "${{ matrix.target_arch }}"
+        run: |
+          set -euo pipefail
+          ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.target_arch }}-${{ env.TRITON_PYTHON_TAG }}
-          path: build/release/${{ matrix.target_arch }}/${{ env.TRITON_PYTHON_TAG }}/*.whl
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare_release.outputs.tag_name }}
+          WHEEL_DIR: ${{ steps.vars.outputs.wheel_dir }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
 
-  publish:
-    needs:
-      - prepare_release
-      - wheel
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: wheels-*
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare_release.outputs.tag }}
-          draft: true
-          files: dist/*.whl
+          wheels=("${WHEEL_DIR}"/*.whl)
+          if [ "${#wheels[@]}" -eq 0 ]; then
+            echo "No wheels found in ${WHEEL_DIR}" >&2
+            find "${WHEEL_DIR}" -maxdepth 1 -type f -print >&2 || true
+            exit 1
+          fi
+
+          gh release upload "${TAG_NAME}" "${wheels[@]}" --clobber
