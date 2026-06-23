@@ -19,12 +19,12 @@ PY_TAG="${TRITON_PYTHON_TAG:-cp312-cp312}"
 
 case "$(uname -m)" in
     amd64|x86_64)
-        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.3/llvm-22.0.0git-${PY_TAG}-manylinux_2_28_x86_64.tar.gz"
-        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.3/buddy-0.0.3-${PY_TAG}-manylinux_2_28_x86_64.tar.gz"
+        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.4/llvm-23.0.0git-${PY_TAG}-manylinux_2_28_x86_64.tar.gz"
+        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.4/buddy-0.0.4-${PY_TAG}-manylinux_2_28_x86_64.tar.gz"
         ;;
     riscv64)
-        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.3/llvm-22.0.0git-${PY_TAG}-manylinux_2_39_riscv64.tar.gz"
-        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.3/buddy-0.0.3-${PY_TAG}-manylinux_2_39_riscv64.tar.gz"
+        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.4/llvm-23.0.0git-${PY_TAG}-manylinux_2_39_riscv64.tar.gz"
+        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/release/v0.0.4/buddy-0.0.4-${PY_TAG}-manylinux_2_39_riscv64.tar.gz"
         ;;
     *)
         echo "unsupported arch: $(uname -m)" >&2
