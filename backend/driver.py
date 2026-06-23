@@ -318,9 +318,13 @@ def compile_module(launcher_src, kernel_placeholder_name):
         kernel_name = kernel_metadata[6]  # see pack_metadata in compiler.py
         src = launcher_src.replace(kernel_placeholder_name, kernel_name)
 
-        key = hashlib.sha256(src.encode("utf-8") + kernel_obj).hexdigest()
+        launcher_cache_version = b"triton_shared_launcher_v2"
+        key = hashlib.sha256(
+            src.encode("utf-8") + kernel_obj + launcher_cache_version
+        ).hexdigest()
         cache = get_cache_manager(key)
-        name = "__triton_shared_ref_cpu_kernel_launcher"
+        name = f"__triton_shared_ref_cpu_kernel_launcher_{key[:16]}"
+        src = src.replace("__triton_shared_ref_cpu_kernel_launcher", name)
 
         if platform.system() == "Windows":
             filename = f"{name}.pyd"
@@ -386,6 +390,8 @@ def compile_module(launcher_src, kernel_placeholder_name):
                             "-o",
                             so_path,
                         ]
+                        if platform.system() == "Linux":
+                            subprocess_args.append("-Wl,-Bsymbolic")
 
                         if not _sanitizer_available(sanitizer_type):
                             raise Exception(
@@ -423,22 +429,23 @@ def compile_module(launcher_src, kernel_placeholder_name):
 
                         subprocess.check_call(subprocess_args)
                     else:
-                        subprocess.check_call(
-                            [
-                                "g++",
-                                "-std=c++17",
-                                launcher_src_path,
-                                obj_path,
-                                f"-I{py_include_dir}",
-                                f"-I{include_dir}",
-                                f"-L{py_lib_dir}",
-                                "-shared",
-                                f"-l{py_lib}",
-                                "-fPIC",
-                                "-o",
-                                so_path,
-                            ]
-                        )
+                        subprocess_args = [
+                            "g++",
+                            "-std=c++17",
+                            launcher_src_path,
+                            obj_path,
+                            f"-I{py_include_dir}",
+                            f"-I{include_dir}",
+                            f"-L{py_lib_dir}",
+                            "-shared",
+                            f"-l{py_lib}",
+                            "-fPIC",
+                            "-o",
+                            so_path,
+                        ]
+                        if platform.system() == "Linux":
+                            subprocess_args.append("-Wl,-Bsymbolic")
+                        subprocess.check_call(subprocess_args)
 
                 with open(so_path, "rb") as f:
                     cache_path = cache.put(f.read(), filename, binary=True)

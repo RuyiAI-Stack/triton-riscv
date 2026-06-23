@@ -46,7 +46,7 @@ jobs:
       - name: Install test dependencies (riscv64)
         if: matrix.arch == 'riscv64'
         run: |
-          ./.venv/bin/python -m pip install torch --index-url https://ruyirepo.ruyicommunity.cn/pypi/simple
+          ./.venv/bin/python -m pip install torch==2.10 --index-url https://ruyirepo.ruyicommunity.cn/pypi/simple
 
       - name: Install test dependencies
         if: matrix.arch != 'riscv64'
