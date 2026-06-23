@@ -15,7 +15,17 @@ LLVM_EXTRACT_DIR="${TOOLCHAIN_DIR}/llvm"
 BUDDY_EXTRACT_DIR="${TOOLCHAIN_DIR}/buddy"
 LLVM_BINARY_DIR="${LLVM_EXTRACT_DIR}/bin"
 BUDDY_MLIR_BINARY_DIR="${BUDDY_EXTRACT_DIR}/bin"
-PY_TAG="${TRITON_PYTHON_TAG:-cp312-cp312}"
+
+if [ ! -x "${PYTHON}" ]; then
+    python3 -m venv "${ROOT_DIR}/.venv"
+fi
+
+PY_TAG="${TRITON_PYTHON_TAG:-$("${PYTHON}" - <<'PY'
+import sys
+
+print(f"cp{sys.version_info.major}{sys.version_info.minor}-cp{sys.version_info.major}{sys.version_info.minor}")
+PY
+)}"
 
 case "$(uname -m)" in
     amd64|x86_64)
@@ -35,16 +45,18 @@ esac
 LLVM_URL="${TRITON_LLVM_PACKAGE_URL:-${LLVM_DEFAULT_URL}}"
 BUDDY_URL="${TRITON_BUDDY_PACKAGE_URL:-${BUDDY_DEFAULT_URL}}"
 
-if [ ! -x "${PYTHON}" ]; then
-    python3 -m venv "${ROOT_DIR}/.venv"
-fi
-
 if [ ! -d "${TRITON_DIR}" ]; then
     git clone https://github.com/triton-lang/triton.git "${TRITON_DIR}"
 fi
 
 git config --global --add safe.directory "${TRITON_RISCV_DIR}"
 git config --global --add safe.directory "${TRITON_DIR}"
+if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; then
+    git -C "${TRITON_DIR}" fetch origin
+fi
+if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; then
+    git -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
+fi
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
 
 "${TRITON_RISCV_DIR}/scripts/apply_patches.sh" "${TRITON_DIR}"
@@ -54,7 +66,7 @@ mkdir -p "${TOOLCHAIN_DIR}"
 if [ ! -d "${LLVM_BINARY_DIR}" ]; then
     rm -rf "${LLVM_EXTRACT_DIR}"
     mkdir -p "${LLVM_EXTRACT_DIR}"
-    curl -L "${LLVM_URL}" -o "${TOOLCHAIN_DIR}/llvm.tar.gz"
+    curl -fL "${LLVM_URL}" -o "${TOOLCHAIN_DIR}/llvm.tar.gz"
     tar -xzf "${TOOLCHAIN_DIR}/llvm.tar.gz" -C "${LLVM_EXTRACT_DIR}"
     rm -f "${TOOLCHAIN_DIR}/llvm.tar.gz"
 fi
@@ -62,7 +74,7 @@ fi
 if [ ! -d "${BUDDY_MLIR_BINARY_DIR}" ]; then
     rm -rf "${BUDDY_EXTRACT_DIR}"
     mkdir -p "${BUDDY_EXTRACT_DIR}"
-    curl -L "${BUDDY_URL}" -o "${TOOLCHAIN_DIR}/buddy.tar.gz"
+    curl -fL "${BUDDY_URL}" -o "${TOOLCHAIN_DIR}/buddy.tar.gz"
     tar -xzf "${TOOLCHAIN_DIR}/buddy.tar.gz" -C "${BUDDY_EXTRACT_DIR}"
     rm -f "${TOOLCHAIN_DIR}/buddy.tar.gz"
 fi

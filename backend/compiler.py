@@ -43,10 +43,6 @@ def _use_ime_pipeline() -> bool:
     return os.getenv("TRITON_RISCV_USE_IME", "") == "1"
 
 
-def _is_x86_host() -> bool:
-    return platform.machine() in {"x86_64", "AMD64", "i386", "i686"}
-
-
 def _dump_ir_if_needed(files):
     path = os.getenv("TRITON_SHARED_DUMP_PATH", "")
     if not path:
@@ -273,7 +269,7 @@ def _vectorir_to_llir(vectorir: str):
             [
                 buddy_opt_path,
                 vector_path,
-                # "--convert-linalg-to-affine-loops",
+                "--convert-linalg-to-affine-loops",
                 # Note: eliminate-empty-tensors fails when there are multiple func.return ops
                 # in a single kernel which are the results of early returns.
                 # See python/examples/test_early_return.py for examples.
@@ -283,7 +279,6 @@ def _vectorir_to_llir(vectorir: str):
                 # "--empty-tensor-to-alloc-tensor",
                 # "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                 # "--matmul-vectorization",
-                *(["--convert-linalg-to-loops"] if _is_x86_host() else []),
                 "--expand-strided-metadata",
                 "--lower-affine",
                 "--convert-math-to-llvm",

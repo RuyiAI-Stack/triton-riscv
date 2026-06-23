@@ -138,3 +138,33 @@ diff --git a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp b/thi
        } else {
          Block &block = region.getSuccessor()->front();
          successors.emplace_back(&block, Block::iterator());
+diff --git a/include/triton/Dialect/Triton/IR/Dialect.h b/include/triton/Dialect/Triton/IR/Dialect.h
+--- a/include/triton/Dialect/Triton/IR/Dialect.h
++++ b/include/triton/Dialect/Triton/IR/Dialect.h
+@@ -27,4 +27,4 @@ namespace triton {
+ struct GlobalMemory : public SideEffects::Resource::Base<GlobalMemory> {
+-  StringRef getName() const final { return "<GlobalMemory>"; }
+-  SideEffects::Resource *getParent() const override { return nullptr; }
++  StringRef getName() { return "<GlobalMemory>"; }
++  StringRef getName() const { return "<GlobalMemory>"; }
+ };
+diff --git a/include/triton/Dialect/TritonGPU/IR/Dialect.h b/include/triton/Dialect/TritonGPU/IR/Dialect.h
+--- a/include/triton/Dialect/TritonGPU/IR/Dialect.h
++++ b/include/triton/Dialect/TritonGPU/IR/Dialect.h
+@@ -98,4 +98,4 @@ namespace mlir::triton::gpu {
+ struct SharedMemory : public SideEffects::Resource::Base<SharedMemory> {
+-  StringRef getName() const final { return "<SharedMemory>"; }
+-  SideEffects::Resource *getParent() const override { return nullptr; }
++  StringRef getName() { return "<SharedMemory>"; }
++  StringRef getName() const { return "<SharedMemory>"; }
+ };
+diff --git a/include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h b/include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h
+--- a/include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h
++++ b/include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h
+@@ -73,4 +73,4 @@ inline bool getModuleTwoCTAs(Operation *op) {
+ struct TensorMemory : public SideEffects::Resource::Base<TensorMemory> {
+-  StringRef getName() const final { return "<TensorMemory>"; }
+-  SideEffects::Resource *getParent() const override { return nullptr; }
++  StringRef getName() { return "<TensorMemory>"; }
++  StringRef getName() const { return "<TensorMemory>"; }
+ };
