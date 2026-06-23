@@ -32,23 +32,26 @@
 using namespace mlir;
 using namespace triton;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL_TRITONTOLINALGEXPERIMENTAL
+#include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONTOLINALGEXPERIMENTAL
 #include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
 
 namespace {
 
 class TritonToLinalgExperimentalPass
-    : public TritonToLinalgExperimentalBase<TritonToLinalgExperimentalPass> {
+    : public ::impl::TritonToLinalgExperimentalBase<
+          TritonToLinalgExperimentalPass> {
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
-                    linalg::LinalgDialect, affine::AffineDialect,
-                    scf::SCFDialect, tensor::TensorDialect,
-                    bufferization::BufferizationDialect, memref::MemRefDialect,
-                    vector::VectorDialect, ttx::TritonTilingExtDialect,
-                    tts::TritonStructuredDialect, tptr::TPtrDialect,
-                    ptr::PtrDialect>();
+    registry
+        .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
+                linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
+                tensor::TensorDialect, bufferization::BufferizationDialect,
+                memref::MemRefDialect, vector::VectorDialect,
+                ttx::TritonTilingExtDialect, tts::TritonStructuredDialect,
+                tptr::TPtrDialect, ptr::PtrDialect>();
   }
 
   void runOnOperation() override {

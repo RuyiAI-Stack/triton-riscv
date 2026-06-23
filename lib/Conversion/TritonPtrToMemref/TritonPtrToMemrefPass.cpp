@@ -37,7 +37,7 @@
 using namespace mlir;
 using namespace triton;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TRITONPTRTOMEMREF
 #include "triton-shared/Conversion/TritonPtrToMemref/Passes.h.inc"
 
 namespace {
@@ -77,7 +77,7 @@ public:
 };
 
 class TritonPtrToMemrefPass
-    : public TritonPtrToMemrefBase<TritonPtrToMemrefPass> {
+    : public ::impl::TritonPtrToMemrefBase<TritonPtrToMemrefPass> {
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {

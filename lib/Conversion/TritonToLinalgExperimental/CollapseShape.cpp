@@ -34,7 +34,7 @@
 using namespace mlir;
 using namespace triton;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_COLLAPSESHAPE
 #include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
 
 namespace {
@@ -485,7 +485,8 @@ struct CollapseReduce : public OpRewritePattern<linalg::ReduceOp> {
   }
 };
 
-class CollapseShapePasss : public CollapseShapeBase<CollapseShapePasss> {
+class CollapseShapePasss
+    : public ::impl::CollapseShapeBase<CollapseShapePasss> {
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
