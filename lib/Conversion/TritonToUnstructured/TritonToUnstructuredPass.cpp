@@ -177,7 +177,9 @@
 using namespace mlir;
 using namespace triton;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL_TRITONTOUNSTRUCTURED
+#include "triton-shared/Conversion/TritonToUnstructured/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONTOUNSTRUCTURED
 #include "triton-shared/Conversion/TritonToUnstructured/Passes.h.inc"
 
 namespace {
@@ -217,7 +219,7 @@ static unsigned int getBitWidth(Type type) {
 }
 
 class TritonToUnstructuredPass
-    : public TritonToUnstructuredBase<TritonToUnstructuredPass> {
+    : public ::impl::TritonToUnstructuredBase<TritonToUnstructuredPass> {
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -395,21 +397,22 @@ public:
                 })
                 .Case<tts::MakeGatherScatterTensorPtrOp>(
                     [&](Operation *op) { return success(); })
-                .Case<triton::LoadOp, triton::StoreOp, triton::MakeTensorPtrOp,
-                      tts::MakeTensorPtrOp>([&](Operation *op) {
-                  // Special case:
-                  // We do not want to create "unstructured tensor pointer" into
-                  // tts.make_tptr if the base pointer is directly from the
-                  // kernel arguments.
-                  if (auto makeTensorPtr = dyn_cast<tts::MakeTensorPtrOp>(op)) {
-                    if (ptrArgs.contains(makeTensorPtr.getBase())) {
-                      return success();
-                    }
-                  }
+                .Case<triton::LoadOp, triton::StoreOp, tts::MakeTensorPtrOp>(
+                    [&](Operation *op) {
+                      // Special case:
+                      // We do not want to create "unstructured tensor pointer"
+                      // into tts.make_tptr if the base pointer is directly from
+                      // the kernel arguments.
+                      if (auto makeTensorPtr =
+                              dyn_cast<tts::MakeTensorPtrOp>(op)) {
+                        if (ptrArgs.contains(makeTensorPtr.getBase())) {
+                          return success();
+                        }
+                      }
 
-                  ptrUsers.push_back(op);
-                  return success();
-                })
+                      ptrUsers.push_back(op);
+                      return success();
+                    })
                 .Case<scf::ForOp>([&](scf::ForOp forOp) {
                   // Index of the init-arg corresponding to this use, note that
                   // we have to subtract by 3 from the operand number because
@@ -506,8 +509,7 @@ public:
                 store->erase();
                 return success();
               })
-              .Case<triton::MakeTensorPtrOp,
-                    tts::MakeTensorPtrOp>([&](auto makeTensorPtr) {
+              .Case<tts::MakeTensorPtrOp>([&](auto makeTensorPtr) {
                 // For block pointers, the base could come from a sequence of
                 // `tt.addptr`. Accumulate the target offset with the offset
                 // we have saved.

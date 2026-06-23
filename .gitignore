@@ -1,5 +1,6 @@
 *.pyc
 .cache
+.cache*
 /backend/bin/
 compile_commands.json
 build/*

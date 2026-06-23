@@ -1,0 +1,140 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -280,8 +280,8 @@ if(NOT MSVC)
+     # so that they will not proceed with loading plugins if that will
+     # crash a Triton not compiled with visibility due to missing symbols.
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTRITON_EXT_ENABLED=1")
+   endif()
+-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default ")
++  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-error=deprecated-declarations -Wno-covered-switch-default ")
+ else()
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
+ endif()
+@@ -387,6 +387,8 @@ if(TRITON_BUILD_PYTHON_MODULE)
+ 
+     # LLVM
+     LLVMPasses
++    LLVMPlugins
++    LLVMMIRParser
+ 
+     Python3::Module
+     pybind11::headers
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -25,9 +25,10 @@
+ #include "llvm/Support/Parallel.h"
+ #include "llvm/Support/Signals.h"
+ #include "llvm/Support/SourceMgr.h"
+ #include "llvm/Support/TargetSelect.h"
++#include "llvm/TargetParser/Triple.h"
+ #include "llvm/Target/TargetMachine.h"
+ #include "llvm/Transforms/IPO/AlwaysInliner.h"
+ #include "llvm/Transforms/InstCombine/InstCombine.h"
+ #include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
+ #include "llvm/Transforms/Instrumentation/AddressSanitizerOptions.h"
+@@ -130,20 +131,20 @@ public:
+ std::unique_ptr<TargetMachine>
+ createTargetMachine(llvm::Module *module, std::string proc,
+                     bool enable_fp_fusion, const std::string &features) {
+   std::string error;
+-  auto target =
+-      llvm::TargetRegistry::lookupTarget(module->getTargetTriple(), error);
++  llvm::Triple moduleTriple(module->getTargetTriple());
++  auto target = llvm::TargetRegistry::lookupTarget(moduleTriple, error);
+   llvm::TargetOptions opt;
+   bool disableLLVMOpt = mlir::triton::tools::getBoolEnv("DISABLE_LLVM_OPT");
+   if (enable_fp_fusion)
+     opt.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+   opt.TrapUnreachable = true;
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+   std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
+-      module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
++      moduleTriple, proc, features, opt, llvm::Reloc::PIC_,
+       std::nullopt,
+       disableLLVMOpt ? llvm::CodeGenOptLevel::None
+                      : llvm::CodeGenOptLevel::Aggressive)};
+   return machine;
+ }
+diff --git a/lib/Analysis/Membar.cpp b/lib/Analysis/Membar.cpp
+--- a/lib/Analysis/Membar.cpp
++++ b/lib/Analysis/Membar.cpp
+@@ -199,11 +199,11 @@ void MembarOrFenceAnalysis::visitTerminator(
+     // interface. The operation branches to the entry blocks of its region
+     // successors. It can also branch to after itself.
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.getSuccessorOp()) {
+         successors.emplace_back(br->getBlock(), br->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+         successors.emplace_back(&block, Block::iterator());
+       }
+@@ -219,11 +219,11 @@ void MembarOrFenceAnalysis::visitTerminator(
+     // another region of its parent operation or to after the parent op.
+     SmallVector<Attribute> operands(br->getNumOperands());
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(operands, regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.getSuccessorOp()) {
+         Operation *parent = br->getParentOp();
+         successors.emplace_back(parent->getBlock(), parent->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+         successors.emplace_back(&block, Block::iterator());
+diff --git a/lib/Dialect/TritonGPU/IR/Ops.cpp b/lib/Dialect/TritonGPU/IR/Ops.cpp
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
+@@ -1203,16 +1203,16 @@ void WarpSpecializeOp::getSuccessorRegions(
+     return;
+   }
+   // And the default region branches transparently back to the parent.
+   if (src.getTerminatorPredecessorOrNull()->getParentRegion() ==
+       &getDefaultRegion())
+-    successors.push_back(RegionSuccessor::parent());
++    successors.emplace_back(getOperation());
+ }
+ 
+ ValueRange WarpSpecializeOp::getSuccessorInputs(RegionSuccessor successor) {
+   // When returning to parent, the successor inputs are the op results.
+-  return successor.isParent() ? getResults() : ValueRange();
++  return successor.getSuccessorOp() ? getResults() : ValueRange();
+ }
+ 
+ void WarpSpecializePartitionsOp::getSuccessorRegions(
+     RegionBranchPoint src, SmallVectorImpl<RegionSuccessor> &successors) {
+   // The parent branches to each of the partition regions, but nothing flows out
+diff --git a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp b/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
+--- a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
++++ b/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
+@@ -295,11 +295,11 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
+     // Query successors of an op-with-regions. The op can branch to region entry
+     // blocks or to the continuation after itself.
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.getSuccessorOp()) {
+         successors.emplace_back(br->getBlock(), br->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+         successors.emplace_back(&block, Block::iterator());
+       }
+@@ -315,11 +315,11 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
+     // parent operation or to the parent continuation.
+     SmallVector<Attribute> operands(br->getNumOperands());
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(operands, regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.getSuccessorOp()) {
+         Operation *parent = br->getParentOp();
+         successors.emplace_back(parent->getBlock(), parent->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+         successors.emplace_back(&block, Block::iterator());

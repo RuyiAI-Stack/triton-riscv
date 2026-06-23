@@ -115,14 +115,15 @@ void MakeTensorPtrOp::build(OpBuilder &b, OperationState &state, Value base,
   Type resType;
   auto basePtr = cast<triton::PointerType>(base.getType());
   auto elemType = basePtr.getPointeeType();
+  auto resultPtrType =
+      triton::PointerType::get(elemType, basePtr.getAddressSpace());
   // non-block pointer
   if (order.empty()) {
-    resType = RankedTensorType::get(sizes, basePtr);
+    resType = RankedTensorType::get(sizes, resultPtrType);
   }
   // block pointer
   else {
-    resType = triton::PointerType::get(RankedTensorType::get(sizes, elemType),
-                                       basePtr.getAddressSpace());
+    resType = RankedTensorType::get(sizes, resultPtrType);
   }
 
   build(b, state, resType, base, sizes, dynamicStrides, dynamicOffsets,
@@ -151,8 +152,8 @@ void MakeGatherScatterTensorPtrOp::build(OpBuilder &b, OperationState &state,
   auto basePtr = cast<triton::PointerType>(base.getType());
   auto elemType = basePtr.getPointeeType();
 
-  resType = triton::PointerType::get(RankedTensorType::get(sizes, elemType),
-                                     basePtr.getAddressSpace());
+  resType = RankedTensorType::get(
+      sizes, triton::PointerType::get(elemType, basePtr.getAddressSpace()));
 
   build(b, state, resType, base, gatherScatterOffset,
         b.getI32IntegerAttr(gatherScatterDim), b.getDenseI64ArrayAttr(sizes),
@@ -181,11 +182,12 @@ void MakeGatherScatterTensorPtrOp::build(
   if (gatherScatterOffset.getType().isIntOrIndex()) {
     assert(sizes.size() == 1 && sizes[0] == 1 &&
            "gatherScatterOffset should be a scalar for 1D gather/scatter");
-    resType = triton::PointerType::get(elemType, basePtr.getAddressSpace());
+    resType = RankedTensorType::get(
+        sizes, triton::PointerType::get(elemType, basePtr.getAddressSpace()));
 
   } else {
-    resType = triton::PointerType::get(RankedTensorType::get(sizes, elemType),
-                                       basePtr.getAddressSpace());
+    resType = RankedTensorType::get(
+        sizes, triton::PointerType::get(elemType, basePtr.getAddressSpace()));
   }
 
   build(b, state, resType, base, gatherScatterOffset,

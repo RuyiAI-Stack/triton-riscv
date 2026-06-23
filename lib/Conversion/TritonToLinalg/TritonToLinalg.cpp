@@ -36,8 +36,6 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
   patterns.add<MetaOpConverter>(patterns.getContext());
   patterns.add<StoreConverter>(patterns.getContext());
   patterns.add<LegacyAddPtrConverter>(patterns.getContext());
-  patterns.add<MakeTensorPtrConverter>(patterns.getContext());
-  patterns.add<AdvanceConverter>(patterns.getContext());
   patterns.add<GetProgramIDConverter, GetNumProgramsConverter>(
       patterns.getContext());
   patterns.add<YieldConverter>(patterns.getContext());

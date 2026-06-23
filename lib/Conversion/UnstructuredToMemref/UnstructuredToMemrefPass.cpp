@@ -38,7 +38,7 @@
 using namespace mlir;
 using namespace triton;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_UNSTRUCTUREDTOMEMREF
 #include "triton-shared/Conversion/UnstructuredToMemref/Passes.h.inc"
 
 namespace {
@@ -203,17 +203,17 @@ struct GatherConverter : public OpConversionPattern<tts::GatherOp> {
                               ptr)
                           .getResult();
 
-    Value resultTensor =
-        rewriter.create<tensor::EmptyOp>(loc, resultType.getShape(),
-                                         resultType.getElementType());
+    Value resultTensor = rewriter.create<tensor::EmptyOp>(
+        loc, resultType.getShape(), resultType.getElementType());
     SmallVector<Value> loopBounds;
     loopBounds.reserve(resultType.getRank());
     for (int64_t i = 0, e = resultType.getRank(); i < e; ++i) {
       if (resultType.isDynamicDim(i)) {
-        loopBounds.push_back(rewriter.create<tensor::DimOp>(loc, offsetTensor, i));
-      } else {
         loopBounds.push_back(
-            rewriter.create<arith::ConstantIndexOp>(loc, resultType.getShape()[i]));
+            rewriter.create<tensor::DimOp>(loc, offsetTensor, i));
+      } else {
+        loopBounds.push_back(rewriter.create<arith::ConstantIndexOp>(
+            loc, resultType.getShape()[i]));
       }
     }
 
@@ -241,17 +241,18 @@ struct GatherConverter : public OpConversionPattern<tts::GatherOp> {
             b.create<memref::LoadOp>(nestedLoc, baseMemref, ValueRange{index0});
         Value value = loadValue;
         if (gatherOp.getMask()) {
-          Value mask =
-              b.create<tensor::ExtractOp>(nestedLoc, gatherOp.getMask(), indices);
-          value = b.create<arith::SelectOp>(nestedLoc, mask, loadValue, fallback)
-                      .getResult();
+          Value mask = b.create<tensor::ExtractOp>(nestedLoc,
+                                                   gatherOp.getMask(), indices);
+          value =
+              b.create<arith::SelectOp>(nestedLoc, mask, loadValue, fallback)
+                  .getResult();
         }
         return b.create<tensor::InsertOp>(nestedLoc, value, tensorAcc, indices)
             .getResult();
       }
 
-      auto nestedLoop = b.create<scf::ForOp>(
-          nestedLoc, c0, loopBounds[dim], c1, ValueRange{tensorAcc});
+      auto nestedLoop = b.create<scf::ForOp>(nestedLoc, c0, loopBounds[dim], c1,
+                                             ValueRange{tensorAcc});
       auto *body = nestedLoop.getBody();
       OpBuilder nestedBuilder = OpBuilder::atBlockBegin(body);
       indices.push_back(nestedLoop.getInductionVar());
@@ -374,7 +375,7 @@ struct ScatterConverter : public OpConversionPattern<tts::ScatterOp> {
 };
 
 class UnstructuredToMemrefPass
-    : public UnstructuredToMemrefBase<UnstructuredToMemrefPass> {
+    : public ::impl::UnstructuredToMemrefBase<UnstructuredToMemrefPass> {
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {

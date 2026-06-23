@@ -67,6 +67,11 @@ namespace {
 #define GEN_PASS_DEF_TRITONTOPTR
 #include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
 
+static bool isTensorPointerType(Type type) {
+  auto tensorType = dyn_cast<RankedTensorType>(type);
+  return tensorType && isa<triton::PointerType>(tensorType.getElementType());
+}
+
 // Convert tensor.insert_slice to use ptr.ptr type. This insert_slice op must
 // have been lowered from tl.cat
 struct InsertSliceConverter
@@ -462,7 +467,7 @@ public:
     // We do not want to lower triton load and store on block pointers
     target.addDynamicallyLegalOp<triton::LoadOp, triton::StoreOp>([](auto op) {
       auto ptrType = op->getOperand(0).getType();
-      if (triton::isTensorPointerType(ptrType)) {
+      if (isTensorPointerType(ptrType)) {
         return true;
       }
       return !triton::isPtrTypeLike(ptrType);
