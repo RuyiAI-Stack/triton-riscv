@@ -26,33 +26,35 @@ def kernel(
     BLOCK_SIZE_COL: tl.constexpr,
 ):
     pid0 = tl.program_id(axis=0)
-    input_ptr = tl.make_block_ptr(
+    input_desc = tl.make_tensor_descriptor(
         base=x_ptr,
-        shape=[n_rows, n_cols],
-        strides=[BLOCK_SIZE_COL, 1],
-        offsets=[0, pid0],
-        block_shape=[BLOCK_SIZE_ROW, 1],
-        order=[1, 0],
+        shape=[n_cols, n_rows],
+        strides=[BLOCK_SIZE_ROW, 1],
+        block_shape=[1, BLOCK_SIZE_ROW],
     )
-    x = tl.load(input_ptr)
-    output_ptr = tl.make_block_ptr(
+    offsets = [pid0, 0]
+    x = input_desc.load(offsets)
+    output_desc = tl.make_tensor_descriptor(
         base=y_ptr,
-        shape=[n_rows, n_cols],
-        strides=[BLOCK_SIZE_COL, 1],
-        offsets=[0, pid0],
-        block_shape=[BLOCK_SIZE_ROW, 1],
-        order=[1, 0],
+        shape=[n_cols, n_rows],
+        strides=[BLOCK_SIZE_ROW, 1],
+        block_shape=[1, BLOCK_SIZE_ROW],
     )
-    tl.store(output_ptr, x)
+    output_desc.store(offsets, x)
 
 
 def test(device):
     n_rows = 4
     n_cols = 2
-    x = torch.arange(0, n_rows * n_cols, 1, device=device, dtype=torch.float32).reshape(
-        [n_rows, n_cols]
+    x = (
+        torch.arange(0, n_rows * n_cols, 1, device=device, dtype=torch.float32)
+        .reshape([n_cols, n_rows])
+        .T
     )
-    output = torch.full([n_rows, n_cols], -1, device=device, dtype=x.dtype)
+    output = torch.empty_strided(
+        [n_rows, n_cols], [1, n_rows], device=device, dtype=x.dtype
+    )
+    output.fill_(-1)
     BLOCK_SIZE_ROW = n_rows
     BLOCK_SIZE_COL = n_cols
 
