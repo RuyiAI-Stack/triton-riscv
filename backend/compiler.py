@@ -43,6 +43,10 @@ def _use_ime_pipeline() -> bool:
     return os.getenv("TRITON_RISCV_USE_IME", "") == "1"
 
 
+def _is_x86_host() -> bool:
+    return platform.machine() in {"x86_64", "AMD64", "i386", "i686"}
+
+
 def _dump_ir_if_needed(files):
     path = os.getenv("TRITON_SHARED_DUMP_PATH", "")
     if not path:
@@ -152,7 +156,13 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # LLVM-MLIR → LLVM-IR via buddy-translate (handles buddyext dialect)
             buddy_translate_path = _get_buddy_translate_path()
             subprocess.check_call(
-                [buddy_translate_path, "--buddy-to-llvmir", llmlir_path, "-o", llir_path]
+                [
+                    buddy_translate_path,
+                    "--buddy-to-llvmir",
+                    llmlir_path,
+                    "-o",
+                    llir_path,
+                ]
             )
         else:
             # ---------------------------------------------------------------
@@ -273,6 +283,7 @@ def _vectorir_to_llir(vectorir: str):
                 # "--empty-tensor-to-alloc-tensor",
                 # "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                 # "--matmul-vectorization",
+                *(["--convert-linalg-to-loops"] if _is_x86_host() else []),
                 "--expand-strided-metadata",
                 "--lower-affine",
                 "--convert-math-to-llvm",
@@ -379,6 +390,7 @@ def _llir_to_bin(llir: str, metadata):
                 # Import pytest lazily so this module stays usable outside pytest.
                 try:
                     import pytest
+
                     pytest.skip(
                         f"IME pipeline requires RISC-V hardware for execution "
                         f"(current host: {platform.machine()}). "

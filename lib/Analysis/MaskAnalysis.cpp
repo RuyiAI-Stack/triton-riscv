@@ -65,8 +65,7 @@ tensor::ExtractSliceOp MaskState::getExtractSlice(Value source,
   SmallVector<OpFoldResult> offsets(getRank(), builder.getIndexAttr(0));
   SmallVector<OpFoldResult> strides(getRank(), builder.getIndexAttr(1));
 
-  auto dstType = tensor::ExtractSliceOp::inferResultType(sourceType, offsets,
-                                                         dims, strides);
+  auto dstType = tensor::ExtractSliceOp::inferResultType(sourceType, dims);
 
   return builder.create<tensor::ExtractSliceOp>(loc, dstType, source, offsets,
                                                 dims, strides);

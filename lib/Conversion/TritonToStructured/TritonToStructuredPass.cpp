@@ -37,9 +37,6 @@
 using namespace mlir;
 using namespace triton;
 
-#define GEN_PASS_CLASSES
-#include "triton-shared/Conversion/TritonToStructured/Passes.h.inc"
-
 namespace mlir {
 namespace triton {
 #define GEN_PASS_DEF_TRITONTOSTRUCTURED

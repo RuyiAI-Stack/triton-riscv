@@ -85,6 +85,12 @@ public:
 
   void visitBranchOperand(OpOperand &operand) override { return; }
 
+  void
+  visitNonControlFlowArguments(RegionSuccessor &successor,
+                               ArrayRef<BlockArgument> arguments) override {
+    return;
+  }
+
   void visitCallOperand(OpOperand &operand) override { return; }
 
   void setToExitState(UseInfo *lattice) override {
