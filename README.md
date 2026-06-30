@@ -157,6 +157,17 @@ To run a single test:
 pytest python/examples/test_vec_add.py -v
 ```
 
+## Generate and run RVV ELF files with QEMU
+
+The backend can compile a Python Triton kernel directly to a self-contained RISC-V Linux ELF, automatically generate its runner, execute it with QEMU, and verify outputs. No user-written C runner is required.
+
+```sh
+source scripts/triton-riscv-env.sh
+python python/examples/rvv_vec_add_elf.py
+```
+
+See [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) for toolchain setup, the end-to-end API, output verification, and troubleshooting.
+
 ## FAQ
 
 Building on RISC-V often runs into dependency issues; we're happy to help if you run into trouble.

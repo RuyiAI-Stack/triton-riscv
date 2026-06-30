@@ -12,3 +12,4 @@ build/*
 .venv/
 .omx/
 triton
+/artifacts/

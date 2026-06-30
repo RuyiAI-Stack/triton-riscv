@@ -72,7 +72,7 @@ repo_root = pathlib.Path(sys.argv[1]).resolve()
 src_dir = repo_root / "backend"
 dst_dir = pathlib.Path(compiler.__file__).resolve().parent
 
-for name in ("compiler.py", "driver.py"):
+for name in ("compiler.py", "driver.py", "riscv.py"):
     src = src_dir / name
     dst = dst_dir / name
     if not src.is_file():
@@ -84,7 +84,7 @@ for name in ("compiler.py", "driver.py"):
 
 pycache = dst_dir / "__pycache__"
 if pycache.is_dir():
-    for pattern in ("compiler*.pyc", "driver*.pyc"):
+    for pattern in ("compiler*.pyc", "driver*.pyc", "riscv*.pyc"):
         for pyc in pycache.glob(pattern):
             pyc.unlink()
 

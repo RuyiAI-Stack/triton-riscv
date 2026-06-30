@@ -1,6 +1,6 @@
 from triton.backends.compiler import BaseBackend, GPUTarget
 from triton._C.libtriton import ir, passes
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Tuple
 from types import ModuleType
 import hashlib
@@ -15,6 +15,7 @@ import triton
 from pathlib import Path
 
 from .paths import _get_buddy_opt_path, _get_llvm_bin_path, _get_triton_shared_opt_path
+from .riscv import DEFAULT_LLC_FEATURES, RiscvToolchain
 
 
 def _get_buddy_translate_path() -> str:
@@ -317,7 +318,7 @@ def _vectorir_to_llir(vectorir: str):
         return Path(llir_path).read_text()
 
 
-def _llir_to_bin(llir: str, metadata):
+def _llir_to_bin(llir: str, metadata, options=None):
     pattern = r"define void @(\w+)\(.+"
     matches = re.findall(pattern, llir)
     assert len(matches) == 1
@@ -376,38 +377,14 @@ def _llir_to_bin(llir: str, metadata):
             # IME path: cross-compile to RISC-V with buddyext (vfmadot / vmadot).
             # buddy-llc understands the RISC-V IME intrinsics produced by
             # buddy-translate and generates correct machine code.
-            # On non-RISC-V hosts (e.g. x86_64) the IR contains RVV scalable
-            # vectors that the host llc cannot handle.  Dump is already done;
-            # skip compilation and surface a clean error.
-            if platform.machine() != "riscv64":
-                # buddy-llc is cross-compilation capable (x86 binary → RISC-V ELF),
-                # but the resulting .obj cannot be linked or executed on this host.
-                # Import pytest lazily so this module stays usable outside pytest.
-                try:
-                    import pytest
-
-                    pytest.skip(
-                        f"IME pipeline requires RISC-V hardware for execution "
-                        f"(current host: {platform.machine()}). "
-                        "Intermediate IR files dumped to TRITON_SHARED_DUMP_PATH (if set)."
-                    )
-                except ImportError:
-                    raise NotImplementedError(
-                        "IME pipeline: Cannot link/run RISC-V scalable-vector IR on "
-                        f"{platform.machine()}. Run on RISC-V hardware."
-                    )
             buddy_llc_path = _get_buddy_llc_path()
-            llc_args = [
-                buddy_llc_path,
-                src_path,
-                "-filetype=obj",
-                "-mtriple=riscv64",
-                "-mattr=+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb,+buddyext",
-                "-relocation-model=pic",
-                "-o",
-                dst_path,
-            ]
-            subprocess.check_call(llc_args)
+            toolchain = RiscvToolchain.from_env()
+            toolchain = replace(
+                toolchain, llc_features=f"{toolchain.llc_features},+buddyext"
+            )
+            subprocess.check_call(
+                toolchain.llc_command(buddy_llc_path, src_path, dst_path)
+            )
         else:
             llc_path = _get_llvm_bin_path("llc")
             llc_args = [
@@ -421,8 +398,16 @@ def _llir_to_bin(llir: str, metadata):
             # On RISC-V Linux, the system ABI is lp64d (hardware double-precision float).
             # Without explicitly enabling +f,+d, llc defaults to soft-float, causing
             # "can't link soft-float modules with double-float modules" linker errors.
-            if platform.machine() == "riscv64":
-                llc_args.extend(["-mattr=+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb"])
+            target_triple = getattr(options, "target_triple", None)
+            if target_triple:
+                toolchain = replace(
+                    RiscvToolchain.from_env(),
+                    triple=target_triple,
+                    llc_features=options.target_features,
+                )
+                llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
+            elif platform.machine() == "riscv64":
+                llc_args.extend([f"-mattr={DEFAULT_LLC_FEATURES}"])
             subprocess.check_call(llc_args)
 
         return Path(dst_path).read_bytes()
@@ -447,6 +432,8 @@ class CPUOptions:
     allowed_dot_input_precisions: Tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
     instrumentation_mode: str = ""
+    target_triple: str = None
+    target_features: str = None
 
     def __post_init__(self):
         pass
@@ -471,6 +458,14 @@ class CPUBackend(BaseBackend):
         args.update(
             {k: opts[k] for k in CPUOptions.__dataclass_fields__.keys() if k in opts}
         )
+        if (
+            os.getenv("TRITON_RISCV_CROSS_COMPILE", "") == "1"
+            or _use_ime_pipeline()
+            or args.get("target_triple")
+        ):
+            toolchain = RiscvToolchain.from_env()
+            args.setdefault("target_triple", toolchain.triple)
+            args.setdefault("target_features", toolchain.llc_features)
         return CPUOptions(**args)
 
     def get_codegen_implementation(self, options):
@@ -520,7 +515,7 @@ class CPUBackend(BaseBackend):
         )
         stages["vectorir"] = lambda src, metadata: _ttsharedir_to_vectorir(src)
         stages["llir"] = lambda src, metadata: _optimize_llir(_vectorir_to_llir(src))
-        stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata)
+        stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
     @functools.lru_cache()
     def hash(self):
