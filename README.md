@@ -40,20 +40,32 @@ The script is idempotent: re-running it on an already-patched tree prints `SKIPP
 
 ### Create a virtual environment
 
+Use either a Python venv or an existing conda environment:
+
 ```sh
 python -m venv "${TRITON_RISCV_DIR}/.venv" --prompt triton-riscv
 source "${TRITON_RISCV_DIR}/.venv/bin/activate"
 ```
 
+Or with conda:
+
+```sh
+conda activate ruyiai
+```
+
+When a conda environment is active, `scripts/triton-riscv-env.sh` automatically uses `CONDA_PREFIX` as `TRITON_VENV`.
+
 ### Install dependencies
 
 1. Install the [dependencies](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#llvmmlir-dependencies) required by the Ruyi Buddy Compiler.
 
-2. Install triton-riscv Python dependencies:
+2. Install triton-riscv Python dependencies in the active environment:
 
    ```sh
-   pip install pytest-xdist pybind11 setuptools
+   pip install cmake ninja pytest-xdist pybind11 setuptools
    ```
+
+   `cmake`, `ninja`, and `pybind11` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
 
 3. Build the Buddy Compiler — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
 
@@ -65,15 +77,16 @@ By default it assumes:
 
 - `TRITON_RISCV_DIR=/path/to/triton-riscv`
 - `TRITON_DIR=$TRITON_RISCV_DIR/../triton`
-- `TRITON_VENV=$TRITON_RISCV_DIR/.venv`
+- `TRITON_VENV=$CONDA_PREFIX` when a conda environment is active, otherwise `$TRITON_RISCV_DIR/.venv`
 - `BUDDY_DIR=$TRITON_RISCV_DIR/../buddy-mlir`
 - `BUILD_DIR` is auto-detected from `$TRITON_DIR/build/cmake.linux-*-cpython-*`
-- runtime cache and dump directories default to `~/.triton`
+- runtime cache, dump, and JSON dependency directories default to `~/.triton`
 
 It exports:
 
 - `TRITON_PLUGIN_DIRS`
 - `LLVM_SYSPATH`
+- `JSON_SYSPATH`
 - `LLVM_BINARY_DIR`
 - `BUDDY_MLIR_BINARY_DIR`
 - `TRITON_SHARED_OPT_PATH`
@@ -83,7 +96,7 @@ If your local layout differs, override variables before sourcing:
 
 ```sh
 export TRITON_DIR=/path/to/triton
-export TRITON_VENV=/path/to/triton-venv
+export TRITON_VENV=/path/to/triton-venv   # or rely on active conda env
 export BUDDY_DIR=/path/to/buddy-mlir
 source /path/to/triton-riscv/scripts/triton-riscv-env.sh
 ```
@@ -95,6 +108,7 @@ This helper removes most of the repetitive local environment setup from the READ
 For both the initial build and later source-only rebuilds:
 
 ```sh
+conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
 cd /path/to/triton-riscv
 source scripts/triton-riscv-env.sh
 scripts/rebuild-triton-riscv.sh
@@ -104,40 +118,43 @@ scripts/rebuild-triton-riscv.sh
 
 - reuses the environment from `triton-riscv-env.sh`
 - removes a stale Triton build directory when it was created under an old path or with a different Python version
-- runs `cmake --build "$BUILD_DIR" -j"$(nproc)"` when an existing build directory is present
-- runs `pip install --no-build-isolation -vvv .` in `$TRITON_DIR`
+- runs `python -m pip install --no-build-isolation -vvv .` in `$TRITON_DIR`, which configures and builds Triton with the current `LLVM_SYSPATH`, `JSON_SYSPATH`, and plugin settings
+- syncs `backend/compiler.py` and `backend/driver.py` into the installed `triton_shared` backend package
 - verifies the rebuilt install with Python import and `triton-shared-opt --version`
+
+Use the same command sequence after changing the backend, lowering pipeline, or C++ sources.
+If you change the buddy-opt pass pipeline or cached compilation behavior, clear Triton's cache after sourcing the environment and before rerunning tests:
+
+```sh
+rm -rf "$TRITON_CACHE_DIR"
+```
 
 Build artifacts are placed under `triton/build/{current_cmake_version}/third_party/triton_shared`.
 
 ## Verify the build
 
 ```sh
+conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
 cd /path/to/triton-riscv
 source scripts/triton-riscv-env.sh
 python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
 "$TRITON_SHARED_OPT_PATH" --version
 ```
 
-If you change the buddy-opt pass pipeline or cached compilation behavior, clear Triton's cache after sourcing the environment:
-
-```sh
-rm -rf "$TRITON_CACHE_DIR"
-```
-
 ## Run the example test suite
 
 ```sh
-pytest ../triton-riscv/python/examples/ \
-    --ignore=../triton-riscv/python/examples/test_core.py \
-    --ignore=../triton-riscv/python/examples/test_annotations.py \
+pytest python/examples/ \
+    --ignore=python/examples/test_core.py \
+    --ignore=python/examples/test_annotations.py \
+    --ignore=python/examples/flaggems \
     -v
 ```
 
 To run a single test:
 
 ```sh
-pytest ../triton-riscv/python/examples/test_vec_add.py -v
+pytest python/examples/test_vec_add.py -v
 ```
 
 ## FAQ

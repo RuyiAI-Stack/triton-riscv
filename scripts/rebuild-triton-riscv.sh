@@ -13,9 +13,9 @@ if [[ ! -d "${TRITON_DIR}" ]]; then
   exit 1
 fi
 
-if [[ ! -x "${TRITON_VENV}/bin/pip" ]]; then
-  echo "pip not found in TRITON_VENV: ${TRITON_VENV}" >&2
-  echo "Create the virtual environment and install build deps first." >&2
+if [[ ! -x "${TRITON_VENV}/bin/python" ]]; then
+  echo "python not found in TRITON_VENV: ${TRITON_VENV}" >&2
+  echo "Activate your environment (venv or conda) and install build deps first." >&2
   exit 1
 fi
 
@@ -49,10 +49,6 @@ if [[ -n "${BUILD_DIR:-}" && -d "${BUILD_DIR}" ]]; then
   fi
 fi
 
-if [[ -n "${BUILD_DIR:-}" && -d "${BUILD_DIR}" ]]; then
-  cmake --build "${BUILD_DIR}" -j"$(nproc)"
-fi
-
 cd "${TRITON_DIR}"
 
 # setuptools/wheel may reuse stale Python staging directories under build/.
@@ -63,7 +59,7 @@ if [[ -d build ]]; then
   find build -maxdepth 1 -type d \( -name 'lib.*' -o -name 'bdist.*' \) -print -exec rm -rf {} +
 fi
 
-PIP_DISABLE_PIP_VERSION_CHECK=1 "${TRITON_VENV}/bin/pip" install --no-build-isolation -vvv .
+PIP_DISABLE_PIP_VERSION_CHECK=1 "${TRITON_VENV}/bin/python" -m pip install --no-build-isolation -vvv .
 
 "${TRITON_VENV}/bin/python" - "${TRITON_RISCV_DIR}" <<'PY'
 import pathlib
@@ -97,11 +93,11 @@ PY
 
 if [[ -z "${BUILD_DIR:-}" || ! -d "${BUILD_DIR}" || ! -x "${TRITON_SHARED_OPT_PATH:-}" ]]; then
   BUILD_DIR="$(
-    find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name "cmake.linux-*-cpython-${_expected_python_tag}" | sort | head -n1
+    find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name "cmake.linux-*-cpython-${_expected_python_tag}" 2>/dev/null | sort | head -n1 || true
   )"
   if [[ -z "${BUILD_DIR:-}" ]]; then
     BUILD_DIR="$(
-      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name 'cmake.linux-*-cpython-*' | sort | head -n1
+      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name 'cmake.linux-*-cpython-*' 2>/dev/null | sort | head -n1 || true
     )"
   fi
   export BUILD_DIR

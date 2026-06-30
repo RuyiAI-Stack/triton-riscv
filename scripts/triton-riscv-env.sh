@@ -9,9 +9,22 @@ _triton_riscv_env_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _triton_riscv_repo_root="$(cd "${_triton_riscv_env_dir}/.." && pwd)"
 
 TRITON_RISCV_DIR="${TRITON_RISCV_DIR:-${_triton_riscv_repo_root}}"
+_default_triton_venv="${TRITON_RISCV_DIR}/.venv"
 TRITON_DIR="${TRITON_DIR:-$(cd "${TRITON_RISCV_DIR}/../triton" && pwd)}"
+
+if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" && ( -z "${TRITON_VENV:-}" || "${TRITON_VENV}" == "${_default_triton_venv}" ) ]]; then
+  TRITON_VENV="${CONDA_PREFIX}"
+elif [[ -z "${TRITON_VENV:-}" ]]; then
+  if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
+    TRITON_VENV="${CONDA_PREFIX}"
+  elif [[ -x "${_default_triton_venv}/bin/python" ]]; then
+    TRITON_VENV="${_default_triton_venv}"
+  else
+    TRITON_VENV="${_default_triton_venv}"
+  fi
+fi
+
 BUDDY_DIR="${BUDDY_DIR:-$(cd "${TRITON_RISCV_DIR}/../buddy-mlir" && pwd)}"
-TRITON_VENV="${TRITON_VENV:-${TRITON_RISCV_DIR}/.venv}"
 TRITON_HOME="${TRITON_HOME:-${HOME}}"
 TRITON_RUNTIME_ROOT="${TRITON_RUNTIME_ROOT:-${HOME}/.triton}"
 TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${TRITON_RUNTIME_ROOT}/cache}"
@@ -27,13 +40,13 @@ if [[ -z "${BUILD_DIR:-}" ]]; then
 
   if [[ -n "${_detected_python_tag}" ]]; then
     _detected_build_dir="$(
-      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name "cmake.linux-*-cpython-${_detected_python_tag}" 2>/dev/null | sort | head -n1
+      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name "cmake.linux-*-cpython-${_detected_python_tag}" 2>/dev/null | sort | head -n1 || true
     )"
   fi
 
   if [[ -z "${_detected_build_dir:-}" ]]; then
     _detected_build_dir="$(
-      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name 'cmake.linux-*-cpython-*' 2>/dev/null | sort | head -n1
+      find "${TRITON_DIR}/build" -maxdepth 1 -mindepth 1 -type d -name 'cmake.linux-*-cpython-*' 2>/dev/null | sort | head -n1 || true
     )"
   fi
 
@@ -53,6 +66,7 @@ if [[ -z "${TRITON_SHARED_OPT_PATH:-}" ]]; then
 fi
 
 LLVM_SYSPATH="${LLVM_SYSPATH:-${BUDDY_DIR}/llvm/build}"
+JSON_SYSPATH="${JSON_SYSPATH:-${TRITON_RUNTIME_ROOT}/json}"
 LLVM_BINARY_DIR="${LLVM_BINARY_DIR:-${LLVM_SYSPATH}/bin}"
 BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${BUDDY_DIR}/build/bin}"
 TRITON_RISCV_LOWERING_MODE="${TRITON_RISCV_LOWERING_MODE:-linalg_loops}"
@@ -68,6 +82,7 @@ export TRITON_OVERRIDE_DIR
 export BUILD_DIR
 export TRITON_PLUGIN_DIRS="${TRITON_RISCV_DIR}"
 export LLVM_SYSPATH
+export JSON_SYSPATH
 export LLVM_BINARY_DIR
 export BUDDY_MLIR_BINARY_DIR
 export TRITON_SHARED_OPT_PATH
@@ -75,6 +90,10 @@ export TRITON_SHARED_DUMP_PATH
 export TRITON_RISCV_LOWERING_MODE
 export PATH="${TRITON_VENV}/bin:${LLVM_BINARY_DIR}:${BUDDY_MLIR_BINARY_DIR}:${PATH}"
 
+export PYTHONSAFEPATH=1
+
+unset _candidate_build_dir
+unset _default_triton_venv
 unset _detected_build_dir
 unset _detected_python_tag
 unset _candidate_triton_shared_opt_path
