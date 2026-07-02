@@ -69,7 +69,7 @@ LLVM_SYSPATH="${LLVM_SYSPATH:-${BUDDY_DIR}/llvm/build}"
 JSON_SYSPATH="${JSON_SYSPATH:-${TRITON_RUNTIME_ROOT}/json}"
 LLVM_BINARY_DIR="${LLVM_BINARY_DIR:-${LLVM_SYSPATH}/bin}"
 BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${BUDDY_DIR}/build/bin}"
-RISCV_GNU_TOOLCHAIN_DIR="${RISCV_GNU_TOOLCHAIN_DIR:-${BUDDY_DIR}/build/thirdparty/riscv-gnu-toolchain}"
+RISCV_GNU_TOOLCHAIN_DIR="${RISCV_GNU_TOOLCHAIN_DIR:-${BUDDY_DIR}/build-for-triton-riscv/thirdparty/riscv-gnu-toolchain}"
 if [[ -x "${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-unknown-linux-gnu-gcc" ]]; then
   TRITON_RISCV_CC="${TRITON_RISCV_CC:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-unknown-linux-gnu-gcc}"
   TRITON_RISCV_OBJDUMP="${TRITON_RISCV_OBJDUMP:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-unknown-linux-gnu-objdump}"

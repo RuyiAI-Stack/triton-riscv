@@ -4,8 +4,8 @@ set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _repo_root="$(cd "${_script_dir}/.." && pwd)"
 BUDDY_DIR="${BUDDY_DIR:-$(cd "${_repo_root}/../buddy-mlir" && pwd)}"
-_toolchain_src="${BUDDY_DIR}/thirdparty/riscv-gnu-toolchain"
-_toolchain_prefix="${RISCV_GNU_TOOLCHAIN_DIR:-${BUDDY_DIR}/build/thirdparty/riscv-gnu-toolchain}"
+BUDDY_BUILD_DIR="${BUDDY_BUILD_DIR:-${BUDDY_DIR}/build-for-triton-riscv}"
+_toolchain_prefix="${BUDDY_BUILD_DIR}/thirdparty/riscv-gnu-toolchain"
 _jobs="${JOBS:-16}"
 
 if [[ ! -d "${BUDDY_DIR}/.git" ]]; then
@@ -13,21 +13,20 @@ if [[ ! -d "${BUDDY_DIR}/.git" ]]; then
   exit 1
 fi
 
-git -C "${BUDDY_DIR}" submodule update --init thirdparty/riscv-gnu-toolchain
-git -C "${_toolchain_src}" submodule update --init binutils gcc glibc qemu
-
-cd "${_toolchain_src}"
-if [[ ! -f Makefile ]]; then
-  ./configure \
-    --prefix="${_toolchain_prefix}" \
-    --enable-linux \
-    --disable-gdb \
-    --with-arch=rv64gcv_zfh_zvfh_zba_zbb \
-    --with-abi=lp64d
-fi
-
-env -u PYTHONSAFEPATH make -j"${_jobs}" linux
-env -u PYTHONSAFEPATH make -j"${_jobs}" build-qemu
+_cmake_args=(
+  -S "${BUDDY_DIR}"
+  -B "${BUDDY_BUILD_DIR}"
+  -G Ninja
+  -DBUDDY_MLIR_ENABLE_RISCV_GNU_TOOLCHAIN=ON
+  -DBUDDY_MLIR_ENABLE_PYTHON_PACKAGES=ON
+  -DLLVM_ENABLE_ASSERTIONS=ON
+  -DCMAKE_BUILD_TYPE=RELEASE
+  -DLLVM_DIR="${LLVM_DIR:-${BUDDY_DIR}/llvm/build/lib/cmake/llvm}"
+  -DMLIR_DIR="${MLIR_DIR:-${BUDDY_DIR}/llvm/build/lib/cmake/mlir}"
+  -DPython3_EXECUTABLE="${Python3_EXECUTABLE:-$(command -v python3)}"
+)
+cmake "${_cmake_args[@]}"
+env -u PYTHONSAFEPATH ninja -C "${BUDDY_BUILD_DIR}" -j"${_jobs}"
 
 "${_toolchain_prefix}/bin/riscv64-unknown-linux-gnu-gcc" --version | head -n1
 "${_toolchain_prefix}/bin/qemu-riscv64" --version | head -n1

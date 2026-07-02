@@ -24,7 +24,11 @@ buddy-mlir/
 triton/
 ```
 
-`triton-riscv` provides an incremental build script. On its first run, the script initializes Buddy's pinned `riscv-gnu-toolchain` submodule and builds GCC, glibc/sysroot, and QEMU. Later runs reuse the existing make stamps and do not invoke `make clean`.
+`triton-riscv` provides a build script that enables buddy-mlir
+`BUDDY_MLIR_ENABLE_RISCV_GNU_TOOLCHAIN` CMake option and runs the full Buddy
+Ninja build in a dedicated build directory. It also enables Buddy's Python
+packages. The script does not run any Git submodule initialization commands;
+toolchain configuration and building are invoked only through Buddy's CMake.
 
 ```sh
 conda activate ruyiai
@@ -35,13 +39,16 @@ scripts/build-riscv-gnu-toolchain.sh
 The default installation directory is:
 
 ```text
-../buddy-mlir/build/thirdparty/riscv-gnu-toolchain/
+../buddy-mlir/build-for-triton-riscv/thirdparty/riscv-gnu-toolchain/
   bin/riscv64-unknown-linux-gnu-gcc
   bin/qemu-riscv64
   sysroot/
 ```
 
-Use `BUDDY_DIR`, `RISCV_GNU_TOOLCHAIN_DIR`, and `JOBS` to override the Buddy source directory, installation directory, and build parallelism.
+Use `BUDDY_DIR`, `BUDDY_BUILD_DIR`, and `JOBS` to override the Buddy source
+directory, Buddy build directory, and build parallelism. The toolchain is
+installed under `${BUDDY_BUILD_DIR}/thirdparty/riscv-gnu-toolchain` by Buddy's
+CMake configuration.
 
 > `scripts/triton-riscv-env.sh` sets `PYTHONSAFEPATH=1`. The toolchain build script automatically removes this variable while building glibc. Otherwise, glibc's generator scripts cannot import Python modules from their own directory.
 
