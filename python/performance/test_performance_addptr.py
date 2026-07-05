@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -33,13 +31,18 @@ def run_addptr(x):
     return output
 
 
-@benchmark.measure()
 def bench_addptr(size):
     x = torch.arange(size, device="cpu", dtype=torch.float32)
-    run_addptr(x)
+    benchmark.compare_providers(
+        f"bench_addptr(size={size})",
+        {
+            "torch": lambda: x.clone(),
+            "triton-riscv": lambda: run_addptr(x),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [1024000,2048000,4096000,8192000]:
+    for size in [1024000, 2048000, 4096000, 8192000]:
         bench_addptr(size)

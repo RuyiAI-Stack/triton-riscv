@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -28,9 +26,7 @@ def index_select_row_kernel(
     row_indices = tl.load(indices_ptr + row_offsets * stride_i)
     col_offsets = tl.arange(0, BLOCK_N)
     input_ptrs = (
-        input_ptr
-        + row_indices[:, None] * stride_m
-        + col_offsets[None, :] * stride_n
+        input_ptr + row_indices[:, None] * stride_m + col_offsets[None, :] * stride_n
     )
     values = tl.load(input_ptrs)
     output_ptrs = (
@@ -66,12 +62,29 @@ def run_index_select(rows, cols, picks):
     return output
 
 
-@benchmark.measure()
 def bench_index_select(rows, cols, picks):
-    run_index_select(rows, cols, picks)
+    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
+        rows, cols
+    )
+    if picks <= 1:
+        indices = torch.zeros((picks,), device="cpu", dtype=torch.int64)
+    else:
+        step = max((rows - 1) // (picks - 1), 1)
+        indices = (torch.arange(picks, device="cpu") * step).to(torch.int64)
+    benchmark.compare_providers(
+        f"bench_index_select(rows={rows}, cols={cols}, picks={picks})",
+        {
+            "torch": lambda: input_tensor.index_select(0, indices),
+            "triton-riscv": lambda: run_index_select(rows, cols, picks),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for rows, cols, picks in [(8*32, 4*32, 4*32), (16*32, 8*32, 8*32), (32*32, 16*32, 16*32)]:
+    for rows, cols, picks in [
+        (8 * 32, 4 * 32, 4 * 32),
+        (16 * 32, 8 * 32, 8 * 32),
+        (32 * 32, 16 * 32, 16 * 32),
+    ]:
         bench_index_select(rows, cols, picks)

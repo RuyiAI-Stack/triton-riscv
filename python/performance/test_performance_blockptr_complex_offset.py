@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -86,9 +84,17 @@ def run_blockptr_complex_offset(rows, cols):
     return output
 
 
-@benchmark.measure()
 def bench_blockptr_complex_offset(rows, cols):
-    run_blockptr_complex_offset(rows, cols)
+    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
+        rows, cols
+    )
+    benchmark.compare_providers(
+        f"bench_blockptr_complex_offset(rows={rows}, cols={cols})",
+        {
+            "torch": lambda: input_tensor[4 : rows - 4, 4 : cols - 4] * 2.0 + 1.0,
+            "triton-riscv": lambda: run_blockptr_complex_offset(rows, cols),
+        },
+    )
 
 
 if __name__ == "__main__":

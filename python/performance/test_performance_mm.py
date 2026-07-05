@@ -7,6 +7,8 @@ from triton.backends.triton_shared.driver import CPUDriver
 
 
 triton.runtime.driver.set_active(CPUDriver())
+
+
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
@@ -85,7 +87,11 @@ def mm_kernel(
     mask = (rm < M)[:, None] & (rn < N)[None, :]
     # handles write-back with reduction-splitting
     tl.store(C, acc, mask=mask)
+
+
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
+
+
 def get_higher_dtype(a, b):
     if a is b:
         return a
@@ -139,13 +145,23 @@ def mm(a, b):
     )
 
     return c
-@benchmark.measure()
+
+
 def bench_mm(M, N, K):
     a = torch.rand((M, K), device="cpu", dtype=torch.float32)
     b = torch.rand((K, N), device="cpu", dtype=torch.float32)
-    mm(a, b)
+    benchmark.compare_providers(
+        f"bench_mm(M={M}, N={N}, K={K})",
+        {
+            "torch": lambda: torch.matmul(a, b),
+            "triton-riscv": lambda: mm(a, b),
+        },
+        rtol=1e-3,
+        atol=1e-2,
+    )
+
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for M, N, K in [(8*32, 8*32, 8*32), (16*32, 16*32, 16*32)]:
+    for M, N, K in [(8 * 32, 8 * 32, 8 * 32), (16 * 32, 16 * 32, 16 * 32)]:
         bench_mm(M, N, K)

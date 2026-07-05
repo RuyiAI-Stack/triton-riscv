@@ -22,7 +22,11 @@ def splat_kernel(
     values = tl.full((2, BLOCK_SIZE_COL), fill_value, dtype=tl.float32)
     offsets_row = 2 * pid + tl.arange(0, 2)
     offsets_col = tl.arange(0, BLOCK_SIZE_COL)
-    output_ptrs = output_ptr + offsets_row[:, None] * stride_row + offsets_col[None, :] * stride_col
+    output_ptrs = (
+        output_ptr
+        + offsets_row[:, None] * stride_row
+        + offsets_col[None, :] * stride_col
+    )
     tl.store(output_ptrs, values)
 
 
@@ -42,12 +46,20 @@ def run_splat(rows, cols, fill_value=123.456):
     return output
 
 
-@benchmark.measure()
 def bench_splat(size):
-    run_splat(size, size)
+    fill_value = 123.456
+    benchmark.compare_providers(
+        f"bench_splat(size={size})",
+        {
+            "torch": lambda: torch.full(
+                (size, size), fill_value, device="cpu", dtype=torch.float32
+            ),
+            "triton-riscv": lambda: run_splat(size, size, fill_value),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [32*64, 64*64, 128*64]:
+    for size in [32 * 64, 64 * 64, 128 * 64]:
         bench_splat(size)

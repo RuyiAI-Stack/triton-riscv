@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -72,12 +70,20 @@ def run_load_2d_tensor_block(rows, cols):
     return output
 
 
-@benchmark.measure()
 def bench_load_2d_tensor_block(rows, cols):
-    run_load_2d_tensor_block(rows, cols)
+    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
+        rows, cols
+    )
+    benchmark.compare_providers(
+        f"bench_load_2d_tensor_block(rows={rows}, cols={cols})",
+        {
+            "torch": lambda: input_tensor * 2.0 + 1.0,
+            "triton-riscv": lambda: run_load_2d_tensor_block(rows, cols),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for rows, cols in [(16*32, 16*32), (32*32, 32*32), (64*32, 32*32)]:
+    for rows, cols in [(16 * 32, 16 * 32), (32 * 32, 32 * 32), (64 * 32, 32 * 32)]:
         bench_load_2d_tensor_block(rows, cols)

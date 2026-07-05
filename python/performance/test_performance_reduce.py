@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -21,10 +19,8 @@ def reduce_kernel(input_ptr, output_ptr, stride_row, n_cols, BLOCK_SIZE: tl.cons
     tl.store(output_ptr + pid, total)
 
 
-def run_reduce(rows, cols):
-    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
-        rows, cols
-    )
+def run_reduce(input_tensor):
+    rows, cols = input_tensor.shape
     output = torch.empty((rows,), device="cpu", dtype=torch.float32)
     block_size = triton.next_power_of_2(cols)
     reduce_kernel[(rows,)](
@@ -37,12 +33,20 @@ def run_reduce(rows, cols):
     return output
 
 
-@benchmark.measure()
 def bench_reduce(rows, cols):
-    run_reduce(rows, cols)
+    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
+        rows, cols
+    )
+    benchmark.compare_providers(
+        f"bench_reduce(rows={rows}, cols={cols})",
+        {
+            "torch": lambda: torch.sum(input_tensor, dim=1),
+            "triton-riscv": lambda: run_reduce(input_tensor),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for rows, cols in [(16*16, 16*16), (32*16, 32*16), (64*16, 64*16)]:
+    for rows, cols in [(16 * 16, 16 * 16), (32 * 16, 32 * 16), (64 * 16, 64 * 16)]:
         bench_reduce(rows, cols)

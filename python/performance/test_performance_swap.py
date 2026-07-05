@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -36,14 +34,19 @@ def run_swap(x, y):
     return x, y
 
 
-@benchmark.measure()
 def bench_swap(size):
     x = torch.rand(size, device="cpu", dtype=torch.float32)
     y = torch.rand(size, device="cpu", dtype=torch.float32)
-    run_swap(x, y)
+    benchmark.compare_providers(
+        f"bench_swap(size={size})",
+        {
+            "torch": lambda: (y.clone(), x.clone()),
+            "triton-riscv": lambda: run_swap(x.clone(), y.clone()),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [2**10*16, 2**12*16, 2**14*16]:
+    for size in [2**10 * 16, 2**12 * 16, 2**14 * 16]:
         bench_swap(size)

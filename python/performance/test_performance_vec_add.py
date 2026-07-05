@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -37,11 +35,16 @@ def run_vec_add(x, y):
     return output
 
 
-@benchmark.measure()
 def bench_vec_add(size):
     x = torch.rand(size, device="cpu", dtype=torch.float32)
     y = torch.rand(size, device="cpu", dtype=torch.float32)
-    run_vec_add(x, y)
+    benchmark.compare_providers(
+        f"bench_vec_add(size={size})",
+        {
+            "torch": lambda: x + y,
+            "triton-riscv": lambda: run_vec_add(x, y),
+        },
+    )
 
 
 if __name__ == "__main__":

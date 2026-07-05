@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -30,14 +28,24 @@ def run_sign_extend(x, offsets):
     return output
 
 
-@benchmark.measure()
 def bench_sign_extend(size):
     x = torch.arange(size + 4, device="cpu", dtype=torch.int32)
     offsets = torch.arange(1, size + 1, device="cpu", dtype=torch.int32)
-    run_sign_extend(x, offsets)
+    gather_offsets = offsets[:, None].to(torch.int64) + torch.arange(4, device="cpu")
+    benchmark.compare_providers(
+        f"bench_sign_extend(size={size})",
+        {
+            "torch": lambda: torch.where(
+                gather_offsets < x.numel(),
+                x[gather_offsets.clamp(max=x.numel() - 1)],
+                torch.full_like(gather_offsets, 11, dtype=x.dtype),
+            ).reshape(-1),
+            "triton-riscv": lambda: run_sign_extend(x, offsets),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [64*32, 256*32, 1024*32]:
+    for size in [64 * 32, 256 * 32, 1024 * 32]:
         bench_sign_extend(size)

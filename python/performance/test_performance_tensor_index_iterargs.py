@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -47,12 +45,17 @@ def run_tensor_index_iterargs(size):
     return output
 
 
-@benchmark.measure()
 def bench_tensor_index_iterargs(size):
-    run_tensor_index_iterargs(size)
+    benchmark.compare_providers(
+        f"bench_tensor_index_iterargs(size={size})",
+        {
+            "torch": lambda: torch.arange(size, device="cpu", dtype=torch.int32),
+            "triton-riscv": lambda: run_tensor_index_iterargs(size),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [16*256, 32*256, 64*256]:
+    for size in [16 * 256, 32 * 256, 64 * 256]:
         bench_tensor_index_iterargs(size)

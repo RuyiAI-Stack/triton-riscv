@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -30,12 +28,17 @@ def run_scalar_store(size):
     return output
 
 
-@benchmark.measure()
 def bench_scalar_store(size):
-    run_scalar_store(size)
+    benchmark.compare_providers(
+        f"bench_scalar_store(size={size})",
+        {
+            "torch": lambda: torch.arange(size, device="cpu", dtype=torch.float32),
+            "triton-riscv": lambda: run_scalar_store(size),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [8*256, 16*256, 32*256]:
+    for size in [8 * 256, 16 * 256, 32 * 256]:
         bench_scalar_store(size)

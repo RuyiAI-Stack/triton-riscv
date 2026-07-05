@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -54,13 +52,20 @@ def run_modulo(x):
     return output
 
 
-@benchmark.measure()
 def bench_modulo(size):
     x = torch.arange(size * size, device="cpu", dtype=torch.float32).reshape(size, size)
-    run_modulo(x)
+    cols = torch.arange(size, device="cpu")
+    wrapped_cols = (torch.arange(size, device="cpu")[:, None] + cols[None, :]) % size
+    benchmark.compare_providers(
+        f"bench_modulo(size={size})",
+        {
+            "torch": lambda: torch.gather(x, 1, wrapped_cols),
+            "triton-riscv": lambda: run_modulo(x),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [64*32, 128*32, 256*32]:
+    for size in [64 * 32, 128 * 32, 256 * 32]:
         bench_modulo(size)

@@ -7,6 +7,7 @@ from triton.backends.triton_shared.driver import CPUDriver
 
 triton.runtime.driver.set_active(CPUDriver())
 
+
 @triton.jit
 def softmax_kernel(
     output_ptr,
@@ -65,11 +66,20 @@ def softmax(x):
         BLOCK_SIZE=BLOCK_SIZE,
     )
     return y
-@benchmark.measure()
+
+
 def bench_softmax(size):
     torch.manual_seed(0)
     x = torch.randn(size, size, device="cpu")
-    softmax(x)
+    benchmark.compare_providers(
+        f"bench_softmax(size={size})",
+        {
+            "torch": lambda: torch.softmax(x, axis=1),
+            "triton-riscv": lambda: softmax(x),
+        },
+        rtol=1e-3,
+        atol=1e-3,
+    )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -32,12 +30,28 @@ def run_mask(size):
     return output
 
 
-@benchmark.measure()
 def bench_mask(size):
-    run_mask(size)
+    def torch_reference():
+        output = torch.full((size,), -2, device="cpu", dtype=torch.int32)
+        block_size = min(size, 4)
+        offs = 100 + torch.arange(block_size, device="cpu")
+        output[:block_size] = torch.where(
+            offs < size,
+            offs.to(torch.int32),
+            torch.full_like(offs, -1, dtype=torch.int32),
+        )
+        return output
+
+    benchmark.compare_providers(
+        f"bench_mask(size={size})",
+        {
+            "torch": torch_reference,
+            "triton-riscv": lambda: run_mask(size),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [8*256, 16*256, 32*256]:
+    for size in [8 * 256, 16 * 256, 32 * 256]:
         bench_mask(size)

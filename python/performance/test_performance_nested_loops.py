@@ -40,8 +40,7 @@ def nested_use_same_level_loop_results(in_ptr, out_ptr, stride_m, stride_n):
         a_ptrs += 2 * stride_n
 
 
-@benchmark.measure()
-def bench_nested_use_same_level_loop_results(n_rows, n_cols):
+def run_nested_use_same_level_loop_results(n_rows, n_cols):
     x = torch.arange(0, n_rows * n_cols, device="cpu", dtype=torch.int32).reshape(
         [n_rows, n_cols]
     )
@@ -51,6 +50,33 @@ def bench_nested_use_same_level_loop_results(n_rows, n_cols):
         return (1,)
 
     nested_use_same_level_loop_results[grid](x, output, x.stride(0), x.stride(1))
+    return output
+
+
+def nested_use_same_level_loop_results_reference(n_rows, n_cols):
+    x = torch.arange(0, n_rows * n_cols, device="cpu", dtype=torch.int32).reshape(
+        [n_rows, n_cols]
+    )
+    output = torch.zeros([n_rows, n_cols], device=x.device, dtype=x.dtype)
+    store_cols = [0, 4, 6, 10, 12, 16, 18, 22]
+    load_cols = [4, 6, 8, 10, 18, 20, 22, 24]
+    for store_col, load_col in zip(store_cols, load_cols):
+        output[0:2, store_col : store_col + 2] = x[0:2, load_col : load_col + 2]
+    return output
+
+
+def bench_nested_use_same_level_loop_results(n_rows, n_cols):
+    benchmark.compare_providers(
+        f"bench_nested_use_same_level_loop_results(n_rows={n_rows}, n_cols={n_cols})",
+        {
+            "torch": lambda: nested_use_same_level_loop_results_reference(
+                n_rows, n_cols
+            ),
+            "triton-riscv": lambda: run_nested_use_same_level_loop_results(
+                n_rows, n_cols
+            ),
+        },
+    )
 
 
 if __name__ == "__main__":

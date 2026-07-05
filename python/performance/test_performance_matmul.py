@@ -108,11 +108,7 @@ def matmul(a, b, activation=""):
     block_size_m = 32
     block_size_n = 64
     block_size_k = 16
-    aligned = (
-        M % block_size_m == 0
-        and N % block_size_n == 0
-        and K % block_size_k == 0
-    )
+    aligned = M % block_size_m == 0 and N % block_size_n == 0 and K % block_size_k == 0
     if not aligned:
         _warn_fallback_once(
             "[matmul] Falling back to torch.matmul for non-aligned shapes to avoid masked staging."
@@ -144,11 +140,18 @@ def matmul(a, b, activation=""):
     return c
 
 
-@benchmark.measure()
 def bench_matmul(M, N, K):
     a = torch.randn((M, K), device="cpu", dtype=torch.float32)
     b = torch.randn((K, N), device="cpu", dtype=torch.float32)
-    matmul(a, b)
+    benchmark.compare_providers(
+        f"bench_matmul(M={M}, N={N}, K={K})",
+        {
+            "torch": lambda: torch.matmul(a, b),
+            "triton-riscv": lambda: matmul(a, b),
+        },
+        rtol=1e-3,
+        atol=1e-2,
+    )
 
 
 if __name__ == "__main__":

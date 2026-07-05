@@ -7,6 +7,8 @@ from triton.backends.triton_shared.driver import CPUDriver
 
 
 triton.runtime.driver.set_active(CPUDriver())
+
+
 # This implements einsum(qhmd,hmpd->qhmp).
 @triton.jit
 def einsum_qhmd_hmpd_to_qhmp_kernel(
@@ -139,13 +141,27 @@ def einsum_qhmd_hmpd_to_qhmp(A, B, BLOCK_QHM=2, BLOCK_P=2):
     )
 
     return C
-@benchmark.measure()
+
+
 def bench_einsum_qhmd_hmpd_to_qhmp(Q, H, M, P, D):
     A = torch.rand((Q, H, M, D), device="cpu", dtype=torch.float32)
     B = torch.rand((H, M, P, D), device="cpu", dtype=torch.float32)
-    einsum_qhmd_hmpd_to_qhmp(A, B)
+    benchmark.compare_providers(
+        f"bench_einsum_qhmd_hmpd_to_qhmp(Q={Q}, H={H}, M={M}, P={P}, D={D})",
+        {
+            "torch": lambda: torch.einsum("qhmd,hmpd->qhmp", A, B),
+            "triton-riscv": lambda: einsum_qhmd_hmpd_to_qhmp(A, B),
+        },
+        rtol=1e-4,
+        atol=1e-4,
+    )
+
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for Q, H, M, P, D in [(1*2, 2*2, 2*2, 4*2, 2*2), (2*2, 4*2, 4*2, 2*2, 4*2), (4*2, 2*2, 2*2, 16*2, 2*2)]:
+    for Q, H, M, P, D in [
+        (1 * 2, 2 * 2, 2 * 2, 4 * 2, 2 * 2),
+        (2 * 2, 4 * 2, 4 * 2, 2 * 2, 4 * 2),
+        (4 * 2, 2 * 2, 2 * 2, 16 * 2, 2 * 2),
+    ]:
         bench_einsum_qhmd_hmpd_to_qhmp(Q, H, M, P, D)

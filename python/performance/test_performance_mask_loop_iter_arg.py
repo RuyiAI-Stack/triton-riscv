@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -48,12 +46,23 @@ def run_mask_loop_iter_arg(rows, cols):
     return y.reshape(rows, cols)
 
 
-@benchmark.measure()
 def bench_mask_loop_iter_arg(rows, cols):
-    run_mask_loop_iter_arg(rows, cols)
+    benchmark.compare_providers(
+        f"bench_mask_loop_iter_arg(rows={rows}, cols={cols})",
+        {
+            "torch": lambda: torch.arange(
+                rows * cols, device="cpu", dtype=torch.float32
+            ).reshape(rows, cols),
+            "triton-riscv": lambda: run_mask_loop_iter_arg(rows, cols),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for rows, cols in [(3*32*16, 5*32*16), (8*32*16, 16*32*16), (16*32*16, 32*32*16)]:
+    for rows, cols in [
+        (3 * 32 * 16, 5 * 32 * 16),
+        (8 * 32 * 16, 16 * 32 * 16),
+        (16 * 32 * 16, 32 * 32 * 16),
+    ]:
         bench_mask_loop_iter_arg(rows, cols)

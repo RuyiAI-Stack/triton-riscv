@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 import triton
 import triton.language as tl
@@ -6,6 +7,7 @@ import benchmark
 from triton.backends.triton_shared.driver import CPUDriver
 
 triton.runtime.driver.set_active(CPUDriver())
+
 
 @triton.jit
 def _layer_norm_fwd_fused(
@@ -58,7 +60,6 @@ def _layer_norm_fwd_fused(
 
 
 class LayerNorm(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps, device):
         # allocate output
@@ -95,9 +96,9 @@ class LayerNorm(torch.autograd.Function):
         ctx.num_warps = num_warps
         ctx.eps = eps
         return y
-    
-@benchmark.measure()
-def bench_layernorm(size, provider):
+
+
+def bench_layernorm(size):
     layer_norm = LayerNorm.apply
     device = "cpu"
     eps = 1e-5
@@ -107,13 +108,19 @@ def bench_layernorm(size, provider):
     weight = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=False)
     bias = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=False)
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device=device)
-    dy = 0.1 * torch.randn_like(x)
     x.requires_grad_(False)
-    # forward pass
-    y_tri = layer_norm(x, w_shape, weight, bias, eps, device)
+    benchmark.compare_providers(
+        f"bench_layernorm(size={size})",
+        {
+            "torch": lambda: F.layer_norm(x, w_shape, weight, bias, eps),
+            "triton-riscv": lambda: layer_norm(x, w_shape, weight, bias, eps, device),
+        },
+        rtol=1e-2,
+        atol=1e-2,
+    )
+
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
     for X in [2**i for i in range(6, 8, 1)]:
-        for provider in ["triton"]:
-            bench_layernorm(X, provider)
+        bench_layernorm(X)

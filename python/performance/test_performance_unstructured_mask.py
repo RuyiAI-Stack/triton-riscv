@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -46,7 +44,7 @@ def run_unstructured_mask(rows, cols):
     ).reshape(rows, cols)
     output = torch.full((rows, cols), -1.0, device="cpu", dtype=torch.float32)
     mask_m = (torch.arange(rows, device="cpu") % 2 == 0).to(torch.int8)
-    mask_n = (torch.arange(cols, device="cpu") % 2 == 1)
+    mask_n = torch.arange(cols, device="cpu") % 2 == 1
     if cols > 4:
         mask_n[4] = True
     if cols > 5:
@@ -66,12 +64,34 @@ def run_unstructured_mask(rows, cols):
     return output
 
 
-@benchmark.measure()
 def bench_unstructured_mask(rows, cols):
-    run_unstructured_mask(rows, cols)
+    def torch_reference():
+        input_tensor = torch.arange(
+            2, 2 + rows * cols, device="cpu", dtype=torch.float32
+        ).reshape(rows, cols)
+        output = torch.full((rows, cols), -1.0, device="cpu", dtype=torch.float32)
+        mask_m = torch.arange(rows, device="cpu") % 2 == 0
+        mask_n = torch.arange(cols, device="cpu") % 2 == 1
+        if cols > 4:
+            mask_n[4] = True
+        if cols > 5:
+            mask_n[5] = False
+        values = torch.where(
+            mask_m[:, None], input_tensor, torch.full_like(input_tensor, -2.0)
+        )
+        output[:, mask_n] = values[:, mask_n]
+        return output
+
+    benchmark.compare_providers(
+        f"bench_unstructured_mask(rows={rows}, cols={cols})",
+        {
+            "torch": torch_reference,
+            "triton-riscv": lambda: run_unstructured_mask(rows, cols),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for rows, cols in [(4*32, 6*32), (8*32, 8*32), (16*32, 16*32)]:
+    for rows, cols in [(4 * 32, 6 * 32), (8 * 32, 8 * 32), (16 * 32, 16 * 32)]:
         bench_unstructured_mask(rows, cols)

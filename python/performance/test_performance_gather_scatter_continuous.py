@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -44,9 +42,14 @@ def run_gather_scatter_continuous(x, y, z):
     return output
 
 
-@benchmark.measure()
 def bench_gather_scatter_continuous(x, y, z):
-    run_gather_scatter_continuous(x, y, z)
+    benchmark.compare_providers(
+        f"bench_gather_scatter_continuous(x={x}, y={y}, z={z})",
+        {
+            "torch": lambda: torch.arange(x * y * z, device="cpu", dtype=torch.int32),
+            "triton-riscv": lambda: run_gather_scatter_continuous(x, y, z),
+        },
+    )
 
 
 if __name__ == "__main__":

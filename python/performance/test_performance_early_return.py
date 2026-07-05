@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -29,13 +27,18 @@ def run_early_return(x):
     return output
 
 
-@benchmark.measure()
 def bench_early_return(size):
     x = torch.arange(size, device="cpu", dtype=torch.int32)
-    run_early_return(x)
+    benchmark.compare_providers(
+        f"bench_early_return(size={size})",
+        {
+            "torch": lambda: torch.where(x == -1, x, x + 1),
+            "triton-riscv": lambda: run_early_return(x),
+        },
+    )
 
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for size in [2**10*100, 2**12*100, 2**14*100]:
+    for size in [2**10 * 100, 2**12 * 100, 2**14 * 100]:
         bench_early_return(size)

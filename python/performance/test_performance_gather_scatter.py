@@ -1,5 +1,3 @@
-import os
-
 import torch
 
 import triton
@@ -37,9 +35,24 @@ def run_gather_scatter(size):
     return output
 
 
-@benchmark.measure()
 def bench_gather_scatter(size):
-    run_gather_scatter(size)
+    def torch_reference():
+        input_tensor = torch.arange(size, device="cpu", dtype=torch.int32)
+        output_offsets = torch.arange(size, device="cpu")
+        gather_offsets = (output_offsets // 64) * 64 + (output_offsets % 64) // 10 + 5
+        return torch.where(
+            gather_offsets < size,
+            input_tensor[gather_offsets.clamp(max=size - 1)],
+            torch.zeros_like(output_offsets, dtype=torch.int32),
+        )
+
+    benchmark.compare_providers(
+        f"bench_gather_scatter(size={size})",
+        {
+            "torch": torch_reference,
+            "triton-riscv": lambda: run_gather_scatter(size),
+        },
+    )
 
 
 if __name__ == "__main__":
