@@ -861,6 +861,262 @@ struct MaskedReduceFusionPattern : public OpRewritePattern<linalg::ReduceOp> {
   }
 };
 
+// Fuse a rank-1 elementwise DAG rooted at a masked store before masked loads
+// are materialized into temporary buffers. Only valid lanes are accessed, so
+// masked-load bounds semantics are preserved without padded heap allocations.
+struct MaskedElementwiseStoreFusionPattern
+    : public OpRewritePattern<tts::StoreOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  static bool isIdentityElementwise(linalg::GenericOp generic) {
+    if (generic->getNumResults() != 1 || generic.getNumLoops() != 1 ||
+        generic.getNumParallelLoops() != 1)
+      return false;
+    return llvm::all_of(generic.getIndexingMapsArray(),
+                        [](AffineMap map) { return map.isIdentity(); });
+  }
+
+  static bool isCloneableElementwiseOp(Operation &op) {
+    return isa<arith::ConstantOp>(op) ||
+           (op.getNumRegions() == 0 && op.hasTrait<OpTrait::Elementwise>() &&
+            isMemoryEffectFree(&op));
+  }
+
+  LogicalResult
+  collectExpression(Value value, tts::StoreOp store,
+                    SmallVectorImpl<tts::LoadOp> &loads,
+                    SmallVectorImpl<linalg::GenericOp> &generics) const {
+    if (auto load = value.getDefiningOp<tts::LoadOp>()) {
+      auto type = dyn_cast<RankedTensorType>(load.getType());
+      if (!load.hasMask() || !type || type.getRank() != 1 ||
+          !type.hasStaticShape() ||
+          load.getMixedMaskDims() != store.getMixedMaskDims())
+        return failure();
+      if (!llvm::is_contained(loads, load))
+        loads.push_back(load);
+      return success();
+    }
+
+    auto generic = value.getDefiningOp<linalg::GenericOp>();
+    if (!generic || !isIdentityElementwise(generic) ||
+        !llvm::is_contained(generic->getResults(), value))
+      return failure();
+    if (llvm::is_contained(generics, generic))
+      return success();
+
+    Block &body = generic.getRegion().front();
+    unsigned inputCount = generic.getInputs().size();
+    if (body.getNumArguments() != inputCount + generic.getDpsInits().size())
+      return failure();
+    for (BlockArgument outputArg : body.getArguments().drop_front(inputCount))
+      if (!outputArg.use_empty())
+        return failure();
+    for (Operation &bodyOp : body.without_terminator())
+      if (!isCloneableElementwiseOp(bodyOp))
+        return failure();
+    auto yield = dyn_cast<linalg::YieldOp>(body.getTerminator());
+    if (!yield || yield.getValues().size() != 1)
+      return failure();
+
+    generics.push_back(generic);
+    for (Value input : generic.getInputs())
+      if (failed(collectExpression(input, store, loads, generics)))
+        return failure();
+    return success();
+  }
+
+  FailureOr<Value>
+  emitExpression(Value value, Value index, bool vectorMode,
+                 const llvm::DenseMap<Operation *, Value> &loadPtrs,
+                 llvm::DenseMap<Value, Value> &cache,
+                 PatternRewriter &rewriter) const {
+    if (auto it = cache.find(value); it != cache.end())
+      return it->second;
+
+    if (auto load = value.getDefiningOp<tts::LoadOp>()) {
+      auto ptrIt = loadPtrs.find(load.getOperation());
+      if (ptrIt == loadPtrs.end())
+        return failure();
+      Type elementType =
+          cast<RankedTensorType>(load.getType()).getElementType();
+      Value result =
+          vectorMode
+              ? rewriter
+                    .create<vector::LoadOp>(load.getLoc(),
+                                            VectorType::get({16}, elementType),
+                                            ptrIt->second, ValueRange{index})
+                    .getResult()
+              : rewriter
+                    .create<memref::LoadOp>(load.getLoc(), ptrIt->second,
+                                            ValueRange{index})
+                    .getResult();
+      cache[value] = result;
+      return result;
+    }
+
+    auto generic = value.getDefiningOp<linalg::GenericOp>();
+    if (!generic)
+      return failure();
+    Block &body = generic.getRegion().front();
+    IRMapping mapping;
+    for (auto [arg, input] :
+         llvm::zip(body.getArguments().take_front(generic.getInputs().size()),
+                   generic.getInputs())) {
+      auto emitted =
+          emitExpression(input, index, vectorMode, loadPtrs, cache, rewriter);
+      if (failed(emitted))
+        return failure();
+      mapping.map(arg, *emitted);
+    }
+
+    for (Operation &bodyOp : body.without_terminator()) {
+      if (auto constant = dyn_cast<arith::ConstantOp>(bodyOp)) {
+        Type resultType = constant.getType();
+        if (vectorMode) {
+          auto typed = dyn_cast<TypedAttr>(constant.getValue());
+          if (!typed)
+            return failure();
+          auto vectorType = VectorType::get({16}, resultType);
+          auto splat = DenseElementsAttr::get(vectorType, typed);
+          Value cloned = rewriter.create<arith::ConstantOp>(constant.getLoc(),
+                                                            vectorType, splat);
+          mapping.map(constant.getResult(), cloned);
+        } else {
+          Value cloned = rewriter.create<arith::ConstantOp>(
+              constant.getLoc(), resultType, constant.getValue());
+          mapping.map(constant.getResult(), cloned);
+        }
+        continue;
+      }
+
+      OperationState state(bodyOp.getLoc(), bodyOp.getName());
+      for (Value operand : bodyOp.getOperands()) {
+        Value mapped = mapping.lookupOrNull(operand);
+        if (!mapped)
+          return failure();
+        state.addOperands(mapped);
+      }
+      for (Type type : bodyOp.getResultTypes())
+        state.addTypes(vectorMode ? Type(VectorType::get({16}, type)) : type);
+      state.addAttributes(bodyOp.getAttrs());
+      Operation *cloned = rewriter.create(state);
+      for (auto [oldResult, newResult] :
+           llvm::zip(bodyOp.getResults(), cloned->getResults()))
+        mapping.map(oldResult, newResult);
+    }
+
+    auto yield = cast<linalg::YieldOp>(body.getTerminator());
+    Value result = mapping.lookupOrNull(yield.getValues().front());
+    if (!result)
+      return failure();
+    cache[value] = result;
+    return result;
+  }
+
+  LogicalResult matchAndRewrite(tts::StoreOp store,
+                                PatternRewriter &rewriter) const override {
+    if (!store.hasMask())
+      return failure();
+
+    auto storeType = dyn_cast<RankedTensorType>(store.getValue().getType());
+    if (!storeType || storeType.getRank() != 1 || !storeType.hasStaticShape())
+      return failure();
+
+    SmallVector<tts::LoadOp> loads;
+    SmallVector<linalg::GenericOp> generics;
+    if (failed(collectExpression(store.getValue(), store, loads, generics)) ||
+        loads.empty() || generics.empty())
+      return failure();
+
+    for (linalg::GenericOp generic : generics)
+      for (OpOperand &use : generic->getUses())
+        if (use.getOwner() != store.getOperation() &&
+            !llvm::is_contained(generics, use.getOwner()))
+          return failure();
+    for (tts::LoadOp load : loads)
+      for (Operation *user : load->getUsers())
+        if (!llvm::is_contained(generics, user))
+          return failure();
+
+    auto materializePtr = [&](Value ptr, Type elementType,
+                              Location loc) -> FailureOr<Value> {
+      if (!isa<MemRefType, UnrankedMemRefType>(ptr.getType())) {
+        auto makeTPtr = ptr.getDefiningOp<tts::MakeTensorPtrOp>();
+        if (!makeTPtr)
+          return failure();
+        auto materialized =
+            materializeStructuredTPtrMemRef(makeTPtr, loc, rewriter);
+        if (failed(materialized))
+          return failure();
+        ptr = *materialized;
+      }
+      return ensureRankedMemRef(ptr, /*rank=*/1, elementType, loc, rewriter);
+    };
+
+    Location loc = store.getLoc();
+    llvm::DenseMap<Operation *, Value> loadPtrs;
+    for (tts::LoadOp load : loads) {
+      Type elementType =
+          cast<RankedTensorType>(load.getType()).getElementType();
+      auto ptr = materializePtr(load.getPtr(), elementType, loc);
+      if (failed(ptr))
+        return failure();
+      auto type = dyn_cast<MemRefType>(ptr->getType());
+      if (!type || !hasUnitStride1DLayout(type))
+        return failure();
+      loadPtrs[load.getOperation()] = *ptr;
+    }
+    auto dstPtr =
+        materializePtr(store.getPtr(), storeType.getElementType(), loc);
+    if (failed(dstPtr))
+      return failure();
+    auto dstType = dyn_cast<MemRefType>(dstPtr->getType());
+    if (!dstType || !hasUnitStride1DLayout(dstType))
+      return failure();
+
+    Value validLen =
+        ofrToIndexValue(store.getMixedMaskDims()[0], loc, rewriter);
+    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+    auto c16 = rewriter.create<arith::ConstantIndexOp>(loc, 16);
+    Value vecIters = rewriter.create<arith::DivUIOp>(loc, validLen, c16);
+    Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, c16);
+    auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, c16);
+    rewriter.setInsertionPointToStart(vecLoop.getBody());
+    Value ivVec = vecLoop.getInductionVar();
+    llvm::DenseMap<Value, Value> vectorCache;
+    auto vectorResult =
+        emitExpression(store.getValue(), ivVec,
+                       /*vectorMode=*/true, loadPtrs, vectorCache, rewriter);
+    if (failed(vectorResult))
+      return failure();
+    rewriter.create<vector::StoreOp>(loc, *vectorResult, *dstPtr,
+                                     ValueRange{ivVec});
+
+    rewriter.setInsertionPointAfter(vecLoop);
+    auto tailLoop = rewriter.create<scf::ForOp>(loc, vecUpper, validLen, c1);
+    rewriter.setInsertionPointToStart(tailLoop.getBody());
+    Value iv = tailLoop.getInductionVar();
+    llvm::DenseMap<Value, Value> scalarCache;
+    auto scalarResult =
+        emitExpression(store.getValue(), iv,
+                       /*vectorMode=*/false, loadPtrs, scalarCache, rewriter);
+    if (failed(scalarResult))
+      return failure();
+    rewriter.create<memref::StoreOp>(loc, *scalarResult, *dstPtr,
+                                     ValueRange{iv});
+
+    rewriter.eraseOp(store);
+    for (linalg::GenericOp generic : generics)
+      if (generic->use_empty())
+        rewriter.eraseOp(generic);
+    for (tts::LoadOp load : loads)
+      if (load->use_empty())
+        rewriter.eraseOp(load);
+    return success();
+  }
+};
+
 struct MakeTensorPtrConverter
     : public OpConversionPattern<tts::MakeTensorPtrOp> {
 private:
@@ -2345,6 +2601,8 @@ void mlir::triton::populateStructuredToMemrefPreConversionPatterns(
   }
   patterns.add<MaskedReduceFusionPattern>(patterns.getContext(),
                                           PatternBenefit(10));
+  patterns.add<MaskedElementwiseStoreFusionPattern>(patterns.getContext(),
+                                                    PatternBenefit(10));
 }
 
 void mlir::triton::populateStructuredToMemrefConversionPatterns(
