@@ -1,8 +1,5 @@
 // RUN: triton-shared-opt --triton-to-structured --remove-dead-values --canonicalize --cse %s | FileCheck %s
 
-// TODO: fix test case in https://github.com/microsoft/triton-shared/pull/332, remove XFAIL and update the CHECKs.
-// XFAIL: *
-
 // Make sure tts.make_gather_scatter_tptr is generated with for 1D tensor on addptr with loop.
 
 // CHECK: make_gather_scatter_tptr

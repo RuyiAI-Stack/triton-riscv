@@ -168,6 +168,8 @@ python python/examples/rvv_vec_add_elf.py
 
 See [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) for toolchain setup, the end-to-end API, output verification, and troubleshooting.
 
+See [docs/07-Optimization.md](docs/07-Optimization.md) for the current code-generation bottlenecks, correctness gaps, and optimization priorities identified from the RVV and bufferization analysis.
+
 ## FAQ
 
 Building on RISC-V often runs into dependency issues; we're happy to help if you run into trouble.

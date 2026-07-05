@@ -1,22 +1,22 @@
 # -*- Python -*-
+# ruff: noqa: F821
 
 import os
-import platform
-import re
-import subprocess
-import tempfile
 
 import lit.formats
 import lit.util
 from lit.llvm import llvm_config
-from lit.llvm.subst import FindTool, ToolSubst
+from lit.llvm.subst import ToolSubst
 
 # Configuration file for the 'lit' test runner
 
 # name: The name of this test suite
 config.name = "TRITON-SHARED"
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+# LLVM 23 rejects the legacy positional execute_external=True setting.  Use
+# lit's internal shell, which is the supported default and is sufficient for
+# this suite's RUN lines.
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".ll"]

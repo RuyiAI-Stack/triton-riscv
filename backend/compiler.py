@@ -324,11 +324,39 @@ def _vectorir_to_llir(vectorir: str):
         return Path(llir_path).read_text()
 
 
+_LLVM_SYMBOL = r'(?:"([^"]+)"|([A-Za-z$._][A-Za-z0-9$._-]*))'
+
+
+def _find_kernel_name(llir: str) -> str:
+    """Return the single externally callable function defined in LLVM IR.
+
+    Buffer deallocation may add helper definitions such as ``dealloc_helper``
+    to the module.  Helpers are called by the kernel, whereas the kernel is the
+    sole definition that is not called from within the module.
+    """
+    definitions = {
+        quoted or unquoted
+        for quoted, unquoted in re.findall(
+            rf"^define\b[^@\n]*@{_LLVM_SYMBOL}\s*\(", llir, re.MULTILINE
+        )
+    }
+    callees = {
+        quoted or unquoted
+        for quoted, unquoted in re.findall(
+            rf"\b(?:call|invoke)\b[^@\n]*@{_LLVM_SYMBOL}\s*\(", llir
+        )
+    }
+    candidates = sorted(definitions - callees)
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "expected exactly one externally callable kernel definition, "
+            f"found {candidates}; all definitions: {sorted(definitions)}"
+        )
+    return candidates[0]
+
+
 def _llir_to_bin(llir: str, metadata, options=None):
-    pattern = r"define void @(\w+)\(.+"
-    matches = re.findall(pattern, llir)
-    assert len(matches) == 1
-    metadata["name"] = matches[0]
+    metadata["name"] = _find_kernel_name(llir)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ll")
         dst_path = os.path.join(tmpdir, "kernel.o")
