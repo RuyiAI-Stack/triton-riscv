@@ -122,6 +122,10 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     # Bufferize tensor ops before IME lowering
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    # One-shot bufferization creates heap-backed temporary
+                    # memrefs. Insert and lower their deallocations while the
+                    # memref-level ownership information is still available.
+                    "--buffer-deallocation-pipeline",
                     # Lower linalg.matmul (memref) → ime.vfmadot / ime.vmadot
                     "--lower-linalg-to-ime",
                     # Lower IME dialect → vector / loop ops
@@ -178,6 +182,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     # "--eliminate-empty-tensors",
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    "--buffer-deallocation-pipeline",
                     "--matmul-vectorization",
                     "--lower-affine",
                     "--convert-linalg-to-loops",
@@ -246,6 +251,7 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
                 # "--eliminate-empty-tensors",
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                "--buffer-deallocation-pipeline",
                 "--lower-linalg-to-vir",
                 "--lower-vir-to-vector=vector-width=16",
                 "--cse",
