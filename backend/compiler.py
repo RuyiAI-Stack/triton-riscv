@@ -113,7 +113,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # ---------------------------------------------------------------
             # IME path: Triton-Shared MLIR → buddy-mlir IME dialect → LLVM IR
             # Lowers linalg.matmul (f16) to ime.vfmadot via buddy-mlir passes,
-            # then cross-compiles to a RISC-V ELF object with +buddyext.
+            # then cross-compiles to a RISC-V ELF object with +xsmtime.
             # ---------------------------------------------------------------
             subprocess.check_call(
                 [
@@ -154,7 +154,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     llmlir_path,
                 ]
             )
-            # LLVM-MLIR → LLVM-IR via buddy-translate (handles buddyext dialect)
+            # LLVM-MLIR → LLVM-IR via buddy-translate (handles the IME output)
             buddy_translate_path = _get_buddy_translate_path()
             subprocess.check_call(
                 [
@@ -408,13 +408,13 @@ def _llir_to_bin(llir: str, metadata, options=None):
 
             subprocess.check_call(subprocess_args)
         elif _use_ime_pipeline():
-            # IME path: cross-compile to RISC-V with buddyext (vfmadot / vmadot).
+            # IME path: cross-compile to RISC-V with xsmtime (vfmadot / vmadot).
             # buddy-llc understands the RISC-V IME intrinsics produced by
             # buddy-translate and generates correct machine code.
             buddy_llc_path = _get_buddy_llc_path()
             toolchain = RiscvToolchain.from_env()
             toolchain = replace(
-                toolchain, llc_features=f"{toolchain.llc_features},+buddyext"
+                toolchain, llc_features=f"{toolchain.llc_features},+xsmtime"
             )
             subprocess.check_call(
                 toolchain.llc_command(buddy_llc_path, src_path, dst_path)
@@ -547,8 +547,15 @@ class CPUBackend(BaseBackend):
         stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
             _ttir_to_ttsharedir(src)
         )
-        stages["vectorir"] = lambda src, metadata: _ttsharedir_to_vectorir(src)
-        stages["llir"] = lambda src, metadata: _optimize_llir(_vectorir_to_llir(src))
+        if _use_ime_pipeline():
+            stages["llir"] = lambda src, metadata: _optimize_llir(
+                _ttsharedir_to_llir(src)
+            )
+        else:
+            stages["vectorir"] = lambda src, metadata: _ttsharedir_to_vectorir(src)
+            stages["llir"] = lambda src, metadata: _optimize_llir(
+                _vectorir_to_llir(src)
+            )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
     @functools.lru_cache()

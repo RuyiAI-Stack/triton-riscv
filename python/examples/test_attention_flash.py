@@ -1,10 +1,14 @@
 import math
+import re
+import subprocess
 
 import pytest
 import torch
 import triton
 import triton.language as tl
 from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
+from test_utils import get_llvm_bin_path, requires_rvv_execution
 
 triton.runtime.driver.set_active(CPUDriver())
 
@@ -99,7 +103,9 @@ def _flash_row_kernel(
         m_i = m_new
 
     out = acc / l_i
-    tl.store(out_ptr + row * stride_os + offs_d * stride_od, out, mask=offs_d < head_dim)
+    tl.store(
+        out_ptr + row * stride_os + offs_d * stride_od, out, mask=offs_d < head_dim
+    )
 
 
 def attention_flash_triton(q, k, v):
@@ -115,7 +121,9 @@ def attention_flash_triton(q, k, v):
             q_slice = q[b, h]
             k_slice = k[b, h]
             v_slice = v[b, h]
-            out_slice = torch.empty((seqlen, head_dim), device="cpu", dtype=torch.float32)
+            out_slice = torch.empty(
+                (seqlen, head_dim), device="cpu", dtype=torch.float32
+            )
 
             _flash_row_kernel[(seqlen,)](
                 q_slice,
@@ -142,6 +150,7 @@ def attention_flash_triton(q, k, v):
     return out
 
 
+@requires_rvv_execution
 def test_attention_flash_matches_torch(device):
     q, k, v = make_flash_inputs(batch=1, heads=2, seqlen=10, head_dim=16)
     out = attention_flash_triton(q, k, v)
@@ -154,8 +163,63 @@ def test_attention_flash_matches_torch(device):
         attention_flash_triton(q, k, v[:, :, :, :-1])
 
 
+@requires_rvv_execution
 def test_attention_flash_tail_block(device):
     q, k, v = make_flash_inputs(batch=1, heads=1, seqlen=13, head_dim=24)
     out = attention_flash_triton(q, k, v)
     ref = attention_flash_reference(q, k, v)
     torch.testing.assert_close(out, ref, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize(
+    "batch, heads, seqlen, head_dim",
+    [(1, 2, 10, 16), (1, 1, 13, 24)],
+)
+def test_attention_flash_kernel_emits_riscv_object(
+    tmp_path, device, batch, heads, seqlen, head_dim
+):
+    q, k, v = make_flash_inputs(
+        batch=batch, heads=heads, seqlen=seqlen, head_dim=head_dim
+    )
+    q_slice = q[0, 0]
+    k_slice = k[0, 0]
+    v_slice = v[0, 0]
+    out_slice = torch.empty((seqlen, head_dim), device="cpu", dtype=torch.float32)
+    obj_path = tmp_path / "attention_flash.o"
+
+    compiled = _flash_row_kernel.warmup(
+        q_slice,
+        k_slice,
+        v_slice,
+        out_slice,
+        seqlen,
+        head_dim,
+        q_slice.stride(0),
+        q_slice.stride(1),
+        k_slice.stride(0),
+        k_slice.stride(1),
+        v_slice.stride(0),
+        v_slice.stride(1),
+        out_slice.stride(0),
+        out_slice.stride(1),
+        1.0 / math.sqrt(head_dim),
+        BLOCK_N=4,
+        BLOCK_D=triton.next_power_of_2(head_dim),
+        grid=(seqlen,),
+        target_triple=DEFAULT_TRIPLE,
+        target_features=DEFAULT_LLC_FEATURES,
+    )
+    obj_path.write_bytes(compiled.asm["obj"])
+
+    asm = subprocess.check_output(
+        [get_llvm_bin_path("llvm-objdump"), "-d", str(obj_path)],
+        text=True,
+    )
+    assert re.search(r"<_flash_row_kernel>:", asm)
+    assert re.search(r"\bvsetivli\b", asm)
+    assert re.search(r"\bvle32\.v\b", asm)
+    assert re.search(r"\bvse32\.v\b", asm)
+    assert re.search(r"\bvfmul\.vv\b", asm)
+    assert re.search(r"\bvfredmax\.vs\b", asm)
+    assert re.search(r"\bvfredosum\.vs\b", asm)
+    assert re.search(r"\bfdiv\.s\b", asm)

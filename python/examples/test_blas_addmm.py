@@ -1,11 +1,12 @@
-import os
-from pathlib import Path
-from tempfile import mkdtemp
+import re
+import subprocess
 
 import pytest
 import torch
 import triton
 import triton.language as tl
+from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
+from test_utils import get_llvm_bin_path, requires_rvv_execution
 
 try:
     from triton.backends.triton_shared.driver import CPUDriver
@@ -88,8 +89,6 @@ def _activate_cpu_driver():
     triton.runtime.driver.set_active(CPUDriver())
 
 
-
-
 def _validate_addmm_inputs(bias, mat1, mat2):
     if not isinstance(bias, torch.Tensor):
         raise TypeError("bias must be a torch.Tensor")
@@ -133,10 +132,12 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     bias = bias.broadcast_to(out.shape)
 
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
+    def grid(meta):
+        return (
+            triton.cdiv(M, meta["BLOCK_SIZE_M"]),
+            triton.cdiv(N, meta["BLOCK_SIZE_N"]),
+        )
+
     addmm_kernel[grid](
         mat1,
         mat2,
@@ -170,17 +171,24 @@ def make_addmm_inputs(m=15, n=19, k=17, *, matrix_bias=False, transposed_mat2=Fa
     generator.manual_seed(0)
     mat1 = torch.randn((m, k), device="cpu", dtype=torch.float32, generator=generator)
     if transposed_mat2:
-        mat2 = torch.randn((n, k), device="cpu", dtype=torch.float32, generator=generator).t()
+        mat2 = torch.randn(
+            (n, k), device="cpu", dtype=torch.float32, generator=generator
+        ).t()
     else:
-        mat2 = torch.randn((k, n), device="cpu", dtype=torch.float32, generator=generator)
+        mat2 = torch.randn(
+            (k, n), device="cpu", dtype=torch.float32, generator=generator
+        )
 
     if matrix_bias:
-        bias = torch.randn((m, n), device="cpu", dtype=torch.float32, generator=generator)
+        bias = torch.randn(
+            (m, n), device="cpu", dtype=torch.float32, generator=generator
+        )
     else:
         bias = torch.randn((n,), device="cpu", dtype=torch.float32, generator=generator)
     return bias, mat1, mat2
 
 
+@requires_rvv_execution
 def test_triton_addmm_vector_bias_matches_torch():
     bias, mat1, mat2 = make_addmm_inputs(m=15, n=19, k=17)
     out = triton_addmm(bias, mat1, mat2, beta=0.5, alpha=1.25)
@@ -188,6 +196,7 @@ def test_triton_addmm_vector_bias_matches_torch():
     torch.testing.assert_close(out, ref, atol=1e-3, rtol=0)
 
 
+@requires_rvv_execution
 def test_triton_addmm_matrix_bias_transposed_mat2():
     bias, mat1, mat2 = make_addmm_inputs(
         m=7,
@@ -202,6 +211,7 @@ def test_triton_addmm_matrix_bias_transposed_mat2():
     torch.testing.assert_close(out, ref, atol=1e-3, rtol=0)
 
 
+@requires_rvv_execution
 def test_triton_addmm_scalar_bias_broadcasts():
     bias = torch.tensor(1.5, device="cpu", dtype=torch.float32)
     mat1 = torch.randn((3, 4), device="cpu", dtype=torch.float32)
@@ -212,12 +222,60 @@ def test_triton_addmm_scalar_bias_broadcasts():
     torch.testing.assert_close(out, ref, atol=1e-3, rtol=0)
 
 
+def test_triton_addmm_kernel_emits_riscv_object(tmp_path):
+    bias, mat1, mat2 = make_addmm_inputs(m=15, n=19, k=17)
+    mat1 = mat1.contiguous()
+    M, K = mat1.shape
+    _, N = mat2.shape
+    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    bias = bias.broadcast_to(out.shape)
+    obj_path = tmp_path / "blas_addmm.o"
+
+    compiled = addmm_kernel.warmup(
+        mat1,
+        mat2,
+        bias,
+        out,
+        1.25,
+        0.5,
+        M,
+        N,
+        K,
+        mat1.stride(0),
+        mat1.stride(1),
+        mat2.stride(0),
+        mat2.stride(1),
+        bias.stride(0),
+        bias.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_SIZE_M=32,
+        BLOCK_SIZE_N=32,
+        BLOCK_SIZE_K=32,
+        grid=(1, 1),
+        target_triple=DEFAULT_TRIPLE,
+        target_features=DEFAULT_LLC_FEATURES,
+    )
+    obj_path.write_bytes(compiled.asm["obj"])
+
+    asm = subprocess.check_output(
+        [get_llvm_bin_path("llvm-objdump"), "-d", str(obj_path)],
+        text=True,
+    )
+    assert re.search(r"<addmm_kernel>:", asm)
+    assert re.search(r"\bvsetivli\b|\bvsetvli\b", asm)
+    assert re.search(r"\bvle32\.v\b", asm)
+    assert re.search(r"\bvse32\.v\b", asm)
+
+
 def test_triton_addmm_rejects_incompatible_mat_shapes():
     bias = torch.randn((5,), device="cpu", dtype=torch.float32)
     mat1 = torch.randn((4, 6), device="cpu", dtype=torch.float32)
     mat2 = torch.randn((7, 3), device="cpu", dtype=torch.float32)
 
-    with pytest.raises(ValueError, match="mat1.shape\\[1\\] must equal mat2.shape\\[0\\]"):
+    with pytest.raises(
+        ValueError, match="mat1.shape\\[1\\] must equal mat2.shape\\[0\\]"
+    ):
         triton_addmm(bias, mat1, mat2)
 
 

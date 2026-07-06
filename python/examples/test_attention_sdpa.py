@@ -1,10 +1,14 @@
 import math
+import re
+import subprocess
 
 import pytest
 import torch
 import triton
 import triton.language as tl
 from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
+from test_utils import get_llvm_bin_path, requires_rvv_execution
 
 triton.runtime.driver.set_active(CPUDriver())
 
@@ -198,7 +202,9 @@ def attention_sdpa_triton(q, k, v, causal=False):
             v_slice = v[b, h]
             scores = torch.empty((seqlen, seqlen), device="cpu", dtype=torch.float32)
             attn = torch.empty_like(scores)
-            out_slice = torch.empty((seqlen, head_dim), device="cpu", dtype=torch.float32)
+            out_slice = torch.empty(
+                (seqlen, head_dim), device="cpu", dtype=torch.float32
+            )
 
             score_grid = (
                 triton.cdiv(seqlen, 8),
@@ -251,6 +257,7 @@ def attention_sdpa_triton(q, k, v, causal=False):
     return out
 
 
+@requires_rvv_execution
 @pytest.mark.parametrize("causal", [False, True])
 def test_attention_sdpa_matches_torch(device, causal):
     q, k, v = make_sdpa_inputs(batch=1, heads=2, seqlen=8, head_dim=16)
@@ -259,6 +266,7 @@ def test_attention_sdpa_matches_torch(device, causal):
     torch.testing.assert_close(out, ref, atol=1e-4, rtol=1e-4)
 
 
+@requires_rvv_execution
 def test_attention_sdpa_tail_shape(device):
     q, k, v = make_sdpa_inputs(batch=1, heads=1, seqlen=12, head_dim=16)
     out = attention_sdpa_triton(q, k, v, causal=False)
@@ -266,6 +274,7 @@ def test_attention_sdpa_tail_shape(device):
     torch.testing.assert_close(out, ref, atol=1e-4, rtol=1e-4)
 
 
+@requires_rvv_execution
 @pytest.mark.parametrize("seqlen", [11, 13])
 def test_attention_sdpa_causal_tail_sequence(device, seqlen):
     q, k, v = make_sdpa_inputs(batch=1, heads=1, seqlen=seqlen, head_dim=16)
@@ -274,9 +283,91 @@ def test_attention_sdpa_causal_tail_sequence(device, seqlen):
     torch.testing.assert_close(out, ref, atol=1e-4, rtol=1e-4)
 
 
+@requires_rvv_execution
 @pytest.mark.parametrize("head_dim", [17, 19])
 def test_attention_sdpa_head_dim_tail(device, head_dim):
     q, k, v = make_sdpa_inputs(batch=1, heads=1, seqlen=8, head_dim=head_dim)
     out = attention_sdpa_triton(q, k, v, causal=False)
     ref = attention_sdpa_reference(q, k, v, causal=False)
     torch.testing.assert_close(out, ref, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("causal", [False, True])
+def test_attention_sdpa_kernels_emit_riscv_objects(tmp_path, device, causal):
+    q, k, v = make_sdpa_inputs(batch=1, heads=1, seqlen=8, head_dim=16)
+    q_slice = q[0, 0]
+    k_slice = k[0, 0]
+    v_slice = v[0, 0]
+    seqlen = q_slice.shape[0]
+    head_dim = q_slice.shape[1]
+    scale = 1.0 / math.sqrt(head_dim)
+    scores = torch.empty((seqlen, seqlen), device="cpu", dtype=torch.float32)
+    attn = torch.empty_like(scores)
+    out_slice = torch.empty((seqlen, head_dim), device="cpu", dtype=torch.float32)
+
+    compiled_score = _score_kernel.warmup(
+        q_slice,
+        k_slice,
+        scores,
+        seqlen,
+        head_dim,
+        q_slice.stride(0),
+        q_slice.stride(1),
+        k_slice.stride(0),
+        k_slice.stride(1),
+        scores.stride(0),
+        scores.stride(1),
+        scale,
+        causal=causal,
+        BLOCK_M=8,
+        BLOCK_N=8,
+        BLOCK_D=8,
+        grid=(1, 1),
+        target_triple=DEFAULT_TRIPLE,
+        target_features=DEFAULT_LLC_FEATURES,
+    )
+    compiled_softmax = _softmax_kernel.warmup(
+        attn,
+        scores,
+        scores.stride(0),
+        attn.stride(0),
+        seqlen,
+        BLOCK_SIZE=triton.next_power_of_2(seqlen),
+        grid=(seqlen,),
+        target_triple=DEFAULT_TRIPLE,
+        target_features=DEFAULT_LLC_FEATURES,
+    )
+    compiled_value = _value_kernel.warmup(
+        attn,
+        v_slice,
+        out_slice,
+        seqlen,
+        head_dim,
+        attn.stride(0),
+        attn.stride(1),
+        v_slice.stride(0),
+        v_slice.stride(1),
+        out_slice.stride(0),
+        out_slice.stride(1),
+        BLOCK_M=8,
+        BLOCK_N=8,
+        BLOCK_K=8,
+        grid=(1, 2),
+        target_triple=DEFAULT_TRIPLE,
+        target_features=DEFAULT_LLC_FEATURES,
+    )
+
+    for name, compiled in {
+        "score": compiled_score,
+        "softmax": compiled_softmax,
+        "value": compiled_value,
+    }.items():
+        obj_path = tmp_path / f"attention_sdpa_{name}.o"
+        obj_path.write_bytes(compiled.asm["obj"])
+        asm = subprocess.check_output(
+            [get_llvm_bin_path("llvm-objdump"), "-d", str(obj_path)],
+            text=True,
+        )
+        assert re.search(r"\bvsetivli\b|\bvsetvli\b", asm)
+        assert re.search(r"\bvle32\.v\b", asm)
+        assert re.search(r"\bvse32\.v\b", asm)
