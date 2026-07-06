@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x64, riscv64]
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.12", "3.13", "3.14"]
         include:
           - arch: x64
             target_arch: x86_64
@@ -60,11 +60,31 @@ jobs:
           echo "LLVM_SYSPATH=${GITHUB_WORKSPACE}/.cache/llvm" >> "$GITHUB_ENV"
           echo "BUDDY_MLIR_BINARY_DIR=${GITHUB_WORKSPACE}/.cache/buddy/bin" >> "$GITHUB_ENV"
 
-      - name: Run example test suite
-        continue-on-error: true
+      - name: Run lit test
+        run: |
+          ./.venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          lit = Path(".cache/llvm/bin/llvm-lit")
+          text = lit.read_text()
+          old = "\nfrom lit.main import main\n\nmain()\n"
+          new = "\nfrom lit.main import main\n\nif __name__ == \"__main__\":\n    main()\n"
+          if old in text:
+              lit.write_text(text.replace(old, new))
+          PY
+          cmake --build "triton/build/cmake.linux-${{ matrix.target_arch }}-cpython-${{ matrix.python }}" --target check-triton-shared-lit-tests
+
+      - name: Run common example test suite
         run: |
           cd triton
           ../.venv/bin/python -m pytest ../python/examples/ \
             --ignore=../python/examples/test_core.py \
             --ignore=../python/examples/test_annotations.py \
+            --ignore=../python/examples/flaggems \
+            -v
+
+      - name: Run flaggems example test suite
+        run: |
+          cd triton
+          ../.venv/bin/python -m pytest ../python/examples/flaggems \
             -v
