@@ -1,10 +1,14 @@
 import math
+import re
+import subprocess
 
 import pytest
 import torch
 import triton
 import triton.language as tl
 from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
+from test_utils import get_llvm_bin_path, requires_rvv_execution
 
 triton.runtime.driver.set_active(CPUDriver())
 
@@ -75,7 +79,11 @@ def _validate_paged_attention_inputs(
         if tensor.dtype != torch.float32:
             raise TypeError(f"{name} must have dtype torch.float32")
 
-    for name, tensor in (("query_lens", query_lens), ("kv_lens", kv_lens), ("block_table", block_table)):
+    for name, tensor in (
+        ("query_lens", query_lens),
+        ("kv_lens", kv_lens),
+        ("block_table", block_table),
+    ):
         if tensor.dtype != torch.int32:
             raise TypeError(f"{name} must have dtype torch.int32")
 
@@ -102,7 +110,9 @@ def _validate_paged_attention_inputs(
     if query.shape[2] != key_cache.shape[3] or query.shape[2] != value_cache.shape[3]:
         raise ValueError("query, key_cache, and value_cache must agree on head_dim")
     if key_cache.shape[0] != value_cache.shape[0]:
-        raise ValueError("key_cache and value_cache must have the same number of blocks")
+        raise ValueError(
+            "key_cache and value_cache must have the same number of blocks"
+        )
     if key_cache.shape[1] != value_cache.shape[1]:
         raise ValueError("key_cache and value_cache must have the same block size")
     if int(query_lens.sum().item()) != query.shape[0]:
@@ -116,9 +126,13 @@ def _validate_paged_attention_inputs(
     num_cache_blocks = key_cache.shape[0]
     max_blocks_per_seq = block_table.shape[1]
 
-    for seq_idx, (q_len, kv_len) in enumerate(zip(query_lens.tolist(), kv_lens.tolist())):
+    for seq_idx, (q_len, kv_len) in enumerate(
+        zip(query_lens.tolist(), kv_lens.tolist())
+    ):
         if q_len > kv_len:
-            raise ValueError("each query sequence must be no longer than its KV sequence")
+            raise ValueError(
+                "each query sequence must be no longer than its KV sequence"
+            )
         required_blocks = (kv_len + block_size - 1) // block_size
         if required_blocks > max_blocks_per_seq:
             raise ValueError("block_table does not provide enough blocks for kv_len")
@@ -156,14 +170,22 @@ def attention_paged_varlen_reference(
     outputs = []
     cursor = 0
 
-    for seq_idx, (q_len, kv_len) in enumerate(zip(query_lens.tolist(), kv_lens.tolist())):
+    for seq_idx, (q_len, kv_len) in enumerate(
+        zip(query_lens.tolist(), kv_lens.tolist())
+    ):
         q_seq = query[cursor : cursor + q_len]
         num_blocks = (kv_len + block_size - 1) // block_size
         block_ids = block_table[seq_idx, :num_blocks].tolist()
-        k_seq = torch.cat([key_cache[block_id] for block_id in block_ids], dim=0)[:kv_len]
-        v_seq = torch.cat([value_cache[block_id] for block_id in block_ids], dim=0)[:kv_len]
+        k_seq = torch.cat([key_cache[block_id] for block_id in block_ids], dim=0)[
+            :kv_len
+        ]
+        v_seq = torch.cat([value_cache[block_id] for block_id in block_ids], dim=0)[
+            :kv_len
+        ]
 
-        seq_out = torch.empty((q_len, query.shape[1], head_dim), device="cpu", dtype=torch.float32)
+        seq_out = torch.empty(
+            (q_len, query.shape[1], head_dim), device="cpu", dtype=torch.float32
+        )
         # The query block is anchored to the suffix of the KV sequence.
         base_k = kv_len - q_len
         kv_positions = torch.arange(kv_len)
@@ -257,7 +279,9 @@ def _paged_varlen_kernel(
         safe_logical_k = tl.where(logical_k < kv_len, logical_k, 0)
         table_col = safe_logical_k // block_size
         block_off = safe_logical_k % block_size
-        block_idx = tl.load(block_table_ptr + seq_idx * stride_bts + table_col * stride_btc)
+        block_idx = tl.load(
+            block_table_ptr + seq_idx * stride_bts + table_col * stride_btc
+        )
 
         k = tl.load(
             key_cache_ptr
@@ -361,6 +385,7 @@ def attention_paged_varlen_triton(
     return out
 
 
+@requires_rvv_execution
 def test_attention_paged_varlen_matches_reference(device):
     case = make_paged_inputs_case_one()
     out = attention_paged_varlen_triton(*case)
@@ -368,6 +393,7 @@ def test_attention_paged_varlen_matches_reference(device):
     torch.testing.assert_close(out, ref, atol=5e-4, rtol=5e-4)
 
 
+@requires_rvv_execution
 def test_attention_paged_varlen_partial_block(device):
     case = make_paged_inputs_case_two()
     out = attention_paged_varlen_triton(*case)
@@ -396,3 +422,77 @@ def test_attention_paged_varlen_partial_block(device):
             kv_lens,
             block_table[:, :1],
         )
+
+
+@pytest.mark.parametrize(
+    "make_case",
+    [make_paged_inputs_case_one, make_paged_inputs_case_two],
+)
+def test_attention_paged_varlen_kernel_emits_riscv_object(tmp_path, device, make_case):
+    query, key_cache, value_cache, query_lens, kv_lens, block_table = make_case()
+    block_size, max_blocks_per_seq = _validate_paged_attention_inputs(
+        query, key_cache, value_cache, query_lens, kv_lens, block_table
+    )
+    query_seq_ids, query_offsets = build_query_metadata(query_lens)
+    total_q, num_heads, head_dim = query.shape
+    max_kv_len = int(kv_lens.max().item())
+    out = torch.empty_like(query)
+    obj_path = tmp_path / "attention_paged_varlen.o"
+
+    compiled = _paged_varlen_kernel.warmup(
+        query,
+        key_cache,
+        value_cache,
+        out,
+        query_seq_ids,
+        query_offsets,
+        query_lens,
+        kv_lens,
+        block_table,
+        total_q,
+        num_heads,
+        head_dim,
+        block_size,
+        max_blocks_per_seq,
+        max_kv_len,
+        block_table.stride(0),
+        block_table.stride(1),
+        query.stride(0),
+        query.stride(1),
+        query.stride(2),
+        key_cache.stride(0),
+        key_cache.stride(1),
+        key_cache.stride(2),
+        key_cache.stride(3),
+        value_cache.stride(0),
+        value_cache.stride(1),
+        value_cache.stride(2),
+        value_cache.stride(3),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
+        1.0 / math.sqrt(head_dim),
+        BLOCK_D=triton.next_power_of_2(head_dim),
+        grid=(total_q * num_heads,),
+        target_triple=DEFAULT_TRIPLE,
+        target_features=DEFAULT_LLC_FEATURES,
+    )
+    obj_path.write_bytes(compiled.asm["obj"])
+
+    asm = subprocess.check_output(
+        [get_llvm_bin_path("llvm-objdump"), "-d", str(obj_path)],
+        text=True,
+    )
+    assert re.search(r"<_paged_varlen_kernel>:", asm)
+    assert re.search(r"\bvsetivli\b", asm)
+    assert re.search(r"\bvle32\.v\b", asm)
+    assert re.search(r"\bvse32\.v\b", asm)
+    assert re.search(r"\bvfmul\.vv\b", asm)
+    assert re.search(r"\bvfredosum\.vs\b", asm)
+    assert re.search(r"\bfdiv\.s\b", asm)
+
+
+def test_attention_paged_varlen_input_validation(device):
+    query, key_cache, value_cache, query_lens, kv_lens, block_table = (
+        make_paged_inputs_case_two()
+    )

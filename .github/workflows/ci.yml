@@ -84,6 +84,7 @@ jobs:
             -v
 
       - name: Run flaggems example test suite
+        if: matrix.arch == 'riscv64'
         run: |
           cd triton
           ../.venv/bin/python -m pytest ../python/examples/flaggems \
