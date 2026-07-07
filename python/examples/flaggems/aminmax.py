@@ -210,7 +210,7 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
             BLOCK_N=BLOCK_N,
         )
 
-        if not keepdim:
+        if out is None and not keepdim:
             for d in sorted(dim, reverse=True):
                 min_out = min_out.squeeze(dim=d)
                 max_out = max_out.squeeze(dim=d)

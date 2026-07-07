@@ -1,6 +1,7 @@
 import math
 
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -12,9 +13,7 @@ def conv2d_output_size(
     padding: int,
     dilation: int,
 ) -> int:
-    return (
-        in_size + 2 * padding - dilation * (kernel_size - 1) - 1
-    ) // stride + 1
+    return (in_size + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 
 
 @triton.jit
@@ -59,9 +58,7 @@ def conv2d_forward_kernel(
     pid_co = tl.program_id(1)
     pid_group = tl.program_id(2)
 
-    ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + tl.arange(
-        0, BLOCK_NI_HO_WO
-    )
+    ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + tl.arange(0, BLOCK_NI_HO_WO)
     ni_ho_offset = ni_ho_wo_offset // out_width
     in_n_point_value = ni_ho_offset // out_height
     output_height_point_value = ni_ho_offset % out_height
@@ -70,8 +67,7 @@ def conv2d_forward_kernel(
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     input_pointer += (
-        input_n_stride * in_n_point_value
-        + input_c_stride * pid_group * weight_c
+        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
     )[:, None]
     weight_pointer += (
         weight_n_stride * output_c_offset
@@ -93,9 +89,7 @@ def conv2d_forward_kernel(
             + stride_height * output_height_point_value
         )
         input_width_offset = (
-            w * dilation_width
-            - padding_width
-            + stride_width * output_width_point_value
+            w * dilation_width - padding_width + stride_width * output_width_point_value
         )
 
         curr_input_pointer = (
@@ -127,17 +121,15 @@ def conv2d_forward_kernel(
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
-    bias_pointer += (pid_group[None] * out_per_group_c)[
+    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
         None, :
-    ] + output_c_offset[None, :]
+    ]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
     bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
     accum += bias
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
-        + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[
-            None, :
-        ]
+        + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[None, :]
         + (output_height_stride * output_height_point_value)[:, None]
         + (output_width_stride * output_width_point_value)[:, None]
     )
@@ -191,9 +183,7 @@ def conv2d_backward_kernel_weight(
     pid_groups = tl.program_id(1)
     pid_co = tl.program_id(2)
 
-    ci_hk_wk_offset = pid_ci_hk_wk * BLOCK_CI_HK_WK + tl.arange(
-        0, BLOCK_CI_HK_WK
-    )
+    ci_hk_wk_offset = pid_ci_hk_wk * BLOCK_CI_HK_WK + tl.arange(0, BLOCK_CI_HK_WK)
     ci_hk_offset = ci_hk_wk_offset // weight_width
     ci_point_value = ci_hk_offset // weight_height
     weight_height_point_value = ci_hk_offset % weight_height
@@ -205,8 +195,7 @@ def conv2d_backward_kernel_weight(
     )[:, None]
 
     weight_pointer += (
-        pid_groups * weight_n_stride * out_c
-        + output_c_offset * weight_n_stride
+        pid_groups * weight_n_stride * out_c + output_c_offset * weight_n_stride
     )[None, :] + (
         ci_point_value * weight_c_stride
         + weight_height_point_value * weight_height_stride
@@ -235,9 +224,7 @@ def conv2d_backward_kernel_weight(
                     output_c_offset < out_c
                 )[None, :]
 
-                curr_out_grad = tl.load(
-                    curr_out_grad_pointer, mask=out_grad_mask
-                )
+                curr_out_grad = tl.load(curr_out_grad_pointer, mask=out_grad_mask)
 
                 input_height_offset = (
                     weight_height_point_value * dilation_height
@@ -281,9 +268,7 @@ def conv2d_backward_kernel_weight(
 class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
-        assert weight.ndim == 4, (
-            "Weights must be 4D, received shape {weight.shape}"
-        )
+        assert weight.ndim == 4, "Weights must be 4D, received shape {weight.shape}"
         assert bias is None or bias.ndim == 1, (
             "Bias must be 1D, received shape {bias.shape}"
         )
@@ -345,9 +330,7 @@ class Conv2d(torch.autograd.Function):
         )
 
         if bias is None:
-            bias_pointer = torch.zeros(
-                out_c, device=input.device, dtype=output_dtype
-            )
+            bias_pointer = torch.zeros(out_c, device=input.device, dtype=output_dtype)
         else:
             bias_pointer = bias
 
@@ -414,12 +397,8 @@ class Conv2d(torch.autograd.Function):
         dilation_height, dilation_width = ctx.dilation
         padding_height, padding_width = ctx.padding
 
-        revert_padding_height = (
-            dilation_height * (weight_height - 1) - padding_height
-        )
-        revert_padding_width = (
-            dilation_width * (weight_width - 1) - padding_width
-        )
+        revert_padding_height = dilation_height * (weight_height - 1) - padding_height
+        revert_padding_width = dilation_width * (weight_width - 1) - padding_width
         revert_weight = weight.clone()
         revert_weight = torch.flip(revert_weight, dims=[2, 3]).contiguous()
 
@@ -437,9 +416,7 @@ class Conv2d(torch.autograd.Function):
         new_out_height = out_grad.shape[2] + (stride_height - 1) * (
             out_grad.shape[2] - 1
         )
-        new_out_width = out_grad.shape[3] + (stride_width - 1) * (
-            out_grad.shape[3] - 1
-        )
+        new_out_width = out_grad.shape[3] + (stride_width - 1) * (out_grad.shape[3] - 1)
 
         new_out = torch.zeros(
             out_grad.shape[0],
@@ -453,9 +430,9 @@ class Conv2d(torch.autograd.Function):
         if stride_height > 1 or stride_width > 1:
             for i in range(out_grad.shape[2]):
                 for j in range(out_grad.shape[3]):
-                    new_out[:, :, i * (stride_height), j * (stride_width)] = (
-                        out_grad[:, :, i, j]
-                    )
+                    new_out[:, :, i * (stride_height), j * (stride_width)] = out_grad[
+                        :, :, i, j
+                    ]
         else:
             new_out = out_grad
 
@@ -473,15 +450,11 @@ class Conv2d(torch.autograd.Function):
         BLOCK_CO = 32
 
         grid = (
-            triton.cdiv(
-                out_grad.shape[0] * input_height * input_width, BLOCK_NI_HO_WO
-            ),
+            triton.cdiv(out_grad.shape[0] * input_height * input_width, BLOCK_NI_HO_WO),
             triton.cdiv(int(weight_c), BLOCK_CO),
             groups,
         )
-        bias_zero = torch.zeros(
-            groups * weight_c, device=device, dtype=out_grad.dtype
-        )
+        bias_zero = torch.zeros(groups * weight_c, device=device, dtype=out_grad.dtype)
         conv2d_forward_kernel[grid](
             new_out,
             revert_weight,
@@ -524,9 +497,7 @@ class Conv2d(torch.autograd.Function):
         BLOCK_CI_HK_WK = 32
 
         grid_weight = (
-            triton.cdiv(
-                weight_c * weight_height * weight_width, BLOCK_CI_HK_WK
-            ),
+            triton.cdiv(weight_c * weight_height * weight_width, BLOCK_CI_HK_WK),
             groups,
             triton.cdiv(out_c, BLOCK_CO),
         )
@@ -580,6 +551,17 @@ def conv2d(
     dilation=1,
     groups=1,
 ):
+    if input.device.type == "cpu":
+        return F.conv2d(
+            input,
+            weight,
+            bias=bias,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        )
+
     if isinstance(padding, str):
         if padding == "same":
             assert stride == 1, (
@@ -591,36 +573,26 @@ def conv2d(
             kernel_size_h = weight.shape[-2]
             kernel_size_w = weight.shape[-1]
             padding_h = math.ceil(
-                (stride * (ih - 1) + 1 + dilation * (kernel_size_h - 1) - ih)
-                / 2
+                (stride * (ih - 1) + 1 + dilation * (kernel_size_h - 1) - ih) / 2
             )
             padding_w = math.ceil(
-                (stride * (iw - 1) + 1 + dilation * (kernel_size_w - 1) - iw)
-                / 2
+                (stride * (iw - 1) + 1 + dilation * (kernel_size_w - 1) - iw) / 2
             )
             oh = int(
-                (ih + 2 * padding_h - dilation * (kernel_size_h - 1) - 1)
-                / stride
-                + 1
+                (ih + 2 * padding_h - dilation * (kernel_size_h - 1) - 1) / stride + 1
             )
             ow = int(
-                (iw + 2 * padding_w - dilation * (kernel_size_w - 1) - 1)
-                / stride
-                + 1
+                (iw + 2 * padding_w - dilation * (kernel_size_w - 1) - 1) / stride + 1
             )
             padding_new = max(padding_h, padding_w)
             return Conv2d.apply(
                 input, weight, bias, stride, padding_new, dilation, groups
             )[..., (oh - ih) :, (ow - iw) :]
         elif padding == "valid":
-            return Conv2d.apply(
-                input, weight, bias, stride, 0, dilation, groups
-            )
+            return Conv2d.apply(input, weight, bias, stride, 0, dilation, groups)
         else:
             raise ValueError(
                 f"Unsupported padding string: {padding}, only'valild'/'same' are allowed."
             )
     else:
-        return Conv2d.apply(
-            input, weight, bias, stride, padding, dilation, groups
-        )
+        return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)

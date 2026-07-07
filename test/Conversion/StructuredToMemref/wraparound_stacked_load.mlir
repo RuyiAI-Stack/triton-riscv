@@ -8,61 +8,38 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --structured-to-memref %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   tt.func public @wrap_stacked_load(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32>,
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: index,
 // CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: index) -> tensor<4x4xf32> {
-// CHECK:           %[[UNREALIZED_CONVERSION_CAST_0:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : !tt.ptr<f32> to memref<*xf32>
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG1]], %[[ARG2]] : index
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : index
 // CHECK:           %[[CONSTANT_1:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 1 : index
-// CHECK:           %[[REMSI_0:.*]] = arith.remsi %[[CONSTANT_0]], %[[ARG2]] : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 0 : index
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG1]], %[[ARG2]] : index
+// CHECK:           %[[UNREALIZED_CONVERSION_CAST_0:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : !tt.ptr<f32> to memref<*xf32>
+// CHECK:           %[[REMSI_0:.*]] = arith.remsi %[[CONSTANT_2]], %[[ARG2]] : index
 // CHECK:           %[[ADDI_0:.*]] = arith.addi %[[MULI_0]], %[[REMSI_0]] : index
-// CHECK:           %[[SUBI_0:.*]] = arith.subi %[[ADDI_0]], %[[CONSTANT_0]] : index
-// CHECK:           %[[DIVSI_0:.*]] = arith.divsi %[[SUBI_0]], %[[ARG2]] : index
+// CHECK:           %[[DIVSI_0:.*]] = arith.divsi %[[ADDI_0]], %[[ARG2]] : index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[DIVSI_0]], %[[CONSTANT_1]] : index
-// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[UNREALIZED_CONVERSION_CAST_0]] to offset: {{\[}}%[[CONSTANT_0]]], sizes: {{\[}}%[[MINSI_0]], %[[CONSTANT_2]]], strides: {{\[}}%[[ARG2]], %[[CONSTANT_3]]] : memref<*xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[SUBI_1:.*]] = arith.subi %[[CONSTANT_1]], %[[MINSI_0]] : index
-// CHECK:           %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[UNREALIZED_CONVERSION_CAST_0]] to offset: {{\[}}%[[REMSI_0]]], sizes: {{\[}}%[[SUBI_1]], %[[CONSTANT_2]]], strides: {{\[}}%[[ARG2]], %[[CONSTANT_3]]] : memref<*xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[UNREALIZED_CONVERSION_CAST_1:.*]] = builtin.unrealized_conversion_cast %[[REINTERPRET_CAST_0]], %[[REINTERPRET_CAST_1]] : memref<?x?xf32, strided<[?, ?], offset: ?>>, memref<?x?xf32, strided<[?, ?], offset: ?>> to tensor<4x4x!tt.ptr<f32>> {wrap_stacked}
-// CHECK:           %[[UNREALIZED_CONVERSION_CAST_2:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : !tt.ptr<f32> to memref<*xf32>
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 1 : index
-// CHECK:           %[[CONSTANT_6:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_7:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_8:.*]] = arith.constant 1 : index
-// CHECK:           %[[REMSI_1:.*]] = arith.remsi %[[CONSTANT_4]], %[[ARG2]] : index
-// CHECK:           %[[ADDI_1:.*]] = arith.addi %[[MULI_0]], %[[REMSI_1]] : index
-// CHECK:           %[[SUBI_2:.*]] = arith.subi %[[ADDI_1]], %[[CONSTANT_4]] : index
-// CHECK:           %[[DIVSI_1:.*]] = arith.divsi %[[SUBI_2]], %[[ARG2]] : index
-// CHECK:           %[[MINSI_1:.*]] = arith.minsi %[[DIVSI_1]], %[[CONSTANT_6]] : index
-// CHECK:           %[[SUBI_3:.*]] = arith.subi %[[CONSTANT_6]], %[[MINSI_1]] : index
-// CHECK:           %[[REINTERPRET_CAST_2:.*]] = memref.reinterpret_cast %[[UNREALIZED_CONVERSION_CAST_2]] to offset: {{\[}}%[[CONSTANT_4]]], sizes: {{\[}}%[[MINSI_1]], %[[CONSTANT_7]]], strides: {{\[}}%[[ARG2]], %[[CONSTANT_8]]] : memref<*xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[REINTERPRET_CAST_3:.*]] = memref.reinterpret_cast %[[UNREALIZED_CONVERSION_CAST_2]] to offset: {{\[}}%[[REMSI_1]]], sizes: {{\[}}%[[SUBI_3]], %[[CONSTANT_7]]], strides: {{\[}}%[[ARG2]], %[[CONSTANT_8]]] : memref<*xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[UNREALIZED_CONVERSION_CAST_3:.*]] = builtin.unrealized_conversion_cast %[[REINTERPRET_CAST_2]], %[[REINTERPRET_CAST_3]] : memref<?x?xf32, strided<[?, ?], offset: ?>>, memref<?x?xf32, strided<[?, ?], offset: ?>> to tensor<4x4x!tt.ptr<f32>> {wrap_stacked}
+// CHECK:           %[[SUBI_0:.*]] = arith.subi %[[CONSTANT_1]], %[[MINSI_0]] : index
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[UNREALIZED_CONVERSION_CAST_0]] to offset: {{\[}}%[[CONSTANT_2]]], sizes: {{\[}}%[[MINSI_0]], %[[CONSTANT_1]]], strides: {{\[}}%[[ARG2]], %[[CONSTANT_0]]] : memref<*xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[UNREALIZED_CONVERSION_CAST_0]] to offset: {{\[}}%[[REMSI_0]]], sizes: {{\[}}%[[SUBI_0]], %[[CONSTANT_1]]], strides: {{\[}}%[[ARG2]], %[[CONSTANT_0]]] : memref<*xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<4x4xf32>
-// CHECK:           %[[CONSTANT_9:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_10:.*]] = arith.constant 1 : index
-// CHECK:           %[[CONSTANT_11:.*]] = arith.constant 0 : index
-// CHECK:           %[[DIM_0:.*]] = memref.dim %[[REINTERPRET_CAST_2]], %[[CONSTANT_11]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[CONSTANT_12:.*]] = arith.constant 1 : index
-// CHECK:           %[[DIM_1:.*]] = memref.dim %[[REINTERPRET_CAST_2]], %[[CONSTANT_12]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[CONSTANT_13:.*]] = arith.constant 0 : index
-// CHECK:           %[[DIM_2:.*]] = memref.dim %[[REINTERPRET_CAST_3]], %[[CONSTANT_13]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[CONSTANT_14:.*]] = arith.constant 1 : index
-// CHECK:           %[[DIM_3:.*]] = memref.dim %[[REINTERPRET_CAST_3]], %[[CONSTANT_14]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[SUBVIEW_0:.*]] = memref.subview %[[ALLOC_0]]{{\[}}%[[CONSTANT_9]], %[[CONSTANT_9]]] {{\[}}%[[DIM_0]], %[[DIM_1]]] {{\[}}%[[CONSTANT_10]], %[[CONSTANT_10]]] : memref<4x4xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           %[[SUBVIEW_1:.*]] = memref.subview %[[ALLOC_0]]{{\[}}%[[DIM_0]], %[[CONSTANT_9]]] {{\[}}%[[DIM_2]], %[[DIM_3]]] {{\[}}%[[CONSTANT_10]], %[[CONSTANT_10]]] : memref<4x4xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           memref.copy %[[REINTERPRET_CAST_2]], %[[SUBVIEW_0]] : memref<?x?xf32, strided<[?, ?], offset: ?>> to memref<?x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:           memref.copy %[[REINTERPRET_CAST_3]], %[[SUBVIEW_1]] : memref<?x?xf32, strided<[?, ?], offset: ?>> to memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[DIM_0:.*]] = memref.dim %[[REINTERPRET_CAST_0]], %[[CONSTANT_2]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[DIM_1:.*]] = memref.dim %[[REINTERPRET_CAST_0]], %[[CONSTANT_0]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[DIM_2:.*]] = memref.dim %[[REINTERPRET_CAST_1]], %[[CONSTANT_2]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[DIM_3:.*]] = memref.dim %[[REINTERPRET_CAST_1]], %[[CONSTANT_0]] : memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[SUBVIEW_0:.*]] = memref.subview %[[ALLOC_0]]{{\[}}%[[CONSTANT_2]], %[[CONSTANT_2]]] {{\[}}%[[DIM_0]], %[[DIM_1]]] {{\[}}%[[CONSTANT_0]], %[[CONSTANT_0]]] : memref<4x4xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           %[[SUBVIEW_1:.*]] = memref.subview %[[ALLOC_0]]{{\[}}%[[DIM_0]], %[[CONSTANT_2]]] {{\[}}%[[DIM_2]], %[[DIM_3]]] {{\[}}%[[CONSTANT_0]], %[[CONSTANT_0]]] : memref<4x4xf32> to memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           memref.copy %[[REINTERPRET_CAST_0]], %[[SUBVIEW_0]] : memref<?x?xf32, strided<[?, ?], offset: ?>> to memref<?x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:           memref.copy %[[REINTERPRET_CAST_1]], %[[SUBVIEW_1]] : memref<?x?xf32, strided<[?, ?], offset: ?>> to memref<?x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<4x4xf32> to tensor<4x4xf32>
 // CHECK:           tt.return %[[TO_TENSOR_0]] : tensor<4x4xf32>
 // CHECK:         }
-module {
   tt.func public @wrap_stacked_load(%arg0: !tt.ptr<f32>, %M: index, %N: index) -> tensor<4x4xf32> {
     %0 = arith.muli %M, %N : index
     %1 = tts.make_tptr %arg0 to sizes: [4, 4], strides: [%N, 1], offsets: [0, 0], shape: [%0, 0], order: [] : <f32> to tensor<4x4x!tt.ptr<f32>>

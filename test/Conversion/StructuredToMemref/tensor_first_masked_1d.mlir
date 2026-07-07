@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-linalg-experimental="structured-ldst-mode=tensor-first-vector-cpu" %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
 // CHECK-SAME:                      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
@@ -20,47 +22,46 @@
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : bf16
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 16 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 1 : index
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 128 : index
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 0xFF80 : bf16
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0xFF80 : bf16
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 128 : index
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 16 : index
+// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 0.000000e+00 : bf16
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG2]] : i32 to index
-// CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_0]], %[[CONSTANT_3]] : index
-// CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_4]] : index
+// CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_0]], %[[CONSTANT_2]] : index
+// CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_1]] : index
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [128], strides: [1] : memref<*xbf16> to memref<128xbf16, strided<[1]>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<128xbf16>
-// CHECK:           %[[CMPI_0:.*]] = arith.cmpi slt, %[[MAXSI_0]], %[[CONSTANT_3]] : index
+// CHECK:           %[[CMPI_0:.*]] = arith.cmpi slt, %[[MAXSI_0]], %[[CONSTANT_2]] : index
 // CHECK:           scf.if %[[CMPI_0]] {
-// CHECK:             linalg.fill ins(%[[CONSTANT_5]] : bf16) outs(%[[ALLOC_0]] : memref<128xbf16>)
+// CHECK:             linalg.fill ins(%[[CONSTANT_0]] : bf16) outs(%[[ALLOC_0]] : memref<128xbf16>)
 // CHECK:           }
 // CHECK:           %[[SUBVIEW_0:.*]] = memref.subview %[[REINTERPRET_CAST_0]][0] {{\[}}%[[MAXSI_0]]] [1] : memref<128xbf16, strided<[1]>> to memref<?xbf16, strided<[1]>>
 // CHECK:           %[[SUBVIEW_1:.*]] = memref.subview %[[ALLOC_0]][0] {{\[}}%[[MAXSI_0]]] [1] : memref<128xbf16> to memref<?xbf16, strided<[1]>>
-// CHECK:           %[[DIVUI_0:.*]] = arith.divui %[[MAXSI_0]], %[[CONSTANT_1]] : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[DIVUI_0]], %[[CONSTANT_1]] : index
-// CHECK:           scf.for %[[VAL_0:.*]] = %[[CONSTANT_4]] to %[[MULI_0]] step %[[CONSTANT_1]] {
+// CHECK:           %[[DIVUI_0:.*]] = arith.divui %[[MAXSI_0]], %[[CONSTANT_4]] : index
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[DIVUI_0]], %[[CONSTANT_4]] : index
+// CHECK:           scf.for %[[VAL_0:.*]] = %[[CONSTANT_1]] to %[[MULI_0]] step %[[CONSTANT_4]] {
 // CHECK:             %[[LOAD_0:.*]] = vector.load %[[SUBVIEW_0]]{{\[}}%[[VAL_0]]] : memref<?xbf16, strided<[1]>>, vector<16xbf16>
 // CHECK:             vector.store %[[LOAD_0]], %[[SUBVIEW_1]]{{\[}}%[[VAL_0]]] : memref<?xbf16, strided<[1]>>, vector<16xbf16>
 // CHECK:           }
-// CHECK:           scf.for %[[VAL_1:.*]] = %[[MULI_0]] to %[[MAXSI_0]] step %[[CONSTANT_2]] {
+// CHECK:           scf.for %[[VAL_1:.*]] = %[[MULI_0]] to %[[MAXSI_0]] step %[[CONSTANT_3]] {
 // CHECK:             %[[LOAD_1:.*]] = memref.load %[[SUBVIEW_0]]{{\[}}%[[VAL_1]]] : memref<?xbf16, strided<[1]>>
 // CHECK:             memref.store %[[LOAD_1]], %[[SUBVIEW_1]]{{\[}}%[[VAL_1]]] : memref<?xbf16, strided<[1]>>
 // CHECK:           }
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<128xbf16> to tensor<128xbf16>
 // CHECK:           %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[ARG1]] to offset: [0], sizes: [128], strides: [1] : memref<*xbf16> to memref<128xbf16, strided<[1]>>
 // CHECK:           %[[SUBVIEW_2:.*]] = memref.subview %[[REINTERPRET_CAST_1]][0] {{\[}}%[[MAXSI_0]]] [1] : memref<128xbf16, strided<[1]>> to memref<?xbf16, strided<[1]>>
-// CHECK:           scf.for %[[VAL_2:.*]] = %[[CONSTANT_4]] to %[[MULI_0]] step %[[CONSTANT_1]] {
-// CHECK:             %[[TRANSFER_READ_0:.*]] = vector.transfer_read %[[TO_TENSOR_0]]{{\[}}%[[VAL_2]]], %[[CONSTANT_0]] {in_bounds = [true]} : tensor<128xbf16>, vector<16xbf16>
+// CHECK:           scf.for %[[VAL_2:.*]] = %[[CONSTANT_1]] to %[[MULI_0]] step %[[CONSTANT_4]] {
+// CHECK:             %[[TRANSFER_READ_0:.*]] = vector.transfer_read %[[TO_TENSOR_0]]{{\[}}%[[VAL_2]]], %[[CONSTANT_5]] {in_bounds = [true]} : tensor<128xbf16>, vector<16xbf16>
 // CHECK:             vector.store %[[TRANSFER_READ_0]], %[[SUBVIEW_2]]{{\[}}%[[VAL_2]]] : memref<?xbf16, strided<[1]>>, vector<16xbf16>
 // CHECK:           }
-// CHECK:           scf.for %[[VAL_3:.*]] = %[[MULI_0]] to %[[MAXSI_0]] step %[[CONSTANT_2]] {
+// CHECK:           scf.for %[[VAL_3:.*]] = %[[MULI_0]] to %[[MAXSI_0]] step %[[CONSTANT_3]] {
 // CHECK:             %[[EXTRACT_0:.*]] = tensor.extract %[[TO_TENSOR_0]]{{\[}}%[[VAL_3]]] : tensor<128xbf16>
 // CHECK:             memref.store %[[EXTRACT_0]], %[[SUBVIEW_2]]{{\[}}%[[VAL_3]]] : memref<?xbf16, strided<[1]>>
 // CHECK:           }
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func @kernel(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>, %arg2: i32) {
     %in_ptrs = tt.splat %arg0 : !tt.ptr<bf16> -> tensor<128x!tt.ptr<bf16>>
     %out_ptrs = tt.splat %arg1 : !tt.ptr<bf16> -> tensor<128x!tt.ptr<bf16>>

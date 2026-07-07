@@ -4,57 +4,21 @@ import triton.language as tl
 
 
 @triton.jit
-def cat_copy_func_kernel_4(
+def cat_copy_func_kernel(
     out_ptr,
-    in_ptr_a,
-    in_ptr_b,
-    in_ptr_c,
-    in_ptr_d,
-    dim_size_in_a,
-    dim_size_in_b,
-    dim_size_in_c,
-    dim_size_in_d,
+    in_ptr,
+    dim_size_in,
     dim_size_out,
     dim_prod_post,
-    dim_offset_a: tl.int64,
-    dim_offset_b: tl.int64,
-    dim_offset_c: tl.int64,
-    dim_offset_d: tl.int64,
-    total_elements_a,
-    total_elements_b,
-    total_elements_c,
-    total_elements_d,
+    dim_offset: tl.int64,
+    total_elements,
     BLOCK_X: tl.constexpr,
 ):
-    pid_x = tl.program_id(0)
-    pid_y = tl.program_id(1)
-
-    if pid_y == 0:
-        in_ptr = in_ptr_a
-        dim_size_in = dim_size_in_a
-        dim_offset = tl.cast(dim_offset_a, tl.int64)
-        total_elements = total_elements_a
-    elif pid_y == 1:
-        in_ptr = in_ptr_b
-        dim_size_in = dim_size_in_b
-        dim_offset = tl.cast(dim_offset_b, tl.int64)
-        total_elements = total_elements_b
-    elif pid_y == 2:
-        in_ptr = in_ptr_c
-        dim_size_in = dim_size_in_c
-        dim_offset = tl.cast(dim_offset_c, tl.int64)
-        total_elements = total_elements_c
-    else:
-        in_ptr = in_ptr_d
-        dim_size_in = dim_size_in_d
-        dim_offset = tl.cast(dim_offset_d, tl.int64)
-        total_elements = total_elements_d
-
-    block_start = pid_x * BLOCK_X
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_X
     offsets = tl.arange(0, BLOCK_X)
-    mask = block_start + offsets < total_elements
-
     idx = block_start + offsets
+    mask = idx < total_elements
 
     pre_idx = idx // (dim_size_in * dim_prod_post)
     dim_idx = (idx // dim_prod_post) % dim_size_in
@@ -78,91 +42,34 @@ def _cat_run_kernel(
 ):
     BLOCK = 1024
     dim_offset = 0
-    i = 0
-    while i < len(A):
-        tensors_in_batch = A[i : i + 4]
-        num_tensors_in_batch = len(tensors_in_batch)
+    dim_size_out = out_shape[dim]
+    dim_prod_post = 1
+    for d in range(dim + 1, A[0].ndim):
+        dim_prod_post *= A[0].shape[d]
 
-        args = []
-        total_elements_list = []
-        current_dim_offset = dim_offset
+    for tensor in A:
+        tensor = tensor.contiguous()
+        total_elements = tensor.numel()
+        dim_size_in = tensor.shape[dim]
+        if total_elements == 0:
+            dim_offset += dim_size_in
+            continue
 
-        for j in range(4):
-            if j < num_tensors_in_batch:
-                tensor = tensors_in_batch[j].contiguous()
-                shape = tensor.shape
-                total_elements = tensor.numel()
-                dim_size_in = shape[dim]
-
-                args.extend(
-                    [tensor, dim_size_in, current_dim_offset, total_elements]
-                )
-                total_elements_list.append(total_elements)
-                current_dim_offset += dim_size_in
-            else:
-                args.extend([tensors_in_batch[0], 0, 0, 0])
-                total_elements_list.append(0)
-
-        dim_size_out = out_shape[dim]
-        dim_prod_post = 1
-        for d in range(dim + 1, A[0].ndim):
-            dim_prod_post *= A[0].shape[d]
-
-        grid_y = num_tensors_in_batch
-        max_elements_in_batch = (
-            max(total_elements_list) if total_elements_list else 0
-        )
-        grid = (triton.cdiv(max_elements_in_batch, BLOCK), grid_y)
-
-        (
-            tensor_a,
-            dim_size_in_a,
-            dim_offset_a,
-            total_elements_a,
-            tensor_b,
-            dim_size_in_b,
-            dim_offset_b,
-            total_elements_b,
-            tensor_c,
-            dim_size_in_c,
-            dim_offset_c,
-            total_elements_c,
-            tensor_d,
-            dim_size_in_d,
-            dim_offset_d,
-            total_elements_d,
-        ) = args
-
-        cat_copy_func_kernel_4[grid](
+        grid = (triton.cdiv(total_elements, BLOCK),)
+        cat_copy_func_kernel[grid](
             out,
-            tensor_a,
-            tensor_b,
-            tensor_c,
-            tensor_d,
-            dim_size_in_a,
-            dim_size_in_b,
-            dim_size_in_c,
-            dim_size_in_d,
+            tensor,
+            dim_size_in,
             dim_size_out,
             dim_prod_post,
-            dim_offset_a,
-            dim_offset_b,
-            dim_offset_c,
-            dim_offset_d,
-            total_elements_a,
-            total_elements_b,
-            total_elements_c,
-            total_elements_d,
+            dim_offset,
+            total_elements,
             BLOCK_X=BLOCK,
         )
-
-        dim_offset = current_dim_offset
-        i += num_tensors_in_batch
+        dim_offset += dim_size_in
 
 
-def _cat_build_working_list(
-    A: tuple[torch.Tensor, ...] | list[torch.Tensor], dim: int
-):
+def _cat_build_working_list(A: tuple[torch.Tensor, ...] | list[torch.Tensor], dim: int):
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
     if len(A) == 1:
@@ -190,9 +97,7 @@ def _cat_build_working_list(
                 f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
             )
     for tensor_idx, inp_shape in enumerate(inp_shapes):
-        for idx, (common_length, length) in enumerate(
-            zip(inp0_shape, inp_shape)
-        ):
+        for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
             if idx != dim and length != common_length:
                 raise RuntimeError(
                     f"Sizes of tensors must match except in dimension {dim}. "
@@ -236,9 +141,7 @@ def cat_out(
 
     A, dim, out_shape, dtype, _ = payload
     if out.dtype != dtype:
-        raise RuntimeError(
-            f"cat.out: expected out dtype {dtype}, got {out.dtype}"
-        )
+        raise RuntimeError(f"cat.out: expected out dtype {dtype}, got {out.dtype}")
     if list(out.shape) != out_shape:
         out.resize_(out_shape)
     _cat_run_kernel(A, dim, out_shape, out)

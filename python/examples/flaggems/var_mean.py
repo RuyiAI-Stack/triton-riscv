@@ -37,7 +37,7 @@ def var_mean_welford_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
 
@@ -48,9 +48,7 @@ def var_mean_welford_kernel(
         _mean = cur_mean
         _count = count
 
-    mean, _, acc = tl.reduce(
-        (_mean, _count, _acc), axis=1, combine_fn=welford_func
-    )
+    mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
     var = acc / (N - correction)
     mean = mean[:, None]
     var = var[:, None]
@@ -108,9 +106,7 @@ def var_mean_kernel_2(
     average = tl.load(Average, mask, other=0.0).to(tl.float32)
     count = tl.load(Count, mask, other=0.0).to(tl.float32)
 
-    mean, _, nvar = tl.reduce(
-        (average, count, acc), axis=0, combine_fn=welford_func
-    )
+    mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
     var = nvar / (N - correction)
     tl.store(Mean, mean)
@@ -133,9 +129,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
-        var_mean_kernel_1[(BLOCK_NUM,)](
-            x, acc, average, count, N, BLOCK_N=BLOCK_N
-        )
+        var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
         var_mean_kernel_2[(1,)](
             acc,
             average,
@@ -155,7 +149,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         remaining_dims = [i for i in range(x.ndim) if i not in dim]
         permuted = x.permute(remaining_dims + dim)
         new_shape = [*list(permuted.shape[: len(remaining_dims)]), -1]
-        x = permuted.reshape(new_shape)
+        x = permuted.contiguous().reshape(new_shape)
 
         N = 1
         for i in dim:

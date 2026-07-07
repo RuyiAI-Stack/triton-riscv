@@ -23,24 +23,19 @@ def trace_kernel(
         acc_dtype = tl.float32
         other_val = 0.0
 
-    acc = tl.zeros((BLOCK_SIZE,), dtype=acc_dtype)
-
     diag_stride = stride0 + stride1
+    current_indices = tl.arange(0, BLOCK_SIZE)
+    mask = current_indices < num_diag
 
-    for i in range(0, tl.cdiv(num_diag, BLOCK_SIZE)):
-        block_start = i * BLOCK_SIZE
-        current_indices = block_start + tl.arange(0, BLOCK_SIZE)
+    ptr_offsets = current_indices * diag_stride
+    current_ptrs = inp_ptr + ptr_offsets
+    vals = tl.load(current_ptrs, mask=mask, other=other_val)
+    if vals.dtype != acc_dtype:
+        vals = vals.to(acc_dtype)
+    else:
+        vals = vals + tl.zeros([BLOCK_SIZE], dtype=acc_dtype)
 
-        mask = current_indices < num_diag
-
-        ptr_offsets = current_indices * diag_stride
-        current_ptrs = inp_ptr + ptr_offsets
-
-        vals = tl.load(current_ptrs, mask=mask, other=other_val)
-
-        acc += vals.to(acc_dtype)
-
-    final_sum = tl.sum(acc, axis=0)
+    final_sum = tl.sum(vals, axis=0)
     tl.store(out_ptr, final_sum.to(out_ptr.type.element_ty))
 
 

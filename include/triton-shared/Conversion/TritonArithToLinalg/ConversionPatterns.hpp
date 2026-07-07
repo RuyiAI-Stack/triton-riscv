@@ -1237,6 +1237,179 @@ private:
         });
   }
 
+  static SmallVector<int64_t> getReducedShape(RankedTensorType sourceType,
+                                              int64_t axis) {
+    SmallVector<int64_t> shape;
+    shape.reserve(sourceType.getRank() - 1);
+    for (int64_t dim = 0, rank = sourceType.getRank(); dim < rank; ++dim) {
+      if (dim != axis) {
+        shape.push_back(sourceType.getShape()[dim]);
+      }
+    }
+    return shape;
+  }
+
+  static RankedTensorType getTailSliceType(RankedTensorType sourceType,
+                                           int64_t axis) {
+    SmallVector<int64_t> shape(sourceType.getShape());
+    if (!ShapedType::isDynamic(shape[axis])) {
+      shape[axis] = std::max<int64_t>(shape[axis] - 1, 0);
+    }
+    return RankedTensorType::get(shape, sourceType.getElementType());
+  }
+
+  static SmallVector<OpFoldResult>
+  getFullSliceSizes(Value source, RankedTensorType sourceType,
+                    ConversionPatternRewriter &rewriter) {
+    Location loc = source.getLoc();
+    SmallVector<OpFoldResult> sizes;
+    sizes.reserve(sourceType.getRank());
+    for (int64_t dim = 0, rank = sourceType.getRank(); dim < rank; ++dim) {
+      if (sourceType.isDynamicDim(dim)) {
+        sizes.push_back(
+            rewriter.create<tensor::DimOp>(loc, source, dim).getResult());
+      } else {
+        sizes.push_back(rewriter.getIndexAttr(sourceType.getShape()[dim]));
+      }
+    }
+    return sizes;
+  }
+
+  SmallVector<Value>
+  createGenericReduceInits(ValueRange operands, int64_t axis,
+                           ConversionPatternRewriter &rewriter) const {
+    SmallVector<Value> initTensors;
+    initTensors.reserve(operands.size());
+    auto loc = operands.front().getLoc();
+    auto c0 = rewriter.getIndexAttr(0);
+    auto c1 = rewriter.getIndexAttr(1);
+
+    for (Value operand : operands) {
+      auto sourceType = cast<RankedTensorType>(operand.getType());
+      if (sourceType.getRank() == 1) {
+        Value first = rewriter.create<tensor::ExtractOp>(
+            loc, operand,
+            ValueRange{
+                rewriter.create<arith::ConstantIndexOp>(loc, 0).getResult()});
+        Value initTensor = rewriter.create<bufferization::AllocTensorOp>(
+            loc, RankedTensorType::get({}, sourceType.getElementType()),
+            ValueRange{});
+        initTensor = rewriter.create<tensor::InsertOp>(loc, first, initTensor,
+                                                       ValueRange{});
+        initTensors.push_back(initTensor);
+        continue;
+      }
+
+      SmallVector<OpFoldResult> offsets(sourceType.getRank(), c0);
+      SmallVector<OpFoldResult> sizes =
+          getFullSliceSizes(operand, sourceType, rewriter);
+      SmallVector<OpFoldResult> strides(sourceType.getRank(), c1);
+      sizes[axis] = c1;
+      auto initType = RankedTensorType::get(getReducedShape(sourceType, axis),
+                                            sourceType.getElementType());
+      initTensors.push_back(
+          rewriter
+              .create<tensor::ExtractSliceOp>(loc, initType, operand, offsets,
+                                              sizes, strides)
+              .getResult());
+    }
+    return initTensors;
+  }
+
+  SmallVector<Value>
+  createGenericReduceInputs(ValueRange operands, int64_t axis,
+                            ConversionPatternRewriter &rewriter) const {
+    SmallVector<Value> slicedOperands;
+    slicedOperands.reserve(operands.size());
+    auto loc = operands.front().getLoc();
+    auto c0 = rewriter.getIndexAttr(0);
+    auto c1 = rewriter.getIndexAttr(1);
+
+    for (Value operand : operands) {
+      auto sourceType = cast<RankedTensorType>(operand.getType());
+      SmallVector<OpFoldResult> offsets(sourceType.getRank(), c0);
+      SmallVector<OpFoldResult> sizes =
+          getFullSliceSizes(operand, sourceType, rewriter);
+      SmallVector<OpFoldResult> strides(sourceType.getRank(), c1);
+
+      offsets[axis] = c1;
+      if (sourceType.isDynamicDim(axis)) {
+        Value dim = rewriter.create<tensor::DimOp>(loc, operand, axis);
+        Value tail = rewriter.create<arith::SubIOp>(
+            loc, dim, rewriter.create<arith::ConstantIndexOp>(loc, 1));
+        sizes[axis] = tail;
+      } else {
+        sizes[axis] = rewriter.getIndexAttr(
+            std::max<int64_t>(sourceType.getShape()[axis] - 1, 0));
+      }
+
+      auto tailType = getTailSliceType(sourceType, axis);
+      slicedOperands.push_back(
+          rewriter
+              .create<tensor::ExtractSliceOp>(loc, tailType, operand, offsets,
+                                              sizes, strides)
+              .getResult());
+    }
+    return slicedOperands;
+  }
+
+  LogicalResult
+  convertToGenericLinalgReduce(triton::ReduceOp op,
+                               typename triton::ReduceOp::Adaptor adaptor,
+                               ConversionPatternRewriter &rewriter) const {
+    auto operands = adaptor.getOperands();
+    auto sourceType = cast<RankedTensorType>(operands.front().getType());
+    auto axis = op.getAxis();
+    auto loc = op.getLoc();
+
+    SmallVector<Value> initTensors =
+        createGenericReduceInits(operands, axis, rewriter);
+    SmallVector<Value> reduceInputs =
+        createGenericReduceInputs(operands, axis, rewriter);
+
+    auto linalgOp = rewriter.create<linalg::ReduceOp>(
+        loc, reduceInputs, initTensors, SmallVector<int64_t>{axis},
+        [&](OpBuilder &b, Location nestedLoc, ValueRange inputs) {
+          IRMapping mapping;
+          auto reduceBlock = op.getBody();
+          unsigned numOperands = op.getNumOperands();
+          SmallVector<Value> combineArgs;
+          combineArgs.reserve(inputs.size());
+          // Triton orders the combine arguments as (accumulators, current
+          // values), while linalg.reduce orders its block arguments as
+          // (current values, accumulators).
+          combineArgs.append(inputs.begin() + numOperands, inputs.end());
+          combineArgs.append(inputs.begin(), inputs.begin() + numOperands);
+          mapping.map(reduceBlock->getArguments(), combineArgs);
+          for (auto &nestedOp : reduceBlock->without_terminator()) {
+            b.clone(nestedOp, mapping);
+          }
+          auto term =
+              cast<triton::ReduceReturnOp>(reduceBlock->getTerminator());
+          SmallVector<Value> yields;
+          yields.reserve(term.getNumOperands());
+          for (Value operand : term.getOperands()) {
+            yields.push_back(mapping.lookup(operand));
+          }
+          b.create<linalg::YieldOp>(nestedLoc, yields);
+        });
+
+    if (sourceType.getRank() == 1) {
+      SmallVector<Value> results;
+      results.reserve(linalgOp->getNumResults());
+      for (auto [result, type] :
+           llvm::zip(linalgOp->getResults(), op->getResultTypes())) {
+        results.push_back(rewriter.create<tensor::ExtractOp>(loc, type, result,
+                                                             ValueRange{}));
+      }
+      rewriter.replaceOp(op, results);
+      return success();
+    }
+
+    rewriter.replaceOp(op, linalgOp->getResults());
+    return success();
+  }
+
   LogicalResult
   convertToLinalgReduce(triton::ReduceOp op,
                         typename triton::ReduceOp::Adaptor adaptor,
@@ -1253,9 +1426,7 @@ private:
     // subview that skips over each first element.
     if (reductionOps.size() != 1 ||
         !isReductionOpSupported(reductionOps.front())) {
-      return rewriter.notifyMatchFailure(
-          op, "Only support lowering reduction with body "
-              "containing 1 max(i/f), addf, ori, or mulf.");
+      return convertToGenericLinalgReduce(op, adaptor, rewriter);
     }
 
     auto rop = reductionOps.front();
@@ -1420,16 +1591,21 @@ class ArgMinMaxBaseConverter : public OpConversionPattern<triton::ReduceOp> {
 
     // matching: %11 = arith.cmpf oeq, %arg9, %arg11 : f32
     LLVM_DEBUG(llvm::dbgs() << "Matching: " << *it << "\n");
-    auto eqCmpOp = dyn_cast<arith::CmpFOp>(*it++);
-    if (eqCmpOp) {
-      if (eqCmpOp.getPredicate() != arith::CmpFPredicate::OEQ) {
+    Value eqResult;
+    if (auto eqCmpFOp = dyn_cast<arith::CmpFOp>(*it++)) {
+      if (eqCmpFOp.getPredicate() != arith::CmpFPredicate::OEQ ||
+          currValue != eqCmpFOp.getLhs() || reduceValue != eqCmpFOp.getRhs()) {
         return failure();
       }
-      if (currValue != eqCmpOp.getLhs() || reduceValue != eqCmpOp.getRhs()) {
-        return failure();
-      }
+      eqResult = eqCmpFOp;
     } else {
-      return failure();
+      --it;
+      auto eqCmpIOp = dyn_cast<arith::CmpIOp>(*it++);
+      if (!eqCmpIOp || eqCmpIOp.getPredicate() != arith::CmpIPredicate::eq ||
+          currValue != eqCmpIOp.getLhs() || reduceValue != eqCmpIOp.getRhs()) {
+        return failure();
+      }
+      eqResult = eqCmpIOp;
     }
 
     // matching: %12 = arith.cmpi slt, %arg10, %arg12 : i32
@@ -1450,7 +1626,7 @@ class ArgMinMaxBaseConverter : public OpConversionPattern<triton::ReduceOp> {
     LLVM_DEBUG(llvm::dbgs() << "Matching: " << *it << "\n");
     auto andOp = dyn_cast<arith::AndIOp>(*it++);
     if (andOp) {
-      if (andOp.getLhs() != eqCmpOp || andOp.getRhs() != sltCmpOp) {
+      if (andOp.getLhs() != eqResult || andOp.getRhs() != sltCmpOp) {
         return failure();
       }
     } else {
@@ -1577,8 +1753,7 @@ public:
     // whether we're dealing with argmax or argmin
     auto valueType = elemTypes[0];
     auto valuesAccBaseVal = rewriter.create<arith::ConstantOp>(
-        loc, valueType,
-        rewriter.getFloatAttr(valueType, T::getBaseReductionValue()));
+        loc, valueType, T::getBaseReductionValueAttr(valueType, rewriter));
 
     // Set the initial value of the rank-0 tensor containing the index of the
     // min or max value to -1
@@ -1644,22 +1819,31 @@ struct ArgMaxConverter : public ArgMinMaxBaseConverter<ArgMaxConverter> {
     // %14 = arith.cmpf ogt, %arg9, %arg11 : f32
     // This corresponds to section 2. of the sample snippet in
     // ArgMinMaxBaseConverter
-    auto cmpOp = dyn_cast<arith::CmpFOp>(*it++);
-    if (cmpOp) {
-      if (cmpOp.getPredicate() != arith::CmpFPredicate::OGT ||
-          currValue != cmpOp.getLhs() || reduceValue != cmpOp.getRhs()) {
+    if (auto cmpFOp = dyn_cast<arith::CmpFOp>(*it++)) {
+      if (cmpFOp.getPredicate() != arith::CmpFPredicate::OGT ||
+          currValue != cmpFOp.getLhs() || reduceValue != cmpFOp.getRhs()) {
         return failure();
       }
-    } else {
+      comparisonResult = cmpFOp;
+      return success();
+    }
+    --it;
+    auto cmpIOp = dyn_cast<arith::CmpIOp>(*it++);
+    if (!cmpIOp || cmpIOp.getPredicate() != arith::CmpIPredicate::sgt ||
+        currValue != cmpIOp.getLhs() || reduceValue != cmpIOp.getRhs()) {
       return failure();
     }
-
-    comparisonResult = cmpOp;
+    comparisonResult = cmpIOp;
     return success();
   }
 
-  static float getBaseReductionValue() {
-    return -std::numeric_limits<float>::infinity();
+  static TypedAttr getBaseReductionValueAttr(Type valueType, Builder &builder) {
+    if (isa<FloatType>(valueType)) {
+      return builder.getFloatAttr(valueType,
+                                  -std::numeric_limits<float>::infinity());
+    }
+    auto intType = cast<IntegerType>(valueType);
+    return builder.getIntegerAttr(valueType, llvm::minIntN(intType.getWidth()));
   }
 
   ArgMaxConverter(MLIRContext *context) : ArgMinMaxBaseConverter(context) {}
@@ -1675,22 +1859,31 @@ struct ArgMinConverter : public ArgMinMaxBaseConverter<ArgMinConverter> {
     // This corresponds to section 2. of the sample snippet in
     // ArgMinMaxBaseConverter
     LLVM_DEBUG(llvm::dbgs() << "Matching: " << *it << "\n");
-    auto cmpOp = dyn_cast<arith::CmpFOp>(*it++);
-    if (cmpOp) {
-      if (cmpOp.getPredicate() != arith::CmpFPredicate::OLT ||
-          currValue != cmpOp.getLhs() || reduceValue != cmpOp.getRhs()) {
+    if (auto cmpFOp = dyn_cast<arith::CmpFOp>(*it++)) {
+      if (cmpFOp.getPredicate() != arith::CmpFPredicate::OLT ||
+          currValue != cmpFOp.getLhs() || reduceValue != cmpFOp.getRhs()) {
         return failure();
       }
-    } else {
+      comparisonResult = cmpFOp;
+      return success();
+    }
+    --it;
+    auto cmpIOp = dyn_cast<arith::CmpIOp>(*it++);
+    if (!cmpIOp || cmpIOp.getPredicate() != arith::CmpIPredicate::slt ||
+        currValue != cmpIOp.getLhs() || reduceValue != cmpIOp.getRhs()) {
       return failure();
     }
-
-    comparisonResult = cmpOp;
+    comparisonResult = cmpIOp;
     return success();
   }
 
-  static float getBaseReductionValue() {
-    return std::numeric_limits<float>::infinity();
+  static TypedAttr getBaseReductionValueAttr(Type valueType, Builder &builder) {
+    if (isa<FloatType>(valueType)) {
+      return builder.getFloatAttr(valueType,
+                                  std::numeric_limits<float>::infinity());
+    }
+    auto intType = cast<IntegerType>(valueType);
+    return builder.getIntegerAttr(valueType, llvm::maxIntN(intType.getWidth()));
   }
 
   ArgMinConverter(MLIRContext *context) : ArgMinMaxBaseConverter(context) {}
@@ -1930,6 +2123,241 @@ public:
     rewriter.replaceOpWithNewOp<ttx::CumSumOp>(
         op, input, rewriter.getUI32IntegerAttr(axis), init);
 
+    return success();
+  }
+};
+
+class GenericScanConverter : public OpConversionPattern<triton::ScanOp> {
+  using OpConversionPattern<triton::ScanOp>::OpConversionPattern;
+
+  static SmallVector<Value>
+  createEmptyResults(triton::ScanOp op, OpAdaptor adaptor,
+                     ConversionPatternRewriter &rewriter) {
+    SmallVector<Value> results;
+    results.reserve(op.getNumResults());
+    auto loc = op.getLoc();
+    for (auto [resultType, operand] :
+         llvm::zip(op->getResultTypes(), adaptor.getOperands())) {
+      auto tensorType = cast<RankedTensorType>(resultType);
+      SmallVector<Value> dynamicDims;
+      dynamicDims.reserve(tensorType.getNumDynamicDims());
+      for (int64_t dim = 0, rank = tensorType.getRank(); dim < rank; ++dim) {
+        if (tensorType.isDynamicDim(dim)) {
+          dynamicDims.push_back(
+              rewriter.create<tensor::DimOp>(loc, operand, dim).getResult());
+        }
+      }
+      results.push_back(rewriter.create<tensor::EmptyOp>(
+          loc, tensorType.getShape(), tensorType.getElementType(),
+          dynamicDims));
+    }
+    return results;
+  }
+
+  static SmallVector<Value> buildIndices(int64_t rank, int64_t axis,
+                                         Value axisIndex,
+                                         ArrayRef<Value> outerIndices) {
+    SmallVector<Value> indices;
+    indices.reserve(rank);
+    unsigned outerPos = 0;
+    for (int64_t dim = 0; dim < rank; ++dim) {
+      if (dim == axis) {
+        indices.push_back(axisIndex);
+      } else {
+        indices.push_back(outerIndices[outerPos++]);
+      }
+    }
+    return indices;
+  }
+
+  static SmallVector<Value> cloneScanBody(triton::ScanOp op, ValueRange lhs,
+                                          ValueRange rhs, OpBuilder &builder) {
+    auto *body = op.getBody();
+    IRMapping mapping;
+    SmallVector<Value> args;
+    args.reserve(lhs.size() + rhs.size());
+    args.append(lhs.begin(), lhs.end());
+    args.append(rhs.begin(), rhs.end());
+    mapping.map(body->getArguments(), args);
+
+    for (Operation &nestedOp : body->without_terminator()) {
+      builder.clone(nestedOp, mapping);
+    }
+
+    auto term = cast<triton::ScanReturnOp>(body->getTerminator());
+    SmallVector<Value> results;
+    results.reserve(term->getNumOperands());
+    for (Value operand : term.getOperands()) {
+      results.push_back(mapping.lookup(operand));
+    }
+    return results;
+  }
+
+public:
+  LogicalResult
+  matchAndRewrite(triton::ScanOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto operandType =
+        cast<RankedTensorType>(adaptor.getOperands().front().getType());
+    int64_t rank = operandType.getRank();
+    int64_t axis = op.getAxis();
+    auto loc = op.getLoc();
+
+    Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+    Value axisUpper = rewriter.create<tensor::DimOp>(
+        loc, adaptor.getOperands().front(), axis);
+    Value hasElements = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::sgt, axisUpper, c0);
+
+    SmallVector<Value> initResults = createEmptyResults(op, adaptor, rewriter);
+
+    auto buildScanSlice = [&](OpBuilder &builder, Location nestedLoc,
+                              ArrayRef<Value> outerIndices,
+                              ValueRange currentResults) -> SmallVector<Value> {
+      OpBuilder::InsertionGuard guard(builder);
+      Value firstAxisIndex = c0;
+      if (op.getReverse()) {
+        firstAxisIndex =
+            builder.create<arith::SubIOp>(nestedLoc, axisUpper, c1);
+      }
+      SmallVector<Value> firstIndices =
+          buildIndices(rank, axis, firstAxisIndex, outerIndices);
+      SmallVector<Value> accValues;
+      accValues.reserve(adaptor.getOperands().size());
+      for (Value operand : adaptor.getOperands()) {
+        accValues.push_back(builder.create<tensor::ExtractOp>(
+            nestedLoc, operand, firstIndices));
+      }
+
+      SmallVector<Value> updatedResults;
+      updatedResults.reserve(currentResults.size());
+      for (auto [resultTensor, acc] : llvm::zip(currentResults, accValues)) {
+        updatedResults.push_back(builder.create<tensor::InsertOp>(
+            nestedLoc, acc, resultTensor, firstIndices));
+      }
+
+      SmallVector<Type> loopResultTypes;
+      loopResultTypes.reserve(updatedResults.size() + accValues.size());
+      for (Value result : updatedResults) {
+        loopResultTypes.push_back(result.getType());
+      }
+      for (Value acc : accValues) {
+        loopResultTypes.push_back(acc.getType());
+      }
+
+      SmallVector<Value> iterArgs(updatedResults);
+      iterArgs.append(accValues.begin(), accValues.end());
+      auto scanLoop =
+          builder.create<scf::ForOp>(nestedLoc, c1, axisUpper, c1, iterArgs);
+      builder.setInsertionPointToStart(scanLoop.getBody());
+
+      Value axisIv = scanLoop.getInductionVar();
+      Value scanAxisIndex = axisIv;
+      if (op.getReverse()) {
+        scanAxisIndex =
+            builder.create<arith::SubIOp>(nestedLoc, axisUpper, axisIv);
+        scanAxisIndex =
+            builder.create<arith::SubIOp>(nestedLoc, scanAxisIndex, c1);
+      }
+      SmallVector<Value> scanIndices =
+          buildIndices(rank, axis, scanAxisIndex, outerIndices);
+      unsigned numResults = currentResults.size();
+
+      SmallVector<Value> prevAccs;
+      prevAccs.reserve(numResults);
+      for (unsigned i = 0; i < numResults; ++i) {
+        prevAccs.push_back(scanLoop.getRegionIterArgs()[numResults + i]);
+      }
+
+      SmallVector<Value> currValues;
+      currValues.reserve(adaptor.getOperands().size());
+      for (Value operand : adaptor.getOperands()) {
+        currValues.push_back(
+            builder.create<tensor::ExtractOp>(nestedLoc, operand, scanIndices));
+      }
+
+      SmallVector<Value> nextAccs =
+          cloneScanBody(op, prevAccs, currValues, builder);
+      SmallVector<Value> nextResults;
+      nextResults.reserve(numResults);
+      for (unsigned i = 0; i < numResults; ++i) {
+        nextResults.push_back(builder.create<tensor::InsertOp>(
+            nestedLoc, nextAccs[i], scanLoop.getRegionIterArgs()[i],
+            scanIndices));
+      }
+
+      SmallVector<Value> yields(nextResults);
+      yields.append(nextAccs.begin(), nextAccs.end());
+      builder.create<scf::YieldOp>(nestedLoc, yields);
+
+      SmallVector<Value> finalResults;
+      finalResults.reserve(numResults);
+      for (unsigned i = 0; i < numResults; ++i) {
+        finalResults.push_back(scanLoop.getResult(i));
+      }
+      builder.setInsertionPointAfter(scanLoop);
+      return finalResults;
+    };
+
+    std::function<SmallVector<Value>(OpBuilder &, Location, int64_t,
+                                     SmallVector<Value> &, ValueRange)>
+        buildOuterLoops;
+    buildOuterLoops = [&](OpBuilder &builder, Location nestedLoc, int64_t dim,
+                          SmallVector<Value> &outerIndices,
+                          ValueRange currentResults) -> SmallVector<Value> {
+      if (dim == rank) {
+        return buildScanSlice(builder, nestedLoc, outerIndices, currentResults);
+      }
+      if (dim == axis) {
+        return buildOuterLoops(builder, nestedLoc, dim + 1, outerIndices,
+                               currentResults);
+      }
+
+      OpBuilder::InsertionGuard guard(builder);
+      Value upper = builder.create<tensor::DimOp>(
+          nestedLoc, adaptor.getOperands().front(), dim);
+      auto loop =
+          builder.create<scf::ForOp>(nestedLoc, c0, upper, c1, currentResults);
+      builder.setInsertionPointToStart(loop.getBody());
+      outerIndices.push_back(loop.getInductionVar());
+      SmallVector<Value> loopResults = buildOuterLoops(
+          builder, nestedLoc, dim + 1, outerIndices, loop.getRegionIterArgs());
+      outerIndices.pop_back();
+      builder.create<scf::YieldOp>(nestedLoc, loopResults);
+
+      SmallVector<Value> results;
+      results.reserve(loop->getNumResults());
+      for (OpResult result : loop.getResults()) {
+        results.push_back(result);
+      }
+      builder.setInsertionPointAfter(loop);
+      return results;
+    };
+
+    SmallVector<Type> resultTypes;
+    resultTypes.reserve(initResults.size());
+    for (Value result : initResults) {
+      resultTypes.push_back(result.getType());
+    }
+
+    auto ifOp = rewriter.create<scf::IfOp>(loc, resultTypes, hasElements,
+                                           /*withElseRegion=*/true);
+    {
+      OpBuilder thenBuilder =
+          OpBuilder::atBlockBegin(ifOp.thenBlock(), rewriter.getListener());
+      SmallVector<Value> outerIndices;
+      SmallVector<Value> finalResults = buildOuterLoops(
+          thenBuilder, loc, /*dim=*/0, outerIndices, initResults);
+      thenBuilder.create<scf::YieldOp>(loc, finalResults);
+    }
+    {
+      OpBuilder elseBuilder =
+          OpBuilder::atBlockBegin(ifOp.elseBlock(), rewriter.getListener());
+      elseBuilder.create<scf::YieldOp>(loc, initResults);
+    }
+
+    rewriter.replaceOp(op, ifOp.getResults());
     return success();
   }
 };

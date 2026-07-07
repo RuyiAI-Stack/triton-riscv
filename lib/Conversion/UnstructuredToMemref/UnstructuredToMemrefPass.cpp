@@ -32,6 +32,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cstdint>
+#include <functional>
 
 #define DEBUG_TYPE "unstructured-to-memref"
 
@@ -275,7 +276,7 @@ struct GatherConverter : public OpConversionPattern<tts::GatherOp> {
   }
 };
 
-// Lowering an unstructured store op (scatter) into a linalg.generic op.
+// Lowering an unstructured store op (scatter) into explicit scalar stores.
 struct ScatterConverter : public OpConversionPattern<tts::ScatterOp> {
   using OpConversionPattern<tts::ScatterOp>::OpConversionPattern;
 
@@ -312,64 +313,310 @@ struct ScatterConverter : public OpConversionPattern<tts::ScatterOp> {
                                     ptr)
             .getResult();
 
-    // The linalg.generic op should have the following inputs:
-    // - the offset tensor.
-    // - the value tensor.
-    // - an optional mask tensor if the scatter op contains mask.
-    SmallVector<Value> inputs{offsetTensor, valueTensor};
-
-    if (scatterOp.getMask()) {
-      inputs.push_back(scatterOp.getMask());
+    rewriter.setInsertionPoint(scatterOp);
+    SmallVector<Value> loopBounds;
+    loopBounds.reserve(valueType.getRank());
+    for (int64_t i = 0, e = valueType.getRank(); i < e; ++i) {
+      if (valueType.isDynamicDim(i)) {
+        loopBounds.push_back(
+            rewriter.create<tensor::DimOp>(loc, valueTensor, i));
+      } else {
+        loopBounds.push_back(rewriter.create<arith::ConstantIndexOp>(
+            loc, valueType.getShape()[i]));
+      }
     }
 
-    // Affine maps for the inputs.
-    SmallVector<AffineMap> affineMaps(
-        inputs.size(), rewriter.getMultiDimIdentityMap(valueType.getRank()));
+    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
 
-    // All iterator types are parallel.
-    SmallVector<utils::IteratorType> iteratorTypes(
-        valueType.getRank(), utils::IteratorType::parallel);
+    auto emitStore = [baseMemref](OpBuilder &b, Location nestedLoc,
+                                  Value offset, Value value) {
+      Value index0 =
+          b.create<arith::IndexCastOp>(nestedLoc, b.getIndexType(), offset);
+      b.create<memref::StoreOp>(nestedLoc, value, baseMemref,
+                                ValueRange{index0});
+    };
 
-    rewriter.setInsertionPoint(scatterOp);
+    std::function<void(OpBuilder &, Location, int64_t, SmallVector<Value> &)>
+        buildLoopNest;
+    buildLoopNest = [&](OpBuilder &b, Location nestedLoc, int64_t dim,
+                        SmallVector<Value> &indices) {
+      if (dim == valueType.getRank()) {
+        Value offset =
+            b.create<tensor::ExtractOp>(nestedLoc, offsetTensor, indices);
+        Value value =
+            b.create<tensor::ExtractOp>(nestedLoc, valueTensor, indices);
+        if (!scatterOp.getMask()) {
+          emitStore(b, nestedLoc, offset, value);
+          return;
+        }
 
-    auto genericOp = rewriter.create<linalg::GenericOp>(
-        loc, TypeRange{}, inputs, ValueRange{}, affineMaps, iteratorTypes,
-        [&](OpBuilder &b, Location loc, ValueRange args) {
-          auto storeValueAtIndex = [baseMemref](OpBuilder &b, Location loc,
-                                                Value index, Value value) {
-            Value index0 =
-                b.create<arith::IndexCastOp>(loc, b.getIndexType(), index);
+        Value mask = b.create<tensor::ExtractOp>(nestedLoc, scatterOp.getMask(),
+                                                 indices);
+        auto ifOp = b.create<scf::IfOp>(nestedLoc, mask,
+                                        /*withElseRegion=*/false);
+        OpBuilder thenBuilder =
+            OpBuilder::atBlockBegin(ifOp.thenBlock(), b.getListener());
+        emitStore(thenBuilder, nestedLoc, offset, value);
+        return;
+      }
 
-            b.create<memref::StoreOp>(loc, value, baseMemref,
-                                      ValueRange{index0});
-          };
+      auto loop = b.create<scf::ForOp>(nestedLoc, c0, loopBounds[dim], c1);
+      OpBuilder bodyBuilder =
+          OpBuilder::atBlockBegin(loop.getBody(), b.getListener());
+      indices.push_back(loop.getInductionVar());
+      buildLoopNest(bodyBuilder, nestedLoc, dim + 1, indices);
+      indices.pop_back();
+    };
 
-          auto offset = args[0];
-          auto value = args[1];
-
-          if (!scatterOp.getMask()) {
-            // If there is no mask, simply insert the current value to the
-            // base memref using its offset.
-            storeValueAtIndex(b, loc, offset, value);
-          } else {
-            // Keep the linalg.generic body single-block; mask false preserves
-            // the existing destination value.
-            auto mask = args[2];
-            Value index0 =
-                b.create<arith::IndexCastOp>(loc, b.getIndexType(), offset);
-            Value oldValue =
-                b.create<memref::LoadOp>(loc, baseMemref, ValueRange{index0});
-            Value selected =
-                b.create<arith::SelectOp>(loc, mask, value, oldValue);
-            b.create<memref::StoreOp>(loc, selected, baseMemref,
-                                      ValueRange{index0});
-          }
-
-          b.create<linalg::YieldOp>(loc);
-        });
+    SmallVector<Value> indices;
+    buildLoopNest(rewriter, loc, 0, indices);
 
     rewriter.eraseOp(scatterOp);
 
+    return success();
+  }
+};
+
+struct AtomicRMWConverter : public OpConversionPattern<tts::AtomicRMWOp> {
+  using OpConversionPattern<tts::AtomicRMWOp>::OpConversionPattern;
+
+  AtomicRMWConverter(const TypeConverter &typeConverter, MLIRContext *context)
+      : OpConversionPattern<tts::AtomicRMWOp>(typeConverter, context) {}
+
+  AtomicRMWConverter(MLIRContext *context)
+      : OpConversionPattern<tts::AtomicRMWOp>(context) {}
+
+  LogicalResult
+  matchAndRewrite(tts::AtomicRMWOp atomicOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto rmw = atomicOp.getAtomicRmwOp();
+    auto isSignedInt = [](Type type) { return type.isSignlessIntOrIndex(); };
+    auto isFloat = [](Type type) { return isa<FloatType>(type); };
+    auto isSupportedRMW = [&](Type elemType) {
+      switch (rmw) {
+      case triton::RMWOp::ADD:
+        return elemType.isIntOrIndex();
+      case triton::RMWOp::FADD:
+        return isFloat(elemType);
+      case triton::RMWOp::MAX:
+      case triton::RMWOp::MIN:
+        return isSignedInt(elemType);
+      case triton::RMWOp::UMAX:
+      case triton::RMWOp::UMIN:
+        return elemType.isIntOrIndex();
+      default:
+        return false;
+      }
+    };
+    auto emitUpdatedValue = [&](OpBuilder &builder, Location nestedLoc,
+                                Type elemType, Value oldValue,
+                                Value update) -> Value {
+      switch (rmw) {
+      case triton::RMWOp::ADD:
+        return builder.create<arith::AddIOp>(nestedLoc, oldValue, update);
+      case triton::RMWOp::FADD:
+        return builder.create<arith::AddFOp>(nestedLoc, oldValue, update);
+      case triton::RMWOp::MAX:
+        return builder.create<arith::MaxSIOp>(nestedLoc, oldValue, update);
+      case triton::RMWOp::MIN:
+        return builder.create<arith::MinSIOp>(nestedLoc, oldValue, update);
+      case triton::RMWOp::UMAX:
+        return builder.create<arith::MaxUIOp>(nestedLoc, oldValue, update);
+      case triton::RMWOp::UMIN:
+        return builder.create<arith::MinUIOp>(nestedLoc, oldValue, update);
+      default:
+        llvm_unreachable("unsupported atomic_rmw op");
+      }
+    };
+    auto loc = atomicOp->getLoc();
+    auto ptr = adaptor.getPtr();
+    auto offsetTensor = adaptor.getOffset();
+    auto valueTensor = adaptor.getValue();
+    auto offsetType = dyn_cast<ShapedType>(offsetTensor.getType());
+
+    if (!offsetType) {
+      Type elemType = atomicOp.getValue().getType();
+      if (!elemType.isIntOrIndexOrFloat()) {
+        return rewriter.notifyMatchFailure(atomicOp,
+                                           "expected scalar atomic_rmw value");
+      }
+      if (!isSupportedRMW(elemType)) {
+        return rewriter.notifyMatchFailure(
+            atomicOp, "unsupported scalar atomic_rmw op/type");
+      }
+
+      Value index0 = rewriter.create<arith::IndexCastOp>(
+          loc, rewriter.getIndexType(), offsetTensor);
+      auto memref = rewriter.create<memref::ReinterpretCastOp>(
+          loc,
+          getMemrefTypeForScalarPtr(
+              cast<triton::PointerType>(atomicOp.getPtr().getType()),
+              rewriter.getContext()),
+          ptr, getAsOpFoldResult(index0) /*offset*/,
+          ArrayRef<OpFoldResult>{rewriter.getIndexAttr(1)} /*sizes*/,
+          ArrayRef<OpFoldResult>{rewriter.getIndexAttr(1)} /*strides*/);
+      auto zeroMap = AffineMap::getConstantMap(0, rewriter.getContext());
+
+      auto emitAtomicAdd = [&](OpBuilder &builder,
+                               Location nestedLoc) -> Value {
+        Value oldValue = builder.create<affine::AffineLoadOp>(
+            nestedLoc, memref, zeroMap, ValueRange{});
+        Value newValue = emitUpdatedValue(builder, nestedLoc, elemType,
+                                          oldValue, valueTensor);
+        builder.create<affine::AffineStoreOp>(nestedLoc, newValue, memref,
+                                              zeroMap, ValueRange{});
+        return oldValue;
+      };
+
+      Value oldValue;
+      if (atomicOp.getMask()) {
+        Value zero = rewriter.create<arith::ConstantOp>(
+            loc, rewriter.getZeroAttr(elemType));
+        auto ifOp =
+            rewriter.create<scf::IfOp>(loc, elemType, atomicOp.getMask(), true);
+
+        OpBuilder thenBuilder =
+            OpBuilder::atBlockBegin(ifOp.thenBlock(), rewriter.getListener());
+        Value thenOld = emitAtomicAdd(thenBuilder, loc);
+        thenBuilder.create<scf::YieldOp>(loc, thenOld);
+
+        OpBuilder elseBuilder =
+            OpBuilder::atBlockBegin(ifOp.elseBlock(), rewriter.getListener());
+        elseBuilder.create<scf::YieldOp>(loc, zero);
+
+        oldValue = ifOp.getResult(0);
+      } else {
+        oldValue = emitAtomicAdd(rewriter, loc);
+      }
+
+      rewriter.replaceOp(atomicOp, oldValue);
+      return success();
+    }
+
+    auto valueType = dyn_cast<RankedTensorType>(atomicOp.getValue().getType());
+    if (!valueType) {
+      return rewriter.notifyMatchFailure(atomicOp,
+                                         "expected tensor atomic_rmw value");
+    }
+
+    auto elemType = valueType.getElementType();
+    if (!isSupportedRMW(elemType)) {
+      return rewriter.notifyMatchFailure(
+          atomicOp, "unsupported tensor atomic_rmw op/type");
+    }
+
+    auto baseMemref =
+        rewriter
+            .create<memref::CastOp>(
+                loc, MemRefType::get({ShapedType::kDynamic}, elemType), ptr)
+            .getResult();
+
+    Value resultTensor =
+        rewriter.create<tensor::EmptyOp>(loc, valueType.getShape(), elemType);
+    auto zeroAttr = rewriter.getZeroAttr(elemType);
+    assert(zeroAttr && "unexpected atomic result element type");
+    Value zero = rewriter.create<arith::ConstantOp>(loc, zeroAttr);
+    resultTensor = rewriter
+                       .create<linalg::FillOp>(loc, ValueRange{zero},
+                                               ValueRange{resultTensor})
+                       .getResult(0);
+
+    if (offsetType.getRank() != valueType.getRank()) {
+      return rewriter.notifyMatchFailure(
+          atomicOp, "atomic_rmw offset/value rank mismatch");
+    }
+
+    auto mask = atomicOp.getMask();
+    if (mask) {
+      auto maskType = dyn_cast<RankedTensorType>(mask.getType());
+      if (!maskType || maskType.getRank() != valueType.getRank()) {
+        return rewriter.notifyMatchFailure(
+            atomicOp, "expected ranked tensor mask matching atomic_rmw rank");
+      }
+    }
+
+    // CPU backend correctness fallback: serialize each tensor lane in program
+    // order so repeated offsets inside one block observe prior lane updates.
+    // This is not a parallel-performance atomic implementation.
+    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+
+    auto getDim = [&](unsigned dim) -> Value {
+      int64_t staticDim = valueType.getDimSize(dim);
+      if (staticDim != ShapedType::kDynamic) {
+        return rewriter.create<arith::ConstantIndexOp>(loc, staticDim);
+      }
+      return rewriter.create<tensor::DimOp>(loc, valueTensor, dim);
+    };
+
+    auto emitAtomicAdd = [&](OpBuilder &builder, Location nestedLoc,
+                             Value offset, Value update) -> Value {
+      Value index0 = builder.create<arith::IndexCastOp>(
+          nestedLoc, builder.getIndexType(), offset);
+      Value oldValue = builder.create<memref::LoadOp>(nestedLoc, baseMemref,
+                                                      ValueRange{index0});
+
+      Value newValue =
+          emitUpdatedValue(builder, nestedLoc, elemType, oldValue, update);
+
+      builder.create<memref::StoreOp>(nestedLoc, newValue, baseMemref,
+                                      ValueRange{index0});
+      return oldValue;
+    };
+
+    std::function<Value(Value, unsigned, SmallVector<Value> &)> buildLoops =
+        [&](Value currentTensor, unsigned dim,
+            SmallVector<Value> &indices) -> Value {
+      if (dim == valueType.getRank()) {
+        Value offset = rewriter.create<tensor::ExtractOp>(loc, offsetTensor,
+                                                          ValueRange{indices});
+        Value update = rewriter.create<tensor::ExtractOp>(loc, valueTensor,
+                                                          ValueRange{indices});
+
+        Value oldValue;
+        if (mask) {
+          Value laneMask = rewriter.create<tensor::ExtractOp>(
+              loc, mask, ValueRange{indices});
+          auto ifOp = rewriter.create<scf::IfOp>(loc, elemType, laneMask, true);
+
+          OpBuilder thenBuilder =
+              OpBuilder::atBlockBegin(ifOp.thenBlock(), rewriter.getListener());
+          Value thenOld = emitAtomicAdd(thenBuilder, loc, offset, update);
+          thenBuilder.create<scf::YieldOp>(loc, thenOld);
+
+          OpBuilder elseBuilder =
+              OpBuilder::atBlockBegin(ifOp.elseBlock(), rewriter.getListener());
+          elseBuilder.create<scf::YieldOp>(loc, zero);
+
+          oldValue = ifOp.getResult(0);
+          rewriter.setInsertionPointAfter(ifOp);
+        } else {
+          oldValue = emitAtomicAdd(rewriter, loc, offset, update);
+        }
+
+        return rewriter.create<tensor::InsertOp>(loc, oldValue, currentTensor,
+                                                 ValueRange{indices});
+      }
+
+      auto forOp = rewriter.create<scf::ForOp>(loc, c0, getDim(dim), c1,
+                                               ValueRange{currentTensor});
+      rewriter.setInsertionPointToStart(forOp.getBody());
+
+      indices.push_back(forOp.getInductionVar());
+      Value yieldedTensor =
+          buildLoops(forOp.getRegionIterArg(0), dim + 1, indices);
+      indices.pop_back();
+
+      rewriter.create<scf::YieldOp>(loc, yieldedTensor);
+      rewriter.setInsertionPointAfter(forOp);
+      return forOp.getResult(0);
+    };
+
+    SmallVector<Value> indices;
+    Value replacement = buildLoops(resultTensor, 0, indices);
+
+    rewriter.replaceOp(atomicOp, ValueRange{replacement});
     return success();
   }
 };
@@ -399,12 +646,13 @@ public:
         bufferization::BufferizationDialect, memref::MemRefDialect,
         ttx::TritonTilingExtDialect>();
 
-    target.addIllegalOp<tts::GatherOp, tts::ScatterOp>();
+    target.addIllegalOp<tts::GatherOp, tts::ScatterOp, tts::AtomicRMWOp>();
 
     PtrToUnrankedMemrefConverter typeConverter;
 
-    patterns.add<GatherConverter, ScatterConverter, ScalarLoadConverter,
-                 ScalarStoreConverter>(typeConverter, patterns.getContext());
+    patterns.add<GatherConverter, ScatterConverter, AtomicRMWConverter,
+                 ScalarLoadConverter, ScalarStoreConverter>(
+        typeConverter, patterns.getContext());
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns))))
       signalPassFailure();

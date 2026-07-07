@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
 
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @add_kernel_01234(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -22,11 +24,11 @@
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1024 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 1024 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1024 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 1024 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -54,7 +56,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[EXTRACT_SLICE_0]] in writable %[[SUBVIEW_4]] : (tensor<?xf32>, memref<?xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @add_kernel_01234(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>, %arg3: i32) {
     %c1024_i32 = arith.constant 1024 : i32
     %0 = tt.get_program_id x : i32

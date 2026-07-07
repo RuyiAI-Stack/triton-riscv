@@ -8,7 +8,9 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
+module {
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
 // CHECK-SAME:                      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
@@ -19,13 +21,13 @@
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 2048 : index
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 2048 : index
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG6]] : i32 to index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[INDEX_CAST_1]], %[[CONSTANT_0]] : index
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[INDEX_CAST_1]], %[[CONSTANT_1]] : index
 // CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[MULI_0]] : index
-// CHECK:           %[[ADDI_1:.*]] = arith.addi %[[INDEX_CAST_1]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_1:.*]] = arith.addi %[[INDEX_CAST_1]], %[[CONSTANT_0]] : index
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[ADDI_0]]], sizes: [1024], strides: {{\[}}%[[ADDI_1]]] : memref<*xbf16> to memref<1024xbf16, strided<[?], offset: ?>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<1024xbf16>
 // CHECK:           memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<1024xbf16, strided<[?], offset: ?>> to memref<1024xbf16>
@@ -34,7 +36,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[TO_TENSOR_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<1024xbf16>, memref<1024xbf16, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func @kernel(
     %arg0 : !tt.ptr<bf16>,
     %arg1 : !tt.ptr<bf16>,

@@ -18,8 +18,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -70,11 +69,36 @@ def _generate_index_kernel(
     code += "):\n"
     code += "    pid0 = tl.program_id(axis=0)\n"
     code += "    pid1 = tl.program_id(axis=1)\n"
+    if inp_rank == indices_len and index_rank == 1:
+        code += "    offset = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)\n"
+        code += "    mask = offset < M\n"
+        for i in range(indices_len):
+            code += f"    cur_index{i} = tl.load(indices{i}_ptr + offset * indices{i}_stride0, mask=mask, other=0)\n"
+        code += "\n"
+        index_mask = " & ".join(
+            [
+                f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+                for i in range(indices_len)
+            ]
+        )
+        code += f"    index_mask = {index_mask}\n"
+        code += "    mask = mask & index_mask\n"
+        comp = " + ".join(
+            [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+        )
+        code += f"    input_offset = {comp}\n"
+        code += "    out_offset = offset * out_stride0\n\n"
+        code += "    cur_value = tl.load(input_ptr + input_offset, mask=mask)\n"
+        code += "    tl.store(out_ptr + out_offset, cur_value, mask=mask)\n\n"
+        return code
+
     code += "    offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]\n"
     if inp_rank == indices_len:
         code += "    offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]\n"
     else:
-        code += "    offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]\n"
+        code += (
+            "    offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]\n"
+        )
     code += "\n"
     code += "    cur_idx = offset0\n"
     for i in range(index_rank - 1, -1, -1):
@@ -89,10 +113,7 @@ def _generate_index_kernel(
     code += "    mask0 = offset0 < M\n"
     for i in range(indices_len):
         comp = " + ".join(
-            [
-                f"indices_idx{j} * indices{i}_stride{j}"
-                for j in range(index_rank)
-            ]
+            [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
         )
         code += f"    cur_index{i} = tl.load(indices{i}_ptr + {comp}, mask=mask0, other=0)\n"
     code += "\n"
@@ -106,19 +127,12 @@ def _generate_index_kernel(
     code += "    mask1 = offset1 < N\n"
     code += "    mask = index_mask & mask0 & mask1\n"
     code += "\n"
-    comp = " + ".join(
-        [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
-    )
+    comp = " + ".join([f"cur_index{i} * input_stride{i}" for i in range(indices_len)])
     comp += "".join(
-        [
-            f" + input_idx{i} * input_stride{i}"
-            for i in range(indices_len, inp_rank)
-        ]
+        [f" + input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)]
     )
     code += f"    input_offset = {comp}\n"
-    comp = " + ".join(
-        [f"indices_idx{i} * out_stride{i}" for i in range(index_rank)]
-    )
+    comp = " + ".join([f"indices_idx{i} * out_stride{i}" for i in range(index_rank)])
     for i in range(inp_rank - indices_len):
         comp += f" + input_idx{indices_len + i} * out_stride{index_rank + i}"
     code += f"    out_offset = {comp}\n"
@@ -191,9 +205,7 @@ def _generate_code(
     index_rank = tensor_indices[0].ndim if indices_len > 0 else 0
     code = ""
     code = _generate_imports(code)
-    code = _generate_index_kernel(
-        inp_rank, indices_len, index_rank, kernel_name, code
-    )
+    code = _generate_index_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
     code = _generate_wrapper(
         inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
     )

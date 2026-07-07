@@ -60,12 +60,11 @@ def prelu(*args, **kwargs):
         w_is_scalar = True
     else:
         if ndim == 0:
-            raise AssertionError(
-                "Non-scalar weight provided for a 0-dim input."
-            )
+            raise AssertionError("Non-scalar weight provided for a 0-dim input.")
         if ndim == 1:
-            C = x.shape[0]
-            S = 1
+            raise AssertionError(
+                "Per-channel PReLU weights require an input with an explicit channel dimension."
+            )
         else:
             C = x.shape[1]
             S = 1

@@ -8,6 +8,44 @@ def _bracket_next_power_of_2(N, lower, upper):
 
 
 @triton.jit
+def masked_select_atomic_counter_kernel(
+    inp_ptr,
+    mask_ptr,
+    out_ptr,
+    counter_ptr,
+    N,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    in_bounds = offsets < N
+    mask = tl.load(mask_ptr + offsets, mask=in_bounds, other=0).to(tl.int1)
+    active = in_bounds & mask
+    inp = tl.load(inp_ptr + offsets, mask=active, other=0.0)
+    counter_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+    out_offsets = tl.atomic_add(counter_ptr + counter_offsets, 1, mask=active)
+
+    tl.store(out_ptr + out_offsets, inp, mask=active)
+
+
+def masked_select_atomic_counter(inp, mask, out, N):
+    BLOCK_SIZE = _bracket_next_power_of_2(N, 128, 1024)
+    num_warps = min(16, BLOCK_SIZE // 32)
+    counter = torch.zeros([], dtype=torch.int32, device=mask.device)
+    grid = (triton.cdiv(N, BLOCK_SIZE),)
+    masked_select_atomic_counter_kernel[grid](
+        inp,
+        mask,
+        out,
+        counter,
+        N,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=num_warps,
+    )
+    return out
+
+
+@triton.jit
 def masked_select_single_pass_kernel(
     inp_ptr,
     mask_ptr,
@@ -44,7 +82,7 @@ def masked_select_single_pass(inp, mask, out, N):
     return out
 
 
-@triton.jit(do_not_specialize=["N", "nr", "row_stride"])
+@triton.jit(do_not_specialize=["N", "num_blocks", "num_blocks_per_row"])
 def mask_part_sum_kernel(
     inp_ptr,
     mask_ptr,
@@ -56,8 +94,6 @@ def mask_part_sum_kernel(
     NP_BLOCK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    nr = num_blocks
-    row_stride = num_blocks_per_row
     row_id = tl.program_id(0)
     start_block = row_id * num_blocks_per_row
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -114,18 +150,14 @@ def write_back_kernel(
     for block_id in range(start_block, last_block_id):
         inp = tl.load(inp_ptr + offset)
         select_mask = tl.load(mask_ptr + offset).to(tl.int1)
-        select_ints = select_mask.to(
-            tl.constexpr(part_sums_ptr.dtype.element_ty)
-        )
+        select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
         out_ptr += advance
         advance = tl.sum(select_ints, axis=0)
         pre_sums = tl.cumsum(select_ints, axis=0) - 1
         tl.store(out_ptr + pre_sums, inp, mask=select_mask)
         offset += BLOCK_SIZE
     inp = tl.load(inp_ptr + offset, mask=offset < N)
-    select_mask = tl.load(mask_ptr + offset, mask=offset < N, other=0).to(
-        tl.int1
-    )
+    select_mask = tl.load(mask_ptr + offset, mask=offset < N, other=0).to(tl.int1)
     select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
     out_ptr += advance
     pre_sums = tl.cumsum(select_ints, axis=0) - 1
@@ -139,10 +171,12 @@ def masked_select(inp, mask):
     mask = mask.contiguous()
 
     N = inp.numel()
+    if inp.device.type == "cpu":
+        out = torch.empty(mask.sum().item(), dtype=inp.dtype, device=inp.device)
+        return masked_select_atomic_counter(inp, mask, out, N)
+
     if N <= 4096:
-        out = torch.empty(
-            mask.sum().item(), dtype=inp.dtype, device=inp.device
-        )
+        out = torch.empty(mask.sum().item(), dtype=inp.dtype, device=inp.device)
         return masked_select_single_pass(inp, mask, out, N)
 
     BLOCK_SIZE = _bracket_next_power_of_2(N, 128, 4096)
@@ -172,9 +206,7 @@ def masked_select(inp, mask):
         num_warps=num_warps,
     )
 
-    out = torch.empty(
-        part_sums[-1].item(), dtype=inp.dtype, device=mask.device
-    )
+    out = torch.empty(part_sums[-1].item(), dtype=inp.dtype, device=mask.device)
     write_back_kernel[(np,)](
         inp,
         mask,

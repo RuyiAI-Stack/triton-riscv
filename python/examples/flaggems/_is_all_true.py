@@ -25,7 +25,7 @@ def is_all_true_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=1).to(tl.int1)
     all_val = tl.reduce(inp_val, axis=0, combine_fn=reduce_all)
     mid_ptr = mid + pid
-    tl.store(mid_ptr, all_val)
+    tl.store(mid_ptr, all_val.to(tl.uint8))
 
 
 @triton.jit
@@ -33,9 +33,9 @@ def is_all_true_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1).to(tl.int1)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=1) != 0
     all_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_all)
-    tl.store(out, all_val)
+    tl.store(out, all_val.to(tl.uint8))
 
 
 def _is_all_true(inp):
@@ -52,12 +52,11 @@ def _is_all_true(inp):
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    inp_u8 = inp.to(torch.uint8)
+    mid = torch.empty((mid_size,), dtype=torch.uint8, device=inp.device)
+    out = torch.empty([], dtype=torch.uint8, device=inp.device)
 
-    is_all_true_kernel_1[(mid_size,)](
-        inp, mid, n_elements, BLOCK_SIZE=block_size
-    )
+    is_all_true_kernel_1[(mid_size,)](inp_u8, mid, n_elements, BLOCK_SIZE=block_size)
     is_all_true_kernel_2[(1,)](mid, out, mid_size, BLOCK_MID=block_mid)
 
-    return out
+    return out.to(torch.bool)

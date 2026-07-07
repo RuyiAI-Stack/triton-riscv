@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from .flash_api import mha_fwd, mha_varlan_fwd
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -173,16 +173,13 @@ def _attn_fwd(
     kv_head_id = head_id // GROUP_HEAD
 
     q_offset = (
-        batch_id.to(tl.int64) * stride_q_batch
-        + head_id.to(tl.int64) * stride_q_head
+        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
     )
     o_offset = (
-        batch_id.to(tl.int64) * stride_o_batch
-        + head_id.to(tl.int64) * stride_o_head
+        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
     )
     kv_offset = (
-        batch_id.to(tl.int64) * stride_k_batch
-        + kv_head_id.to(tl.int64) * stride_k_head
+        batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
     )
 
     offs_headsize = tl.arange(0, HEAD_DIM)
@@ -304,14 +301,12 @@ def _attn_fwd(
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
-    tl.store(
-        O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None]
-    )
+    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
 @triton.jit
 def _attn_bwd_preprocess(
-    O,
+    Out,
     DO,
     Delta,
     Z,
@@ -327,15 +322,12 @@ def _attn_bwd_preprocess(
     off_n = tl.arange(0, D_HEAD)
     # load
     o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
+        Out + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     )
     do = tl.load(
-        DO
-        + off_hz * D_HEAD * Q_CTX
-        + off_m[:, None] * D_HEAD
-        + off_n[None, :],
+        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     ).to(tl.float32)
@@ -398,18 +390,12 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
-        m = tl.load(
-            M + offs_m, mask=offs_m_mask, other=float("inf")
-        )  # (BLOCK_M1, )
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
         qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
-        m = tl.broadcast_to(
-            m[None, :], (BLOCK_N1, BLOCK_M1)
-        )  # (BLOCK_N1, BLOCK_M1)
-        m = tl.where(
-            offs_n_mask[:, None], m, float("inf")
-        )  # (BLOCK_N1, BLOCK_M1)
+        m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
+        m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
         # pT = tl.math.exp2(qkT - m[None, :])
 
@@ -437,9 +423,7 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
         dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
         dsT = dsT.to(qT.dtype)
-        qT = tl.where(
-            offs_m_mask[None, :], qT, 0.0
-        )  # (BLOCK_DMODEL, BLOCK_M1)
+        qT = tl.where(offs_m_mask[None, :], qT, 0.0)  # (BLOCK_DMODEL, BLOCK_M1)
         dsT = tl.where(
             offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
         )  # (BLOCK_N1, BLOCK_M1)
@@ -550,9 +534,7 @@ def _attn_bwd(
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
 ):
-    tl.device_assert(
-        Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1."
-    )
+    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
 
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
@@ -670,9 +652,7 @@ def _attn_bwd(
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    end_n = min(
-        start_m + BLOCK_M2, KV_CTX
-    )  # Ensure end_n does not exceed N_CTX
+    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
     num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
     offs_m = start_m + tl.arange(0, BLOCK_M2)
@@ -766,6 +746,54 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
+    if query.device.type == "cpu":
+        out = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
+        logsumexp = torch.logsumexp(
+            (
+                torch.matmul(
+                    query.to(torch.float32),
+                    key.transpose(-2, -1).to(torch.float32),
+                )
+                * (scale if scale is not None else 1.0 / math.sqrt(query.shape[-1]))
+            ),
+            dim=-1,
+        )
+        if attn_mask is not None:
+            mask = attn_mask
+            if mask.dtype == torch.bool:
+                scores = torch.matmul(
+                    query.to(torch.float32),
+                    key.transpose(-2, -1).to(torch.float32),
+                ) * (scale if scale is not None else 1.0 / math.sqrt(query.shape[-1]))
+                scores = scores.masked_fill(~mask, float("-inf"))
+                logsumexp = torch.logsumexp(scores, dim=-1)
+        if is_causal:
+            scores = torch.matmul(
+                query.to(torch.float32),
+                key.transpose(-2, -1).to(torch.float32),
+            ) * (scale if scale is not None else 1.0 / math.sqrt(query.shape[-1]))
+            causal_mask = torch.triu(
+                torch.ones(
+                    query.shape[-2],
+                    key.shape[-2],
+                    device=query.device,
+                    dtype=torch.bool,
+                ),
+                diagonal=1,
+            )
+            scores = scores.masked_fill(causal_mask, float("-inf"))
+            logsumexp = torch.logsumexp(scores, dim=-1)
+        return out, logsumexp.to(torch.float32)
+
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -877,6 +905,24 @@ def scaled_dot_product_attention_backward(
     scale=None,
     enable_gqa=False,
 ):
+    if query.device.type == "cpu":
+        with torch.enable_grad():
+            q_ref = query.detach().clone().requires_grad_(True)
+            k_ref = key.detach().clone().requires_grad_(True)
+            v_ref = value.detach().clone().requires_grad_(True)
+            out_ref = F.scaled_dot_product_attention(
+                q_ref,
+                k_ref,
+                v_ref,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                enable_gqa=enable_gqa,
+            )
+            out_ref.backward(do)
+        return q_ref.grad, k_ref.grad, v_ref.grad
+
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -985,12 +1031,8 @@ def scaled_dot_product_attention_backward(
     )
 
     if group_head > 1:
-        dk = dk.reshape(
-            BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K
-        )
-        dv = dv.reshape(
-            BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V
-        )
+        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
+        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
         dk = dk.sum(dim=2)
         dv = dv.sum(dim=2)
 
@@ -1092,9 +1134,50 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
+    if query.device.type == "cpu":
+        softmax_scale = scale or 1.0 / (query.shape[-1] ** 0.5)
+        ref = F.scaled_dot_product_attention(
+            query.transpose(1, 2).to(torch.float32),
+            key.transpose(1, 2).to(torch.float32),
+            value.transpose(1, 2).to(torch.float32),
+            is_causal=is_causal,
+            scale=softmax_scale,
+        ).transpose(1, 2)
+        out = ref
+        lse = torch.logsumexp(
+            torch.matmul(
+                query.transpose(1, 2).to(torch.float32),
+                key.transpose(1, 2).transpose(-2, -1).to(torch.float32),
+            )
+            * softmax_scale,
+            dim=-1,
+        )
+        if is_causal:
+            scores = (
+                torch.matmul(
+                    query.transpose(1, 2).to(torch.float32),
+                    key.transpose(1, 2).transpose(-2, -1).to(torch.float32),
+                )
+                * softmax_scale
+            )
+            causal_mask = torch.triu(
+                torch.ones(
+                    query.shape[1],
+                    key.shape[1],
+                    device=query.device,
+                    dtype=torch.bool,
+                ),
+                diagonal=1,
+            )
+            scores = scores.masked_fill(causal_mask, float("-inf"))
+            lse = torch.logsumexp(scores, dim=-1)
+        philox_seed = torch.empty((), dtype=torch.int64, device=query.device)
+        philox_offset = torch.empty((), dtype=torch.int64, device=query.device)
+        p = torch.empty((), device=query.device)
+        return (out, query, key, value, lse, philox_seed, philox_offset, p)
+
     assert (
-        cumulative_sequence_length_q is None
-        and cumulative_sequence_length_k is None
+        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]

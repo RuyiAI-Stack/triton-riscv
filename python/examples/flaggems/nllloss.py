@@ -21,15 +21,13 @@ def nll_loss_forward_kernel(
     mask_n = offsets_n < N
 
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
+    tl.device_assert((tgt >= 0) & (tgt < C), "Invalid target value", mask_n)
     ignore_mask = (tgt != ignore_index) & mask_n
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     inp_tgt_ptrs = inp_ptr + offsets_n * C + tgt
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
@@ -80,9 +78,7 @@ def nll_loss_backward_kernel(
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offsets_n
@@ -122,15 +118,13 @@ def nll_loss2d_forward_kernel(
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
+    tl.device_assert((tgt >= 0) & (tgt < C), "Invalid target value", mask_block)
     ignore_mask = (tgt != ignore_index) & mask_block
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
@@ -186,15 +180,11 @@ def nll_loss2d_backward_kernel(
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offset_n * D + offset_d
-        out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(
-            tl.float32
-        )
+        out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
@@ -278,6 +268,43 @@ def nll_loss_backward(
     grad_output = grad_output.contiguous()
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()
+
+    if self.device.type == "cpu":
+        grad_input = torch.zeros_like(self).contiguous()
+        if reduction == 0:
+            point_grad = grad_output.to(torch.float32)
+        else:
+            point_grad = grad_output.to(torch.float32).reshape(())
+
+        valid_mask = target != ignore_index
+        if reduction == 1:
+            if total_weight is None:
+                if weight is None:
+                    total_w = valid_mask.sum().to(torch.float32)
+                else:
+                    safe_target = target.masked_fill(~valid_mask, 0)
+                    total_w = weight[safe_target][valid_mask].to(torch.float32).sum()
+            else:
+                total_w = total_weight.to(torch.float32)
+        else:
+            total_w = torch.tensor(1.0, device=self.device, dtype=torch.float32)
+
+        if valid_mask.any():
+            rows = torch.arange(N, device=self.device)[valid_mask]
+            cols = target[valid_mask]
+            if weight is None:
+                w = torch.ones_like(rows, dtype=torch.float32)
+            else:
+                w = weight[cols].to(torch.float32)
+
+            if reduction == 0:
+                g = point_grad[valid_mask]
+            else:
+                g = point_grad.expand_as(w)
+
+            grad_vals = (-g * w / total_w).to(grad_input.dtype)
+            grad_input[rows, cols] = grad_vals
+        return grad_input
 
     grad_input = torch.zeros_like(self).contiguous()
 
@@ -395,11 +422,7 @@ def nll_loss2d_backward(
 
 def nllloss(input, target, weight=None, reduction=1, ignore_index=-100):
     if input.ndim != 4:
-        out, _ = nll_loss_forward(
-            input, target, weight, reduction, ignore_index
-        )
+        out, _ = nll_loss_forward(input, target, weight, reduction, ignore_index)
     else:
-        out, _ = nll_loss2d_forward(
-            input, target, weight, reduction, ignore_index
-        )
+        out, _ = nll_loss2d_forward(input, target, weight, reduction, ignore_index)
     return out

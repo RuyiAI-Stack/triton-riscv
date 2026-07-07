@@ -13,7 +13,7 @@ def test_trace(size, dtype):
     else:
         x = torch.randint(0, 100, (size, size), dtype=dtype, device="cpu")
 
-    ref_out = torch.trace(x)
+    ref_out = x.diagonal().sum()
     tri_out = trace(x)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
@@ -24,7 +24,7 @@ def test_trace_non_square(dtype):
     torch.manual_seed(0)
     x = torch.randn((512, 256), dtype=dtype, device="cpu")
 
-    ref_out = torch.trace(x)
+    ref_out = x.diagonal().sum()
     tri_out = trace(x)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)

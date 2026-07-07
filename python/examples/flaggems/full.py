@@ -20,17 +20,11 @@ def check_dtype(fill_value, dtype, device):
             fill_value = int(fill_value)
     elif (
         dtype in ALL_INT_DTYPES
-        and (
-            fill_value < torch.iinfo(dtype).min
-            or fill_value > torch.iinfo(dtype).max
-        )
+        and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
     ) or (
         dtype in ALL_FLOAT_DTYPES
         and not (math.isinf(fill_value) or math.isnan(fill_value))
-        and (
-            fill_value < torch.finfo(dtype).min
-            or fill_value > torch.finfo(dtype).max
-        )
+        and (fill_value < torch.finfo(dtype).min or fill_value > torch.finfo(dtype).max)
     ):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
@@ -55,9 +49,7 @@ def full_kernel(
     tl.store(out_ptr + offsets, fill_val, mask=mask)
 
 
-def full(
-    size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None
-):
+def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
@@ -69,19 +61,28 @@ def full(
             dtype = torch.get_default_dtype()
     else:
         fill_value = check_dtype(fill_value, dtype, device)
-    out = torch.empty(size, device=device, dtype=dtype)
+    use_uint8_bool = dtype == torch.bool
+    out = torch.empty(
+        size,
+        device=device,
+        dtype=torch.uint8 if use_uint8_bool else dtype,
+    )
     n_elements = out.numel()
     if n_elements == 0:
         return out
 
     if isinstance(fill_value, torch.Tensor):
-        fill_tensor = fill_value.to(device=device, dtype=dtype)
+        fill_tensor = fill_value.to(
+            device=device, dtype=torch.uint8 if use_uint8_bool else dtype
+        )
     else:
-        fill_tensor = torch.tensor(fill_value, device=device, dtype=dtype)
+        fill_tensor = torch.tensor(
+            fill_value,
+            device=device,
+            dtype=torch.uint8 if use_uint8_bool else dtype,
+        )
 
     BLOCK_SIZE = 1024
     num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
-    full_kernel[(num_blocks,)](
-        out, fill_tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
-    return out
+    full_kernel[(num_blocks,)](out, fill_tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+    return out.to(torch.bool) if use_uint8_bool else out

@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
 
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @softmax_kernel_012345(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -23,27 +25,27 @@
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG10:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 128 : index
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 0xFF800000 : f32
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0xFF800000 : f32
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 128 : index
 // CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG8]], %[[ARG2]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG4]] : i32 to index
-// CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_1]], %[[CONSTANT_0]] : index
-// CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_1]], %[[CONSTANT_3]] : index
+// CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_2]] : index
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG1]] to offset: {{\[}}%[[INDEX_CAST_0]]], sizes: [128], strides: [1] : memref<*xf32> to memref<128xf32, strided<[1], offset: ?>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<128xf32>
-// CHECK:           %[[CMPI_0:.*]] = arith.cmpi slt, %[[MAXSI_0]], %[[CONSTANT_0]] : index
+// CHECK:           %[[CMPI_0:.*]] = arith.cmpi slt, %[[MAXSI_0]], %[[CONSTANT_3]] : index
 // CHECK:           scf.if %[[CMPI_0]] {
-// CHECK:             linalg.fill ins(%[[CONSTANT_2]] : f32) outs(%[[ALLOC_0]] : memref<128xf32>)
+// CHECK:             linalg.fill ins(%[[CONSTANT_1]] : f32) outs(%[[ALLOC_0]] : memref<128xf32>)
 // CHECK:           }
 // CHECK:           %[[SUBVIEW_0:.*]] = memref.subview %[[REINTERPRET_CAST_0]][0] {{\[}}%[[MAXSI_0]]] [1] : memref<128xf32, strided<[1], offset: ?>> to memref<?xf32, strided<[1], offset: ?>>
 // CHECK:           %[[SUBVIEW_1:.*]] = memref.subview %[[ALLOC_0]][0] {{\[}}%[[MAXSI_0]]] [1] : memref<128xf32> to memref<?xf32, strided<[1]>>
 // CHECK:           memref.copy %[[SUBVIEW_0]], %[[SUBVIEW_1]] : memref<?xf32, strided<[1], offset: ?>> to memref<?xf32, strided<[1]>>
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<128xf32> to tensor<128xf32>
 // CHECK:           %[[ALLOC_TENSOR_0:.*]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           %[[INSERT_0:.*]] = tensor.insert %[[CONSTANT_2]] into %[[ALLOC_TENSOR_0]][] : tensor<f32>
+// CHECK:           %[[INSERT_0:.*]] = tensor.insert %[[CONSTANT_1]] into %[[ALLOC_TENSOR_0]][] : tensor<f32>
 // CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<128xf32>) outs(%[[INSERT_0]] : tensor<f32>) dimensions = [0]
 // CHECK:             (%[[VAL_0:.*]]: f32, %[[VAL_1:.*]]: f32) {
 // CHECK:               %[[MAXIMUMF_0:.*]] = arith.maximumf %[[VAL_0]], %[[VAL_1]] : f32
@@ -63,7 +65,7 @@
 // CHECK:             linalg.yield %[[EXP_0]] : f32
 // CHECK:           } -> tensor<128xf32>
 // CHECK:           %[[ALLOC_TENSOR_1:.*]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           %[[INSERT_1:.*]] = tensor.insert %[[CONSTANT_3]] into %[[ALLOC_TENSOR_1]][] : tensor<f32>
+// CHECK:           %[[INSERT_1:.*]] = tensor.insert %[[CONSTANT_0]] into %[[ALLOC_TENSOR_1]][] : tensor<f32>
 // CHECK:           %[[REDUCE_1:.*]] = linalg.reduce ins(%[[GENERIC_1]] : tensor<128xf32>) outs(%[[INSERT_1]] : tensor<f32>) dimensions = [0]
 // CHECK:             (%[[VAL_7:.*]]: f32, %[[VAL_8:.*]]: f32) {
 // CHECK:               %[[ADDF_0:.*]] = arith.addf %[[VAL_7]], %[[VAL_8]] : f32
@@ -84,7 +86,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[EXTRACT_SLICE_0]] in writable %[[SUBVIEW_2]] : (tensor<?xf32>, memref<?xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @softmax_kernel_012345(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32, %arg3: i32, %arg4: i32) {
     %cst = arith.constant 0xFF800000 : f32
     %0 = tt.get_program_id x : i32

@@ -332,6 +332,17 @@ public:
         op.emitWarning("Rewriting GetStructuredStateOp failed.");
       }
     });
+
+    // PtrAnalysis may transiently build dead helper arithmetic while rewriting
+    // loop-carried structured state. Clean it up before the pass returns so
+    // later verification does not see unused invalid remnants.
+    PassManager pm(&getContext(), moduleOp.getOperationName());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    if (failed(runPipeline(pm, getOperation()))) {
+      signalPassFailure();
+      return;
+    }
   }
 };
 } // namespace

@@ -35,7 +35,7 @@ def var_welford_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
 
@@ -46,9 +46,7 @@ def var_welford_kernel(
         _mean = cur_mean
         _count = count
 
-    _, _, acc = tl.reduce(
-        (_mean, _count, _acc), axis=1, combine_fn=welford_func
-    )
+    _, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
     var = acc / (N - correction)
     var = var[:, None]
     tl.store(Var, var, row_mask)
@@ -103,9 +101,7 @@ def var_kernel_2(
     average = tl.load(Average, mask, other=0.0).to(tl.float32)
     count = tl.load(Count, mask, other=0.0).to(tl.float32)
 
-    _, _, nvar = tl.reduce(
-        (average, count, acc), axis=0, combine_fn=welford_func
-    )
+    _, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
     var = nvar / (N - correction)
     tl.store(Var, var)
@@ -140,15 +136,17 @@ def var(x, dim=None, *, correction=None, keepdim=False):
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
-        # Create a view with compressed dims
-        x_reshaped = x
-        N = 1
-        for d in sorted(dim, reverse=True):
-            N *= shape[d]
-        M = x.numel() // N
+        remaining_dims = [i for i in range(x.ndim) if i not in dim]
+        permuted = x.permute(remaining_dims + dim)
 
-        # Reshape to 2D for the kernel
-        x_2d = x_reshaped.reshape(M, N)
+        N = 1
+        for d in dim:
+            N *= shape[d]
+            shape[d] = 1
+        M = permuted.numel() // N
+
+        # Pack all reduction dimensions into the trailing axis.
+        x_2d = permuted.contiguous().reshape(M, N)
         var_out = torch.empty(M, 1, device=x.device, dtype=x.dtype)
 
         def grid(META):
@@ -158,14 +156,7 @@ def var(x, dim=None, *, correction=None, keepdim=False):
             x_2d, var_out, M, N, correction, BLOCK_M=1, BLOCK_N=1024
         )
 
-        # Reshape back
-        out_shape = []
-        for d in range(x.ndim):
-            if d in dim:
-                out_shape.append(1)
-            else:
-                out_shape.append(x.shape[d])
-        var_out = var_out.reshape(out_shape)
+        var_out = var_out.reshape(shape)
 
     if not keepdim:
         if dim is not None:

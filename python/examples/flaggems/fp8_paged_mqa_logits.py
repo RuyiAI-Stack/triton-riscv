@@ -69,9 +69,7 @@ def fp8_paged_mqa_logits_kernel(
     intra_block_pos = kv_global_pos % block_size
 
     phys_block_ids = tl.load(
-        block_tables_ptr
-        + batch_idx * stride_btb
-        + phys_block_idx * stride_bts,
+        block_tables_ptr + batch_idx * stride_btb + phys_block_idx * stride_bts,
         mask=valid_mask,
         other=0,
     )
@@ -79,9 +77,7 @@ def fp8_paged_mqa_logits_kernel(
     kv_base = phys_block_ids * stride_kvblk + intra_block_pos * stride_kvpos
 
     scale_addr = kv_base + dim * stride_kvbyte
-    scale_ptr = (kv_ptr + scale_addr).to(
-        tl.pointer_type(tl.uint32, 1), bitcast=True
-    )
+    scale_ptr = (kv_ptr + scale_addr).to(tl.pointer_type(tl.uint32, 1), bitcast=True)
     scale_u32 = tl.load(scale_ptr, mask=valid_mask, other=0)
     scale_f32 = scale_u32.to(tl.float32, bitcast=True)
 
@@ -92,9 +88,7 @@ def fp8_paged_mqa_logits_kernel(
     if NUM_D_TILES == 1:
         d_mask = offs_d < dim
 
-        kv_byte_ptrs = (
-            kv_ptr + kv_base[:, None] + offs_d[None, :] * stride_kvbyte
-        )
+        kv_byte_ptrs = kv_ptr + kv_base[:, None] + offs_d[None, :] * stride_kvbyte
         load_mask = valid_mask[:, None] & d_mask[None, :]
         kv_u8 = tl.load(kv_byte_ptrs, mask=load_mask, other=0)
         kv_fp8 = kv_u8.to(tl.float8e4nv, bitcast=True)
@@ -104,11 +98,7 @@ def fp8_paged_mqa_logits_kernel(
             offs_h = h_tile + tl.arange(0, BLOCK_H)
             h_mask = offs_h < heads
 
-            q_ptrs = (
-                q_base
-                + offs_h[:, None] * stride_qh
-                + offs_d[None, :] * stride_qd
-            )
+            q_ptrs = q_base + offs_h[:, None] * stride_qh + offs_d[None, :] * stride_qd
             q_vals = tl.load(
                 q_ptrs, mask=h_mask[:, None] & d_mask[None, :], other=0.0
             ).to(tl.float32)
@@ -130,17 +120,13 @@ def fp8_paged_mqa_logits_kernel(
         d_offs1 = BLOCK_D + offs_d
         d_mask1 = d_offs1 < dim
 
-        kv_byte_ptrs0 = (
-            kv_ptr + kv_base[:, None] + d_offs0[None, :] * stride_kvbyte
-        )
+        kv_byte_ptrs0 = kv_ptr + kv_base[:, None] + d_offs0[None, :] * stride_kvbyte
         load_mask0 = valid_mask[:, None] & d_mask0[None, :]
         kv_u80 = tl.load(kv_byte_ptrs0, mask=load_mask0, other=0)
         kv_fp80 = kv_u80.to(tl.float8e4nv, bitcast=True)
         kv_f320 = kv_fp80.to(tl.float32)
 
-        kv_byte_ptrs1 = (
-            kv_ptr + kv_base[:, None] + d_offs1[None, :] * stride_kvbyte
-        )
+        kv_byte_ptrs1 = kv_ptr + kv_base[:, None] + d_offs1[None, :] * stride_kvbyte
         load_mask1 = valid_mask[:, None] & d_mask1[None, :]
         kv_u81 = tl.load(kv_byte_ptrs1, mask=load_mask1, other=0)
         kv_fp81 = kv_u81.to(tl.float8e4nv, bitcast=True)
@@ -151,18 +137,14 @@ def fp8_paged_mqa_logits_kernel(
             h_mask = offs_h < heads
 
             q_ptrs0 = (
-                q_base
-                + offs_h[:, None] * stride_qh
-                + d_offs0[None, :] * stride_qd
+                q_base + offs_h[:, None] * stride_qh + d_offs0[None, :] * stride_qd
             )
             q_vals0 = tl.load(
                 q_ptrs0, mask=h_mask[:, None] & d_mask0[None, :], other=0.0
             ).to(tl.float32)
 
             q_ptrs1 = (
-                q_base
-                + offs_h[:, None] * stride_qh
-                + d_offs1[None, :] * stride_qd
+                q_base + offs_h[:, None] * stride_qh + d_offs1[None, :] * stride_qd
             )
             q_vals1 = tl.load(
                 q_ptrs1, mask=h_mask[:, None] & d_mask1[None, :], other=0.0
@@ -178,9 +160,7 @@ def fp8_paged_mqa_logits_kernel(
             q_T1 = tl.trans(q_vals1)
 
             partial_dot = tl.dot(kv_f320, q_T0, out_dtype=tl.float32)
-            partial_dot = tl.dot(
-                kv_f321, q_T1, acc=partial_dot, out_dtype=tl.float32
-            )
+            partial_dot = tl.dot(kv_f321, q_T1, acc=partial_dot, out_dtype=tl.float32)
 
             partial_dot = partial_dot * scale_f32[:, None]
             partial_dot = tl.maximum(partial_dot, 0.0)
@@ -223,6 +203,40 @@ def fp8_paged_mqa_logits(
     assert kv_cache.dtype == torch.uint8
     assert context_lens.dtype == torch.int32
     assert block_tables.dtype == torch.int32
+
+    if q.device.type == "cpu":
+        logits = torch.full(
+            (batch_size * next_n, max_model_len),
+            float("-inf"),
+            device=q.device,
+            dtype=torch.float32,
+        )
+        kv_fp8 = kv_cache[..., :dim].contiguous().view(torch.float8_e4m3fn)
+        kv_f32 = kv_fp8.to(torch.float32)
+        scales = kv_cache[..., dim : dim + 4].contiguous().view(torch.float32)
+
+        row = 0
+        for batch_idx in range(batch_size):
+            context_len = int(context_lens[batch_idx].item())
+            for next_n_idx in range(next_n):
+                query_seq_pos = context_len - next_n + next_n_idx
+                q_row = q[batch_idx, next_n_idx].to(torch.float32)
+                w_row = weights[row].to(torch.float32)
+                valid_len = min(context_len, max_model_len)
+                for kv_pos in range(valid_len):
+                    if kv_pos > query_seq_pos:
+                        continue
+                    phys_block_id = int(
+                        block_tables[batch_idx, kv_pos // block_size].item()
+                    )
+                    intra_block_pos = kv_pos % block_size
+                    kv_vec = kv_f32[phys_block_id, intra_block_pos, 0]
+                    scale = scales[phys_block_id, intra_block_pos, 0].item()
+                    partial = torch.matmul(q_row, kv_vec) * scale
+                    partial = torch.clamp_min(partial, 0.0)
+                    logits[row, kv_pos] = torch.sum(partial * w_row)
+                row += 1
+        return logits
 
     q_contig = q.contiguous()
     kv_contig = kv_cache.contiguous()

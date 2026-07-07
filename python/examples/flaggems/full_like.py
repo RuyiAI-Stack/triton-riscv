@@ -23,17 +23,26 @@ def full_like(
         dtype = x.dtype
     fill_value = check_dtype(fill_value, dtype, device)
 
-    out = torch.empty(x.size(), device=device, dtype=dtype)
+    use_uint8_bool = dtype == torch.bool
+    out = torch.empty(
+        x.size(), device=device, dtype=torch.uint8 if use_uint8_bool else dtype
+    )
     n_elements = out.numel()
     if n_elements == 0:
         return out
 
     if isinstance(fill_value, torch.Tensor):
-        fill_tensor = fill_value
+        fill_tensor = fill_value.to(
+            device=device, dtype=torch.uint8 if use_uint8_bool else dtype
+        )
     else:
-        fill_tensor = torch.tensor(fill_value, device=device, dtype=dtype)
+        fill_tensor = torch.tensor(
+            fill_value,
+            device=device,
+            dtype=torch.uint8 if use_uint8_bool else dtype,
+        )
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     full_kernel[grid](out, fill_tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return out
+    return out.to(torch.bool) if use_uint8_bool else out

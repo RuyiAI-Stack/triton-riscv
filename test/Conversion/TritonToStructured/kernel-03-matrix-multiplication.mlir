@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-structured --remove-dead-values --canonicalize %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   tt.func public @matmul_kernel_0123456789101112131415(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<bf16>,
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<bf16>,
@@ -54,55 +56,50 @@
 // CHECK:           %[[DIVSI_4:.*]] = arith.divsi %[[REMSI_1]], %[[MINSI_0]] : i32
 // CHECK:           %[[MULI_2:.*]] = arith.muli %[[ADDI_3]], %[[CONSTANT_11]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
-// CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
 // CHECK:           %[[MULI_3:.*]] = arith.muli %[[DIVSI_4]], %[[CONSTANT_10]] : i32
-// CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
-// CHECK:           %[[INDEX_CAST_3:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
-// CHECK:           %[[INDEX_CAST_4:.*]] = arith.index_cast %[[ARG6]] : i32 to index
-// CHECK:           %[[MULI_4:.*]] = arith.muli %[[INDEX_CAST_1]], %[[INDEX_CAST_4]] : index
-// CHECK:           %[[INDEX_CAST_5:.*]] = arith.index_cast %[[ARG7]] : i32 to index
-// CHECK:           %[[INDEX_CAST_6:.*]] = arith.index_cast %[[ARG8]] : i32 to index
-// CHECK:           %[[INDEX_CAST_7:.*]] = arith.index_cast %[[ARG9]] : i32 to index
-// CHECK:           %[[MULI_5:.*]] = arith.muli %[[INDEX_CAST_3]], %[[INDEX_CAST_7]] : index
+// CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
+// CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[ARG6]] : i32 to index
+// CHECK:           %[[MULI_4:.*]] = arith.muli %[[INDEX_CAST_0]], %[[INDEX_CAST_2]] : index
+// CHECK:           %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG7]] : i32 to index
+// CHECK:           %[[INDEX_CAST_4:.*]] = arith.index_cast %[[ARG8]] : i32 to index
+// CHECK:           %[[INDEX_CAST_5:.*]] = arith.index_cast %[[ARG9]] : i32 to index
+// CHECK:           %[[MULI_5:.*]] = arith.muli %[[INDEX_CAST_1]], %[[INDEX_CAST_5]] : index
 // CHECK:           %[[MULI_6:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_9]] : i32
-// CHECK:           %[[INDEX_CAST_8:.*]] = arith.index_cast %[[MULI_6]] : i32 to index
+// CHECK:           %[[INDEX_CAST_6:.*]] = arith.index_cast %[[MULI_6]] : i32 to index
 // CHECK:           %[[MULI_7:.*]] = arith.muli %[[ARG8]], %[[CONSTANT_9]] : i32
-// CHECK:           %[[INDEX_CAST_9:.*]] = arith.index_cast %[[MULI_7]] : i32 to index
+// CHECK:           %[[INDEX_CAST_7:.*]] = arith.index_cast %[[MULI_7]] : i32 to index
 // CHECK:           %[[FOR_0:.*]]:3 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_8]] to %[[DIVSI_2]] step %[[CONSTANT_7]] iter_args(%[[VAL_1:.*]] = %[[CONSTANT_3]], %[[VAL_2:.*]] = %[[MULI_4]], %[[VAL_3:.*]] = %[[CONSTANT_2]]) -> (tensor<128x256xf32>, index, index)  : i32 {
-// CHECK:             %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG1]] to sizes: [64, 256], strides: {{\[}}%[[INDEX_CAST_6]], %[[INDEX_CAST_7]]], offsets: {{\[}}%[[VAL_3]], %[[MULI_5]]], shape: [0, 0], order: [] : <bf16> to tensor<64x256x!tt.ptr<bf16>>
-// CHECK:             %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG0]] to sizes: [128, 64], strides: {{\[}}%[[INDEX_CAST_4]], %[[INDEX_CAST_5]]], offsets: {{\[}}%[[VAL_2]], %[[CONSTANT_2]]], shape: [0, 0], order: [] : <bf16> to tensor<128x64x!tt.ptr<bf16>>
+// CHECK:             %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG1]] to sizes: [64, 256], strides: {{\[}}%[[INDEX_CAST_4]], %[[INDEX_CAST_5]]], offsets: {{\[}}%[[VAL_3]], %[[MULI_5]]], shape: [0, 0], order: [] : <bf16> to tensor<64x256x!tt.ptr<bf16>>
+// CHECK:             %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG0]] to sizes: [128, 64], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_2]], %[[CONSTANT_2]]], shape: [0, 0], order: [] : <bf16> to tensor<128x64x!tt.ptr<bf16>>
 // CHECK:             %[[VAL_4:.*]] = "tts.load"(%[[MAKE_TPTR_1]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<128x64x!tt.ptr<bf16>>) -> tensor<128x64xbf16>
 // CHECK:             %[[VAL_5:.*]] = "tts.load"(%[[MAKE_TPTR_0]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<64x256x!tt.ptr<bf16>>) -> tensor<64x256xbf16>
 // CHECK:             %[[DOT_0:.*]] = tt.dot %[[VAL_4]], %[[VAL_5]], %[[CONSTANT_3]], inputPrecision = tf32 : tensor<128x64xbf16> * tensor<64x256xbf16> -> tensor<128x256xf32>
 // CHECK:             %[[ADDF_0:.*]] = arith.addf %[[VAL_1]], %[[DOT_0]] : tensor<128x256xf32>
-// CHECK:             %[[ADDI_4:.*]] = arith.addi %[[VAL_2]], %[[INDEX_CAST_8]] : index
-// CHECK:             %[[ADDI_5:.*]] = arith.addi %[[VAL_3]], %[[INDEX_CAST_9]] : index
+// CHECK:             %[[ADDI_4:.*]] = arith.addi %[[VAL_2]], %[[INDEX_CAST_6]] : index
+// CHECK:             %[[ADDI_5:.*]] = arith.addi %[[VAL_3]], %[[INDEX_CAST_7]] : index
 // CHECK:             scf.yield %[[ADDF_0]], %[[ADDI_4]], %[[ADDI_5]] : tensor<128x256xf32>, index, index
 // CHECK:           }
 // CHECK:           %[[TRUNCF_0:.*]] = arith.truncf %[[VAL_6:.*]]#0 : tensor<128x256xf32> to tensor<128x256xbf16>
-// CHECK:           %[[INDEX_CAST_10:.*]] = arith.index_cast %[[ARG10]] : i32 to index
-// CHECK:           %[[MULI_8:.*]] = arith.muli %[[INDEX_CAST_0]], %[[INDEX_CAST_10]] : index
-// CHECK:           %[[INDEX_CAST_11:.*]] = arith.index_cast %[[ARG11]] : i32 to index
-// CHECK:           %[[MULI_9:.*]] = arith.muli %[[INDEX_CAST_2]], %[[INDEX_CAST_11]] : index
-// CHECK:           %[[MAKE_TPTR_2:.*]] = tts.make_tptr %[[ARG2]] to sizes: [128, 256], strides: {{\[}}%[[INDEX_CAST_10]], %[[INDEX_CAST_11]]], offsets: {{\[}}%[[MULI_8]], %[[MULI_9]]], shape: [0, 0], order: [] : <bf16> to tensor<128x256x!tt.ptr<bf16>>
-// CHECK:           %[[INDEX_CAST_12:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
-// CHECK:           %[[ADDI_6:.*]] = arith.addi %[[INDEX_CAST_12]], %[[CONSTANT_1]] : index
-// CHECK:           %[[INDEX_CAST_13:.*]] = arith.index_cast %[[ARG3]] : i32 to index
-// CHECK:           %[[MINSI_1:.*]] = arith.minsi %[[ADDI_6]], %[[INDEX_CAST_13]] : index
-// CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_1]], %[[INDEX_CAST_12]] : index
-// CHECK:           %[[SUBI_1:.*]] = arith.subi %[[MAXSI_0]], %[[INDEX_CAST_12]] : index
-// CHECK:           %[[INDEX_CAST_14:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
-// CHECK:           %[[ADDI_7:.*]] = arith.addi %[[INDEX_CAST_14]], %[[CONSTANT_0]] : index
-// CHECK:           %[[INDEX_CAST_15:.*]] = arith.index_cast %[[ARG4]] : i32 to index
-// CHECK:           %[[MINSI_2:.*]] = arith.minsi %[[ADDI_7]], %[[INDEX_CAST_15]] : index
-// CHECK:           %[[MAXSI_1:.*]] = arith.maxsi %[[MINSI_2]], %[[INDEX_CAST_14]] : index
-// CHECK:           %[[SUBI_2:.*]] = arith.subi %[[MAXSI_1]], %[[INDEX_CAST_14]] : index
+// CHECK:           %[[INDEX_CAST_8:.*]] = arith.index_cast %[[ARG10]] : i32 to index
+// CHECK:           %[[MULI_8:.*]] = arith.muli %[[INDEX_CAST_0]], %[[INDEX_CAST_8]] : index
+// CHECK:           %[[INDEX_CAST_9:.*]] = arith.index_cast %[[ARG11]] : i32 to index
+// CHECK:           %[[MULI_9:.*]] = arith.muli %[[INDEX_CAST_1]], %[[INDEX_CAST_9]] : index
+// CHECK:           %[[MAKE_TPTR_2:.*]] = tts.make_tptr %[[ARG2]] to sizes: [128, 256], strides: {{\[}}%[[INDEX_CAST_8]], %[[INDEX_CAST_9]]], offsets: {{\[}}%[[MULI_8]], %[[MULI_9]]], shape: [0, 0], order: [] : <bf16> to tensor<128x256x!tt.ptr<bf16>>
+// CHECK:           %[[ADDI_6:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[INDEX_CAST_10:.*]] = arith.index_cast %[[ARG3]] : i32 to index
+// CHECK:           %[[MINSI_1:.*]] = arith.minsi %[[ADDI_6]], %[[INDEX_CAST_10]] : index
+// CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_1]], %[[INDEX_CAST_0]] : index
+// CHECK:           %[[SUBI_1:.*]] = arith.subi %[[MAXSI_0]], %[[INDEX_CAST_0]] : index
+// CHECK:           %[[ADDI_7:.*]] = arith.addi %[[INDEX_CAST_1]], %[[CONSTANT_0]] : index
+// CHECK:           %[[INDEX_CAST_11:.*]] = arith.index_cast %[[ARG4]] : i32 to index
+// CHECK:           %[[MINSI_2:.*]] = arith.minsi %[[ADDI_7]], %[[INDEX_CAST_11]] : index
+// CHECK:           %[[MAXSI_1:.*]] = arith.maxsi %[[MINSI_2]], %[[INDEX_CAST_1]] : index
+// CHECK:           %[[SUBI_2:.*]] = arith.subi %[[MAXSI_1]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MINSI_3:.*]] = arith.minsi %[[SUBI_1]], %[[CONSTANT_1]] : index
 // CHECK:           %[[MINSI_4:.*]] = arith.minsi %[[SUBI_2]], %[[CONSTANT_0]] : index
 // CHECK:           "tts.store"(%[[MAKE_TPTR_2]], %[[TRUNCF_0]], %[[MINSI_3]], %[[MINSI_4]]) <{static_mask_dims = array<i64: -9223372036854775808, -9223372036854775808>}> : (tensor<128x256x!tt.ptr<bf16>>, tensor<128x256xbf16>, index, index) -> ()
 // CHECK:           tt.return
 // CHECK:         }
-module {
   tt.func public @matmul_kernel_0123456789101112131415(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>, %arg2: !tt.ptr<bf16>, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32, %arg8: i32, %arg9: i32, %arg10: i32, %arg11: i32) {
     %c63_i32 = arith.constant 63 : i32
     %c255_i32 = arith.constant 255 : i32

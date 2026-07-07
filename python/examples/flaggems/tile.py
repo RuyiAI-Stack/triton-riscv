@@ -7,6 +7,8 @@ from typing import Any
 
 import torch
 
+from .cat import cat
+
 
 def write_atomic(
     path_: str,
@@ -18,8 +20,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -109,9 +110,7 @@ def generate_destination_passing_tile_wrapper(
     if rank > 0:
         code += "    tile_size = min(512, triton.next_power_of_2(num_tasks))\n"
         code += "    num_warps = 4\n"
-        code += (
-            "    num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))\n"
-        )
+        code += "    num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))\n"
         code += "    tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)\n"
         code += "    grid = (num_ctas,)\n\n"
         code += "    in0_strides = in0.stride()\n"
@@ -290,4 +289,13 @@ _tile_func = TileFunction()
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
+    if inp.dim() == 1 and len(dims) == 1:
+        repeat_count = dims[0]
+        if repeat_count < 0:
+            raise RuntimeError(
+                "The number of repetitions per dimension must be non-negative"
+            )
+        if repeat_count == 0:
+            return torch.empty((0,), device=inp.device, dtype=inp.dtype)
+        return cat([inp] * repeat_count, dim=0)
     return _tile_func(inp, dims)

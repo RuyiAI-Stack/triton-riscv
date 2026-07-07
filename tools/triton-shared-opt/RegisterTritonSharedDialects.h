@@ -1,11 +1,20 @@
 #pragma once
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/ControlFlow/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Ptr/IR/PtrDialect.h"
+#include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
@@ -38,14 +47,24 @@ inline void registerTritonSharedDialects(mlir::DialectRegistry &registry) {
   mlir::triton::registerTritonArithToLinalgPasses();
   mlir::triton::registerStructuredToMemrefPasses();
   mlir::triton::registerAddLLVMDebugInfoPass();
+  mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::cf::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
+      registry);
+  mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::vector::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::ttx::registerBufferizableOpInterfaceExternalModels(registry);
 
   // TODO: register Triton & TritonGPU passes
   registry.insert<
       mlir::tptr::TPtrDialect, mlir::ptr::PtrDialect,
       mlir::ttx::TritonTilingExtDialect, mlir::tts::TritonStructuredDialect,
-      mlir::triton::TritonDialect, mlir::cf::ControlFlowDialect,
-      mlir::math::MathDialect, mlir::arith::ArithDialect, mlir::scf::SCFDialect,
+      mlir::triton::TritonDialect, mlir::affine::AffineDialect,
+      mlir::cf::ControlFlowDialect, mlir::math::MathDialect,
+      mlir::arith::ArithDialect, mlir::scf::SCFDialect,
       mlir::linalg::LinalgDialect, mlir::func::FuncDialect,
       mlir::tensor::TensorDialect, mlir::memref::MemRefDialect,
-      mlir::bufferization::BufferizationDialect>();
+      mlir::bufferization::BufferizationDialect, mlir::vector::VectorDialect>();
 }

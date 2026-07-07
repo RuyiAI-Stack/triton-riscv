@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-structured --canonicalize --remove-dead-values %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   tt.func public @nested_who_knows_how_many_levels(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32>,
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32>,
@@ -21,68 +23,31 @@
 // CHECK:           %[[CONSTANT_3:.*]] = arith.constant 2 : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
-// CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[ARG2]] : i32 to index
-// CHECK:           %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG3]], %[[CONSTANT_3]] : i32
-// CHECK:           %[[INDEX_CAST_4:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_5:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_6:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_7:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_8:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_9:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_10:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_11:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_12:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_13:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_14:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_15:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_16:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_17:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_18:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_19:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_20:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_21:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_22:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_23:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_24:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_25:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_26:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_27:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_28:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_29:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[MULI_1:.*]] = arith.muli %[[ARG3]], %[[CONSTANT_3]] : i32
-// CHECK:           %[[INDEX_CAST_30:.*]] = arith.index_cast %[[MULI_1]] : i32 to index
-// CHECK:           %[[INDEX_CAST_31:.*]] = arith.index_cast %[[MULI_1]] : i32 to index
-// CHECK:           %[[INDEX_CAST_32:.*]] = arith.index_cast %[[MULI_1]] : i32 to index
-// CHECK:           %[[INDEX_CAST_33:.*]] = arith.index_cast %[[MULI_1]] : i32 to index
-// CHECK:           %[[INDEX_CAST_34:.*]] = arith.index_cast %[[MULI_1]] : i32 to index
-// CHECK:           %[[MULI_2:.*]] = arith.muli %[[ARG3]], %[[CONSTANT_3]] : i32
-// CHECK:           %[[INDEX_CAST_35:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
-// CHECK:           %[[MULI_3:.*]] = arith.muli %[[ARG3]], %[[CONSTANT_3]] : i32
-// CHECK:           %[[INDEX_CAST_36:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
+// CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
 // CHECK:           %[[POISON_0:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_1:.*]] = %[[CONSTANT_0]], %[[VAL_2:.*]] = %[[CONSTANT_0]]) -> (index, index)  : i32 {
 // CHECK:             %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_1]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:             %[[VAL_3:.*]] = "tts.load"(%[[MAKE_TPTR_0]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:             %[[POISON_1:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:             %[[FOR_1:.*]]:3 = scf.for %[[VAL_4:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_5:.*]] = %[[VAL_1]], %[[VAL_6:.*]] = %[[VAL_2]], %[[VAL_7:.*]] = %[[VAL_3]]) -> (index, index, tensor<2x2xf32>)  : i32 {
-// CHECK:               %[[ADDI_0:.*]] = arith.addi %[[VAL_5]], %[[INDEX_CAST_29]] : index
+// CHECK:               %[[ADDI_0:.*]] = arith.addi %[[VAL_5]], %[[INDEX_CAST_2]] : index
 // CHECK:               %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_0]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:               %[[VAL_8:.*]] = "tts.load"(%[[MAKE_TPTR_1]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:               %[[POISON_2:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:               %[[FOR_2:.*]]:4 = scf.for %[[VAL_9:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_10:.*]] = %[[ADDI_0]], %[[VAL_11:.*]] = %[[VAL_6]], %[[VAL_12:.*]] = %[[VAL_7]], %[[VAL_13:.*]] = %[[VAL_8]]) -> (index, index, tensor<2x2xf32>, tensor<2x2xf32>)  : i32 {
-// CHECK:                 %[[MAKE_TPTR_2:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_11]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
-// CHECK:                 %[[ADDI_1:.*]] = arith.addi %[[VAL_10]], %[[INDEX_CAST_28]] : index
+// CHECK:                 %[[MAKE_TPTR_2:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_11]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                 %[[ADDI_1:.*]] = arith.addi %[[VAL_10]], %[[INDEX_CAST_2]] : index
 // CHECK:                 %[[MAKE_TPTR_3:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_1]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 %[[VAL_14:.*]] = "tts.load"(%[[MAKE_TPTR_3]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                 "tts.store"(%[[MAKE_TPTR_2]], %[[VAL_12]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                 %[[ADDI_2:.*]] = arith.addi %[[VAL_11]], %[[INDEX_CAST_27]] : index
-// CHECK:                 %[[MAKE_TPTR_4:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_2]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                 %[[ADDI_2:.*]] = arith.addi %[[VAL_11]], %[[INDEX_CAST_2]] : index
+// CHECK:                 %[[MAKE_TPTR_4:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_2]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 "tts.store"(%[[MAKE_TPTR_4]], %[[VAL_13]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                 %[[ADDI_3:.*]] = arith.addi %[[ADDI_2]], %[[INDEX_CAST_26]] : index
-// CHECK:                 %[[MAKE_TPTR_5:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_3]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                 %[[ADDI_3:.*]] = arith.addi %[[ADDI_2]], %[[INDEX_CAST_2]] : index
+// CHECK:                 %[[MAKE_TPTR_5:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_3]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 "tts.store"(%[[MAKE_TPTR_5]], %[[VAL_14]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                 %[[ADDI_4:.*]] = arith.addi %[[ADDI_3]], %[[INDEX_CAST_25]] : index
+// CHECK:                 %[[ADDI_4:.*]] = arith.addi %[[ADDI_3]], %[[INDEX_CAST_2]] : index
 // CHECK:                 %[[POISON_3:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                 %[[POISON_4:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 %[[POISON_5:.*]] = ub.poison : tensor<2x2xf32>
@@ -96,25 +61,25 @@
 // CHECK:                   %[[POISON_10:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                   %[[POISON_11:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                   %[[FOR_4:.*]]:3 = scf.for %[[VAL_19:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_20:.*]] = %[[VAL_16]], %[[VAL_21:.*]] = %[[VAL_17]], %[[VAL_22:.*]] = %[[VAL_18]]) -> (index, index, tensor<2x2xf32>)  : i32 {
-// CHECK:                     %[[ADDI_5:.*]] = arith.addi %[[VAL_20]], %[[INDEX_CAST_24]] : index
+// CHECK:                     %[[ADDI_5:.*]] = arith.addi %[[VAL_20]], %[[INDEX_CAST_2]] : index
 // CHECK:                     %[[MAKE_TPTR_7:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_5]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                     %[[VAL_23:.*]] = "tts.load"(%[[MAKE_TPTR_7]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                     %[[POISON_12:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                     %[[POISON_13:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                     %[[POISON_14:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                     %[[FOR_5:.*]]:4 = scf.for %[[VAL_24:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_25:.*]] = %[[ADDI_5]], %[[VAL_26:.*]] = %[[VAL_21]], %[[VAL_27:.*]] = %[[VAL_22]], %[[VAL_28:.*]] = %[[VAL_23]]) -> (index, index, tensor<2x2xf32>, tensor<2x2xf32>)  : i32 {
-// CHECK:                       %[[MAKE_TPTR_8:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_26]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
-// CHECK:                       %[[ADDI_6:.*]] = arith.addi %[[VAL_25]], %[[INDEX_CAST_23]] : index
+// CHECK:                       %[[MAKE_TPTR_8:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_26]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                       %[[ADDI_6:.*]] = arith.addi %[[VAL_25]], %[[INDEX_CAST_2]] : index
 // CHECK:                       %[[MAKE_TPTR_9:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_6]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       %[[VAL_29:.*]] = "tts.load"(%[[MAKE_TPTR_9]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                       "tts.store"(%[[MAKE_TPTR_8]], %[[VAL_27]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                       %[[ADDI_7:.*]] = arith.addi %[[VAL_26]], %[[INDEX_CAST_22]] : index
-// CHECK:                       %[[MAKE_TPTR_10:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_7]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                       %[[ADDI_7:.*]] = arith.addi %[[VAL_26]], %[[INDEX_CAST_2]] : index
+// CHECK:                       %[[MAKE_TPTR_10:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_7]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       "tts.store"(%[[MAKE_TPTR_10]], %[[VAL_28]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                       %[[ADDI_8:.*]] = arith.addi %[[ADDI_7]], %[[INDEX_CAST_21]] : index
-// CHECK:                       %[[MAKE_TPTR_11:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_8]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                       %[[ADDI_8:.*]] = arith.addi %[[ADDI_7]], %[[INDEX_CAST_2]] : index
+// CHECK:                       %[[MAKE_TPTR_11:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_8]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       "tts.store"(%[[MAKE_TPTR_11]], %[[VAL_29]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                       %[[ADDI_9:.*]] = arith.addi %[[ADDI_8]], %[[INDEX_CAST_20]] : index
+// CHECK:                       %[[ADDI_9:.*]] = arith.addi %[[ADDI_8]], %[[INDEX_CAST_2]] : index
 // CHECK:                       %[[POISON_15:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                       %[[POISON_16:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       %[[POISON_17:.*]] = ub.poison : tensor<2x2xf32>
@@ -128,25 +93,25 @@
 // CHECK:                         %[[POISON_22:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                         %[[POISON_23:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                         %[[FOR_7:.*]]:4 = scf.for %[[VAL_36:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_37:.*]] = %[[VAL_32]], %[[VAL_38:.*]] = %[[POISON_21]], %[[VAL_39:.*]] = %[[VAL_34]], %[[VAL_40:.*]] = %[[VAL_35]]) -> (index, tensor<2x2xf32>, index, tensor<2x2xf32>)  : i32 {
-// CHECK:                           %[[ADDI_10:.*]] = arith.addi %[[VAL_37]], %[[INDEX_CAST_19]] : index
+// CHECK:                           %[[ADDI_10:.*]] = arith.addi %[[VAL_37]], %[[INDEX_CAST_2]] : index
 // CHECK:                           %[[MAKE_TPTR_13:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_10]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                           %[[VAL_41:.*]] = "tts.load"(%[[MAKE_TPTR_13]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                           %[[POISON_24:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                           %[[POISON_25:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                           %[[POISON_26:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                           %[[FOR_8:.*]]:4 = scf.for %[[VAL_42:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_43:.*]] = %[[ADDI_10]], %[[VAL_44:.*]] = %[[VAL_39]], %[[VAL_45:.*]] = %[[VAL_40]], %[[VAL_46:.*]] = %[[VAL_41]]) -> (index, index, tensor<2x2xf32>, tensor<2x2xf32>)  : i32 {
-// CHECK:                             %[[MAKE_TPTR_14:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_44]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
-// CHECK:                             %[[ADDI_11:.*]] = arith.addi %[[VAL_43]], %[[INDEX_CAST_18]] : index
+// CHECK:                             %[[MAKE_TPTR_14:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_44]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                             %[[ADDI_11:.*]] = arith.addi %[[VAL_43]], %[[INDEX_CAST_2]] : index
 // CHECK:                             %[[MAKE_TPTR_15:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_11]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                             %[[VAL_47:.*]] = "tts.load"(%[[MAKE_TPTR_15]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                             "tts.store"(%[[MAKE_TPTR_14]], %[[VAL_45]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                             %[[ADDI_12:.*]] = arith.addi %[[VAL_44]], %[[INDEX_CAST_17]] : index
-// CHECK:                             %[[MAKE_TPTR_16:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_12]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                             %[[ADDI_12:.*]] = arith.addi %[[VAL_44]], %[[INDEX_CAST_2]] : index
+// CHECK:                             %[[MAKE_TPTR_16:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_12]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                             "tts.store"(%[[MAKE_TPTR_16]], %[[VAL_46]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                             %[[ADDI_13:.*]] = arith.addi %[[ADDI_12]], %[[INDEX_CAST_16]] : index
-// CHECK:                             %[[MAKE_TPTR_17:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_13]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                             %[[ADDI_13:.*]] = arith.addi %[[ADDI_12]], %[[INDEX_CAST_2]] : index
+// CHECK:                             %[[MAKE_TPTR_17:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_13]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                             "tts.store"(%[[MAKE_TPTR_17]], %[[VAL_47]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                             %[[ADDI_14:.*]] = arith.addi %[[ADDI_13]], %[[INDEX_CAST_15]] : index
+// CHECK:                             %[[ADDI_14:.*]] = arith.addi %[[ADDI_13]], %[[INDEX_CAST_2]] : index
 // CHECK:                             %[[POISON_27:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                             %[[POISON_28:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                             %[[POISON_29:.*]] = ub.poison : tensor<2x2xf32>
@@ -160,25 +125,25 @@
 // CHECK:                               %[[POISON_34:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                               %[[POISON_35:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                               %[[FOR_10:.*]]:3 = scf.for %[[VAL_54:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_55:.*]] = %[[VAL_50]], %[[VAL_56:.*]] = %[[POISON_33]], %[[VAL_57:.*]] = %[[VAL_52]]) -> (index, tensor<2x2xf32>, index)  : i32 {
-// CHECK:                                 %[[ADDI_15:.*]] = arith.addi %[[VAL_55]], %[[INDEX_CAST_14]] : index
+// CHECK:                                 %[[ADDI_15:.*]] = arith.addi %[[VAL_55]], %[[INDEX_CAST_2]] : index
 // CHECK:                                 %[[MAKE_TPTR_19:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_15]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                 %[[VAL_58:.*]] = "tts.load"(%[[MAKE_TPTR_19]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                                 %[[POISON_36:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                 %[[POISON_37:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                                 %[[POISON_38:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                 %[[FOR_11:.*]]:2 = scf.for %[[VAL_59:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_60:.*]] = %[[ADDI_15]], %[[VAL_61:.*]] = %[[VAL_57]]) -> (index, index)  : i32 {
-// CHECK:                                   %[[MAKE_TPTR_20:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_61]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
-// CHECK:                                   %[[ADDI_16:.*]] = arith.addi %[[VAL_60]], %[[INDEX_CAST_13]] : index
+// CHECK:                                   %[[MAKE_TPTR_20:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_61]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                                   %[[ADDI_16:.*]] = arith.addi %[[VAL_60]], %[[INDEX_CAST_2]] : index
 // CHECK:                                   %[[MAKE_TPTR_21:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_16]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                   %[[VAL_62:.*]] = "tts.load"(%[[MAKE_TPTR_21]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                                   "tts.store"(%[[MAKE_TPTR_20]], %[[VAL_53]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                                   %[[ADDI_17:.*]] = arith.addi %[[VAL_61]], %[[INDEX_CAST_12]] : index
-// CHECK:                                   %[[MAKE_TPTR_22:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_17]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                                   %[[ADDI_17:.*]] = arith.addi %[[VAL_61]], %[[INDEX_CAST_2]] : index
+// CHECK:                                   %[[MAKE_TPTR_22:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_17]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                   "tts.store"(%[[MAKE_TPTR_22]], %[[VAL_58]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                                   %[[ADDI_18:.*]] = arith.addi %[[ADDI_17]], %[[INDEX_CAST_11]] : index
-// CHECK:                                   %[[MAKE_TPTR_23:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_18]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                                   %[[ADDI_18:.*]] = arith.addi %[[ADDI_17]], %[[INDEX_CAST_2]] : index
+// CHECK:                                   %[[MAKE_TPTR_23:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_18]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                   "tts.store"(%[[MAKE_TPTR_23]], %[[VAL_62]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                                   %[[ADDI_19:.*]] = arith.addi %[[ADDI_18]], %[[INDEX_CAST_10]] : index
+// CHECK:                                   %[[ADDI_19:.*]] = arith.addi %[[ADDI_18]], %[[INDEX_CAST_2]] : index
 // CHECK:                                   %[[POISON_39:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                                   %[[POISON_40:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                                   %[[POISON_41:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
@@ -240,25 +205,25 @@
 // CHECK:                   %[[POISON_76:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                   %[[POISON_77:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                   %[[FOR_13:.*]]:3 = scf.for %[[VAL_78:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_79:.*]] = %[[VAL_73]], %[[VAL_80:.*]] = %[[POISON_75]], %[[VAL_81:.*]] = %[[VAL_76]]) -> (index, tensor<2x2xf32>, index)  : i32 {
-// CHECK:                     %[[ADDI_20:.*]] = arith.addi %[[VAL_79]], %[[INDEX_CAST_9]] : index
+// CHECK:                     %[[ADDI_20:.*]] = arith.addi %[[VAL_79]], %[[INDEX_CAST_2]] : index
 // CHECK:                     %[[MAKE_TPTR_25:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_20]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                     %[[VAL_82:.*]] = "tts.load"(%[[MAKE_TPTR_25]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                     %[[POISON_78:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                     %[[POISON_79:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                     %[[POISON_80:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                     %[[FOR_14:.*]]:2 = scf.for %[[VAL_83:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_84:.*]] = %[[ADDI_20]], %[[VAL_85:.*]] = %[[VAL_81]]) -> (index, index)  : i32 {
-// CHECK:                       %[[MAKE_TPTR_26:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_85]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
-// CHECK:                       %[[ADDI_21:.*]] = arith.addi %[[VAL_84]], %[[INDEX_CAST_8]] : index
+// CHECK:                       %[[MAKE_TPTR_26:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_85]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                       %[[ADDI_21:.*]] = arith.addi %[[VAL_84]], %[[INDEX_CAST_2]] : index
 // CHECK:                       %[[MAKE_TPTR_27:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_21]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       %[[VAL_86:.*]] = "tts.load"(%[[MAKE_TPTR_27]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                       "tts.store"(%[[MAKE_TPTR_26]], %[[VAL_77]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                       %[[ADDI_22:.*]] = arith.addi %[[VAL_85]], %[[INDEX_CAST_7]] : index
-// CHECK:                       %[[MAKE_TPTR_28:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_22]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                       %[[ADDI_22:.*]] = arith.addi %[[VAL_85]], %[[INDEX_CAST_2]] : index
+// CHECK:                       %[[MAKE_TPTR_28:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_22]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       "tts.store"(%[[MAKE_TPTR_28]], %[[VAL_82]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                       %[[ADDI_23:.*]] = arith.addi %[[ADDI_22]], %[[INDEX_CAST_6]] : index
-// CHECK:                       %[[MAKE_TPTR_29:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_23]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                       %[[ADDI_23:.*]] = arith.addi %[[ADDI_22]], %[[INDEX_CAST_2]] : index
+// CHECK:                       %[[MAKE_TPTR_29:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_23]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       "tts.store"(%[[MAKE_TPTR_29]], %[[VAL_86]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                       %[[ADDI_24:.*]] = arith.addi %[[ADDI_23]], %[[INDEX_CAST_5]] : index
+// CHECK:                       %[[ADDI_24:.*]] = arith.addi %[[ADDI_23]], %[[INDEX_CAST_2]] : index
 // CHECK:                       %[[POISON_81:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                       %[[POISON_82:.*]] = ub.poison : tensor<2x2xf32>
 // CHECK:                       %[[POISON_83:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
@@ -277,7 +242,7 @@
 // CHECK:                 %[[POISON_90:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 scf.yield %[[VAL_89:.*]]#1, %[[VAL_89]]#3, %[[VAL_89]]#0, %[[VAL_89]]#2 : index, index, tensor<2x2xf32>, tensor<2x2xf32>
 // CHECK:               }
-// CHECK:               %[[ADDI_25:.*]] = arith.addi %[[VAL_90:.*]]#0, %[[INDEX_CAST_4]] : index
+// CHECK:               %[[ADDI_25:.*]] = arith.addi %[[VAL_90:.*]]#0, %[[INDEX_CAST_2]] : index
 // CHECK:               %[[POISON_91:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:               scf.yield %[[ADDI_25]], %[[VAL_90]]#1, %[[VAL_90]]#2 : index, index, tensor<2x2xf32>
 // CHECK:             }
@@ -287,40 +252,39 @@
 // CHECK:               %[[VAL_95:.*]] = "tts.load"(%[[MAKE_TPTR_30]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:               %[[POISON_93:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:               %[[FOR_16:.*]]:2 = scf.for %[[VAL_96:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_97:.*]] = %[[VAL_92]], %[[VAL_98:.*]] = %[[VAL_94]]) -> (index, index)  : i32 {
-// CHECK:                 %[[ADDI_26:.*]] = arith.addi %[[VAL_97]], %[[INDEX_CAST_34]] : index
+// CHECK:                 %[[ADDI_26:.*]] = arith.addi %[[VAL_97]], %[[INDEX_CAST_2]] : index
 // CHECK:                 %[[MAKE_TPTR_31:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_26]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 %[[VAL_99:.*]] = "tts.load"(%[[MAKE_TPTR_31]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                 %[[POISON_94:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 %[[FOR_17:.*]]:2 = scf.for %[[VAL_100:.*]] = %[[CONSTANT_2]] to %[[CONSTANT_3]] step %[[CONSTANT_1]] iter_args(%[[VAL_101:.*]] = %[[ADDI_26]], %[[VAL_102:.*]] = %[[VAL_98]]) -> (index, index)  : i32 {
-// CHECK:                   %[[MAKE_TPTR_32:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[VAL_102]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
-// CHECK:                   %[[ADDI_27:.*]] = arith.addi %[[VAL_101]], %[[INDEX_CAST_33]] : index
+// CHECK:                   %[[MAKE_TPTR_32:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[VAL_102]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                   %[[ADDI_27:.*]] = arith.addi %[[VAL_101]], %[[INDEX_CAST_2]] : index
 // CHECK:                   %[[MAKE_TPTR_33:.*]] = tts.make_tptr %[[ARG0]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_27]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                   %[[VAL_103:.*]] = "tts.load"(%[[MAKE_TPTR_33]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>) -> tensor<2x2xf32>
 // CHECK:                   "tts.store"(%[[MAKE_TPTR_32]], %[[VAL_95]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                   %[[ADDI_28:.*]] = arith.addi %[[VAL_102]], %[[INDEX_CAST_32]] : index
-// CHECK:                   %[[MAKE_TPTR_34:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_28]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                   %[[ADDI_28:.*]] = arith.addi %[[VAL_102]], %[[INDEX_CAST_2]] : index
+// CHECK:                   %[[MAKE_TPTR_34:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_28]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                   "tts.store"(%[[MAKE_TPTR_34]], %[[VAL_99]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                   %[[ADDI_29:.*]] = arith.addi %[[ADDI_28]], %[[INDEX_CAST_31]] : index
-// CHECK:                   %[[MAKE_TPTR_35:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]]], offsets: {{\[}}%[[ADDI_29]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
+// CHECK:                   %[[ADDI_29:.*]] = arith.addi %[[ADDI_28]], %[[INDEX_CAST_2]] : index
+// CHECK:                   %[[MAKE_TPTR_35:.*]] = tts.make_tptr %[[ARG1]] to sizes: [2, 2], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_1]]], offsets: {{\[}}%[[ADDI_29]], %[[CONSTANT_0]]], shape: [0, 0], order: [] : <f32> to tensor<2x2x!tt.ptr<f32>>
 // CHECK:                   "tts.store"(%[[MAKE_TPTR_35]], %[[VAL_103]]) <{static_mask_dims = array<i64>}> : (tensor<2x2x!tt.ptr<f32>>, tensor<2x2xf32>) -> ()
-// CHECK:                   %[[ADDI_30:.*]] = arith.addi %[[ADDI_29]], %[[INDEX_CAST_30]] : index
+// CHECK:                   %[[ADDI_30:.*]] = arith.addi %[[ADDI_29]], %[[INDEX_CAST_2]] : index
 // CHECK:                   %[[POISON_95:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                   scf.yield %[[ADDI_27]], %[[ADDI_30]] : index, index
 // CHECK:                 }
 // CHECK:                 %[[POISON_96:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:                 scf.yield %[[VAL_104:.*]]#0, %[[VAL_104]]#1 : index, index
 // CHECK:               }
-// CHECK:               %[[ADDI_31:.*]] = arith.addi %[[VAL_105:.*]]#0, %[[INDEX_CAST_35]] : index
+// CHECK:               %[[ADDI_31:.*]] = arith.addi %[[VAL_105:.*]]#0, %[[INDEX_CAST_2]] : index
 // CHECK:               %[[POISON_97:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:               scf.yield %[[ADDI_31]], %[[VAL_105]]#1 : index, index
 // CHECK:             }
-// CHECK:             %[[ADDI_32:.*]] = arith.addi %[[VAL_106:.*]]#0, %[[INDEX_CAST_36]] : index
+// CHECK:             %[[ADDI_32:.*]] = arith.addi %[[VAL_106:.*]]#0, %[[INDEX_CAST_2]] : index
 // CHECK:             %[[POISON_98:.*]] = ub.poison : tensor<2x2x!tt.ptr<f32>>
 // CHECK:             scf.yield %[[ADDI_32]], %[[VAL_106]]#1 : index, index
 // CHECK:           }
 // CHECK:           tt.return
 // CHECK:         }
-module {
   tt.func public @nested_who_knows_how_many_levels(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32, %arg3: i32) attributes {noinline = false} {
     %c1_i32 = arith.constant 1 : i32
     %c0_i32 = arith.constant 0 : i32

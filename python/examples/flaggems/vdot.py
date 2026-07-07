@@ -49,19 +49,13 @@ def vdot_kernel_complex(
     acc_imag = tl.zeros([], dtype=tl.float32)
 
     for current_start in range(0, n_elements // 2, grid_stride):
-        complex_idx = (
-            current_start + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        )
+        complex_idx = current_start + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = complex_idx < n_elements // 2
 
         real_offset = complex_idx * 2
 
-        inp_real = tl.load(
-            inp_ptr + real_offset * inp_stride, mask=mask, other=0.0
-        )
-        inp_imag = tl.load(
-            inp_ptr + real_offset * inp_stride + 1, mask=mask, other=0.0
-        )
+        inp_real = tl.load(inp_ptr + real_offset * inp_stride, mask=mask, other=0.0)
+        inp_imag = tl.load(inp_ptr + real_offset * inp_stride + 1, mask=mask, other=0.0)
 
         other_real = tl.load(
             other_ptr + real_offset * other_stride, mask=mask, other=0.0
@@ -108,9 +102,9 @@ def dot_kernel(
         cur_offsets = current_start + offsets
         mask = cur_offsets < n_elements
 
-        inp = tl.load(
-            inp_ptr + inp_stride * cur_offsets, mask=mask, other=0.0
-        ).to(tl.float32)
+        inp = tl.load(inp_ptr + inp_stride * cur_offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
         other = tl.load(
             other_ptr + other_stride * cur_offsets, mask=mask, other=0.0
         ).to(tl.float32)
@@ -191,6 +185,9 @@ def vdot(input: torch.Tensor, other: torch.Tensor):
     inp_stride = inp.stride()[0]
     other_stride = other.stride()[0]
 
+    if inp.numel() == 0:
+        return torch.zeros((), dtype=inp.dtype, device=inp.device)
+
     if inp.is_complex():
         inp_is_conj = False
         other_is_conj = False
@@ -237,20 +234,28 @@ def vdot(input: torch.Tensor, other: torch.Tensor):
         )
         return torch.view_as_complex(output_real)
     elif inp.dtype == torch.float32:
-        output = torch.zeros([], dtype=torch.float32, device=inp.device)
         n_elements = inp.numel()
+        BLOCK_SIZE = 1024
+        num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
+        grid_size = min(num_blocks, 1024)
+        partial_sums = torch.empty(grid_size, dtype=torch.float32, device=inp.device)
 
-        def grid(meta):
-            return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-        dot_kernel_fp32[grid](
+        dot_kernel[(grid_size,)](
             inp,
             other,
-            output,
+            partial_sums,
             n_elements=n_elements,
             inp_stride=inp_stride,
             other_stride=other_stride,
-            BLOCK_SIZE=1024,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+        output = torch.empty([], dtype=torch.float32, device=inp.device)
+        reduce_bs = min(triton.next_power_of_2(grid_size), 1024)
+        reduce_kernel[(1,)](
+            partial_sums,
+            output,
+            grid_size,
+            BLOCK_SIZE=reduce_bs,
         )
         return output
     else:
@@ -260,10 +265,8 @@ def vdot(input: torch.Tensor, other: torch.Tensor):
         num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
         grid_size = min(num_blocks, 1024)
 
-        grid = (num_blocks,)
-        partial_sums = torch.empty(
-            grid_size, dtype=torch.float32, device=inp.device
-        )
+        grid = (grid_size,)
+        partial_sums = torch.empty(grid_size, dtype=torch.float32, device=inp.device)
 
         dot_kernel[grid](
             inp,
@@ -280,7 +283,7 @@ def vdot(input: torch.Tensor, other: torch.Tensor):
         reduce_kernel[(1,)](
             partial_sums,
             output,
-            num_blocks,
+            grid_size,
             BLOCK_SIZE=reduce_bs,
         )
         return output

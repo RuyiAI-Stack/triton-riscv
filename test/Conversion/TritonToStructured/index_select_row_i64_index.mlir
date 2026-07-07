@@ -8,10 +8,12 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-structured --remove-dead-values --cse --canonicalize %s | FileCheck %s
 
 // Make sure i64 offset works.
 
+module {
 // CHECK-LABEL:   tt.func public @index_select_row_kernel(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -22,12 +24,10 @@
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [4, 16] gather_scatter_dim: 0 gather_scatter_offset: %[[VAL_0]], strides: {{\[}}%[[INDEX_CAST_0]], 1], offsets: [0, 0] : tensor<4xi64>  <f32> to tensor<4x16x!tt.ptr<f32>>
 // CHECK:           %[[VAL_1:.*]] = "tts.load"(%[[MAKE_GATHER_SCATTER_TPTR_0]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<4x16x!tt.ptr<f32>>) -> tensor<4x16xf32>
-// CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
-// CHECK:           %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG1]] to sizes: [4, 16], strides: {{\[}}%[[INDEX_CAST_1]], 1], offsets: [0, 0], shape: [0, 0], order: [] : <f32> to tensor<4x16x!tt.ptr<f32>>
+// CHECK:           %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG1]] to sizes: [4, 16], strides: {{\[}}%[[INDEX_CAST_0]], 1], offsets: [0, 0], shape: [0, 0], order: [] : <f32> to tensor<4x16x!tt.ptr<f32>>
 // CHECK:           "tts.store"(%[[MAKE_TPTR_1]], %[[VAL_1]]) <{static_mask_dims = array<i64>}> : (tensor<4x16x!tt.ptr<f32>>, tensor<4x16xf32>) -> ()
 // CHECK:           tt.return
 // CHECK:         }
-module {
   tt.func public @index_select_row_kernel(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32} , %arg1: !tt.ptr<f32> {tt.divisibility = 16 : i32} , %arg2: !tt.ptr<i64> {tt.divisibility = 16 : i32} , %arg3: i32 {tt.divisibility = 16 : i32} ) attributes {noinline = false} {
     %0 = tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32>
     %1 = tt.splat %arg2 : !tt.ptr<i64> -> tensor<4x!tt.ptr<i64>>

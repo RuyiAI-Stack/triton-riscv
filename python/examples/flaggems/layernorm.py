@@ -22,6 +22,8 @@ def layer_norm_persistent_kernel(
     M,
     N,
     eps,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
     # using 1d tile makes code clean
@@ -42,11 +44,11 @@ def layer_norm_persistent_kernel(
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
 
-    if weight_ptr is None:
+    if not HAS_WEIGHT:
         w = 1
     else:
         w = tl.load(weight_ptr + n_offsets, mask=mask)
-    if bias_ptr is None:
+    if not HAS_BIAS:
         b = 0
     else:
         b = tl.load(bias_ptr + n_offsets, mask=mask)
@@ -66,6 +68,8 @@ def layer_norm_persistent_kernel_multiline(
     M,
     N,
     eps,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
@@ -78,9 +82,9 @@ def layer_norm_persistent_kernel_multiline(
     n_mask = n_offsets < N
     mask = m_mask[:, None] & n_mask
 
-    x = tl.load(
-        in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0
-    ).to(tl.float32)
+    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
+        tl.float32
+    )
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -91,11 +95,11 @@ def layer_norm_persistent_kernel_multiline(
     tl.store(out_mean_ptr + m_offsets, m, mask=m_mask)
     tl.store(out_rstd_ptr + m_offsets, rstd, mask=m_mask)
 
-    if weight_ptr is None:
+    if not HAS_WEIGHT:
         w = 1
     else:
         w = tl.load(weight_ptr + n_offsets, mask=n_mask)
-    if bias_ptr is None:
+    if not HAS_BIAS:
         b = 0
     else:
         b = tl.load(bias_ptr + n_offsets, mask=n_mask)
@@ -115,6 +119,8 @@ def layer_norm_loop_kernel(
     M,
     N,
     eps,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
@@ -168,11 +174,11 @@ def layer_norm_loop_kernel(
             other=0.0,
             eviction_policy="evict_first",
         ).to(tl.float32)
-        if weight_ptr is None:
+        if not HAS_WEIGHT:
             w = 1
         else:
             w = tl.load(weight_ptr + n_offsets, mask=mask)
-        if bias_ptr is None:
+        if not HAS_BIAS:
             b = 0
         else:
             b = tl.load(bias_ptr + n_offsets, mask=mask)
@@ -181,14 +187,14 @@ def layer_norm_loop_kernel(
 
     for start_n in range(TILE_N, N, TILE_N):
         n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        x = tl.load(
-            in_ptr + pid * N + n_offsets, eviction_policy="evict_first"
-        ).to(tl.float32)
-        if weight_ptr is None:
+        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
+            tl.float32
+        )
+        if not HAS_WEIGHT:
             w = 1
         else:
             w = tl.load(weight_ptr + n_offsets)
-        if bias_ptr is None:
+        if not HAS_BIAS:
             b = 0
         else:
             b = tl.load(bias_ptr + n_offsets)
@@ -206,13 +212,11 @@ def layer_norm_backward_kernel(
     dX,
     M,
     N,
+    HAS_WEIGHT: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = (
-        tl.program_id(0) * BLOCK_ROW_SIZE
-        + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    )
+    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -220,8 +224,8 @@ def layer_norm_backward_kernel(
     Mean += pid
     Rstd += pid
 
-    mean = tl.load(Mean, mask=row_mask).to(tl.float32)
-    rstd = tl.load(Rstd, mask=row_mask).to(tl.float32)
+    mean = tl.load(Mean, mask=row_mask, other=0.0).to(tl.float32)
+    rstd = tl.load(Rstd, mask=row_mask, other=0.0).to(tl.float32)
 
     dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -229,15 +233,15 @@ def layer_norm_backward_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
-        x = tl.load(X + cols[None, :], mask).to(tl.float32)
+        mask = row_mask & col_mask
+        dy = tl.load(dY + cols[None, :], mask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols[None, :], mask, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
-        if W is None:
+        if not HAS_WEIGHT:
             w = 1
         else:
-            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+            w = tl.load(W + cols, mask=cols < N, other=0.0).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
@@ -248,13 +252,13 @@ def layer_norm_backward_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
-        x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        if W is None:
+        mask = row_mask & col_mask
+        dy = tl.load(dY + cols[None, :], mask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols[None, :], mask, other=0.0).to(tl.float32)
+        if not HAS_WEIGHT:
             w = 1
         else:
-            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+            w = tl.load(W + cols, mask=cols < N, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
@@ -272,6 +276,8 @@ def weight_bias_backward_kernel(
     dB,
     M,
     N,
+    HAS_DW: tl.constexpr,
+    HAS_DB: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -284,18 +290,18 @@ def weight_bias_backward_kernel(
     for off in range(0, M, BLOCK_ROW_SIZE):
         rows = off + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
         row_mask = rows < M
-        mask = row_mask and col_mask[None, :]
-        dy = tl.load(dY + rows * N, mask).to(tl.float32)
-        x = tl.load(X + rows * N, mask).to(tl.float32)
-        mean = tl.load(Mean + rows, mask=rows < M).to(tl.float32)
-        rstd = tl.load(Rstd + rows, mask=rows < M).to(tl.float32)
+        mask = row_mask & col_mask[None, :]
+        dy = tl.load(dY + rows * N, mask, other=0.0).to(tl.float32)
+        x = tl.load(X + rows * N, mask, other=0.0).to(tl.float32)
+        mean = tl.load(Mean + rows, mask=rows < M, other=0.0).to(tl.float32)
+        rstd = tl.load(Rstd + rows, mask=rows < M, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         accW += dy * x * rstd
         accB += dy
-    if dW:
+    if HAS_DW:
         dw = tl.sum(accW, axis=0)
         tl.store(dW + pid, dw, mask=col_mask)
-    if dB:
+    if HAS_DB:
         db = tl.sum(accB, axis=0)
         tl.store(dB + pid, db, mask=col_mask)
 
@@ -326,6 +332,8 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
             M,
             N,
             eps,
+            HAS_WEIGHT=weight is not None,
+            HAS_BIAS=bias is not None,
             TILE_M=TILE_M,
             TILE_N=TILE_N,
         )
@@ -342,6 +350,8 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
             M,
             N,
             eps,
+            HAS_WEIGHT=weight is not None,
+            HAS_BIAS=bias is not None,
             TILE_N=TILE_N,
         )
     else:
@@ -356,6 +366,8 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
             M,
             N,
             eps,
+            HAS_WEIGHT=weight is not None,
+            HAS_BIAS=bias is not None,
             TILE_N=1024,
         )
 
@@ -399,6 +411,7 @@ def layer_norm_backward(
             in_grad,
             M,
             N,
+            HAS_WEIGHT=weight is not None,
             BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
             BLOCK_COL_SIZE=BLOCK_COL_SIZE,
         )
@@ -422,6 +435,8 @@ def layer_norm_backward(
         bias_grad,
         M,
         N,
+        HAS_DW=output_mask[1],
+        HAS_DB=output_mask[2],
         BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
         BLOCK_COL_SIZE=BLOCK_COL_SIZE,
     )

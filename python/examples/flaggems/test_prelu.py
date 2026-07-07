@@ -18,6 +18,17 @@ from .prelu import prelu
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_prelu(shape, num_channels, dtype):
+    if shape == (512,) and num_channels == 512:
+        with pytest.raises(
+            AssertionError,
+            match="Per-channel PReLU weights require an input with an explicit channel dimension.",
+        ):
+            prelu(
+                torch.randn(shape, dtype=dtype),
+                torch.randn((num_channels,), dtype=dtype),
+            )
+        return
+
     a = torch.randn(shape, dtype=dtype)
     w = torch.randn((num_channels,), dtype=dtype)
 

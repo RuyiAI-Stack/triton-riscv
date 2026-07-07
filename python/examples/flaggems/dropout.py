@@ -14,8 +14,7 @@ def uint_to_uniform_float(x):
         scale = 4.6566127342e-10
     else:
         tl.static_assert(
-            tl.constexpr(x.dtype == tl.uint64)
-            or tl.constexpr(x.dtype == tl.int64)
+            tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
         )
         x = x.to(tl.int64, bitcast=True)
         scale = 1.0842020432385337e-19
@@ -61,18 +60,10 @@ def dropout_forward_kernel(
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
 
-    x0 = tl.load(
-        X + off_0, mask=off_0 < N, other=0.0, eviction_policy="evict_first"
-    )
-    x1 = tl.load(
-        X + off_1, mask=off_1 < N, other=0.0, eviction_policy="evict_first"
-    )
-    x2 = tl.load(
-        X + off_2, mask=off_2 < N, other=0.0, eviction_policy="evict_first"
-    )
-    x3 = tl.load(
-        X + off_3, mask=off_3 < N, other=0.0, eviction_policy="evict_first"
-    )
+    x0 = tl.load(X + off_0, mask=off_0 < N, other=0.0, eviction_policy="evict_first")
+    x1 = tl.load(X + off_1, mask=off_1 < N, other=0.0, eviction_policy="evict_first")
+    x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0, eviction_policy="evict_first")
+    x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0, eviction_policy="evict_first")
 
     y0 = x0 * scale * mask0  # tl.where(mask0, x0 * p, 0.0)
     y1 = x1 * scale * mask1  # tl.where(mask1, x1 * p, 0.0)
@@ -81,25 +72,25 @@ def dropout_forward_kernel(
 
     tl.store(
         dropout_mask + off_0,
-        mask0,
+        mask0.to(tl.int8),
         mask=off_0 < N,
         eviction_policy="evict_first",
     )
     tl.store(
         dropout_mask + off_1,
-        mask1,
+        mask1.to(tl.int8),
         mask=off_1 < N,
         eviction_policy="evict_first",
     )
     tl.store(
         dropout_mask + off_2,
-        mask2,
+        mask2.to(tl.int8),
         mask=off_2 < N,
         eviction_policy="evict_first",
     )
     tl.store(
         dropout_mask + off_3,
-        mask3,
+        mask3.to(tl.int8),
         mask=off_3 < N,
         eviction_policy="evict_first",
     )
@@ -127,10 +118,8 @@ def dropout_backward_kernel(
         other=0,
         eviction_policy="evict_first",
     )
-    dy = tl.load(
-        DY + offset, mask=mask, other=0, eviction_policy="evict_first"
-    )
-    dx = dy * m * scale
+    dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
+    dx = dy * (m != 0).to(tl.float32) * scale
     tl.store(DX + offset, dx, mask=mask, eviction_policy="evict_first")
 
 
@@ -150,7 +139,7 @@ def dropout(input, p, train=True):
 
     input = input.contiguous()
     out = torch.empty_like(input)
-    mask = torch.empty_like(input, dtype=torch.bool)
+    mask = torch.empty_like(input, dtype=torch.uint8)
     N = input.numel()
 
     BLOCK = 1024
@@ -162,18 +151,17 @@ def dropout(input, p, train=True):
     dropout_forward_kernel[grid](
         input, out, mask, N, p, philox_seed, philox_offset, BLOCK=BLOCK
     )
-    return out, mask
+    return out, mask.to(torch.bool)
 
 
 def dropout_backward(grad_output, mask, scale):
     grad_output = grad_output.contiguous()
+    mask = mask.contiguous().to(torch.uint8)
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()
 
     BLOCK = 1024
     grid = (triton.cdiv(N, BLOCK),)
 
-    dropout_backward_kernel[grid](
-        grad_output, grad_input, mask, N, scale, BLOCK=BLOCK
-    )
+    dropout_backward_kernel[grid](grad_output, grad_input, mask, N, scale, BLOCK=BLOCK)
     return grad_input

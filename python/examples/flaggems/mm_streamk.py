@@ -131,11 +131,7 @@ def mac_loop(
 
     # the first situation: not the starting parts. only need to store the data on P
     if start_iter % iters_per_tile != 0:
-        P_ptr = (
-            P
-            + pid * BLOCK_M * BLOCK_N
-            + (rm1[:, None] * BLOCK_N + rn1[None, :])
-        )
+        P_ptr = P + pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
         tl.store(P_ptr, acc, cache_modifier=".cg")
         tl.atomic_xchg(locks + pid, 1)
     else:  # the first part of certain grids. shoud read datas and merge datas
@@ -191,9 +187,7 @@ def first_wave(
 ):
     pid = tl.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * iters_per_pid + tl.minimum(pid, iters_remaining)
-    last_iter = (pid + 1) * iters_per_pid + tl.minimum(
-        pid + 1, iters_remaining
-    )
+    last_iter = (pid + 1) * iters_per_pid + tl.minimum(pid + 1, iters_remaining)
     while start_iter < last_iter:
         iter_offset_in_tile = start_iter % iters_per_tile
         # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
@@ -248,9 +242,7 @@ def first_wave(
             )  # compute inside the if/else to avoid spilling!
             mask = (rm < M)[:, None] & (rn < N)[None, :]
             tl.store(C_ptr, acc, mask=mask)
-            if (
-                iter_offset_in_tile != 0
-            ):  # only if tile has been partially processed
+            if iter_offset_in_tile != 0:  # only if tile has been partially processed
                 tl.atomic_xchg(locks + tile_id, 1)
         else:
             while tl.atomic_cas(locks + tile_id, 1, 1) != 1:
@@ -297,9 +289,7 @@ def first_wave_for_bf16(
 ):
     pid = tl.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * iters_per_pid + tl.minimum(pid, iters_remaining)
-    last_iter = (pid + 1) * iters_per_pid + tl.minimum(
-        pid + 1, iters_remaining
-    )
+    last_iter = (pid + 1) * iters_per_pid + tl.minimum(pid + 1, iters_remaining)
     while start_iter < last_iter:
         iter_offset_in_tile = start_iter % iters_per_tile
         # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
@@ -353,9 +343,7 @@ def first_wave_for_bf16(
         # the first situation: not the starting parts. only need to store the data on P
         if start_iter % iters_per_tile != 0:
             P_ptr = (
-                P
-                + pid * BLOCK_M * BLOCK_N
-                + (rm1[:, None] * BLOCK_N + rn1[None, :])
+                P + pid * BLOCK_M * BLOCK_N + (rm1[:, None] * BLOCK_N + rn1[None, :])
             )
             tl.store(P_ptr, acc, cache_modifier=".cg")
             tl.atomic_xchg(locks + pid, 1)
@@ -474,9 +462,7 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
         even_k = K % BLOCK_K == 0
 
         if a.dtype == torch.bfloat16:
-            locks = torch.zeros(
-                (tiles_per_wave,), device=a.device, dtype=torch.int32
-            )
+            locks = torch.zeros((tiles_per_wave,), device=a.device, dtype=torch.int32)
             P = torch.empty(
                 (tiles_per_wave, BLOCK_M, BLOCK_N),
                 device=a.device,
@@ -565,6 +551,9 @@ def mm_streamk(a, b):
     M, K = a.shape
     K2, N = b.shape
     assert K == K2, "Incompatible dimensions"
+
+    if a.device.type == "cpu":
+        return torch.mm(a, b)
 
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     streamk_mm(a, b, c, M, N, K)

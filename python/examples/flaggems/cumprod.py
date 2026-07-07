@@ -25,6 +25,7 @@ def scan_part_product_kernel(
     partial_product,
     n_elements,
     part_num,
+    IS_FP: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = program_id(0)
@@ -32,7 +33,8 @@ def scan_part_product_kernel(
     mask = offset < n_elements
 
     inp_vals = tl.load(inp + offset, mask=mask, other=1)
-    inp_vals = inp_vals.to(tl.float32)
+    if IS_FP:
+        inp_vals = inp_vals.to(tl.float32)
 
     result = tl.cumprod(inp_vals, axis=0)
     part_prod = tl.reduce(inp_vals, axis=0, combine_fn=reduce_mul)
@@ -47,6 +49,7 @@ def multiply_base_product_kernel(
     partial_product,
     n_elements,
     part_num,
+    IS_FP: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = program_id(0)
@@ -57,7 +60,9 @@ def multiply_base_product_kernel(
 
     if pid > 0:
         base_product = tl.load(partial_product + pid - 1)
-        final_vals = out_vals.to(tl.float32) * base_product
+        final_vals = (
+            out_vals.to(tl.float32) * base_product if IS_FP else out_vals * base_product
+        )
         tl.store(out + offset, final_vals, mask=mask)
 
 
@@ -73,6 +78,7 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
         partial_product,
         n_ele,
         part_num,
+        IS_FP=dtype.is_floating_point,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
@@ -84,6 +90,7 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
             partial_prefix,
             n_ele,
             part_num,
+            IS_FP=dtype.is_floating_point,
             BLOCK_SIZE=BLOCK_SIZE,
         )
 
@@ -96,6 +103,7 @@ def scan_part_product_abc_kernel(
     B,
     C,
     part_num,
+    IS_FP: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid_a = program_id(0)
@@ -112,7 +120,8 @@ def scan_part_product_abc_kernel(
     mask = b_idx < B
 
     inp_vals = tl.load(inp + offset, mask=mask, other=1)
-    inp_vals = inp_vals.to(tl.float32)
+    if IS_FP:
+        inp_vals = inp_vals.to(tl.float32)
     result = tl.cumprod(inp_vals, axis=0)
     part_prod = tl.reduce(inp_vals, axis=0, combine_fn=reduce_mul)
 
@@ -127,6 +136,7 @@ def multiply_base_product_abc_kernel(
     B,
     C,
     part_num,
+    IS_FP: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid_a = program_id(0)
@@ -146,16 +156,16 @@ def multiply_base_product_abc_kernel(
 
     if pid_b > 0:
         base_product = tl.load(partial_product + last_part_offset)
-        final_vals = out_vals.to(tl.float32) * base_product
+        final_vals = (
+            out_vals.to(tl.float32) * base_product if IS_FP else out_vals * base_product
+        )
         tl.store(out + offset, final_vals, mask=mask)
 
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     BLOCK_SIZE = triton.next_power_of_2(B) if B <= 1024 * 4 else 1024
     part_num = math.ceil(B / BLOCK_SIZE)
-    partial_product = torch.empty(
-        A, part_num, C, dtype=dtype, device=inp.device
-    )
+    partial_product = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
     grid = (A, part_num, C)
     scan_part_product_abc_kernel[grid](
@@ -165,6 +175,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
         B,
         C,
         part_num,
+        IS_FP=dtype.is_floating_point,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
@@ -177,6 +188,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
             B,
             C,
             part_num,
+            IS_FP=dtype.is_floating_point,
             BLOCK_SIZE=BLOCK_SIZE,
         )
 
@@ -184,6 +196,10 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 def cumprod(inp, dim: int):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
+
+    if not inp.dtype.is_floating_point:
+        return torch.cumprod(inp, dim=dim)
+
     inp = inp.contiguous()
 
     shape = inp.shape
@@ -191,21 +207,17 @@ def cumprod(inp, dim: int):
     N = shape[dim]
     K = inp.numel() // M // N
 
-    dtype = torch.int64 if not inp.dtype.is_floating_point else inp.dtype
+    dtype = inp.dtype
     out = torch.empty_like(inp, dtype=dtype)
 
     compute_dtype = (
-        torch.float32
-        if inp.dtype in (torch.float16, torch.bfloat16)
-        else dtype
+        torch.float32 if inp.dtype in (torch.float16, torch.bfloat16) else dtype
     )
-    if not inp.dtype.is_floating_point:
-        compute_dtype = torch.int64
 
     if inp.numel() == 0:
         return out
 
-    if K == 1:
+    if K == 1 and M == 1:
         scan_then_fan_col(inp, out, N, compute_dtype)
     else:
         scan_then_fan(inp, out, M, N, K, compute_dtype)

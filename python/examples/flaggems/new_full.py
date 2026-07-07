@@ -1,7 +1,7 @@
 import torch
 
 from .fill import fill_scalar_, fill_tensor_
-from .full import check_dtype
+from .full import check_dtype, full
 
 
 def new_full(
@@ -19,6 +19,8 @@ def new_full(
         device = self.device
     if dtype is None:
         dtype = self.dtype
+    if dtype == torch.bool:
+        return full(size, fill_value, dtype=dtype, device=device)
     fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty(size, device=device, dtype=dtype)
     if out.numel() == 0:

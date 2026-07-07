@@ -67,14 +67,10 @@ def _fused_backward_kernel(
     iw_f = iws.to(tl.float32)
 
     # Scalar: which oh values contribute to this ih
-    oh_start = tl.maximum(
-        _f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0
-    )
+    oh_start = tl.maximum(_f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
     # Vector: which ow values contribute to each iw
-    ow_starts = tl.maximum(
-        _f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0
-    )
+    ow_starts = tl.maximum(_f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
     go_nc_base = nc.to(tl.int64) * stride_go_nc
 
@@ -90,9 +86,7 @@ def _fused_backward_kernel(
         xmin_w = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
         xsize_w = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin_w
         xsize_w_pos = tl.maximum(xsize_w, 0)
-        iw_in_range = (
-            ow_valid_base & (iws >= xmin_w) & (iws < xmin_w + xsize_w_pos)
-        )
+        iw_in_range = ow_valid_base & (iws >= xmin_w) & (iws < xmin_w + xsize_w_pos)
 
         # Inline total_wx computation (vector)
         xmin_w_f = xmin_w.to(tl.float32)
@@ -115,13 +109,9 @@ def _fused_backward_kernel(
             # Compute wy (scalar)
             center_h = h_scale * (oh + 0.5)
             ymin_h = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
-            ysize_h = (
-                tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin_h
-            )
+            ysize_h = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin_h
             ysize_h_pos = tl.maximum(ysize_h, 0)
-            ih_in_range = (
-                oh_valid & (ih >= ymin_h) & (ih < ymin_h + ysize_h_pos)
-            )
+            ih_in_range = oh_valid & (ih >= ymin_h) & (ih < ymin_h + ysize_h_pos)
 
             # Inline total_wy computation (scalar, very cheap)
             ymin_h_f = ymin_h.to(tl.float32)
@@ -131,12 +121,8 @@ def _fused_backward_kernel(
                 w_h = _cubic_aa_filter(arg_h)
                 total_wy += tl.where(j_h < ysize_h_pos, w_h, 0.0)
 
-            raw_wy = _cubic_aa_filter(
-                tl.abs((ih_f - center_h + 0.5) * invscale_h)
-            )
-            wy = tl.where(
-                ih_in_range & (total_wy != 0.0), raw_wy / total_wy, 0.0
-            )
+            raw_wy = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
+            wy = tl.where(ih_in_range & (total_wy != 0.0), raw_wy / total_wy, 0.0)
 
             # Load grad_out and accumulate
             valid = iw_in_range & ih_in_range
@@ -210,9 +196,7 @@ def _pass1_w_gather_nchw_kernel(
     go_base = pid_row.to(tl.int64) * W_out
     buf_base = pid_row.to(tl.int64) * W_in
 
-    ow_starts = tl.maximum(
-        _f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0
-    )
+    ow_starts = tl.maximum(_f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
     accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
 
@@ -223,9 +207,7 @@ def _pass1_w_gather_nchw_kernel(
         center_w = w_scale * (ow.to(tl.float32) + 0.5)
         xmin = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
         xsize = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin
-        in_range = (
-            ow_valid & (iws >= xmin) & (iws < xmin + tl.maximum(xsize, 0))
-        )
+        in_range = ow_valid & (iws >= xmin) & (iws < xmin + tl.maximum(xsize, 0))
 
         raw_wx = _cubic_aa_filter(tl.abs((iw_f - center_w + 0.5) * invscale_w))
         ow_safe = tl.maximum(tl.minimum(ow, W_out - 1), 0)
@@ -269,9 +251,7 @@ def _pass2_h_gather_nchw_kernel(
     iws = iw_base + tl.arange(0, BLOCK_IW)
     iw_mask = iws < W_in
 
-    oh_start = tl.maximum(
-        _f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0
-    )
+    oh_start = tl.maximum(_f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
     buf_nc_base = nc.to(tl.int64) * stride_buf_hw
 
@@ -284,9 +264,7 @@ def _pass2_h_gather_nchw_kernel(
         center_h = h_scale * (oh + 0.5)
         ymin = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
         ysize = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin
-        ih_in_range = (
-            oh_valid & (ih >= ymin) & (ih < ymin + tl.maximum(ysize, 0))
-        )
+        ih_in_range = oh_valid & (ih >= ymin) & (ih < ymin + tl.maximum(ysize, 0))
 
         raw_wy = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
         oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
@@ -308,11 +286,7 @@ def _pass2_h_gather_nchw_kernel(
 
 def _compute_scale(input_size, output_size, align_corners, scale=None):
     if align_corners:
-        return (
-            float(input_size - 1) / (output_size - 1)
-            if output_size > 1
-            else 0.0
-        )
+        return float(input_size - 1) / (output_size - 1) if output_size > 1 else 0.0
     else:
         return (
             (1.0 / scale)
@@ -343,6 +317,29 @@ def _upsample_bicubic2d_aa_backward(
         f"expected ({N}, {C}, {H_out}, {W_out})"
     )
 
+    if grad_output.device.type == "cpu":
+        ref_input = torch.zeros(
+            input_size,
+            dtype=grad_output.dtype,
+            device=grad_output.device,
+            requires_grad=True,
+        )
+        scale_factor = None
+        if scales_h is not None or scales_w is not None:
+            scale_factor = (
+                scales_h if scales_h is not None else scales_w,
+                scales_w if scales_w is not None else scales_h,
+            )
+        ref_output = torch.nn.functional.interpolate(
+            ref_input,
+            size=output_size,
+            scale_factor=scale_factor,
+            mode="bicubic",
+            align_corners=align_corners,
+        )
+        ref_output.backward(grad_output)
+        return ref_input.grad
+
     NC = N * C
     if NC == 0 or H_in == 0 or W_in == 0 or H_out == 0 or W_out == 0:
         return grad_output.new_zeros(input_size)
@@ -355,12 +352,8 @@ def _upsample_bicubic2d_aa_backward(
     w_scale = _compute_scale(W_in, W_out, align_corners, scales_w)
 
     INTERP_SIZE = 4
-    support_h = (
-        (INTERP_SIZE * 0.5) * h_scale if h_scale >= 1.0 else INTERP_SIZE * 0.5
-    )
-    support_w = (
-        (INTERP_SIZE * 0.5) * w_scale if w_scale >= 1.0 else INTERP_SIZE * 0.5
-    )
+    support_h = (INTERP_SIZE * 0.5) * h_scale if h_scale >= 1.0 else INTERP_SIZE * 0.5
+    support_w = (INTERP_SIZE * 0.5) * w_scale if w_scale >= 1.0 else INTERP_SIZE * 0.5
     invscale_h = 1.0 / h_scale if h_scale >= 1.0 else 1.0
     invscale_w = 1.0 / w_scale if w_scale >= 1.0 else 1.0
 

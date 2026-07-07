@@ -19,7 +19,32 @@
 
 namespace mlir {
 
+static TypedAttr materializeIntegerAttrLike(Type targetTy, int64_t value,
+                                            OpBuilder &b) {
+  if (auto shapedTy = dyn_cast<ShapedType>(targetTy)) {
+    auto elementTy = cast<IntegerType>(shapedTy.getElementType());
+    return DenseElementsAttr::get(
+        shapedTy, b.getIntegerAttr(elementTy, APInt(elementTy.getWidth(), value,
+                                                    /*isSigned=*/true)));
+  }
+  if (isa<IndexType>(targetTy))
+    return b.getIndexAttr(value);
+
+  auto intTy = cast<IntegerType>(targetTy);
+  return b.getIntegerAttr(intTy, APInt(intTy.getWidth(), value,
+                                       /*isSigned=*/true));
+}
+
+static Value materializeIntegerValueLike(Type targetTy, int64_t value,
+                                         const Location loc, OpBuilder &b) {
+  return b.create<arith::ConstantOp>(
+      loc, materializeIntegerAttrLike(targetTy, value, b));
+}
+
 std::optional<int64_t> getIntAttr(const OpFoldResult ofr) {
+  if (!ofr)
+    return std::nullopt;
+
   if (isa<Attribute>(ofr) && isa<IntegerAttr>(cast<Attribute>(ofr)))
     return dyn_cast<IntegerAttr>(cast<Attribute>(ofr)).getInt();
 
@@ -64,6 +89,10 @@ Value ofrToValue(const OpFoldResult ofr, const Location loc, OpBuilder &b) {
 
 Value ofrToIndexValue(const OpFoldResult ofr, const Location loc,
                       OpBuilder &b) {
+  if (!ofr) {
+    return b.create<arith::ConstantOp>(loc, b.getIndexAttr(0));
+  }
+
   if (Value val = dyn_cast<Value>(ofr)) {
     assert(val.getType().isIntOrIndex());
     if (!val.getType().isIndex()) {
@@ -102,6 +131,31 @@ Value indexTypeCast(Value v, Type targetTy, const Location loc, OpBuilder &b) {
     else
       return b.create<arith::TruncIOp>(loc, targetTy, v).getResult();
   }
+}
+
+static void alignIntegerValueTypes(Value &lhsValue, Value &rhsValue,
+                                   const Location loc, OpBuilder &b) {
+  Type lhsTy = lhsValue.getType();
+  Type rhsTy = rhsValue.getType();
+  if (lhsTy == rhsTy)
+    return;
+
+  auto lhsShapedTy = dyn_cast<ShapedType>(lhsTy);
+  auto rhsShapedTy = dyn_cast<ShapedType>(rhsTy);
+  if (lhsShapedTy && !rhsShapedTy) {
+    rhsValue = cast<Value>(expandOFRIndex(rhsValue, lhsValue, loc, b));
+    return;
+  }
+  if (!lhsShapedTy && rhsShapedTy) {
+    lhsValue = cast<Value>(expandOFRIndex(lhsValue, rhsValue, loc, b));
+    return;
+  }
+  if (lhsShapedTy && rhsShapedTy) {
+    rhsValue = cast<Value>(expandOFRIndex(rhsValue, lhsValue, loc, b));
+    return;
+  }
+
+  rhsValue = indexTypeCast(rhsValue, lhsTy, loc, b);
 }
 
 OpFoldResult expandOFRIndex(OpFoldResult ofr, OpFoldResult targetForTy,
@@ -192,18 +246,20 @@ OpFoldResult addOFRs(const OpFoldResult lhs, const OpFoldResult rhs,
 
   // otherwise, need to create instructions to calculate new attribute value
   auto lhsValue = dyn_cast<Value>(lhs);
+  auto rhsValue = dyn_cast<Value>(rhs);
   if (lhsIntAttr) {
-    auto lhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(lhsIntAttr.value()));
-    lhsValue = lhsOp.getResult();
+    assert(rhsValue && "Expected non-constant RHS when materializing LHS");
+    lhsValue = materializeIntegerValueLike(rhsValue.getType(),
+                                           lhsIntAttr.value(), loc, b);
   }
 
-  auto rhsValue = dyn_cast<Value>(rhs);
   if (rhsIntAttr) {
-    auto rhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(rhsIntAttr.value()));
-    rhsValue = rhsOp.getResult();
+    assert(lhsValue && "Expected non-constant LHS when materializing RHS");
+    rhsValue = materializeIntegerValueLike(lhsValue.getType(),
+                                           rhsIntAttr.value(), loc, b);
   }
+
+  alignIntegerValueTypes(lhsValue, rhsValue, loc, b);
 
   return b.create<arith::AddIOp>(loc, lhsValue, rhsValue).getResult();
 }
@@ -223,18 +279,20 @@ OpFoldResult subOFRs(const OpFoldResult lhs, const OpFoldResult rhs,
 
   // otherwise, need to create instructions to calculate new attribute value
   auto lhsValue = dyn_cast<Value>(lhs);
+  auto rhsValue = dyn_cast<Value>(rhs);
   if (lhsIntAttr) {
-    auto lhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(lhsIntAttr.value()));
-    lhsValue = lhsOp.getResult();
+    assert(rhsValue && "Expected non-constant RHS when materializing LHS");
+    lhsValue = materializeIntegerValueLike(rhsValue.getType(),
+                                           lhsIntAttr.value(), loc, b);
   }
 
-  auto rhsValue = dyn_cast<Value>(rhs);
   if (rhsIntAttr) {
-    auto rhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(rhsIntAttr.value()));
-    rhsValue = rhsOp.getResult();
+    assert(lhsValue && "Expected non-constant LHS when materializing RHS");
+    rhsValue = materializeIntegerValueLike(lhsValue.getType(),
+                                           rhsIntAttr.value(), loc, b);
   }
+
+  alignIntegerValueTypes(lhsValue, rhsValue, loc, b);
 
   auto sumOp = b.create<arith::SubIOp>(loc, lhsValue, rhsValue);
   return sumOp.getResult();
@@ -279,16 +337,18 @@ OpFoldResult mulOFRs(const OpFoldResult lhs, const OpFoldResult rhs,
 
   // otherwise, need to create instructions to calculate new attribute value
   if (lhsIntAttr) {
-    auto lhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(lhsIntAttr.value()));
-    lhsValue = lhsOp.getResult();
+    assert(rhsValue && "Expected non-constant RHS when materializing LHS");
+    lhsValue = materializeIntegerValueLike(rhsValue.getType(),
+                                           lhsIntAttr.value(), loc, b);
   }
 
   if (rhsIntAttr) {
-    auto rhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(rhsIntAttr.value()));
-    rhsValue = rhsOp.getResult();
+    assert(lhsValue && "Expected non-constant LHS when materializing RHS");
+    rhsValue = materializeIntegerValueLike(lhsValue.getType(),
+                                           rhsIntAttr.value(), loc, b);
   }
+
+  alignIntegerValueTypes(lhsValue, rhsValue, loc, b);
 
   return b.create<arith::MulIOp>(loc, lhsValue, rhsValue).getResult();
 }
@@ -304,18 +364,20 @@ OpFoldResult minOFRs(const OpFoldResult lhs, const OpFoldResult rhs,
 
   // otherwise, need to create instructions to calculate new attribute value
   auto lhsValue = dyn_cast<Value>(lhs);
+  auto rhsValue = dyn_cast<Value>(rhs);
   if (lhsIntAttr) {
-    auto lhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(lhsIntAttr.value()));
-    lhsValue = lhsOp.getResult();
+    assert(rhsValue && "Expected non-constant RHS when materializing LHS");
+    lhsValue = materializeIntegerValueLike(rhsValue.getType(),
+                                           lhsIntAttr.value(), loc, b);
   }
 
-  auto rhsValue = dyn_cast<Value>(rhs);
   if (rhsIntAttr) {
-    auto rhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(rhsIntAttr.value()));
-    rhsValue = rhsOp.getResult();
+    assert(lhsValue && "Expected non-constant LHS when materializing RHS");
+    rhsValue = materializeIntegerValueLike(lhsValue.getType(),
+                                           rhsIntAttr.value(), loc, b);
   }
+
+  alignIntegerValueTypes(lhsValue, rhsValue, loc, b);
 
   auto minOp = b.create<arith::MinSIOp>(loc, lhsValue, rhsValue);
   return minOp.getResult();
@@ -332,18 +394,20 @@ OpFoldResult maxOFRs(const OpFoldResult lhs, const OpFoldResult rhs,
 
   // otherwise, need to create instructions to calculate new attribute value
   auto lhsValue = dyn_cast<Value>(lhs);
+  auto rhsValue = dyn_cast<Value>(rhs);
   if (lhsIntAttr) {
-    auto lhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(lhsIntAttr.value()));
-    lhsValue = lhsOp.getResult();
+    assert(rhsValue && "Expected non-constant RHS when materializing LHS");
+    lhsValue = materializeIntegerValueLike(rhsValue.getType(),
+                                           lhsIntAttr.value(), loc, b);
   }
 
-  auto rhsValue = dyn_cast<Value>(rhs);
   if (rhsIntAttr) {
-    auto rhsOp =
-        b.create<arith::ConstantOp>(loc, b.getIndexAttr(rhsIntAttr.value()));
-    rhsValue = rhsOp.getResult();
+    assert(lhsValue && "Expected non-constant LHS when materializing RHS");
+    rhsValue = materializeIntegerValueLike(lhsValue.getType(),
+                                           rhsIntAttr.value(), loc, b);
   }
+
+  alignIntegerValueTypes(lhsValue, rhsValue, loc, b);
 
   auto maxOp = b.create<arith::MaxSIOp>(loc, lhsValue, rhsValue);
   return maxOp.getResult();

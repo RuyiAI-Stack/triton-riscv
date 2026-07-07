@@ -10,6 +10,7 @@ build/*
 /dump/*
 *.log
 .venv/
+.conda-env/
 .omx/
 triton
 /artifacts/

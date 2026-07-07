@@ -8,7 +8,9 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
+module {
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
 // CHECK-SAME:                      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
@@ -18,23 +20,23 @@
 // CHECK-SAME:                      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 12 : index
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 3 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 2 : index
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 1 : index
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 1024 : index
-// CHECK:           %[[FOR_0:.*]]:5 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_4]] to %[[CONSTANT_0]] step %[[CONSTANT_1]] iter_args(%[[VAL_1:.*]] = %[[CONSTANT_3]], %[[VAL_2:.*]] = %[[CONSTANT_5]], %[[VAL_3:.*]] = %[[CONSTANT_2]], %[[VAL_4:.*]] = %[[CONSTANT_5]], %[[VAL_5:.*]] = %[[CONSTANT_1]]) -> (index, index, index, index, index) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1024 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 2 : index
+// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 3 : index
+// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 12 : index
+// CHECK:           %[[FOR_0:.*]]:5 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_5]] step %[[CONSTANT_4]] iter_args(%[[VAL_1:.*]] = %[[CONSTANT_2]], %[[VAL_2:.*]] = %[[CONSTANT_0]], %[[VAL_3:.*]] = %[[CONSTANT_3]], %[[VAL_4:.*]] = %[[CONSTANT_0]], %[[VAL_5:.*]] = %[[CONSTANT_4]]) -> (index, index, index, index, index) {
 // CHECK:             %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[VAL_2]]], sizes: [256], strides: [1] : memref<*xbf16> to memref<256xbf16, strided<[1], offset: ?>>
 // CHECK:             %[[ALLOC_0:.*]] = memref.alloc() : memref<256xbf16>
 // CHECK:             memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<256xbf16, strided<[1], offset: ?>> to memref<256xbf16>
 // CHECK:             %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<256xbf16> to tensor<256xbf16>
 // CHECK:             %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[ARG1]] to offset: {{\[}}%[[VAL_4]]], sizes: [256], strides: [1] : memref<*xbf16> to memref<256xbf16, strided<[1], offset: ?>>
 // CHECK:             bufferization.materialize_in_destination %[[TO_TENSOR_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<256xbf16>, memref<256xbf16, strided<[1], offset: ?>>) -> ()
-// CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_2]], %[[CONSTANT_1]] : index
-// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[VAL_1]], %[[CONSTANT_1]] : index
-// CHECK:             %[[ADDI_2:.*]] = arith.addi %[[VAL_3]], %[[CONSTANT_1]] : index
-// CHECK:             %[[ADDI_3:.*]] = arith.addi %[[VAL_5]], %[[CONSTANT_1]] : index
+// CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_2]], %[[CONSTANT_4]] : index
+// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[VAL_1]], %[[CONSTANT_4]] : index
+// CHECK:             %[[ADDI_2:.*]] = arith.addi %[[VAL_3]], %[[CONSTANT_4]] : index
+// CHECK:             %[[ADDI_3:.*]] = arith.addi %[[VAL_5]], %[[CONSTANT_4]] : index
 // CHECK:             %[[ADDI_4:.*]] = arith.addi %[[ADDI_1]], %[[ADDI_2]] : index
 // CHECK:             %[[ADDI_5:.*]] = arith.addi %[[ADDI_4]], %[[ADDI_3]] : index
 // CHECK:             %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ADDI_5]] : index to i32
@@ -44,7 +46,6 @@
 // CHECK:           }
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func @kernel(
     %arg0 : !tt.ptr<bf16>,
     %arg1 : !tt.ptr<bf16>

@@ -80,13 +80,12 @@ class StructuredToMemrefPass
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<tptr::TPtrDialect, func::FuncDialect, arith::ArithDialect,
-                math::MathDialect, linalg::LinalgDialect, affine::AffineDialect,
-                scf::SCFDialect, tensor::TensorDialect,
-                bufferization::BufferizationDialect, triton::TritonDialect,
-                ttx::TritonTilingExtDialect, memref::MemRefDialect,
-                vector::VectorDialect>();
+    registry.insert<tptr::TPtrDialect, func::FuncDialect, arith::ArithDialect,
+                    math::MathDialect, linalg::LinalgDialect,
+                    affine::AffineDialect, scf::SCFDialect,
+                    tensor::TensorDialect, bufferization::BufferizationDialect,
+                    triton::TritonDialect, ttx::TritonTilingExtDialect,
+                    memref::MemRefDialect, vector::VectorDialect>();
   }
 
   void runOnOperation() override {
@@ -111,6 +110,7 @@ public:
         memref::MemRefDialect, vector::VectorDialect>();
 
     target.addIllegalOp<tts::LoadOp, tts::StoreOp, tts::MakeTensorPtrOp>();
+    target.addLegalOp<tts::GatherOp, tts::ScatterOp, tts::AtomicRMWOp>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
@@ -120,6 +120,14 @@ public:
         patterns, typeConverter, enableTensorFirstVectorCpu);
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+      signalPassFailure();
+      return;
+    }
+
+    RewritePatternSet postPatterns(&getContext());
+    triton::populateStructuredToMemrefPostConversionPatterns(
+        postPatterns, enableTensorFirstVectorCpu);
+    if (failed(applyPatternsGreedily(moduleOp, std::move(postPatterns)))) {
       signalPassFailure();
     }
   }

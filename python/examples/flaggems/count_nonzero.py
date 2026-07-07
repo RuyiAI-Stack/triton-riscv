@@ -17,7 +17,7 @@ def dim_compress(inp, dims):
 @triton.jit
 def count_nonzero_kernel_1(
     x_ptr,
-    out_ptr,
+    mid_ptr,
     numel,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -28,7 +28,21 @@ def count_nonzero_kernel_1(
     x = tl.load(x_ptr + offsets, mask=mask, other=0)
     is_nonzero = (x != 0).to(tl.int64)
     nonzero_count = tl.sum(is_nonzero, axis=0)
-    tl.atomic_add(out_ptr, nonzero_count)
+    tl.store(mid_ptr + pid, nonzero_count)
+
+
+@triton.jit
+def count_nonzero_kernel_2(
+    mid_ptr,
+    out_ptr,
+    num_blocks,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_blocks
+    counts = tl.load(mid_ptr + offsets, mask=mask, other=0)
+    total = tl.sum(counts, axis=0)
+    tl.store(out_ptr, total)
 
 
 @triton.jit
@@ -103,9 +117,7 @@ def count_nonzero(x, dim=None):
         combin_shape = list(shape)
         combin_shape[dim] = triton.cdiv(combin_shape[dim], BLOCK_SIZE)
         if combin_shape[dim] != 1:
-            combin = torch.zeros(
-                combin_shape, dtype=torch.int64, device=x.device
-            )
+            combin = torch.zeros(combin_shape, dtype=torch.int64, device=x.device)
             grid = (triton.cdiv(numel, shape[dim]), combin_shape[dim], 1)
             count_nonzero_combin_kernel[grid](
                 x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE
@@ -139,8 +151,15 @@ def count_nonzero(x, dim=None):
 
         BLOCK_SIZE = 1024
 
-        grid3 = (triton.cdiv(numel, BLOCK_SIZE),)
+        num_blocks = triton.cdiv(numel, BLOCK_SIZE)
+        mid = torch.empty(num_blocks, dtype=torch.int64, device=x.device)
 
-        count_nonzero_kernel_1[grid3](x, out, numel, BLOCK_SIZE=BLOCK_SIZE)
+        count_nonzero_kernel_1[(num_blocks,)](x, mid, numel, BLOCK_SIZE=BLOCK_SIZE)
+        count_nonzero_kernel_2[(1,)](
+            mid,
+            out,
+            num_blocks,
+            BLOCK_SIZE=triton.next_power_of_2(num_blocks),
+        )
 
         return out[0]

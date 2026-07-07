@@ -1,0 +1,57 @@
+diff --git a/python/src/ir.cc b/python/src/ir.cc
+--- a/python/src/ir.cc
++++ b/python/src/ir.cc
+@@ -1614,6 +1614,18 @@ void init_triton_ir(py::module &&m) {
+            [](TritonOpBuilder &self, Value &val) -> Value {
+              return self.create<math::SinOp>(val);
+            })
++      .def("create_acos",
++           [](TritonOpBuilder &self, Value &val) -> Value {
++             return self.create<math::AcosOp>(val);
++           })
++      .def("create_atan",
++           [](TritonOpBuilder &self, Value &val) -> Value {
++             return self.create<math::AtanOp>(val);
++           })
++      .def("create_atan2",
++           [](TritonOpBuilder &self, Value &lhs, Value &rhs) -> Value {
++             return self.create<math::Atan2Op>(lhs, rhs);
++           })
+       .def("create_log",
+            [](TritonOpBuilder &self, Value &val) -> Value {
+              return self.create<math::LogOp>(val);
+diff --git a/python/triton/language/math.py b/python/triton/language/math.py
+--- a/python/triton/language/math.py
++++ b/python/triton/language/math.py
+@@ -247,3 +247,31 @@ def fma(x, y, z, _semantic=None):
+     z, x = core.binary_op_type_legalization(z, x, _semantic)
+     z, y = core.binary_op_type_legalization(z, y, _semantic)
+     return core.tensor(_semantic.builder.create_fma(x.handle, y.handle, z.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_1arg_docstr("inverse cosine")
++@core._tensor_member_fn
++def acos(x, _semantic=None):
++    x = _semantic.to_tensor(x)
++    return core.tensor(_semantic.builder.create_acos(x.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_1arg_docstr("inverse tangent")
++@core._tensor_member_fn
++def atan(x, _semantic=None):
++    x = _semantic.to_tensor(x)
++    return core.tensor(_semantic.builder.create_atan(x.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_2arg_docstr("four-quadrant inverse tangent")
++def atan2(x, y, _semantic=None):
++    x = _semantic.to_tensor(x)
++    y = _semantic.to_tensor(y)
++    x, y = core.binary_op_type_legalization(x, y, _semantic)
++    return core.tensor(_semantic.builder.create_atan2(x.handle, y.handle), x.type)

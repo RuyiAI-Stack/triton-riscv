@@ -18,7 +18,7 @@ def nonzero_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
+    inp_vals = tl.load(inp + offset, mask=mask, other=0).to(tl.int32) != 0
     out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
 
     nonzero_mask = mask & inp_vals
@@ -43,13 +43,12 @@ def nonzero(inp, *, as_tuple=False):
     inp_bool = inp_view
     if inp_view.dtype != torch.bool:
         inp_bool = inp_view != 0
+    inp_bool = inp_bool.to(torch.uint8)
 
     prefix_sum = inp_bool.cumsum(axis=0)
 
     num_nonzeros = n_elements
-    out = torch.empty(
-        num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device
-    )
+    out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
@@ -67,6 +66,6 @@ def nonzero(inp, *, as_tuple=False):
     out = out[0:num_nonzeros]
 
     if as_tuple:
-        return torch.unbind(out, dim=0)
+        return torch.unbind(out, dim=1)
     else:
         return out

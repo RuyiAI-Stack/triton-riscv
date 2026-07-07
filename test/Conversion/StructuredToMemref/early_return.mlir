@@ -8,6 +8,7 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-linalg-experimental %s | FileCheck %s
 // This is the IR for the following triton program:
 //    @triton.jit
@@ -20,6 +21,7 @@
 //        out_offs = tl.arange(0, 4)
 //        tl.store(out0 + out_offs, offs)
 
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @test_1(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -30,14 +32,14 @@
 // CHECK-SAME:                      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant -1.000000e+00 : f32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant -1.000000e+00 : f32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 1 : i32
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4xi32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_1]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG5]] : i32 to index
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[INDEX_CAST_0]]], sizes: [1], strides: [1] : memref<*xf32> to memref<1xf32, strided<[1], offset: ?>>
 // CHECK:           %[[LOAD_0:.*]] = affine.load %[[REINTERPRET_CAST_0]][0] : memref<1xf32, strided<[1], offset: ?>>
-// CHECK:           %[[CMPF_0:.*]] = arith.cmpf oeq, %[[LOAD_0]], %[[CONSTANT_1]] : f32
+// CHECK:           %[[CMPF_0:.*]] = arith.cmpf oeq, %[[LOAD_0]], %[[CONSTANT_0]] : f32
 // CHECK:           cf.cond_br %[[CMPF_0]], ^bb1, ^bb2
 // CHECK:         ^bb1:
 // CHECK:           return
@@ -63,7 +65,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_2]] in writable %[[REINTERPRET_CAST_1]] : (tensor<4xf32>, memref<4xf32, strided<[1]>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @test_1(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) attributes {noinline = false} {
     %cst = arith.constant -1.000000e+00 : f32
     %cst_0 = arith.constant dense<1> : tensor<4xi32>

@@ -17,8 +17,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -93,12 +92,11 @@ def _generate_scatter_reduce_kernel(rank, kernel_name, code):
         code += "        if INT32_OFFSET:\n"
         code += f"            shape_{i} = shape_{i}.to(tl.int32)\n"
         code += f"            inp_stride_{i} = inp_stride_{i}.to(tl.int32)\n"
-        code += (
-            f"            index_stride_{i} = index_stride_{i}.to(tl.int32)\n"
-        )
+        code += f"            index_stride_{i} = index_stride_{i}.to(tl.int32)\n"
         code += f"            src_stride_{i} = src_stride_{i}.to(tl.int32)\n"
         code += f"        mod = cur_idx % shape_{i}\n"
-        code += f"        inp_offsets += mod * inp_stride_{i}\n"
+        code += f"        if inp_stride_{i} != stride_dim:\n"
+        code += f"            inp_offsets += mod * inp_stride_{i}\n"
         code += f"        idx_offsets += mod * index_stride_{i}\n"
         code += f"        src_offsets += mod * src_stride_{i}\n"
         if i != 0:
@@ -117,21 +115,21 @@ def _generate_scatter_reduce_kernel(rank, kernel_name, code):
     code += "                stop = tl.where(mask, 0, 1).to(tl.int1)\n"
     code += "                block_stop = False\n"
     code += "                while not block_stop:\n"
-    code += "                    cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)\n"
-    code += "                    res = tl.where(stop, cur_inp, cur_inp + cur_src)\n"
-    code += "                    cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)\n"
-    code += "                    stop |= cur_inp == cas_res\n"
     code += (
-        "                    block_stop = tl.sum(stop.to(tl.int32)) == BLOCK\n"
+        "                    cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)\n"
     )
+    code += "                    res = tl.where(stop, cur_inp, cur_inp + cur_src)\n"
+    code += (
+        "                    cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)\n"
+    )
+    code += "                    stop |= cur_inp == cas_res\n"
+    code += "                    block_stop = tl.sum(stop.to(tl.int32)) == BLOCK\n"
     code += "        elif IS_PROD:\n"
     code += "            stop = tl.where(mask, 0, 1).to(tl.int1)\n"
     code += "            block_stop = False\n"
     code += "            while not block_stop:\n"
     code += "                cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)\n"
-    code += (
-        "                res = tl.where(stop, cur_inp, cur_inp * cur_src)\n"
-    )
+    code += "                res = tl.where(stop, cur_inp, cur_inp * cur_src)\n"
     code += "                cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)\n"
     code += "                stop |= cur_inp == cas_res\n"
     code += "                block_stop = tl.sum(stop.to(tl.int32)) == BLOCK\n"
@@ -201,11 +199,10 @@ def _generate_count_kernel(rank, kernel_name, code):
         code += "        if INT32_OFFSET:\n"
         code += f"            shape_{i} = shape_{i}.to(tl.int32)\n"
         code += f"            inp_stride_{i} = inp_stride_{i}.to(tl.int32)\n"
-        code += (
-            f"            index_stride_{i} = index_stride_{i}.to(tl.int32)\n"
-        )
+        code += f"            index_stride_{i} = index_stride_{i}.to(tl.int32)\n"
         code += f"        mod = cur_idx % shape_{i}\n"
-        code += f"        inp_offsets += mod * inp_stride_{i}\n"
+        code += f"        if inp_stride_{i} != stride_dim:\n"
+        code += f"            inp_offsets += mod * inp_stride_{i}\n"
         code += f"        idx_offsets += mod * index_stride_{i}\n"
         if i != 0:
             code += f"        cur_idx = cur_idx // shape_{i}\n"
@@ -221,9 +218,7 @@ def _generate_count_kernel(rank, kernel_name, code):
     return code
 
 
-def _generate_wrapper(
-    rank, wrapper_name, kernel_name, count_kernel_name, code
-):
+def _generate_wrapper(rank, wrapper_name, kernel_name, count_kernel_name, code):
     code += f"def {wrapper_name}(src_strided, index, inp, out, dim_size, dim_stride, N, reduce=None, include_self=True, int32_offset=None):\n"
     code += "    inp_strides = list(inp.stride())\n"
     code += "    index_strides = list(index.stride())\n"
@@ -241,7 +236,7 @@ def _generate_wrapper(
     code += "    BLOCK = 128\n"
     code += "    LOOP = 4\n"
     code += "    grid = lambda meta: (\n"
-    code += '        triton.cdiv(N, BLOCK * LOOP),\n'
+    code += "        triton.cdiv(N, BLOCK * LOOP),\n"
     code += "    )\n\n"
     code += f"    {kernel_name}[grid](\n"
     code += "        src_strided, index, inp, out,\n"
@@ -298,9 +293,7 @@ def _generate_code(inputs, wrapper_name, kernel_name, count_kernel_name):
     code = _generate_imports(code)
     code = _generate_scatter_reduce_kernel(rank, kernel_name, code)
     code = _generate_count_kernel(rank, count_kernel_name, code)
-    code = _generate_wrapper(
-        rank, wrapper_name, kernel_name, count_kernel_name, code
-    )
+    code = _generate_wrapper(rank, wrapper_name, kernel_name, count_kernel_name, code)
     return code
 
 
@@ -346,15 +339,9 @@ def _get_init_value(reduce, dtype, include_self):
     elif reduce == "prod":
         return 1
     elif reduce == "amax":
-        return (
-            float("-inf")
-            if dtype.is_floating_point
-            else torch.iinfo(dtype).min
-        )
+        return float("-inf") if dtype.is_floating_point else torch.iinfo(dtype).min
     elif reduce == "amin":
-        return (
-            float("inf") if dtype.is_floating_point else torch.iinfo(dtype).max
-        )
+        return float("inf") if dtype.is_floating_point else torch.iinfo(dtype).max
     elif reduce == "mean":
         return 0
     else:
@@ -362,37 +349,8 @@ def _get_init_value(reduce, dtype, include_self):
 
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
-    out = inp
-    assert reduce in ("sum", "prod", "mean", "amax", "amin"), (
-        f"Unsupported reduce operation: {reduce}"
-    )
+    from .scatter_reduce import scatter_reduce
 
-    if not include_self:
-        init_value = _get_init_value(reduce, inp.dtype, include_self)
-        if init_value is not None:
-            out.fill_(init_value)
-
-    src_restrided = src.as_strided(index.shape, src.stride())
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
-    N = index.numel()
-
-    def int32_size_dim(x):
-        return x.stride(dim) * x.size(dim) < 2**32
-
-    use_int32_offset = all(int32_size_dim(t) for t in (inp, index, src))
-
-    _scatter_reduce_func(
-        src_restrided,
-        index,
-        inp,
-        out,
-        dim_size,
-        dim_stride,
-        N,
-        reduce,
-        include_self,
-        int32_offset=use_int32_offset,
-    )
-
+    result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
+    inp.copy_(result)
     return inp

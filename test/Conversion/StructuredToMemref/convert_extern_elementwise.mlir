@@ -9,8 +9,11 @@
 
 
 
+
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental  %s | FileCheck %s
 
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @atan2_kernel_0123(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -23,11 +26,11 @@
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -53,7 +56,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_2]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @atan2_kernel_0123(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>, %arg3: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -79,6 +81,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_1:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @pow_kernel_0123(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -91,11 +94,11 @@ module {
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG7]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -121,7 +124,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_2]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @pow_kernel_0123(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>, %arg3: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -147,6 +149,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_2:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @fabs_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -158,11 +161,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -182,7 +185,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @fabs_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -206,6 +208,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_3:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @sin_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -217,11 +220,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -241,7 +244,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @sin_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -265,6 +267,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_4:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @cos_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -276,11 +279,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -300,7 +303,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @cos_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -324,6 +326,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_5:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @tan_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -335,11 +338,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -359,7 +362,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @tan_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -383,6 +385,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_6:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @asin_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -394,11 +397,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -418,7 +421,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @asin_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -442,6 +444,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_7:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @acos_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -453,11 +456,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -477,7 +480,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @acos_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -501,6 +503,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_8:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @atan_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -512,11 +515,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -536,7 +539,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @atan_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -560,6 +562,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_9:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @sinh_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -571,11 +574,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -595,7 +598,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @sinh_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -619,6 +621,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_10:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @cosh_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -630,11 +633,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -654,7 +657,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @cosh_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -678,6 +680,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_11:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @tanh_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -689,11 +692,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -713,7 +716,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @tanh_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -737,6 +739,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_12:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @asinh_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -748,11 +751,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -772,7 +775,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @asinh_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -796,6 +798,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_13:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @acosh_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -807,11 +810,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -831,7 +834,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @acosh_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -855,6 +857,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_14:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @atanh_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -866,11 +869,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -890,7 +893,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @atanh_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -914,6 +916,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_15:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @log_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -925,11 +928,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -949,7 +952,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @log_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -973,6 +975,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_16:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @log10_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -984,11 +987,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1008,7 +1011,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @log10_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1032,6 +1034,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_17:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @log1p_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1043,11 +1046,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1067,7 +1070,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @log1p_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1091,6 +1093,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_18:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @exp_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1102,11 +1105,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1126,7 +1129,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @exp_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1150,6 +1152,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_19:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @exp2_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1161,11 +1164,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1185,7 +1188,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @exp2_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1209,6 +1211,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_20:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @erf_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1220,11 +1223,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1244,7 +1247,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @erf_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1268,6 +1270,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_21:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @sqrt_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1279,11 +1282,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1303,7 +1306,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @sqrt_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1327,6 +1329,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_22:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @rsqrt_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1338,11 +1341,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1362,7 +1365,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @rsqrt_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1386,6 +1388,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_23:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @ceil_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1397,11 +1400,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1421,7 +1424,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @ceil_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1445,6 +1447,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_24:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @floor_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1456,11 +1459,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1480,7 +1483,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @floor_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32
@@ -1504,6 +1506,7 @@ module {
 
 // -----
 
+module {
 // CHECK: #[[$ATTR_25:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @trunc_kernel_012(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -1515,11 +1518,11 @@ module {
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_0]] : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 32 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 32 : i32
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG6]], %[[CONSTANT_1]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_1]] : index
+// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[INDEX_CAST_0]] : index
@@ -1539,7 +1542,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<32xf32>, memref<32xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @trunc_kernel_012(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c32_i32 = arith.constant 32 : i32
     %0 = tt.get_program_id x : i32

@@ -29,10 +29,8 @@ def simple_unique_flat_kernel(
     cumsum = tl.cumsum(ne_result)
 
     # unique_size
-    unique_size_mask = i0 == tile_size - 1
-    tl.store(
-        unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask
-    )
+    unique_size_mask = i0 == num_tasks - 1
+    tl.store(unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask)
 
     # data_out: scatter_(to=cumsum, sorted_data)
     tl.store(data_out_ptr + cumsum, a, mask=mask)
@@ -70,9 +68,7 @@ def output_counts_flat_impl(
     idx_next = tl.load(idx_ptr + i0_next, mask=next_mask)
 
     # diff
-    counts = tl.where(
-        i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx
-    )
+    counts = tl.where(i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx)
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
@@ -126,9 +122,7 @@ def quick_output_flat_impl(
     idx_next = tl.load(idx_ptr + i0_next, mask=next_mask)
 
     # diff
-    counts = tl.where(
-        i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx
-    )
+    counts = tl.where(i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx)
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
@@ -197,9 +191,7 @@ def local_quick_unique_flat_impl(
     local_unique_mask = (local_unique_offset >= 0) & mask
     if return_counts:
         # origin_idx: scatter_(to=cumsum, i0)
-        origin_idx_mask = (
-            (i0 == 0) | ne_result.to(tl.int1)
-        ) & local_unique_mask
+        origin_idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & local_unique_mask
         tl.store(
             origin_idx_ptr + (offset + local_unique_offset),
             i0,
@@ -289,9 +281,7 @@ def global_quick_unique_flat_impl(
     total += tl.sum(pre_tile_sum)
     if global_pid == global_ctas_num - 1:
         last_tile_sum_mask = p == global_pid
-        tl.store(
-            tile_sum_ptr + p, total + cur_tile_sum, mask=last_tile_sum_mask
-        )
+        tl.store(tile_sum_ptr + p, total + cur_tile_sum, mask=last_tile_sum_mask)
 
     # idx or data_out
     tile_mask = r < cur_tile_sum
@@ -737,9 +727,7 @@ def simple_unique_flat(
         idx = torch.empty_like(sorted_data, dtype=torch.int64)
     else:
         idx = None
-    unique_size = torch.empty(
-        [1], dtype=torch.int64, device=sorted_data.device
-    )
+    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
     simple_unique_flat_kernel[grid](
@@ -795,8 +783,6 @@ def _unique2(
         )
     return (
         data_out,
-        inverse_indices
-        if inverse_indices is None
-        else inverse_indices.view_as(in0),
+        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
         counts,
     )

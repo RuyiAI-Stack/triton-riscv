@@ -1,6 +1,7 @@
 import math
 
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -81,8 +82,7 @@ def conv3d_forward_kernel(
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     input_pointer += (
-        input_n_stride * in_n_point_value
-        + input_c_stride * pid_group * weight_c
+        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
     )[:, None]
     weight_pointer += (
         weight_n_stride * output_c_offset
@@ -91,9 +91,7 @@ def conv3d_forward_kernel(
 
     accum = tl.zeros((BLOCK_NI_DO_HO_WO, BLOCK_CO), dtype=tl.float32)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
-    for dhwc in range(
-        weight_depth * weight_height * weight_width * BLOCK_CI_COUNT
-    ):
+    for dhwc in range(weight_depth * weight_height * weight_width * BLOCK_CI_COUNT):
         c = (dhwc % BLOCK_CI_COUNT) * BLOCK_CI
         dhw = dhwc // BLOCK_CI_COUNT
         dh = dhw // weight_width
@@ -103,9 +101,7 @@ def conv3d_forward_kernel(
 
         input_c_offset = c + tl.arange(0, BLOCK_CI)
         input_depth_offset = (
-            d * dilation_depth
-            - padding_depth
-            + stride_depth * output_depth_point_value
+            d * dilation_depth - padding_depth + stride_depth * output_depth_point_value
         )
         input_height_offset = (
             h * dilation_height
@@ -113,9 +109,7 @@ def conv3d_forward_kernel(
             + stride_height * output_height_point_value
         )
         input_width_offset = (
-            w * dilation_width
-            - padding_width
-            + stride_width * output_width_point_value
+            w * dilation_width - padding_width + stride_width * output_width_point_value
         )
 
         curr_input_pointer = (
@@ -151,17 +145,15 @@ def conv3d_forward_kernel(
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
-    bias_pointer += (pid_group[None] * out_per_group_c)[
+    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
         None, :
-    ] + output_c_offset[None, :]
+    ]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
     bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
     accum += bias
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
-        + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[
-            None, :
-        ]
+        + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[None, :]
         + (output_depth_stride * output_depth_point_value)[:, None]
         + (output_height_stride * output_height_point_value)[:, None]
         + (output_width_stride * output_width_point_value)[:, None]
@@ -177,12 +169,19 @@ def conv3d_forward_kernel(
     tl.store(output_pointer, accum, mask=output_mask)
 
 
-def conv3d(
-    input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1
-):
-    assert weight.ndim == 5, (
-        "Weights must be 5D, received shape {weight.shape}"
-    )
+def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+    if input.device.type == "cpu":
+        return F.conv3d(
+            input,
+            weight,
+            bias=bias,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        )
+
+    assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
     assert bias is None or bias.ndim == 1, (
         "Bias must be 1D, received shape {bias.shape}"
     )
@@ -206,9 +205,7 @@ def conv3d(
 
     if isinstance(padding, str):
         if padding == "same":
-            assert (
-                stride_depth == 1 and stride_height == 1 and stride_width == 1
-            ), (
+            assert stride_depth == 1 and stride_height == 1 and stride_width == 1, (
                 "Doesn't support any stride values other than 1 in padding = 'same' mode, \
                 received stride value {stride}"
             )
@@ -246,32 +243,17 @@ def conv3d(
                 / 2
             )
             od = int(
-                (
-                    id
-                    + 2 * padding_depth
-                    - dilation_depth * (kernel_size_d - 1)
-                    - 1
-                )
+                (id + 2 * padding_depth - dilation_depth * (kernel_size_d - 1) - 1)
                 / stride_depth
                 + 1
             )
             oh = int(
-                (
-                    ih
-                    + 2 * padding_height
-                    - dilation_height * (kernel_size_h - 1)
-                    - 1
-                )
+                (ih + 2 * padding_height - dilation_height * (kernel_size_h - 1) - 1)
                 / stride_height
                 + 1
             )
             ow = int(
-                (
-                    iw
-                    + 2 * padding_width
-                    - dilation_width * (kernel_size_w - 1)
-                    - 1
-                )
+                (iw + 2 * padding_width - dilation_width * (kernel_size_w - 1) - 1)
                 / stride_width
                 + 1
             )
@@ -315,17 +297,13 @@ def conv3d(
     BLOCK_CI = 32
 
     grid = (
-        triton.cdiv(
-            in_n * out_depth * out_height * out_width, BLOCK_NI_DO_HO_WO
-        ),
+        triton.cdiv(in_n * out_depth * out_height * out_width, BLOCK_NI_DO_HO_WO),
         triton.cdiv(out_c // groups, BLOCK_CO),
         groups,
     )
 
     if bias is None:
-        bias_pointer = torch.zeros(
-            out_c, device=input.device, dtype=output_dtype
-        )
+        bias_pointer = torch.zeros(out_c, device=input.device, dtype=output_dtype)
     else:
         bias_pointer = bias
 

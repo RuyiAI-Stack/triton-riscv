@@ -122,6 +122,8 @@ public:
     target.addLegalOp<ModuleOp>();
 
     target.addLegalOp<triton::FuncOp, triton::ReturnOp>();
+    target.addIllegalOp<triton::ReduceOp, triton::ReduceReturnOp,
+                        triton::ScanOp, triton::ScanReturnOp>();
 
     target.addDynamicallyLegalDialect<arith::ArithDialect, math::MathDialect>(
         [](Operation *op) {

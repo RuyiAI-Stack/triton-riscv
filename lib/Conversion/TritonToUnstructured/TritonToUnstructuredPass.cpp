@@ -205,6 +205,13 @@ static Type getPtrOffsetType(Type type, unsigned int bitWidth) {
   return nullptr;
 }
 
+static triton::PointerType getScalarPointerType(Type type) {
+  if (auto tensorType = dyn_cast<RankedTensorType>(type)) {
+    return cast<triton::PointerType>(tensorType.getElementType());
+  }
+  return cast<triton::PointerType>(type);
+}
+
 static unsigned int getBitWidth(Type type) {
   if (auto tensorType = dyn_cast<RankedTensorType>(type)) {
     if (auto integerType = dyn_cast<IntegerType>(tensorType.getElementType())) {
@@ -216,6 +223,31 @@ static unsigned int getBitWidth(Type type) {
 
   llvm_unreachable("unexpected type");
   return 0;
+}
+
+static bool isDescendantOf(Operation *op, Operation *ancestor) {
+  for (Operation *parent = op; parent; parent = parent->getParentOp()) {
+    if (parent == ancestor) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool hasUsesOutside(Operation *op, Operation *ancestor) {
+  for (Value result : op->getResults()) {
+    for (Operation *user : result.getUsers()) {
+      // A yield owned by the ancestor returns the value from that region even
+      // though the yield operation is structurally nested inside it.
+      if (isa<scf::YieldOp>(user) && user->getParentOp() == ancestor) {
+        return true;
+      }
+      if (!isDescendantOf(user, ancestor)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 class TritonToUnstructuredPass
@@ -319,11 +351,15 @@ public:
                   return success();
                 })
                 .Case<triton::AddPtrOp>([&](triton::AddPtrOp addptr) {
-                  // Bail when we have an addptr in an scf.if as we  do not know
-                  // if the pointer returning from both branches will have the
-                  // same source
-                  if (addptr->getParentOfType<scf::IfOp>()) {
-                    return failure();
+                  // Bail when an addptr result escapes an scf.if: we do not
+                  // know if the pointer returning from both branches has the
+                  // same source. Local users inside the same if are safe to
+                  // decompose and are needed for CPU atomic-add fallbacks such
+                  // as embedding backward.
+                  if (auto ifOp = addptr->getParentOfType<scf::IfOp>()) {
+                    if (hasUsesOutside(addptr, ifOp)) {
+                      return failure();
+                    }
                   }
 
                   OpBuilder b{addptr};
@@ -395,24 +431,49 @@ public:
 
                   return success();
                 })
+                .Case<triton::BitcastOp>([&](triton::BitcastOp bitcast) {
+                  auto res = bitcast.getResult();
+                  auto resType = res.getType();
+
+                  if (!triton::isPtrTypeLike(resType)) {
+                    return success();
+                  }
+
+                  auto offsetInfo = offsetMap.at(bitcast.getSrc());
+                  Value basePtr = offsetInfo.ptr;
+                  auto wantedBaseType = getScalarPointerType(resType);
+                  if (basePtr.getType() != wantedBaseType) {
+                    OpBuilder b{bitcast};
+                    basePtr = b.create<triton::BitcastOp>(
+                        bitcast.getLoc(), wantedBaseType, basePtr);
+                  }
+
+                  PtrOffset newOffsetInfo{basePtr, resType, offsetInfo.bitWidth,
+                                          offsetInfo.offset};
+
+                  offsetMap.insert({res, newOffsetInfo});
+                  workList.push(res);
+                  toDelete.push_back(bitcast);
+
+                  return success();
+                })
                 .Case<tts::MakeGatherScatterTensorPtrOp>(
                     [&](Operation *op) { return success(); })
-                .Case<triton::LoadOp, triton::StoreOp, tts::MakeTensorPtrOp>(
-                    [&](Operation *op) {
-                      // Special case:
-                      // We do not want to create "unstructured tensor pointer"
-                      // into tts.make_tptr if the base pointer is directly from
-                      // the kernel arguments.
-                      if (auto makeTensorPtr =
-                              dyn_cast<tts::MakeTensorPtrOp>(op)) {
-                        if (ptrArgs.contains(makeTensorPtr.getBase())) {
-                          return success();
-                        }
-                      }
-
-                      ptrUsers.push_back(op);
+                .Case<triton::LoadOp, triton::StoreOp, triton::AtomicRMWOp,
+                      tts::MakeTensorPtrOp>([&](Operation *op) {
+                  // Special case:
+                  // We do not want to create "unstructured tensor pointer"
+                  // into tts.make_tptr if the base pointer is directly from
+                  // the kernel arguments.
+                  if (auto makeTensorPtr = dyn_cast<tts::MakeTensorPtrOp>(op)) {
+                    if (ptrArgs.contains(makeTensorPtr.getBase())) {
                       return success();
-                    })
+                    }
+                  }
+
+                  ptrUsers.push_back(op);
+                  return success();
+                })
                 .Case<scf::ForOp>([&](scf::ForOp forOp) {
                   // Index of the init-arg corresponding to this use, note that
                   // we have to subtract by 3 from the operand number because
@@ -507,6 +568,16 @@ public:
                 b.create<tts::ScatterOp>(loc, offsetInfo.ptr, offsetInfo.offset,
                                          store.getValue(), store.getMask());
                 store->erase();
+                return success();
+              })
+              .Case<triton::AtomicRMWOp>([&](triton::AtomicRMWOp atomic) {
+                auto offsetInfo = offsetMap.at(atomic.getPtr());
+                auto replacement = b.create<tts::AtomicRMWOp>(
+                    loc, atomic.getType(), atomic.getAtomicRmwOpAttr(),
+                    offsetInfo.ptr, offsetInfo.offset, atomic.getVal(),
+                    atomic.getMask());
+                atomic->replaceAllUsesWith(replacement->getResults());
+                atomic->erase();
                 return success();
               })
               .Case<tts::MakeTensorPtrOp>([&](auto makeTensorPtr) {

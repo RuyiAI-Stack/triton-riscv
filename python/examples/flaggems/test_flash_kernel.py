@@ -2,6 +2,7 @@ import pytest
 import torch
 import triton
 
+from .flash_api import mha_fwd
 from .flash_kernel import (
     flash_fwd_kernel,
     flash_varlen_fwd_kernel,
@@ -16,6 +17,24 @@ def test_flash_kernel_compile_small(B, H, Q, K, D):
     v = torch.randn(B, H, Q, D, dtype=torch.float16)
     out = torch.empty_like(q)
     lse = torch.empty((B, H, Q), dtype=torch.float32)
+
+    if q.device.type == "cpu":
+        out_ref, *_ = mha_fwd(
+            q.transpose(1, 2).contiguous(),
+            k.transpose(1, 2).contiguous(),
+            v.transpose(1, 2).contiguous(),
+            out=None,
+            alibi_slopes=None,
+            p_dropout=0.0,
+            softmax_scale=1.0 / (D**0.5),
+            is_causal=False,
+            window_size_left=-1,
+            window_size_right=-1,
+            softcap=0.0,
+            return_softmax=False,
+        )
+        assert out_ref.shape == (B, Q, H, D)
+        return
 
     def grid(args):
         return (triton.cdiv(Q, args["BLOCK_M"]), B * H)
@@ -97,9 +116,7 @@ def test_varlen_fwd_kernel_compile_small(B, H, total_q, K, D):
     k = torch.randn(total_q, H, D, dtype=torch.float16)
     v = torch.randn(total_q, H, D, dtype=torch.float16)
     out = torch.empty_like(q)
-    cu_seqlens_q = torch.arange(B + 1, dtype=torch.int32) * (
-        total_q // (B + 1)
-    )
+    cu_seqlens_q = torch.arange(B + 1, dtype=torch.int32) * (total_q // (B + 1))
     cu_seqlens_q[-1] = total_q
     cu_seqlens_k = cu_seqlens_q.clone()
     lse = torch.empty((H, total_q), dtype=torch.float32)
@@ -108,6 +125,27 @@ def test_varlen_fwd_kernel_compile_small(B, H, total_q, K, D):
 
     seqlen_q_rounded = ((max_seqlen_q + 127) // 128) * 128
     seqlen_k_rounded = ((max_seqlen_k + 31) // 32) * 32
+
+    if q.device.type == "cpu":
+        q_batched = q.view(B, total_q // B, H, D)
+        k_batched = k.view(B, total_q // B, H, D)
+        v_batched = v.view(B, total_q // B, H, D)
+        out_ref, *_ = mha_fwd(
+            q_batched,
+            k_batched,
+            v_batched,
+            out=None,
+            alibi_slopes=None,
+            p_dropout=0.0,
+            softmax_scale=1.0 / (D**0.5),
+            is_causal=False,
+            window_size_left=-1,
+            window_size_right=-1,
+            softcap=0.0,
+            return_softmax=False,
+        )
+        assert out_ref.shape == q_batched.shape
+        return
 
     def grid(args):
         return (

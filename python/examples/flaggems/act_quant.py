@@ -111,6 +111,32 @@ def act_quant_triton(
     x_2d = x.view(-1, N)
     M = x_2d.size(0)
 
+    if x.device.type == "cpu":
+        x_f32 = x_2d.to(torch.float32)
+        n_blocks = N // block_size
+        y = torch.empty_like(x, dtype=torch.float8_e4m3fn)
+        s = x.new_empty(*x.size()[:-1], n_blocks, dtype=torch.float32)
+        y_view = y.view(-1, N)
+        s_view = s.view(-1, n_blocks)
+        fp8_max = 448.0
+        for i in range(M):
+            for j in range(n_blocks):
+                block = x_f32[i, j * block_size : (j + 1) * block_size]
+                amax = torch.maximum(
+                    block.abs().max(),
+                    torch.tensor(1e-4, dtype=torch.float32, device=x.device),
+                )
+                if scale_fmt is not None:
+                    scale = torch.exp2(torch.ceil(torch.log2(amax / fp8_max)))
+                else:
+                    scale = amax / fp8_max
+                y_block = torch.clamp(block / scale, -fp8_max, fp8_max)
+                y_view[i, j * block_size : (j + 1) * block_size] = y_block.to(
+                    torch.float8_e4m3fn
+                )
+                s_view[i, j] = scale
+        return y, s
+
     BLOCK_M = 32
     # if M <= 32:
     #     BLOCK_M = M

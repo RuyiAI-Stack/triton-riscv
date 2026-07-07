@@ -166,7 +166,37 @@ Expected ELF properties include:
 
 The disassembly should contain RVV instructions such as `vsetvli` or `vsetivli`, `vle32.v`, `vfadd.vv`, and `vse32.v`.
 
-## 7. Troubleshooting
+## 7. Run FlagGems Operators with x86 and QEMU
+
+The same QEMU route can be used for the FlagGems operator examples. The
+environment may be a virtualenv or a conda environment; `scripts/triton-riscv-env.sh`
+uses `CONDA_PREFIX` as `TRITON_VENV` when it is active.
+
+```sh
+conda activate /path/to/triton-riscv/.conda-env
+cd /path/to/triton-riscv
+TRITON_VENV="${CONDA_PREFIX}" source scripts/triton-riscv-env.sh
+scripts/rebuild-triton-riscv.sh
+```
+
+Then run the issue #35 validation command:
+
+```sh
+pytest python/examples/ \
+  --ignore=python/examples/test_core.py \
+  --ignore=python/examples/test_annotations.py \
+  -v
+```
+
+The current validated result is `3892 passed, 280 warnings`, with no FlagGems
+file-level or parameter-level skips. `python/examples/conftest.py` retains only
+global guards for unsupported parameter classes such as bfloat16, TF32, and
+float8; none are exercised by this baseline.
+
+See [FLAGGEMS-SKIP-REASONS.md](FLAGGEMS-SKIP-REASONS.md) for the validation
+status and the backend coverage that replaced the former skip list.
+
+## 8. Troubleshooting
 
 ### GCC or QEMU Is Not Found
 

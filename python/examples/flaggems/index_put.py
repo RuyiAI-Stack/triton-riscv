@@ -18,8 +18,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -93,11 +92,41 @@ def _generate_index_put_kernel(
     code += "):\n"
     code += "    pid0 = tl.program_id(axis=0)\n"
     code += "    pid1 = tl.program_id(axis=1)\n"
+    if inp_rank == indices_len and index_rank == 1:
+        code += "    offset = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)\n"
+        code += "    mask = offset < M\n"
+        for i in range(indices_len):
+            code += f"    cur_index{i} = tl.load(indices{i}_ptr + offset * indices{i}_stride0, mask=mask, other=0)\n"
+        code += "\n"
+        index_mask = " & ".join(
+            [
+                f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+                for i in range(indices_len)
+            ]
+        )
+        code += f"    index_mask = {index_mask}\n"
+        code += "    mask = mask & index_mask\n"
+        comp = " + ".join(
+            [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+        )
+        code += f"    input_offset = {comp}\n"
+        code += "    values_offset = offset * values_stride0\n\n"
+        code += "    cur_value = tl.load(values_ptr + values_offset, mask=mask)\n"
+        code += "    if IS_ACCUMULATE:\n"
+        code += (
+            "        tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)\n"
+        )
+        code += "    else:\n"
+        code += "        tl.store(input_ptr + input_offset, cur_value, mask=mask)\n\n"
+        return code
+
     code += "    offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]\n"
     if inp_rank == indices_len:
         code += "    offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]\n"
     else:
-        code += "    offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]\n"
+        code += (
+            "    offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]\n"
+        )
     code += "\n"
     code += "    cur_idx = offset0\n"
     for i in range(index_rank - 1, -1, -1):
@@ -112,10 +141,7 @@ def _generate_index_put_kernel(
     code += "    mask0 = offset0 < M\n"
     for i in range(indices_len):
         comp = " + ".join(
-            [
-                f"indices_idx{j} * indices{i}_stride{j}"
-                for j in range(index_rank)
-            ]
+            [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
         )
         code += f"    cur_index{i} = tl.load(indices{i}_ptr + {comp}, mask=mask0, other=0)\n"
     code += "\n"
@@ -129,32 +155,21 @@ def _generate_index_put_kernel(
     code += "    mask1 = offset1 < N\n"
     code += "    mask = index_mask & mask0 & mask1\n"
     code += "\n"
-    comp = " + ".join(
-        [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
-    )
+    comp = " + ".join([f"cur_index{i} * input_stride{i}" for i in range(indices_len)])
     comp += "".join(
-        [
-            f" + input_idx{i} * input_stride{i}"
-            for i in range(indices_len, inp_rank)
-        ]
+        [f" + input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)]
     )
     code += f"    input_offset = {comp}\n"
-    comp = " + ".join(
-        [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
-    )
+    comp = " + ".join([f"indices_idx{i} * values_stride{i}" for i in range(index_rank)])
     for i in range(inp_rank - indices_len):
-        comp += (
-            f" + input_idx{indices_len + i} * values_stride{index_rank + i}"
-        )
+        comp += f" + input_idx{indices_len + i} * values_stride{index_rank + i}"
     code += f"    values_offset = {comp}\n"
     code += "\n"
     code += "    cur_value = tl.load(values_ptr + values_offset, mask=mask)\n"
     code += "    if IS_ACCUMULATE:\n"
     code += "        tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)\n"
     code += "    else:\n"
-    code += (
-        "        tl.store(input_ptr + input_offset, cur_value, mask=mask)\n\n"
-    )
+    code += "        tl.store(input_ptr + input_offset, cur_value, mask=mask)\n\n"
     return code
 
 
@@ -306,9 +321,7 @@ def index_put_(inp, indices, values, accumulate=False):
         indices.extend([None] * (inp.ndim - len(indices)))
 
     if len(indices) > inp.ndim:
-        raise IndexError(
-            f"too many indices for tensor of dimension {inp.ndim}"
-        )
+        raise IndexError(f"too many indices for tensor of dimension {inp.ndim}")
 
     # Step 2: Broadcast tensor indices
     tensor_pos = [i for i, x in enumerate(indices) if x is not None]
@@ -327,9 +340,7 @@ def index_put_(inp, indices, values, accumulate=False):
     need_transpose = not is_contiguous or starts_with_none
 
     if need_transpose:
-        perm_order = tensor_pos + [
-            i for i, x in enumerate(indices) if x is None
-        ]
+        perm_order = tensor_pos + [i for i, x in enumerate(indices) if x is None]
         inp_view = inp.permute(perm_order)
         final_indices = [indices[i] for i in tensor_pos] + [None] * (
             len(indices) - len(tensor_pos)
@@ -341,9 +352,7 @@ def index_put_(inp, indices, values, accumulate=False):
     # Step 4: Handle Values shape and broadcasting
     tensors = [x for x in final_indices if x is not None]
     broadcast_shape = list(tensors[0].shape)
-    slice_shape = [
-        inp_view.shape[i] for i, x in enumerate(final_indices) if x is None
-    ]
+    slice_shape = [inp_view.shape[i] for i, x in enumerate(final_indices) if x is None]
 
     target_shape = broadcast_shape + slice_shape
     values = values.to(inp.device)
@@ -357,9 +366,7 @@ def index_put_(inp, indices, values, accumulate=False):
 
         B, T = len(before_dims), len(broadcast_shape)
         val_perm = (
-            list(range(B, B + T))
-            + list(range(0, B))
-            + list(range(B + T, values.ndim))
+            list(range(B, B + T)) + list(range(0, B)) + list(range(B + T, values.ndim))
         )
         values = values.permute(val_perm)
     else:

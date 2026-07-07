@@ -8,7 +8,9 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-linalg-experimental %s | FileCheck %s
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32> {tt.divisibility = 16 : i32},
@@ -22,15 +24,15 @@
 // CHECK-SAME:                      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG10:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 3 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 12 : index
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 12 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 3 : index
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<1024xf32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_0]] : tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_3]] : f32) outs(%[[EMPTY_0]] : tensor<1024xf32>) -> tensor<1024xf32>
 // CHECK:           %[[MULI_0:.*]] = arith.muli %[[ARG8]], %[[ARG2]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_3]] to %[[CONSTANT_2]] step %[[CONSTANT_1]] iter_args(%[[VAL_1:.*]] = %[[INDEX_CAST_0]], %[[VAL_2:.*]] = %[[FILL_0]]) -> (index, tensor<1024xf32>) {
+// CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_0]] to %[[CONSTANT_1]] step %[[CONSTANT_2]] iter_args(%[[VAL_1:.*]] = %[[INDEX_CAST_0]], %[[VAL_2:.*]] = %[[FILL_0]]) -> (index, tensor<1024xf32>) {
 // CHECK:             %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG1]] to offset: {{\[}}%[[VAL_1]]], sizes: [1024], strides: [1] : memref<*xf32> to memref<1024xf32, strided<[1], offset: ?>>
 // CHECK:             %[[ALLOC_0:.*]] = memref.alloc() : memref<1024xf32>
 // CHECK:             memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<1024xf32, strided<[1], offset: ?>> to memref<1024xf32>
@@ -56,7 +58,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[VAL_8:.*]]#1 in writable %[[REINTERPRET_CAST_1]] : (tensor<1024xf32>, memref<1024xf32, strided<[1], offset: ?>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func @kernel (%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32) {
     %0 = tt.get_program_id x : i32
     %1 = arith.muli %0, %arg2 : i32

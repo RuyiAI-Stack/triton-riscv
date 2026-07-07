@@ -17,8 +17,8 @@ def masked_fill_kernel(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(inp_ptr + offsets, mask=mask)
-    m = tl.load(mask_ptr + offsets, mask=mask).to(tl.int1)
-    x = tl.where(m == 1, value, x)
+    m = tl.load(mask_ptr + offsets, mask=mask, other=0).to(tl.int32)
+    x = tl.where(m != 0, value, x)
     tl.store(out_ptr + offsets, x, mask=mask)
 
 
@@ -38,7 +38,7 @@ def masked_fill(inp, mask, value):
 
     expand_mask = mask.expand(inp.shape)
     inp_c = inp.contiguous()
-    mask_c = expand_mask.contiguous()
+    mask_c = expand_mask.to(torch.uint8).contiguous()
     out = torch.empty_like(inp_c)
     n_elements = inp_c.numel()
     BLOCK_SIZE = 1024
@@ -62,7 +62,7 @@ def masked_fill_(inp, mask, value):
         return inp
 
     expand_mask = mask.expand(inp.shape)
-    mask_c = expand_mask.contiguous()
+    mask_c = expand_mask.to(torch.uint8).contiguous()
     inp_c = inp.contiguous()
     n_elements = inp_c.numel()
     BLOCK_SIZE = 1024

@@ -13,12 +13,14 @@ namespace triton {
 #define GEN_PASS_DECL
 #include "triton-shared/Conversion/StructuredToMemref/Passes.h.inc"
 
-void populateStructuredToMemrefConversionPatterns(RewritePatternSet &patterns,
-                                                  TypeConverter &typeConverter,
-                                                  bool enableTensorFirstVectorCpu =
-                                                      false);
+void populateStructuredToMemrefConversionPatterns(
+    RewritePatternSet &patterns, TypeConverter &typeConverter,
+    bool enableTensorFirstVectorCpu = false);
 
 void populateStructuredToMemrefPreConversionPatterns(
+    RewritePatternSet &patterns, bool enableTensorFirstVectorCpu = false);
+
+void populateStructuredToMemrefPostConversionPatterns(
     RewritePatternSet &patterns, bool enableTensorFirstVectorCpu = false);
 
 std::unique_ptr<OperationPass<ModuleOp>>

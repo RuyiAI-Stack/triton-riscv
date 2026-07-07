@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-linalg-experimental %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   func.func @simple_cf_into_structured_load(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -21,13 +23,13 @@
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
 // CHECK:           %[[TYPE_OFFSET_0:.*]] = tptr.type_offset f32  : i32
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 2 : i32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 1 : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 2 : i32
 // CHECK:           %[[CAST_0:.*]] = memref.cast %[[ARG0]] : memref<*xf32> to memref<1xf32>
 // CHECK:           %[[FROM_MEMREF_0:.*]] = tptr.from_memref %[[CAST_0]] : memref<1xf32> to <#tptr.default_memory_space>
-// CHECK:           %[[CMPI_0:.*]] = arith.cmpi eq, %[[ARG2]], %[[CONSTANT_1]] : i32
+// CHECK:           %[[CMPI_0:.*]] = arith.cmpi eq, %[[ARG2]], %[[CONSTANT_0]] : i32
 // CHECK:           %[[IF_0:.*]] = scf.if %[[CMPI_0]] -> (!ptr.ptr<#tptr.default_memory_space>) {
-// CHECK:             %[[MULI_0:.*]] = arith.muli %[[ARG2]], %[[CONSTANT_0]] : i32
+// CHECK:             %[[MULI_0:.*]] = arith.muli %[[ARG2]], %[[CONSTANT_1]] : i32
 // CHECK:             %[[MULI_1:.*]] = arith.muli %[[MULI_0]], %[[TYPE_OFFSET_0]] : i32
 // CHECK:             %[[PTRADD_0:.*]] = tptr.ptradd %[[FROM_MEMREF_0]] %[[MULI_1]] : <#tptr.default_memory_space>, i32 to <#tptr.default_memory_space>
 // CHECK:             scf.yield %[[PTRADD_0]] : !ptr.ptr<#tptr.default_memory_space>
@@ -45,7 +47,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[TO_TENSOR_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<4xf32>, memref<4xf32, strided<[1]>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @simple_cf_into_structured_load(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32) attributes {noinline = false} {
     %c6_i32 = arith.constant 6 : i32
     %c2_i32 = arith.constant 2 : i32

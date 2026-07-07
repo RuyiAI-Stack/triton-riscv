@@ -8,7 +8,9 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-linalg-experimental %s | FileCheck %s
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -20,9 +22,9 @@
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
-// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<1024xi32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<1024xi32>) -> tensor<1024xi32>
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 1024 : index
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1024], strides: [1] : memref<*xf32> to memref<1024xf32, strided<[1]>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<1024xf32>
 // CHECK:           memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<1024xf32, strided<[1]>> to memref<1024xf32>
@@ -51,8 +53,8 @@
 // CHECK:             %[[DIVF_0:.*]] = arith.divf %[[VAL_9]], %[[VAL_10]] : f32
 // CHECK:             linalg.yield %[[DIVF_0]] : f32
 // CHECK:           } -> tensor<1024xf32>
-// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<1024xi1>
-// CHECK:           %[[GENERIC_4:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[GENERIC_3]], %[[TO_TENSOR_1]] : tensor<1024xf32>, tensor<1024xf32>) outs(%[[EMPTY_1]] : tensor<1024xi1>) {
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<1024xi1>
+// CHECK:           %[[GENERIC_4:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[GENERIC_3]], %[[TO_TENSOR_1]] : tensor<1024xf32>, tensor<1024xf32>) outs(%[[EMPTY_0]] : tensor<1024xi1>) {
 // CHECK:           ^bb0(%[[VAL_12:.*]]: f32, %[[VAL_13:.*]]: f32, %[[VAL_14:.*]]: i1):
 // CHECK:             %[[CMPF_0:.*]] = arith.cmpf oeq, %[[VAL_12]], %[[VAL_13]] : f32
 // CHECK:             linalg.yield %[[CMPF_0]] : i1
@@ -63,15 +65,12 @@
 // CHECK:             linalg.yield %[[SELECT_0]] : f32
 // CHECK:           } -> tensor<1024xf32>
 // CHECK:           %[[CAST_0:.*]] = memref.cast %[[ARG2]] : memref<*xf32> to memref<?xf32>
-// CHECK:           linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[FILL_0]], %[[GENERIC_5]] : tensor<1024xi32>, tensor<1024xf32>) {
-// CHECK:           ^bb0(%[[VAL_19:.*]]: i32, %[[VAL_20:.*]]: f32):
-// CHECK:             %[[INDEX_CAST_0:.*]] = arith.index_cast %[[VAL_19]] : i32 to index
-// CHECK:             memref.store %[[VAL_20]], %[[CAST_0]]{{\[}}%[[INDEX_CAST_0]]] : memref<?xf32>
-// CHECK:             linalg.yield
+// CHECK:           scf.for %[[VAL_19:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_2]] step %[[CONSTANT_0]] {
+// CHECK:             %[[EXTRACT_0:.*]] = tensor.extract %[[GENERIC_5]]{{\[}}%[[VAL_19]]] : tensor<1024xf32>
+// CHECK:             memref.store %[[EXTRACT_0]], %[[CAST_0]]{{\[}}%[[CONSTANT_1]]] : memref<?xf32>
 // CHECK:           }
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func @kernel(
     %a : !tt.ptr<f32>,
     %b : !tt.ptr<f32>,

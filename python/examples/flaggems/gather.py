@@ -19,8 +19,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -76,7 +75,19 @@ def _generate_gather_kernel(rank, kernel_name, code):
     code += "    BLOCK_SIZE_N: tl.constexpr,\n"
     code += "):\n"
     code += "    pid = tl.program_id(0)\n"
-    code += "    offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)\n\n"
+    code += (
+        "    offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)\n\n"
+    )
+    if rank == 1:
+        code += "    mask = offset < N\n"
+        code += "    index_offset = offset * index_stride0\n"
+        code += "    cur_index = tl.load(index + index_offset, mask=mask, other=0)\n\n"
+        code += "    inp_offset = cur_index * dim_stride\n"
+        code += "    cur_inp = tl.load(inp + inp_offset, mask=mask, other=0)\n\n"
+        code += "    out_offset = offset * out_stride0\n"
+        code += "    tl.store(out + out_offset, value=cur_inp, mask=mask)\n\n"
+        return code
+
     code += "    cur_offset = offset\n"
     for i in range(rank - 1, -1, -1):
         code += f"    index_idx{i} = cur_offset % index_shape{i}\n"
@@ -85,16 +96,12 @@ def _generate_gather_kernel(rank, kernel_name, code):
     comp = " + ".join([f"index_idx{i} * index_stride{i}" for i in range(rank)])
     code += f"    index_offset = {comp}\n"
     code += "    mask = offset < N\n"
-    code += (
-        "    cur_index = tl.load(index + index_offset, mask=mask, other=0)\n\n"
-    )
+    code += "    cur_index = tl.load(index + index_offset, mask=mask, other=0)\n\n"
     comp = " + ".join([f"index_idx{i} * inp_stride{i}" for i in range(rank)])
     code += f"    inp_offset = {comp}\n"
     code += "    inp_offset += cur_index * dim_stride\n"
     code += "    cur_inp = tl.load(inp + inp_offset, mask=mask, other=0)\n\n"
-    comp_out = " + ".join(
-        [f"index_idx{i} * out_stride{i}" for i in range(rank)]
-    )
+    comp_out = " + ".join([f"index_idx{i} * out_stride{i}" for i in range(rank)])
     code += f"    out_offset = {comp_out}\n"
     code += "    tl.store(out + out_offset, value=cur_inp, mask=mask)\n\n"
     return code
@@ -108,9 +115,7 @@ def _generate_wrapper(rank, wrapper_name, kernel_name, code):
     code += "    index_stride = index.stride()\n"
     code += "    out_shape = out.shape\n"
     code += "    out_stride = out.stride()\n"
-    code += (
-        "    grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )\n"
-    )
+    code += "    grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )\n"
     code += f"    {kernel_name}[grid](\n"
     code += "        inp, index, out,\n"
     for i in range(rank):

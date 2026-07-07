@@ -7,8 +7,10 @@
 // For comprehensive guidelines, see:
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
+
 // RUN: triton-shared-opt --triton-to-structured  --canonicalize  %s | FileCheck %s
 
+module attributes {} {
 // CHECK-LABEL:   tt.func public @gather_kernel(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<i64> {tt.divisibility = 16 : i32},
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<i64> {tt.divisibility = 16 : i32},
@@ -24,40 +26,35 @@
 // CHECK:           %[[MAKE_RANGE_0:.*]] = tt.make_range {end = 512 : i32, start = 0 : i32} : tensor<512xi32>
 // CHECK:           %[[MULI_0:.*]] = arith.muli %[[GET_PROGRAM_ID_0]], %[[ARG6]] : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[MULI_0]] : i32 to index
-// CHECK:           %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG1]] to sizes: [512], strides: [1], offsets: {{\[}}%[[INDEX_CAST_1]]], shape: [0], order: [] : <i64> to tensor<512x!tt.ptr<i64>>
+// CHECK:           %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG1]] to sizes: [512], strides: [1], offsets: {{\[}}%[[INDEX_CAST_0]]], shape: [0], order: [] : <i64> to tensor<512x!tt.ptr<i64>>
 // CHECK:           %[[SPLAT_0:.*]] = tt.splat %[[ARG3]] : i32 -> tensor<512xi32>
 // CHECK:           %[[CMPI_0:.*]] = arith.cmpi slt, %[[MAKE_RANGE_0]], %[[SPLAT_0]] : tensor<512xi32>
-// CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[ARG3]] : i32 to index
-// CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_2]], %[[CONSTANT_1]] : index
+// CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
+// CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_1]], %[[CONSTANT_1]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[VAL_0:.*]] = "tts.load"(%[[MAKE_TPTR_0]], %[[MAXSI_0]]) <{operandSegmentSizes = array<i32: 1, 1, 0>, static_mask_dims = array<i64: -9223372036854775808>}> : (tensor<512x!tt.ptr<i64>>, index) -> tensor<512xi64>
 // CHECK:           %[[CMPI_1:.*]] = arith.cmpi eq, %[[ARG4]], %[[CONSTANT_2]] : i32
 // CHECK:           %[[IF_0:.*]] = scf.if %[[CMPI_1]] -> (tensor<512x!tt.ptr<i64>>) {
-// CHECK:             %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG5]] : i32 to index
-// CHECK:             %[[INDEX_CAST_4:.*]] = arith.index_cast %[[INDEX_CAST_3]] : index to i64
-// CHECK:             %[[SPLAT_1:.*]] = tt.splat %[[INDEX_CAST_4]] : i64 -> tensor<512xi64>
+// CHECK:             %[[INDEX_CAST_2:.*]] = arith.index_cast %[[ARG5]] : i32 to index
+// CHECK:             %[[INDEX_CAST_3:.*]] = arith.index_cast %[[INDEX_CAST_2]] : index to i64
+// CHECK:             %[[SPLAT_1:.*]] = tt.splat %[[INDEX_CAST_3]] : i64 -> tensor<512xi64>
 // CHECK:             %[[MULI_1:.*]] = arith.muli %[[VAL_0]], %[[SPLAT_1]] : tensor<512xi64>
 // CHECK:             %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [512] gather_scatter_dim: 0 gather_scatter_offset: %[[MULI_1]], strides: [1], offsets: [0] : tensor<512xi64>  <i64> to tensor<512x!tt.ptr<i64>>
 // CHECK:             scf.yield %[[MAKE_GATHER_SCATTER_TPTR_0]] : tensor<512x!tt.ptr<i64>>
 // CHECK:           } else {
 // CHECK:             %[[MULI_2:.*]] = arith.muli %[[GET_PROGRAM_ID_0]], %[[ARG5]] : i32
-// CHECK:             %[[INDEX_CAST_5:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
-// CHECK:             %[[INDEX_CAST_6:.*]] = arith.index_cast %[[INDEX_CAST_5]] : index to i64
-// CHECK:             %[[SPLAT_2:.*]] = tt.splat %[[INDEX_CAST_6]] : i64 -> tensor<512xi64>
+// CHECK:             %[[INDEX_CAST_4:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
+// CHECK:             %[[INDEX_CAST_5:.*]] = arith.index_cast %[[INDEX_CAST_4]] : index to i64
+// CHECK:             %[[SPLAT_2:.*]] = tt.splat %[[INDEX_CAST_5]] : i64 -> tensor<512xi64>
 // CHECK:             %[[ADDI_0:.*]] = arith.addi %[[SPLAT_2]], %[[VAL_0]] : tensor<512xi64>
 // CHECK:             %[[MAKE_GATHER_SCATTER_TPTR_1:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [512] gather_scatter_dim: 0 gather_scatter_offset: %[[ADDI_0]], strides: [1], offsets: [0] : tensor<512xi64>  <i64> to tensor<512x!tt.ptr<i64>>
 // CHECK:             scf.yield %[[MAKE_GATHER_SCATTER_TPTR_1]] : tensor<512x!tt.ptr<i64>>
 // CHECK:           }
 // CHECK:           %[[LOAD_0:.*]] = tt.load %[[IF_0]], %[[CMPI_0]] : tensor<512x!tt.ptr<i64>>
 // CHECK:           %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG2]] to sizes: [512], strides: [1], offsets: {{\[}}%[[INDEX_CAST_0]]], shape: [0], order: [] : <i64> to tensor<512x!tt.ptr<i64>>
-// CHECK:           %[[INDEX_CAST_7:.*]] = arith.index_cast %[[ARG3]] : i32 to index
-// CHECK:           %[[MINSI_1:.*]] = arith.minsi %[[INDEX_CAST_7]], %[[CONSTANT_1]] : index
-// CHECK:           %[[MAXSI_1:.*]] = arith.maxsi %[[MINSI_1]], %[[CONSTANT_0]] : index
-// CHECK:           "tts.store"(%[[MAKE_TPTR_1]], %[[LOAD_0]], %[[MAXSI_1]]) <{static_mask_dims = array<i64: -9223372036854775808>}> : (tensor<512x!tt.ptr<i64>>, tensor<512xi64>, index) -> ()
+// CHECK:           "tts.store"(%[[MAKE_TPTR_1]], %[[LOAD_0]], %[[MAXSI_0]]) <{static_mask_dims = array<i64: -9223372036854775808>}> : (tensor<512x!tt.ptr<i64>>, tensor<512xi64>, index) -> ()
 // CHECK:           tt.return
 // CHECK:         }
-module attributes {} {
   tt.func public @gather_kernel(%arg0: !tt.ptr<i64> { tt.divisibility = 16 : i32}, %arg1: !tt.ptr<i64> { tt.divisibility = 16 : i32}, %arg2: !tt.ptr<i64> { tt.divisibility = 16 : i32}, %arg3: i32 {tt.divisibility = 16 : i32}, %arg4: i32 {tt.divisibility = 16 : i32}, %arg5: i32 {tt.divisibility = 16 : i32}, %arg6: i32 {tt.divisibility = 16 : i32}) attributes {noinline = false} {
     %c0_i32 = arith.constant 0 : i32
     %0 = tt.get_program_id x : i32

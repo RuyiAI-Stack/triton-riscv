@@ -20,12 +20,11 @@ def upsample_nearest1d_kernel(
         pid = tl.program_id(axis=0)
     else:
         pid = tl.program_id(axis=0).to(tl.int64)
-    nc_stride = tl.num_programs(axis=1)
-    NC = N * C
     nc_iter = tl.program_id(axis=1)
 
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     ol = idx % OL
+    mask = idx < OL
 
     if SAME_L:
         il = ol
@@ -37,15 +36,8 @@ def upsample_nearest1d_kernel(
 
     offset_o = nc_iter * OL + ol
     offset_i = nc_iter * IL + il
-    src_index_stride = nc_stride * IL
-    dst_index_stride = nc_stride * OL
-
-    while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
-        ptr_i += src_index_stride
-        ptr_o += dst_index_stride
-        nc_iter += nc_stride
+    data = tl.load(ptr_i + offset_i, mask=mask)
+    tl.store(ptr_o + offset_o, data, mask=mask)
 
 
 def upsample_nearest1d(
@@ -58,11 +50,7 @@ def upsample_nearest1d(
         "Either output_size or scales should be defined."
     )
 
-    OL = (
-        output_size[0]
-        if output_size is not None
-        else int(input.shape[2] * scales)
-    )
+    OL = output_size[0] if output_size is not None else int(input.shape[2] * scales)
     N, C, IL = input.shape
 
     if scales is not None:
@@ -83,7 +71,7 @@ def upsample_nearest1d(
     total_threads = OL
     grid = (
         triton.cdiv(total_threads, 1024),
-        triton.cdiv(N * C, 4),
+        N * C,
     )
     same_l = IL == OL
 

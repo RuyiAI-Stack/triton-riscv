@@ -10,7 +10,27 @@ _triton_riscv_repo_root="$(cd "${_triton_riscv_env_dir}/.." && pwd)"
 
 TRITON_RISCV_DIR="${TRITON_RISCV_DIR:-${_triton_riscv_repo_root}}"
 _default_triton_venv="${TRITON_RISCV_DIR}/.venv"
-TRITON_DIR="${TRITON_DIR:-$(cd "${TRITON_RISCV_DIR}/../triton" && pwd)}"
+
+_resolve_first_dir() {
+  local _candidate
+  for _candidate in "$@"; do
+    if [[ -d "${_candidate}" ]]; then
+      cd "${_candidate}" && pwd
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [[ -z "${TRITON_DIR:-}" ]]; then
+  TRITON_DIR="$(
+    _resolve_first_dir \
+      "${TRITON_RISCV_DIR}/../triton" \
+      "${TRITON_RISCV_DIR}/triton" \
+      2>/dev/null || true
+  )"
+  TRITON_DIR="${TRITON_DIR:-${TRITON_RISCV_DIR}/../triton}"
+fi
 
 if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" && ( -z "${TRITON_VENV:-}" || "${TRITON_VENV}" == "${_default_triton_venv}" ) ]]; then
   TRITON_VENV="${CONDA_PREFIX}"
@@ -24,7 +44,16 @@ elif [[ -z "${TRITON_VENV:-}" ]]; then
   fi
 fi
 
-BUDDY_DIR="${BUDDY_DIR:-$(cd "${TRITON_RISCV_DIR}/../buddy-mlir" && pwd)}"
+if [[ -z "${BUDDY_DIR:-}" ]]; then
+  BUDDY_DIR="$(
+    _resolve_first_dir \
+      "${TRITON_RISCV_DIR}/../buddy-mlir" \
+      "${TRITON_RISCV_DIR}/buddy-mlir" \
+      "${TRITON_RISCV_DIR}/.cache/buddy" \
+      2>/dev/null || true
+  )"
+  BUDDY_DIR="${BUDDY_DIR:-${TRITON_RISCV_DIR}/../buddy-mlir}"
+fi
 TRITON_HOME="${TRITON_HOME:-${HOME}}"
 TRITON_RUNTIME_ROOT="${TRITON_RUNTIME_ROOT:-${HOME}/.triton}"
 TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${TRITON_RUNTIME_ROOT}/cache}"
@@ -65,18 +94,52 @@ if [[ -z "${TRITON_SHARED_OPT_PATH:-}" ]]; then
   done
 fi
 
-LLVM_SYSPATH="${LLVM_SYSPATH:-${BUDDY_DIR}/llvm/build}"
+if [[ -z "${LLVM_SYSPATH:-}" ]]; then
+  LLVM_SYSPATH="$(
+    _resolve_first_dir \
+      "${BUDDY_DIR}/llvm/build" \
+      "${TRITON_RISCV_DIR}/.cache/llvm" \
+      2>/dev/null || true
+  )"
+  LLVM_SYSPATH="${LLVM_SYSPATH:-${BUDDY_DIR}/llvm/build}"
+fi
 JSON_SYSPATH="${JSON_SYSPATH:-${TRITON_RUNTIME_ROOT}/json}"
 LLVM_BINARY_DIR="${LLVM_BINARY_DIR:-${LLVM_SYSPATH}/bin}"
-BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${BUDDY_DIR}/build/bin}"
-RISCV_GNU_TOOLCHAIN_DIR="${RISCV_GNU_TOOLCHAIN_DIR:-${BUDDY_DIR}/build-for-triton-riscv/thirdparty/riscv-gnu-toolchain}"
+if [[ -z "${BUDDY_MLIR_BINARY_DIR:-}" ]]; then
+  BUDDY_MLIR_BINARY_DIR="$(
+    _resolve_first_dir \
+      "${BUDDY_DIR}/build/bin" \
+      "${BUDDY_DIR}/bin" \
+      "${TRITON_RISCV_DIR}/.cache/buddy/bin" \
+      2>/dev/null || true
+  )"
+  BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${BUDDY_DIR}/build/bin}"
+fi
+if [[ -z "${RISCV_GNU_TOOLCHAIN_DIR:-}" ]]; then
+  RISCV_GNU_TOOLCHAIN_DIR="$(
+    _resolve_first_dir \
+      "${BUDDY_DIR}/build-for-triton-riscv/thirdparty/riscv-gnu-toolchain" \
+      "${TRITON_RISCV_DIR}/.cache/riscv-toolchain" \
+      2>/dev/null || true
+  )"
+  RISCV_GNU_TOOLCHAIN_DIR="${RISCV_GNU_TOOLCHAIN_DIR:-${BUDDY_DIR}/build-for-triton-riscv/thirdparty/riscv-gnu-toolchain}"
+fi
 if [[ -x "${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-unknown-linux-gnu-gcc" ]]; then
   TRITON_RISCV_CC="${TRITON_RISCV_CC:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-unknown-linux-gnu-gcc}"
   TRITON_RISCV_OBJDUMP="${TRITON_RISCV_OBJDUMP:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-unknown-linux-gnu-objdump}"
   TRITON_RISCV_SYSROOT="${TRITON_RISCV_SYSROOT:-${RISCV_GNU_TOOLCHAIN_DIR}/sysroot}"
+elif [[ -x "${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-linux-gnu-gcc-wrap" ]]; then
+  TRITON_RISCV_CC="${TRITON_RISCV_CC:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-linux-gnu-gcc-wrap}"
+  TRITON_RISCV_OBJDUMP="${TRITON_RISCV_OBJDUMP:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/riscv64-linux-gnu-objdump-wrap}"
+  TRITON_RISCV_SYSROOT="${TRITON_RISCV_SYSROOT:-${RISCV_GNU_TOOLCHAIN_DIR}/usr/riscv64-linux-gnu}"
 fi
 if [[ -x "${RISCV_GNU_TOOLCHAIN_DIR}/bin/qemu-riscv64" ]]; then
   TRITON_RISCV_QEMU="${TRITON_RISCV_QEMU:-${RISCV_GNU_TOOLCHAIN_DIR}/bin/qemu-riscv64}"
+elif [[ -x "${TRITON_RISCV_DIR}/.cache/qemu/bin/qemu-riscv64" ]]; then
+  TRITON_RISCV_QEMU="${TRITON_RISCV_QEMU:-${TRITON_RISCV_DIR}/.cache/qemu/bin/qemu-riscv64}"
+fi
+if [[ -n "${TRITON_RISCV_QEMU:-}" ]]; then
+  TRITON_RISCV_QEMU_CPU="${TRITON_RISCV_QEMU_CPU:-rv64,v=true,vlen=256,elen=64,vext_spec=v1.0}"
 fi
 TRITON_RISCV_LOWERING_MODE="${TRITON_RISCV_LOWERING_MODE:-linalg_loops}"
 
@@ -99,6 +162,7 @@ export TRITON_RISCV_CC
 export TRITON_RISCV_OBJDUMP
 export TRITON_RISCV_SYSROOT
 export TRITON_RISCV_QEMU
+export TRITON_RISCV_QEMU_CPU
 export TRITON_SHARED_OPT_PATH
 export TRITON_SHARED_DUMP_PATH
 export TRITON_RISCV_LOWERING_MODE
@@ -114,3 +178,4 @@ unset _candidate_triton_shared_opt_path
 unset _candidate_triton_shared_opt_paths
 unset _triton_riscv_env_dir
 unset _triton_riscv_repo_root
+unset -f _resolve_first_dir

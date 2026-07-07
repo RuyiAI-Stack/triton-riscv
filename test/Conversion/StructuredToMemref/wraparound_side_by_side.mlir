@@ -8,8 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   func.func @wrap_side_by_side_masked_loop_01234567(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
@@ -25,42 +27,42 @@
 // CHECK-SAME:      %[[ARG11:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG12:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG13:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : index
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 4 : i32
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 2 : i32
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 1 : i32
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 2 : index
-// CHECK:           %[[CONSTANT_6:.*]] = arith.constant 6 : index
-// CHECK:           %[[CONSTANT_7:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_8:.*]] = arith.constant -9.900000e+01 : f32
-// CHECK:           %[[CONSTANT_9:.*]] = arith.constant 0 : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant -9.900000e+01 : f32
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 6 : index
+// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 2 : index
+// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 1 : i32
+// CHECK:           %[[CONSTANT_6:.*]] = arith.constant 2 : i32
+// CHECK:           %[[CONSTANT_7:.*]] = arith.constant 4 : i32
+// CHECK:           %[[CONSTANT_8:.*]] = arith.constant 4 : index
+// CHECK:           %[[CONSTANT_9:.*]] = arith.constant 1 : index
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG4]] : i32 to index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[INDEX_CAST_0]], %[[CONSTANT_5]] : index
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[INDEX_CAST_0]], %[[CONSTANT_4]] : index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[ARG5]] : i32 to index
-// CHECK:           %[[MULI_1:.*]] = arith.muli %[[INDEX_CAST_2]], %[[CONSTANT_6]] : index
+// CHECK:           %[[MULI_1:.*]] = arith.muli %[[INDEX_CAST_2]], %[[CONSTANT_3]] : index
 // CHECK:           %[[MULI_2:.*]] = arith.muli %[[INDEX_CAST_1]], %[[INDEX_CAST_2]] : index
 // CHECK:           %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG6]] : i32 to index
 // CHECK:           %[[INDEX_CAST_4:.*]] = arith.index_cast %[[ARG7]] : i32 to index
-// CHECK:           %[[MULI_3:.*]] = arith.muli %[[ARG4]], %[[CONSTANT_2]] : i32
+// CHECK:           %[[MULI_3:.*]] = arith.muli %[[ARG4]], %[[CONSTANT_7]] : i32
 // CHECK:           %[[INDEX_CAST_5:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
-// CHECK:           %[[MULI_4:.*]] = arith.muli %[[ARG5]], %[[CONSTANT_2]] : i32
+// CHECK:           %[[MULI_4:.*]] = arith.muli %[[ARG5]], %[[CONSTANT_7]] : i32
 // CHECK:           %[[INDEX_CAST_6:.*]] = arith.index_cast %[[MULI_4]] : i32 to index
-// CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_9]] to %[[CONSTANT_3]] step %[[CONSTANT_4]] iter_args(%[[VAL_1:.*]] = %[[MULI_0]], %[[VAL_2:.*]] = %[[CONSTANT_7]]) -> (index, index)  : i32 {
+// CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_0]] to %[[CONSTANT_6]] step %[[CONSTANT_5]] iter_args(%[[VAL_1:.*]] = %[[MULI_0]], %[[VAL_2:.*]] = %[[CONSTANT_2]]) -> (index, index)  : i32 {
 // CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_1]], %[[MULI_1]] : index
 // CHECK:             %[[REMSI_0:.*]] = arith.remsi %[[ADDI_0]], %[[MULI_2]] : index
 // CHECK:             %[[SUBI_0:.*]] = arith.subi %[[ADDI_0]], %[[REMSI_0]] : index
-// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[REMSI_0]], %[[CONSTANT_1]] : index
+// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[REMSI_0]], %[[CONSTANT_8]] : index
 // CHECK:             %[[MINSI_0:.*]] = arith.minsi %[[ADDI_1]], %[[MULI_2]] : index
 // CHECK:             %[[SUBI_1:.*]] = arith.subi %[[MINSI_0]], %[[REMSI_0]] : index
-// CHECK:             %[[SUBI_2:.*]] = arith.subi %[[CONSTANT_1]], %[[SUBI_1]] : index
+// CHECK:             %[[SUBI_2:.*]] = arith.subi %[[CONSTANT_8]], %[[SUBI_1]] : index
 // CHECK:             %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[ADDI_0]]], sizes: [4, %[[SUBI_1]]], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<4x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[SUBI_0]]], sizes: [4, %[[SUBI_2]]], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<4x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[EMPTY_0:.*]] = tensor.empty() : tensor<4x4xf32>
-// CHECK:             %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_8]] : f32) outs(%[[EMPTY_0]] : tensor<4x4xf32>) -> tensor<4x4xf32>
-// CHECK:             %[[DIM_0:.*]] = memref.dim %[[REINTERPRET_CAST_0]], %[[CONSTANT_0]] : memref<4x?xf32, strided<[?, ?], offset: ?>>
-// CHECK:             %[[DIM_1:.*]] = memref.dim %[[REINTERPRET_CAST_1]], %[[CONSTANT_0]] : memref<4x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:             %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_1]] : f32) outs(%[[EMPTY_0]] : tensor<4x4xf32>) -> tensor<4x4xf32>
+// CHECK:             %[[DIM_0:.*]] = memref.dim %[[REINTERPRET_CAST_0]], %[[CONSTANT_9]] : memref<4x?xf32, strided<[?, ?], offset: ?>>
+// CHECK:             %[[DIM_1:.*]] = memref.dim %[[REINTERPRET_CAST_1]], %[[CONSTANT_9]] : memref<4x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[SUBVIEW_0:.*]] = memref.subview %[[REINTERPRET_CAST_0]][0, 0] [2, %[[DIM_0]]] [1, 1] : memref<4x?xf32, strided<[?, ?], offset: ?>> to memref<2x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[SUBVIEW_1:.*]] = memref.subview %[[REINTERPRET_CAST_1]][0, 0] [2, %[[DIM_1]]] [1, 1] : memref<4x?xf32, strided<[?, ?], offset: ?>> to memref<2x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[SUBVIEW_0]] restrict : memref<2x?xf32, strided<[?, ?], offset: ?>> to tensor<2x?xf32>
@@ -75,7 +77,6 @@
 // CHECK:           }
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @wrap_side_by_side_masked_loop_01234567(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32) {
     %cst = arith.constant dense<-9.900000e+01> : tensor<4x4xf32>
     %c1_i32 = arith.constant 1 : i32

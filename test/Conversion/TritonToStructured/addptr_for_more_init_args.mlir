@@ -8,26 +8,28 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-structured --remove-dead-values --canonicalize %s | FileCheck %s
 
+module {
 // CHECK-LABEL:   tt.func @kernel(
 // CHECK-SAME:                    %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<bf16>,
 // CHECK-SAME:                    %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<bf16>) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 1 : index
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 2 : index
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 3 : index
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 12 : index
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 1024 : index
-// CHECK:           %[[FOR_0:.*]]:5 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_0]] to %[[CONSTANT_4]] step %[[CONSTANT_3]] iter_args(%[[VAL_1:.*]] = %[[CONSTANT_1]], %[[VAL_2:.*]] = %[[CONSTANT_5]], %[[VAL_3:.*]] = %[[CONSTANT_2]], %[[VAL_4:.*]] = %[[CONSTANT_5]], %[[VAL_5:.*]] = %[[CONSTANT_3]]) -> (index, index, index, index, index) {
-// CHECK:             %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG1]] to sizes: [256], strides: {{\[}}%[[CONSTANT_1]]], offsets: {{\[}}%[[VAL_4]]], shape: [0], order: [] : <bf16> to tensor<256x!tt.ptr<bf16>>
-// CHECK:             %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG0]] to sizes: [256], strides: {{\[}}%[[CONSTANT_1]]], offsets: {{\[}}%[[VAL_2]]], shape: [0], order: [] : <bf16> to tensor<256x!tt.ptr<bf16>>
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1024 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 2 : index
+// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 3 : index
+// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 12 : index
+// CHECK:           %[[FOR_0:.*]]:5 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_5]] step %[[CONSTANT_4]] iter_args(%[[VAL_1:.*]] = %[[CONSTANT_2]], %[[VAL_2:.*]] = %[[CONSTANT_0]], %[[VAL_3:.*]] = %[[CONSTANT_3]], %[[VAL_4:.*]] = %[[CONSTANT_0]], %[[VAL_5:.*]] = %[[CONSTANT_4]]) -> (index, index, index, index, index) {
+// CHECK:             %[[MAKE_TPTR_0:.*]] = tts.make_tptr %[[ARG1]] to sizes: [256], strides: {{\[}}%[[CONSTANT_2]]], offsets: {{\[}}%[[VAL_4]]], shape: [0], order: [] : <bf16> to tensor<256x!tt.ptr<bf16>>
+// CHECK:             %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG0]] to sizes: [256], strides: {{\[}}%[[CONSTANT_2]]], offsets: {{\[}}%[[VAL_2]]], shape: [0], order: [] : <bf16> to tensor<256x!tt.ptr<bf16>>
 // CHECK:             %[[VAL_6:.*]] = "tts.load"(%[[MAKE_TPTR_1]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<256x!tt.ptr<bf16>>) -> tensor<256xbf16>
 // CHECK:             "tts.store"(%[[MAKE_TPTR_0]], %[[VAL_6]]) <{static_mask_dims = array<i64>}> : (tensor<256x!tt.ptr<bf16>>, tensor<256xbf16>) -> ()
-// CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_2]], %[[CONSTANT_3]] : index
-// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[VAL_1]], %[[CONSTANT_3]] : index
-// CHECK:             %[[ADDI_2:.*]] = arith.addi %[[VAL_3]], %[[CONSTANT_3]] : index
-// CHECK:             %[[ADDI_3:.*]] = arith.addi %[[VAL_5]], %[[CONSTANT_3]] : index
+// CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_2]], %[[CONSTANT_4]] : index
+// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[VAL_1]], %[[CONSTANT_4]] : index
+// CHECK:             %[[ADDI_2:.*]] = arith.addi %[[VAL_3]], %[[CONSTANT_4]] : index
+// CHECK:             %[[ADDI_3:.*]] = arith.addi %[[VAL_5]], %[[CONSTANT_4]] : index
 // CHECK:             %[[ADDI_4:.*]] = arith.addi %[[ADDI_1]], %[[ADDI_2]] : index
 // CHECK:             %[[ADDI_5:.*]] = arith.addi %[[ADDI_4]], %[[ADDI_3]] : index
 // CHECK:             %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ADDI_5]] : index to i32
@@ -37,7 +39,6 @@
 // CHECK:           }
 // CHECK:           tt.return
 // CHECK:         }
-module {
   tt.func @kernel(
     %arg0 : !tt.ptr<bf16>,
     %arg1 : !tt.ptr<bf16>

@@ -36,28 +36,21 @@ def isin_by_comparation_impl(
     row_off = global_pid * BLOCK_M
     rows = row_off + tl.arange(0, BLOCK_M)[:, None]
     row_mask = rows < M
-    out_ptr += rows
-    in0_ravel_ptr += rows + tl.zeros([BLOCK_N], dtype=tl.int32)
-    in1_ravel_ptr += tl.zeros([BLOCK_M], dtype=tl.int32)[:, None]
 
-    block = tl.full(
-        [BLOCK_M, BLOCK_N], value=(1 if invert else 0), dtype=tl.int1
-    )
-    in0 = tl.load(in0_ravel_ptr, row_mask, other=0)
+    block = tl.full([BLOCK_M, BLOCK_N], value=(1 if invert else 0), dtype=tl.int1)
+    in0 = tl.load(in0_ravel_ptr + rows, row_mask, other=0)
     for col_off in range(0, N, BLOCK_N):
         cols = col_off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
-        in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
+        in1 = tl.load(in1_ravel_ptr + cols, col_mask, other=0)
         block = tl.where(
             mask,
             tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
             invert,
         )
-    out = tl.reduce(
-        block, axis=1, combine_fn=(reduce_all if invert else reduce_any)
-    )
-    tl.store(out_ptr, out[:, None], row_mask)
+    out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
+    tl.store(out_ptr + rows, out[:, None].to(tl.int8), row_mask)
 
 
 @triton.jit
@@ -111,7 +104,7 @@ def isin_by_comparation(
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
-    out = torch.empty_like(in0_ravel, dtype=torch.bool)
+    out = torch.empty_like(in0_ravel, dtype=torch.uint8)
     isin_by_comparation_kernel[grid](
         in0_ravel,
         in1_ravel,
@@ -124,7 +117,7 @@ def isin_by_comparation(
         invert=invert,
         num_warps=num_warps,
     )
-    return out.view_as(in0)
+    return out.view_as(in0).to(torch.bool)
 
 
 @triton.jit
@@ -224,7 +217,7 @@ def isin_by_search(
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
-    out = torch.empty_like(in0_ravel, dtype=torch.bool)
+    out = torch.empty_like(in0_ravel, dtype=torch.uint8)
     isin_by_search_kernel[grid](
         in0_ravel,
         in1_ravel,
@@ -239,7 +232,7 @@ def isin_by_search(
     )
     if unique_in0:
         out = torch.gather(out, 0, unique_order.ravel().to(torch.int64))
-    return out.view_as(in0)
+    return out.view_as(in0).to(torch.bool)
 
 
 def isin(
@@ -260,10 +253,6 @@ def isin(
     elif in0.numel() <= 12288 and in1.numel() <= 12288:
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:
-        return isin_by_search(
-            in0, in1, invert, unique_in0=False, unique_in1=False
-        )
+        return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
-        return isin_by_search(
-            in0, in1, invert, unique_in0=False, unique_in1=True
-        )
+        return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)

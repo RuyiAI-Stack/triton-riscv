@@ -1,5 +1,7 @@
 import math
 
+import torch.nn.functional as F
+
 from .conv2d import conv2d
 
 
@@ -12,6 +14,17 @@ def conv1d(
     dilation=1,
     groups=1,
 ):
+    if input.device.type == "cpu":
+        return F.conv1d(
+            input,
+            weight,
+            bias=bias,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        )
+
     if isinstance(stride, (list, tuple)):
         stride_width = stride[0]
     else:
@@ -31,21 +44,11 @@ def conv1d(
             il = input.shape[-1]
             kernel_size = weight.shape[-1]
             padding_width = math.ceil(
-                (
-                    stride_width * (il - 1)
-                    + 1
-                    + dilation_width * (kernel_size - 1)
-                    - il
-                )
+                (stride_width * (il - 1) + 1 + dilation_width * (kernel_size - 1) - il)
                 / 2
             )
             ol = int(
-                (
-                    il
-                    + 2 * padding_width
-                    - dilation_width * (kernel_size - 1)
-                    - 1
-                )
+                (il + 2 * padding_width - dilation_width * (kernel_size - 1) - 1)
                 / stride_width
                 + 1
             )

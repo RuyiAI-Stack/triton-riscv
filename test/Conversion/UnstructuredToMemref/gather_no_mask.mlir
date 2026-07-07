@@ -8,9 +8,10 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --triton-to-unstructured --canonicalize --unstructured-to-memref --canonicalize %s | FileCheck %s
 
-// CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
+module {
 // CHECK-LABEL:   tt.func public @gather_simple_no_mask(
 // CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32>,
 // CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !tt.ptr<f32>) attributes {noinline = false} {
@@ -43,11 +44,11 @@
 // CHECK:               scf.yield %[[INSERT_0]] : tensor<64xf32>
 // CHECK:             }
 // CHECK:             %[[CAST_1:.*]] = memref.cast %[[UNREALIZED_CONVERSION_CAST_0]] : memref<*xf32> to memref<?xf32>
-// CHECK:             linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[VAL_2]], %[[FOR_1]] : tensor<64xi32>, tensor<64xf32>) {
-// CHECK:             ^bb0(%[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: f32):
-// CHECK:               %[[INDEX_CAST_1:.*]] = arith.index_cast %[[VAL_5]] : i32 to index
-// CHECK:               memref.store %[[VAL_6]], %[[CAST_1]]{{\[}}%[[INDEX_CAST_1]]] : memref<?xf32>
-// CHECK:               linalg.yield
+// CHECK:             scf.for %[[VAL_5:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_2]] step %[[CONSTANT_0]] {
+// CHECK:               %[[EXTRACT_1:.*]] = tensor.extract %[[VAL_2]]{{\[}}%[[VAL_5]]] : tensor<64xi32>
+// CHECK:               %[[EXTRACT_2:.*]] = tensor.extract %[[FOR_1]]{{\[}}%[[VAL_5]]] : tensor<64xf32>
+// CHECK:               %[[INDEX_CAST_1:.*]] = arith.index_cast %[[EXTRACT_1]] : i32 to index
+// CHECK:               memref.store %[[EXTRACT_2]], %[[CAST_1]]{{\[}}%[[INDEX_CAST_1]]] : memref<?xf32>
 // CHECK:             }
 // CHECK:             %[[ADDI_2:.*]] = arith.addi %[[ADDI_1]], %[[CONSTANT_6]] : tensor<64xi32>
 // CHECK:             %[[ADDI_3:.*]] = arith.addi %[[VAL_2]], %[[CONSTANT_6]] : tensor<64xi32>
@@ -55,7 +56,6 @@
 // CHECK:           }
 // CHECK:           tt.return
 // CHECK:         }
-module {
   tt.func public @gather_simple_no_mask(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) attributes {noinline = false} {
     %c1_i32 = arith.constant 1 : i32
     %c2_i32 = arith.constant 2 : i32

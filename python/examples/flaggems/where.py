@@ -19,7 +19,7 @@ def where_kernel(
     cond = tl.load(cond_ptr + offsets, mask=mask)
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    res = tl.where(cond, x, y)
+    res = tl.where(cond != 0, x, y)
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -50,17 +50,30 @@ def where_self_out(condition, self, other, out=None):
         f"where expected condition to be a boolean tensor, but got a tensor with dtype {condition.dtype}"
     )
 
+    use_uint8_bool_out = result_type == torch.bool
+    original_out = out
     if out is None:
         out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
-        out = torch.empty(out_shape, dtype=result_type, device="cpu")
+        out = torch.empty(
+            out_shape,
+            dtype=torch.uint8 if use_uint8_bool_out else result_type,
+            device="cpu",
+        )
+    elif use_uint8_bool_out:
+        out = torch.empty_like(out, dtype=torch.uint8)
 
-    c = c.expand(out.shape).contiguous()
+    c = c.expand(out.shape).to(torch.uint8).contiguous()
     a = a.expand(out.shape).contiguous()
     b = b.expand(out.shape).contiguous()
     n_elements = out.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     where_kernel[grid](c, a, b, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+    if use_uint8_bool_out:
+        out = out.to(torch.bool)
+        if original_out is not None:
+            original_out.copy_(out)
+            return original_out
     return out
 
 

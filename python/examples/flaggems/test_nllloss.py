@@ -77,9 +77,7 @@ def test_nllloss_backward(shape):
 
     inp.grad = torch.zeros_like(inp)
     tri_out, total_weight = nll_loss_forward(inp, tgt, reduction=1)
-    tri_grad = nll_loss_backward(
-        grad_out, inp, tgt, None, 1, -100, total_weight
-    )
+    tri_grad = nll_loss_backward(grad_out, inp, tgt, None, 1, -100, total_weight)
 
     torch.testing.assert_close(tri_grad, ref_grad, rtol=1e-3, atol=1e-3)
 
@@ -92,9 +90,7 @@ def test_nll_loss_forward(shape):
     tgt = torch.randint(0, C, (N,), dtype=torch.int64)
 
     ref = F.nll_loss(inp, tgt, reduction="mean", weight=None)
-    tri, tw = nll_loss_forward(
-        inp, tgt, weight=None, reduction=1, ignore_index=-100
-    )
+    tri, tw = nll_loss_forward(inp, tgt, weight=None, reduction=1, ignore_index=-100)
     torch.testing.assert_close(tri, ref, rtol=1e-3, atol=1e-3)
 
 
@@ -106,9 +102,7 @@ def test_nll_loss2d_forward(shape):
     tgt = torch.randint(0, C, (N, H, W), dtype=torch.int64)
 
     ref = F.nll_loss(inp, tgt, reduction="mean")
-    tri, tw = nll_loss2d_forward(
-        inp, tgt, weight=None, reduction=1, ignore_index=-100
-    )
+    tri, tw = nll_loss2d_forward(inp, tgt, weight=None, reduction=1, ignore_index=-100)
     torch.testing.assert_close(tri, ref, rtol=1e-3, atol=1e-3)
 
 
@@ -118,13 +112,14 @@ def test_nll_loss2d_backward(shape):
     N, C, H, W = shape
     inp = torch.randn(shape, dtype=torch.float32, requires_grad=True)
     log_probs = F.log_softmax(inp, dim=1)
+    log_probs.retain_grad()
     tgt = torch.randint(0, C, (N, H, W), dtype=torch.int64)
 
     # Reference backward via torch
     ref = F.nll_loss(log_probs, tgt, reduction="mean")
     grad_out = torch.randn_like(ref)
     ref.backward(grad_out)
-    ref_dx = inp.grad.clone()
+    ref_dx = log_probs.grad.clone()
 
     # Triton backward
     inp.grad = None

@@ -40,7 +40,7 @@ def any_kernel_dim(
         a = tl.load(inp_ptrs + cols, mask=mask, other=0.0)
         _any = _any | (a != 0)
     any_res = tl.reduce(_any, axis=1, combine_fn=reduce_any)
-    tl.store(out_ptrs, any_res[:, None], mask=row_mask)
+    tl.store(out_ptrs, any_res[:, None].to(tl.uint8), mask=row_mask)
 
 
 @triton.jit
@@ -57,7 +57,7 @@ def any_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
     any_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_any)
     mid_ptr = mid + pid
-    tl.store(mid_ptr, any_val)
+    tl.store(mid_ptr, any_val.to(tl.uint8))
 
 
 @triton.jit
@@ -65,9 +65,9 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(tl.int1)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=0) != 0
     any_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_any)
-    tl.store(out, any_val)
+    tl.store(out, any_val.to(tl.uint8))
 
 
 def dim_compress(inp, dims):
@@ -82,18 +82,19 @@ def dim_compress(inp, dims):
 
 
 def any(inp):
+    inp_kernel = inp.to(torch.uint8) if inp.dtype == torch.bool else inp
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=torch.uint8, device=inp.device)
+    out = torch.empty([], dtype=torch.uint8, device=inp.device)
 
-    any_kernel_1[(mid_size,)](inp, mid, n_elements, BLOCK_SIZE=block_size)
+    any_kernel_1[(mid_size,)](inp_kernel, mid, n_elements, BLOCK_SIZE=block_size)
     any_kernel_2[(1,)](mid, out, mid_size, BLOCK_MID=block_mid)
 
-    return out
+    return out.to(torch.bool)
 
 
 def any_dim(inp, dim=None, keepdim=False):
@@ -106,12 +107,13 @@ def any_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
-        inp_compressed = dim_compress(inp, [dim])
+        inp_kernel = inp.to(torch.uint8) if inp.dtype == torch.bool else inp
+        inp_compressed = dim_compress(inp_kernel, [dim])
         N = shape[dim]
         shape[dim] = 1
         M = inp_compressed.numel() // N
 
-        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        out = torch.empty(shape, dtype=torch.uint8, device=inp.device)
 
         BLOCK_M = 32
         BLOCK_N = 32
@@ -124,6 +126,7 @@ def any_dim(inp, dim=None, keepdim=False):
             BLOCK_M=BLOCK_M,
             BLOCK_N=BLOCK_N,
         )
+        out = out.to(torch.bool)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
@@ -137,14 +140,15 @@ def any_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
-    inp_compressed = dim_compress(inp, dim)
+    inp_kernel = inp.to(torch.uint8) if inp.dtype == torch.bool else inp
+    inp_compressed = dim_compress(inp_kernel, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = inp_compressed.numel() // N
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    out = torch.empty(shape, dtype=torch.uint8, device=inp.device)
 
     BLOCK_M = 32
     BLOCK_N = 32
@@ -158,6 +162,7 @@ def any_dims(inp, dim=None, keepdim=False):
         BLOCK_N=BLOCK_N,
     )
 
+    out = out.to(torch.bool)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

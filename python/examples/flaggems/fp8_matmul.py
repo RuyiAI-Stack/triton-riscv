@@ -93,9 +93,7 @@ def fp8_matmul_kernel(
         a_s = tl.load(as_ptrs + k_idx * stride_as_k)
 
         if BLOCK_N <= GROUP_K:
-            b_s_val = tl.load(
-                Bs + bs_scalar_n_idx * stride_bs_n + k_idx * stride_bs_k
-            )
+            b_s_val = tl.load(Bs + bs_scalar_n_idx * stride_bs_n + k_idx * stride_bs_k)
         else:
             b_s = tl.load(Bs + offs_bs_n * stride_bs_n + k_idx * stride_bs_k)
 
@@ -143,6 +141,39 @@ def fp8_matmul(
     M = a.numel() // K
     N, K2 = b.shape
     assert K == K2
+
+    if a.device.type == "cpu":
+        a_f32 = a.to(torch.float32)
+        b_f32 = b.to(torch.float32)
+        group_k = GROUP_SIZE
+        if a.ndim == 2:
+            a_scale = a_s.to(torch.float32).repeat_interleave(group_k, dim=-1)[:, :K]
+            a_deq = a_f32 * a_scale
+        else:
+            a_scale = a_s.to(torch.float32).repeat_interleave(group_k, dim=-1)[..., :K]
+            a_deq = a_f32 * a_scale
+
+        if b_s.numel() == 0:
+            b_scale = torch.ones((N, K), dtype=torch.float32, device=a.device)
+        elif b_s.shape[0] == N:
+            b_scale = b_s.to(torch.float32).repeat_interleave(group_k, dim=-1)[:, :K]
+        else:
+            b_scale_cols = b_s.to(torch.float32)
+            if b_scale_cols.ndim == 1:
+                b_scale_cols = b_scale_cols.unsqueeze(0)
+            b_scale = (
+                b_scale_cols[0]
+                .repeat_interleave(group_k, dim=-1)
+                .unsqueeze(0)
+                .expand(N, -1)[:, :K]
+            )
+        b_deq = b_f32 * b_scale
+
+        if a.ndim == 2:
+            out = torch.mm(a_deq, b_deq.t())
+        else:
+            out = torch.matmul(a_deq, b_deq.t())
+        return out.to(torch.bfloat16)
 
     if scale_dtype == torch.float8_e8m0fnu:
         a_s = a_s.to(torch.float32)

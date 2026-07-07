@@ -8,6 +8,7 @@
 //   * https://mlir.llvm.org/getting_started/TestingGuide/
 
 
+
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental  %s | FileCheck %s
 
 // @triton.jit
@@ -27,6 +28,7 @@
 //     print_triton_ir_only=True,
 // )
 
+module {
 // CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK: #[[$ATTR_1:.+]] = affine_map<(d0, d1) -> (0, d1)>
 // CHECK: #[[$ATTR_2:.+]] = affine_map<(d0, d1) -> (d0, d1)>
@@ -41,8 +43,8 @@
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0xFF800000 : f32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant -1 : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant -1 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0xFF800000 : f32
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4xi32>
 // CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]]], iterator_types = ["parallel"]} outs(%[[EMPTY_0]] : tensor<4xi32>) {
 // CHECK:           ^bb0(%[[VAL_0:.*]]: i32):
@@ -63,8 +65,8 @@
 // CHECK:             linalg.yield %[[VAL_1]] : i32
 // CHECK:           } -> tensor<4x4xi32>
 // CHECK:           %[[EMPTY_2:.*]] = tensor.empty() : tensor<4xf32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_2]] : tensor<4xf32>) -> tensor<4xf32>
-// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_1]] : f32) outs(%[[EMPTY_2]] : tensor<4xf32>) -> tensor<4xf32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
 // CHECK:           %[[REDUCE_0:.*]]:2 = linalg.reduce ins(%[[TO_TENSOR_0]], %[[GENERIC_1]] : tensor<4x4xf32>, tensor<4x4xi32>) outs(%[[FILL_0]], %[[FILL_1]] : tensor<4xf32>, tensor<4xi32>) dimensions = [1]
 // CHECK:             (%[[VAL_3:.*]]: f32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: f32, %[[VAL_6:.*]]: i32) {
 // CHECK:               %[[CMPF_0:.*]] = arith.cmpf oeq, %[[VAL_3]], %[[VAL_5]] : f32
@@ -85,7 +87,6 @@
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_2]] in writable %[[REINTERPRET_CAST_1]] : (tensor<4xf32>, memref<4xf32, strided<[1]>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @test_argmax(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32, %arg3: i32) attributes {noinline = false} {
     %0 = tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32>
     %1 = tt.expand_dims %0 {axis = 1 : i32} : tensor<4xi32> -> tensor<4x1xi32>
@@ -141,6 +142,7 @@ module {
 //     print_triton_ir_only=True,
 // )
 
+module {
 // CHECK: #[[$ATTR_3:.+]] = affine_map<(d0) -> (d0)>
 // CHECK: #[[$ATTR_4:.+]] = affine_map<(d0, d1) -> (0, d1)>
 // CHECK: #[[$ATTR_5:.+]] = affine_map<(d0, d1) -> (d0, d1)>
@@ -155,8 +157,8 @@ module {
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0x7F800000 : f32
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant -1 : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant -1 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0x7F800000 : f32
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4xi32>
 // CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_3]]], iterator_types = ["parallel"]} outs(%[[EMPTY_0]] : tensor<4xi32>) {
 // CHECK:           ^bb0(%[[VAL_0:.*]]: i32):
@@ -177,8 +179,8 @@ module {
 // CHECK:             linalg.yield %[[VAL_1]] : i32
 // CHECK:           } -> tensor<4x4xi32>
 // CHECK:           %[[EMPTY_2:.*]] = tensor.empty() : tensor<4xf32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_2]] : tensor<4xf32>) -> tensor<4xf32>
-// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_1]] : f32) outs(%[[EMPTY_2]] : tensor<4xf32>) -> tensor<4xf32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
 // CHECK:           %[[REDUCE_0:.*]]:2 = linalg.reduce ins(%[[TO_TENSOR_0]], %[[GENERIC_1]] : tensor<4x4xf32>, tensor<4x4xi32>) outs(%[[FILL_0]], %[[FILL_1]] : tensor<4xf32>, tensor<4xi32>) dimensions = [1]
 // CHECK:             (%[[VAL_3:.*]]: f32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: f32, %[[VAL_6:.*]]: i32) {
 // CHECK:               %[[CMPF_0:.*]] = arith.cmpf oeq, %[[VAL_3]], %[[VAL_5]] : f32
@@ -199,7 +201,6 @@ module {
 // CHECK:           bufferization.materialize_in_destination %[[GENERIC_2]] in writable %[[REINTERPRET_CAST_1]] : (tensor<4xf32>, memref<4xf32, strided<[1]>>) -> ()
 // CHECK:           return
 // CHECK:         }
-module {
   tt.func public @test_argmin(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32, %arg3: i32) attributes {noinline = false} {
     %0 = tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32>
     %1 = tt.expand_dims %0 {axis = 1 : i32} : tensor<4xi32> -> tensor<4x1xi32>

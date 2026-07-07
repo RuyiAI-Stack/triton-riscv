@@ -410,14 +410,13 @@ LogicalResult PtrState::addState(const PtrState &lhsState,
       } else {
         // Set stride to 1 when not continuous.
         strides.push_back(builder.getIndexAttr(1));
-        // New offset is offset * stride.
+        // Preserve the structured contribution on this dimension while marking
+        // the result as unstructured. The later unstructured analysis will
+        // fold the structured base and the lane-wise offset into one linear
+        // gather/scatter offset.
         auto newLhsOffset = lhsState.offsets[i];
         auto newRhsOffset = rhsState.offsets[i];
-        // Just propagate the unstructured offset to the result to track the
-        // unstructured dimension. The real address calculation will be done
-        // later in the PtrAnalysis::visitOperandAddptr.
-        auto newOffset =
-            lhsState.dimIsStructured(i) ? newRhsOffset : newLhsOffset;
+        auto newOffset = addOFRs(newLhsOffset, newRhsOffset, loc, builder);
         offsets.push_back(newOffset);
       }
     }
