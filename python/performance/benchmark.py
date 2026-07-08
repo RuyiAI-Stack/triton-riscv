@@ -10,6 +10,8 @@ from triton.backends.triton_shared.driver import CPUDriver
 
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 _PRINTED_TABLE_HEADER = False
+BUDDY_PROVIDER = "torch+buddy-mlir"
+TRITON_PROVIDER = "triton-riscv"
 
 
 def configure_torch_threads_from_env():
@@ -182,6 +184,12 @@ def format_speedup(speedup):
     return f"{speedup:.3f}x"
 
 
+def format_provider_time(seconds, status="PASS"):
+    if status != "PASS":
+        return "-"
+    return format_seconds(seconds)
+
+
 def fit(text, width):
     text = str(text)
     if len(text) <= width:
@@ -192,7 +200,7 @@ def fit(text, width):
 
 
 def status_label(status):
-    padded = f"{status:<8}"
+    padded = f"{status:^6}"
     if status == "PASS":
         return color(padded, "32;1")
     return color(padded, "31;1")
@@ -203,10 +211,11 @@ def print_table_header():
     if _PRINTED_TABLE_HEADER or os.environ.get("TRITON_RISCV_BENCH_HEADER") == "0":
         return
     print(
-        f"{'case':<56} {'status':<8} {'torch':>13} "
-        f"{'triton-riscv':>13} {'speedup':>9} {'process cpu':>13}"
+        f"{'case':<56} {'torch(baseline)':>15} "
+        f"{'torch+buddy':>13}  {'status':^6}  {'speedup':>7} "
+        f"{TRITON_PROVIDER:>13}  {'status':^6}  {'speedup':>7}"
     )
-    print(color("-" * 117, "2"))
+    print(color("-" * 137, "2"))
     _PRINTED_TABLE_HEADER = True
 
 
@@ -214,17 +223,23 @@ def print_result_row(
     case_name,
     status,
     baseline_wall_avg,
-    provider_wall_avg,
-    speedup,
-    provider_cpu_avg,
+    buddy_wall_avg,
+    buddy_status,
+    buddy_speedup,
+    triton_wall_avg,
+    triton_status,
+    triton_speedup,
 ):
     print_table_header()
     print(
-        f"{fit(case_name, 56):<56} {status_label(status)} "
-        f"{format_seconds(baseline_wall_avg):>13} "
-        f"{format_seconds(provider_wall_avg):>13} "
-        f"{format_speedup(speedup):>9} "
-        f"{format_seconds(provider_cpu_avg):>13}"
+        f"{fit(case_name, 56):<56} "
+        f"{format_seconds(baseline_wall_avg):>15} "
+        f"{format_provider_time(buddy_wall_avg, buddy_status):>13}  "
+        f"{status_label(buddy_status)}  "
+        f"{format_speedup(buddy_speedup):>7} "
+        f"{format_seconds(triton_wall_avg):>13} "
+        f" {status_label(triton_status)}  "
+        f"{format_speedup(triton_speedup):>7}"
     )
 
 
@@ -244,6 +259,11 @@ def append_csv_row(row):
         "speedup",
         "baseline_cpu_avg_s",
         "provider_cpu_avg_s",
+        "buddy_status",
+        "buddy_wall_avg_s",
+        "buddy_cpu_avg_s",
+        "buddy_speedup",
+        "buddy_error",
         "warmup",
         "repeats",
     ]
@@ -298,11 +318,86 @@ def measure_callable(
     return {"name": name, "result": result, "stats": stats}
 
 
-def _provider_name(providers, baseline):
-    for name in providers:
-        if name != baseline:
-            return name
-    return baseline
+def _truthy_env(name, default=True):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() not in {"0", "false", "no", "off"}
+
+
+def _candidate_buddy_python_paths():
+    paths = []
+    explicit = os.environ.get("BUDDY_MLIR_PYTHON_PACKAGES_DIR")
+    if explicit:
+        paths.append(Path(explicit))
+
+    buddy_dir = os.environ.get("BUDDY_DIR")
+    if buddy_dir:
+        paths.append(Path(buddy_dir) / "build" / "python_packages")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    paths.append(repo_root.parent / "buddy-mlir" / "build" / "python_packages")
+    paths.append(repo_root / ".cache" / "buddy" / "python_packages")
+    return paths
+
+
+def _load_buddy_torch_backend():
+    for path in reversed(_candidate_buddy_python_paths()):
+        if path.exists():
+            path_text = str(path)
+            if path_text not in sys.path:
+                sys.path.insert(0, path_text)
+
+    from buddy.compiler.frontend import dynamo_compiler
+
+    return dynamo_compiler
+
+
+def _normalize_buddy_result(result):
+    if isinstance(result, list) and len(result) == 1:
+        return result[0]
+    return result
+
+
+def _make_buddy_provider(baseline_provider, backend):
+    compiled = None
+
+    def run_buddy():
+        nonlocal compiled
+        import torch
+
+        if compiled is None:
+            compiled = torch.compile(
+                baseline_provider,
+                backend=backend,
+                fullgraph=True,
+                dynamic=False,
+            )
+        return _normalize_buddy_result(compiled())
+
+    return run_buddy
+
+
+def _with_optional_buddy_provider(providers, baseline):
+    if not _truthy_env("TRITON_RISCV_BENCH_BUDDY", default=True):
+        return dict(providers)
+    if baseline not in providers or BUDDY_PROVIDER in providers:
+        return dict(providers)
+    try:
+        backend = _load_buddy_torch_backend()
+    except Exception:
+        return dict(providers)
+
+    with_buddy = {}
+    inserted = False
+    for name, provider in providers.items():
+        with_buddy[name] = provider
+        if name == baseline:
+            with_buddy[BUDDY_PROVIDER] = _make_buddy_provider(provider, backend)
+            inserted = True
+    if not inserted:
+        with_buddy[BUDDY_PROVIDER] = _make_buddy_provider(providers[baseline], backend)
+    return with_buddy
 
 
 def _avg(stats, timer_name):
@@ -313,45 +408,72 @@ def _avg(stats, timer_name):
 
 
 def _bench_summary(
-    case_name, status, baseline, provider_name, measured, warmup, repeats
+    case_name, status, baseline, measured, provider_errors, warmup, repeats
 ):
     baseline_stats = measured[baseline]["stats"]
-    provider_stats = measured[provider_name]["stats"]
     baseline_wall = _avg(baseline_stats, "Wall")
-    provider_wall = _avg(provider_stats, "Wall")
     baseline_cpu = _avg(baseline_stats, "CPU")
-    provider_cpu = _avg(provider_stats, "CPU")
-    speedup = None
-    if baseline_wall is not None and provider_wall and provider_wall > 0:
-        speedup = baseline_wall / provider_wall
+    triton = measured.get(TRITON_PROVIDER)
+    triton_stats = triton["stats"] if triton else {}
+    triton_wall = _avg(triton_stats, "Wall")
+    triton_cpu = _avg(triton_stats, "CPU")
+    triton_status = "PASS" if triton else "FAIL"
+    triton_speedup = None
+    if baseline_wall is not None and triton_wall and triton_wall > 0:
+        triton_speedup = baseline_wall / triton_wall
+
+    buddy = measured.get(BUDDY_PROVIDER)
+    buddy_stats = buddy["stats"] if buddy else {}
+    buddy_wall = _avg(buddy_stats, "Wall")
+    buddy_cpu = _avg(buddy_stats, "CPU")
+    buddy_error = provider_errors.get(BUDDY_PROVIDER, "")
+    if buddy:
+        buddy_status = "PASS"
+    elif buddy_error:
+        buddy_status = "FAIL"
+    else:
+        buddy_status = "SKIP"
+    buddy_speedup = None
+    if baseline_wall is not None and buddy_wall and buddy_wall > 0:
+        buddy_speedup = baseline_wall / buddy_wall
 
     print_result_row(
         case_name,
         status,
         baseline_wall,
-        provider_wall,
-        speedup,
-        provider_cpu,
+        buddy_wall,
+        buddy_status,
+        buddy_speedup,
+        triton_wall,
+        triton_status,
+        triton_speedup,
     )
     append_csv_row(
         {
             "case": case_name,
             "status": status,
             "baseline": baseline,
-            "provider": provider_name,
+            "provider": TRITON_PROVIDER,
             "baseline_wall_avg_s": (
                 f"{baseline_wall:.9f}" if baseline_wall is not None else ""
             ),
             "provider_wall_avg_s": (
-                f"{provider_wall:.9f}" if provider_wall is not None else ""
+                f"{triton_wall:.9f}" if triton_wall is not None else ""
             ),
-            "speedup": f"{speedup:.6f}" if speedup is not None else "",
+            "speedup": f"{triton_speedup:.6f}" if triton_speedup is not None else "",
             "baseline_cpu_avg_s": (
                 f"{baseline_cpu:.9f}" if baseline_cpu is not None else ""
             ),
             "provider_cpu_avg_s": (
-                f"{provider_cpu:.9f}" if provider_cpu is not None else ""
+                f"{triton_cpu:.9f}" if triton_cpu is not None else ""
             ),
+            "buddy_status": buddy_status,
+            "buddy_wall_avg_s": f"{buddy_wall:.9f}" if buddy_wall is not None else "",
+            "buddy_cpu_avg_s": f"{buddy_cpu:.9f}" if buddy_cpu is not None else "",
+            "buddy_speedup": (
+                f"{buddy_speedup:.6f}" if buddy_speedup is not None else ""
+            ),
+            "buddy_error": buddy_error[:500],
             "warmup": warmup,
             "repeats": repeats,
         }
@@ -360,12 +482,17 @@ def _bench_summary(
         "case": case_name,
         "status": status,
         "baseline": baseline,
-        "provider": provider_name,
+        "provider": TRITON_PROVIDER,
         "baseline_wall_avg_s": baseline_wall,
-        "provider_wall_avg_s": provider_wall,
-        "speedup": speedup,
+        "provider_wall_avg_s": triton_wall,
+        "speedup": triton_speedup,
         "baseline_cpu_avg_s": baseline_cpu,
-        "provider_cpu_avg_s": provider_cpu,
+        "provider_cpu_avg_s": triton_cpu,
+        "buddy_status": buddy_status,
+        "buddy_wall_avg_s": buddy_wall,
+        "buddy_cpu_avg_s": buddy_cpu,
+        "buddy_speedup": buddy_speedup,
+        "buddy_error": buddy_error,
     }
 
 
@@ -388,7 +515,8 @@ def compare_providers(
     `providers` is an ordered mapping of provider name to zero-argument callable.
     The baseline provider is used as the correctness reference.
     """
-    provider_name = _provider_name(providers, baseline)
+    providers = _with_optional_buddy_provider(providers, baseline)
+    provider_errors = {}
 
     if check:
         if baseline not in providers:
@@ -398,12 +526,26 @@ def compare_providers(
         for provider_name, provider in providers.items():
             if provider_name == baseline:
                 continue
-            actual = provider()
+            try:
+                actual = provider()
+            except Exception as exc:
+                if provider_name == BUDDY_PROVIDER:
+                    provider_errors[provider_name] = f"{type(exc).__name__}: {exc}"
+                    continue
+                raise
             _assert_cpu_tree(actual, provider_name)
-            _assert_close(actual, expected, rtol=rtol, atol=atol)
+            try:
+                _assert_close(actual, expected, rtol=rtol, atol=atol)
+            except Exception as exc:
+                if provider_name == BUDDY_PROVIDER:
+                    provider_errors[provider_name] = f"{type(exc).__name__}: {exc}"
+                    continue
+                raise
 
     measured = {}
     for provider_name, provider in providers.items():
+        if provider_name in provider_errors:
+            continue
         measured[provider_name] = measure_callable(
             provider_name,
             provider,
@@ -417,8 +559,8 @@ def compare_providers(
         case_name,
         "PASS",
         baseline,
-        _provider_name(providers, baseline),
         measured,
+        provider_errors,
         warmup,
         repeats,
     )

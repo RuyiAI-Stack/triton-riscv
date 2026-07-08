@@ -103,6 +103,16 @@ def bench_layernorm(size):
     device = "cpu"
     eps = 1e-5
     dtype = torch.float16
+    try:
+        F.layer_norm(
+            torch.randn((1, 8), dtype=dtype, device=device),
+            (8,),
+            torch.rand((8,), dtype=dtype, device=device),
+            torch.rand((8,), dtype=dtype, device=device),
+            eps,
+        )
+    except RuntimeError:
+        dtype = torch.float32
     x_shape = (size, size)
     w_shape = (x_shape[-1],)
     weight = torch.rand(w_shape, dtype=dtype, device=device, requires_grad=False)

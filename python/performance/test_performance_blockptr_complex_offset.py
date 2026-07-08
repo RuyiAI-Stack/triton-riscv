@@ -30,26 +30,22 @@ def blockptr_complex_offset_kernel(
     tile_row = pid_row * BLOCK_ROWS
     tile_col = pid_col * BLOCK_COLS
 
-    input_block = tl.make_block_ptr(
+    input_desc = tl.make_tensor_descriptor(
         base=input_ptr,
         shape=(rows, cols),
         strides=(input_stride_row, input_stride_col),
-        offsets=(tile_row + row_offset, tile_col + col_offset),
         block_shape=(BLOCK_ROWS, BLOCK_COLS),
-        order=(1, 0),
     )
-    values = tl.load(input_block, boundary_check=(0, 1))
+    values = input_desc.load((tile_row + row_offset, tile_col + col_offset))
     values = values * 2.0 + 1.0
 
-    output_block = tl.make_block_ptr(
+    output_desc = tl.make_tensor_descriptor(
         base=output_ptr,
         shape=(output_rows, output_cols),
         strides=(output_stride_row, output_stride_col),
-        offsets=(tile_row, tile_col),
         block_shape=(BLOCK_ROWS, BLOCK_COLS),
-        order=(1, 0),
     )
-    tl.store(output_block, values, boundary_check=(0, 1))
+    output_desc.store((tile_row, tile_col), values)
 
 
 def run_blockptr_complex_offset(rows, cols):

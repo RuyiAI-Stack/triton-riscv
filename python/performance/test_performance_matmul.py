@@ -46,44 +46,36 @@ def matmul_kernel_aligned(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    a_block_ptr = tl.make_block_ptr(
+    a_desc = tl.make_tensor_descriptor(
         base=a_ptr,
         shape=(M, K),
         strides=(stride_am, stride_ak),
-        offsets=(pid_m * BLOCK_SIZE_M, 0),
         block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_K),
-        order=(1, 0),
     )
-    b_block_ptr = tl.make_block_ptr(
+    b_desc = tl.make_tensor_descriptor(
         base=b_ptr,
         shape=(K, N),
         strides=(stride_bk, stride_bn),
-        offsets=(0, pid_n * BLOCK_SIZE_N),
         block_shape=(BLOCK_SIZE_K, BLOCK_SIZE_N),
-        order=(1, 0),
     )
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for _ in range(0, K, BLOCK_SIZE_K):
-        a = tl.load(a_block_ptr)
-        b = tl.load(b_block_ptr)
+    for k_offset in range(0, K, BLOCK_SIZE_K):
+        a = a_desc.load((pid_m * BLOCK_SIZE_M, k_offset))
+        b = b_desc.load((k_offset, pid_n * BLOCK_SIZE_N))
         accumulator += tl.dot(a, b)
-        a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_SIZE_K))
-        b_block_ptr = tl.advance(b_block_ptr, (BLOCK_SIZE_K, 0))
 
     if ACTIVATION == "leaky_relu":
         accumulator = leaky_relu(accumulator)
     c = accumulator.to(tl.float32)
 
-    c_block_ptr = tl.make_block_ptr(
+    c_desc = tl.make_tensor_descriptor(
         base=c_ptr,
         shape=(M, N),
         strides=(stride_cm, stride_cn),
-        offsets=(pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N),
         block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_N),
-        order=(1, 0),
     )
-    tl.store(c_block_ptr, c)
+    c_desc.store((pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N), c)
 
 
 @triton.jit

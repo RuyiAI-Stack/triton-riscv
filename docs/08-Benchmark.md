@@ -2,7 +2,10 @@
 
 This document explains how to run the Python performance benchmarks under
 `python/performance/`. These benchmarks compare Triton-RISCV CPU backend
-results against PyTorch for both correctness and execution time.
+results against PyTorch for both correctness and execution time. When the
+Buddy Python frontend is available, they also add a `torch+buddy-mlir` column
+that measures the PyTorch reference function through `torch.compile` with the
+Buddy MLIR backend.
 
 ## 1. Environment Setup
 
@@ -23,6 +26,11 @@ or C++ sources, rebuild and clear stale kernel cache entries before measuring:
 scripts/rebuild-triton-riscv.sh
 rm -rf "$TRITON_CACHE_DIR"
 ```
+
+The Buddy column needs Buddy's Python packages. The benchmark helper first uses
+`BUDDY_MLIR_PYTHON_PACKAGES_DIR` when set, then tries
+`$BUDDY_DIR/build/python_packages`, and finally the common sibling checkout
+path `../buddy-mlir/build/python_packages`.
 
 ## 2. Run All Benchmarks
 
@@ -93,40 +101,29 @@ set `PYTHONPATH` explicitly.
 ## 4. Output Format
 
 Each benchmark case first checks Triton-RISCV output against a PyTorch reference
-and then measures both providers. The aggregate runner prints a compact table:
-
-```text
-Triton-RISCV benchmark (1 script)
-  baseline     : torch
-  provider     : triton-riscv
-  tensor device : cpu
-  torch cuda   : available
-  torch threads: intra-op=128, inter-op=96
-  output csv   : /path/to/triton-riscv/artifacts/performance/test_bench.csv
-
-case                                                     status           torch  triton-riscv   speedup   process cpu
----------------------------------------------------------------------------------------------------------------------
-bench_mask(size=2048)                                    PASS         19.047 us    174.765 us    0.109x    174.907 us
-bench_mask(size=4096)                                    PASS         19.131 us    164.430 us    0.116x    164.572 us
-bench_mask(size=8192)                                    PASS         19.434 us    165.248 us    0.118x    165.407 us
----------------------------------------------------------------------------------------------------------------------
-summary: 3/3 benchmark rows passed; 1/1 scripts succeeded; avg triton-riscv 168.148 us
-csv: /path/to/triton-riscv/artifacts/performance/test_bench.csv
-```
-
+and then measures both providers.
 The fields mean:
 
-- `status`: `PASS` means Triton-RISCV output matched the PyTorch reference.
-- `torch`: Average PyTorch wall time.
+- `torch(baseline)`: Average PyTorch wall time.
+- `torch+buddy`: Average wall time for the PyTorch reference compiled with
+  Buddy MLIR through `torch.compile`.
+- `status`: Provider-specific correctness or availability. `PASS` means the
+  provider output matched the PyTorch reference, `SKIP` means the Buddy provider
+  was not available or was disabled, and `FAIL` means compilation, execution, or
+  correctness failed for that provider.
+- `speedup`: `torch / provider`. Values below `1.0x` mean that provider was
+  slower than PyTorch for that case.
 - `triton-riscv`: Average Triton-RISCV wall time.
-- `speedup`: `torch / triton-riscv`. Values below `1.0x` mean
-  Triton-RISCV was slower than PyTorch for that case.
-- `process cpu`: Average process CPU time while executing the Triton-RISCV
-  provider. This is not a separate "Triton CPU" backend.
 
-The CSV stores raw second values for the table columns, plus `warmup` and
-`repeats`. The default timing policy is still 5 warmup executions and 20
-measured repeats per provider.
+The CSV stores raw second values for the table columns, plus `buddy_status`,
+`buddy_speedup`, `buddy_error`, `warmup`, and `repeats`. It also retains
+process CPU timing columns for detailed analysis. The default timing policy is
+still 5 warmup executions and 20 measured repeats per provider. Disable the
+Buddy column with:
+
+```sh
+TRITON_RISCV_BENCH_BUDDY=0 python python/performance/run_all.py matmul
+```
 
 The benchmark helper also checks that all tensor outputs are CPU tensors. If a
 PyTorch reference or Triton-RISCV provider returns a CUDA tensor, the benchmark
@@ -170,6 +167,10 @@ benchmark.compare_providers(
     },
 )
 ```
+
+`compare_providers` automatically adds `torch+buddy-mlir` from the `torch`
+provider when Buddy is enabled, so benchmark files do not need a third callable
+for the common case.
 
 The helper checks correctness once before timing. Floating-point cases can pass
 case-specific tolerances through `rtol` and `atol`.

@@ -33,6 +33,7 @@ def print_table_header(total, csv_path):
     print(color(title, "36;1"))
     print("  baseline     : torch")
     print("  provider     : triton-riscv")
+    print("  extra        : torch+buddy-mlir")
     print("  tensor device : cpu")
     print(
         f"  torch cuda   : {'available' if torch.cuda.is_available() else 'not available'}"
@@ -43,10 +44,11 @@ def print_table_header(total, csv_path):
     print("  output csv   : " + str(csv_path))
     print()
     print(
-        f"{'case':<56} {'status':<8} {'torch':>13} "
-        f"{'triton-riscv':>13} {'speedup':>9} {'process cpu':>13}"
+        f"{'case':<56} {'torch(baseline)':>15} "
+        f"{'torch+buddy':>13}  {'status':^6}  {'speedup':>7} "
+        f"{'triton-riscv':>13}  {'status':^6}  {'speedup':>7}"
     )
-    print(color("-" * 117, "2"))
+    print(color("-" * 137, "2"))
     sys.stdout.flush()
 
 
@@ -63,21 +65,32 @@ def print_summary(csv_path, script_count, failures):
     total = len(rows)
     total_triton = 0.0
     triton_count = 0
+    total_buddy = 0.0
+    buddy_count = 0
+    buddy_passed = 0
     for row in rows:
         value = row.get("provider_wall_avg_s", "")
         if value:
             total_triton += float(value)
             triton_count += 1
+        buddy_value = row.get("buddy_wall_avg_s", "")
+        if buddy_value:
+            total_buddy += float(buddy_value)
+            buddy_count += 1
+        if row.get("buddy_status") == "PASS":
+            buddy_passed += 1
     avg_triton = total_triton / triton_count if triton_count else None
+    avg_buddy = total_buddy / buddy_count if buddy_count else None
 
-    print(color("-" * 117, "2"))
+    print(color("-" * 137, "2"))
     status = color(
         f"{passed}/{total} benchmark rows passed",
         "32;1" if not failures else "31;1",
     )
     print(
         f"summary: {status}; {script_count - len(failures)}/{script_count} scripts succeeded; "
-        f"avg triton-riscv {format_seconds(avg_triton)}"
+        f"avg torch+buddy-mlir {format_seconds(avg_buddy)} "
+        f"({buddy_passed}/{total} rows); avg triton-riscv {format_seconds(avg_triton)}"
     )
     print(f"csv: {color(str(csv_path), '36')}")
     if failures:

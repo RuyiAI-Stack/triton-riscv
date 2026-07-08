@@ -22,26 +22,12 @@ def load_2d_tensor_col_kernel(
     BLOCK_ROWS: tl.constexpr,
 ):
     pid_col = tl.program_id(axis=0)
-
-    input_block = tl.make_block_ptr(
-        base=input_ptr,
-        shape=(rows, cols),
-        strides=(input_stride_row, input_stride_col),
-        offsets=(0, pid_col),
-        block_shape=(BLOCK_ROWS, 1),
-        order=(1, 0),
-    )
-    values = tl.load(input_block, boundary_check=(0, 1))
-
-    output_block = tl.make_block_ptr(
-        base=output_ptr,
-        shape=(rows, cols),
-        strides=(output_stride_row, output_stride_col),
-        offsets=(0, pid_col),
-        block_shape=(BLOCK_ROWS, 1),
-        order=(1, 0),
-    )
-    tl.store(output_block, values, boundary_check=(0, 1))
+    row_offsets = tl.arange(0, BLOCK_ROWS)
+    mask = row_offsets < rows
+    input_offsets = row_offsets * input_stride_row + pid_col * input_stride_col
+    output_offsets = row_offsets * output_stride_row + pid_col * output_stride_col
+    values = tl.load(input_ptr + input_offsets, mask=mask)
+    tl.store(output_ptr + output_offsets, values, mask=mask)
 
 
 def run_load_2d_tensor_col(rows, cols):

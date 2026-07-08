@@ -71,16 +71,12 @@ def bench_unstructured_mask(rows, cols):
         ).reshape(rows, cols)
         output = torch.full((rows, cols), -1.0, device="cpu", dtype=torch.float32)
         mask_m = torch.arange(rows, device="cpu") % 2 == 0
-        mask_n = torch.arange(cols, device="cpu") % 2 == 1
-        if cols > 4:
-            mask_n[4] = True
-        if cols > 5:
-            mask_n[5] = False
+        col_ids = torch.arange(cols, device="cpu")
+        mask_n = ((col_ids % 2 == 1) | (col_ids == 4)) & (col_ids != 5)
         values = torch.where(
             mask_m[:, None], input_tensor, torch.full_like(input_tensor, -2.0)
         )
-        output[:, mask_n] = values[:, mask_n]
-        return output
+        return torch.where(mask_n[None, :], values, output)
 
     benchmark.compare_providers(
         f"bench_unstructured_mask(rows={rows}, cols={cols})",
