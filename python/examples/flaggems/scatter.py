@@ -60,6 +60,7 @@ def scatter_output_kernel(
     input_shape,
     index_shape,
     index_strides,
+    src_strides,
     dim,
     scan_size,
     rank: tl.constexpr,
@@ -68,6 +69,7 @@ def scatter_output_kernel(
     output_index = tl.program_id(0)
     remaining = output_index
     index_base = tl.full((), 0, dtype=tl.int32)
+    src_base = tl.full((), 0, dtype=tl.int32)
     output_dim_coordinate = tl.full((), 0, dtype=tl.int32)
     other_dims_valid = tl.full((), 1, dtype=tl.int1)
 
@@ -77,19 +79,23 @@ def scatter_output_kernel(
         remaining //= input_dim
         index_dim = tl.load(index_shape + axis)
         index_stride = tl.load(index_strides + axis)
+        src_stride = tl.load(src_strides + axis)
         is_scatter_dim = axis == dim
         output_dim_coordinate = tl.where(
             is_scatter_dim, coordinate, output_dim_coordinate
         )
         index_base += tl.where(is_scatter_dim, 0, coordinate * index_stride)
+        src_base += tl.where(is_scatter_dim, 0, coordinate * src_stride)
         other_dims_valid &= is_scatter_dim | (coordinate < index_dim)
 
     value = tl.load(inp + output_index)
-    scan_stride = tl.load(index_strides + dim)
+    index_scan_stride = tl.load(index_strides + dim)
+    src_scan_stride = tl.load(src_strides + dim)
     for scan_index in range(0, scan_size):
-        source_offset = index_base + scan_index * scan_stride
-        target = tl.load(index + source_offset).to(tl.int32)
-        source_value = tl.load(src + source_offset)
+        index_offset = index_base + scan_index * index_scan_stride
+        src_offset = src_base + scan_index * src_scan_stride
+        target = tl.load(index + index_offset).to(tl.int32)
+        source_value = tl.load(src + src_offset)
         selected = other_dims_valid & (target == output_dim_coordinate)
         if REDUCE_ADD:
             value += tl.where(selected, source_value, 0.0)
@@ -103,6 +109,11 @@ def _scatter_impl(inp, dim, index, src, reduce, inplace):
     dim = dim % inp.ndim
     if index.ndim != inp.ndim or src.ndim != inp.ndim:
         raise RuntimeError("Index tensor must have the same number of dimensions")
+    for axis in range(inp.ndim):
+        if axis != dim and index.shape[axis] > inp.shape[axis]:
+            raise RuntimeError("index size exceeds self size outside scatter dim")
+        if index.shape[axis] > src.shape[axis]:
+            raise RuntimeError("index size exceeds src size")
     reduce_add = reduce == "add"
     if reduce not in (None, "add"):
         raise RuntimeError(f"unsupported scatter reduction: {reduce}")
@@ -112,55 +123,30 @@ def _scatter_impl(inp, dim, index, src, reduce, inplace):
     src_contiguous = src.contiguous()
     out = input_contiguous.clone()
 
-    if inp.ndim == 2:
-        transposed = dim == 1
-        if transposed:
-            input_contiguous = inp.transpose(0, 1).contiguous()
-            index_contiguous = index.transpose(0, 1).contiguous()
-            src_contiguous = src.transpose(0, 1).contiguous()
-            out = input_contiguous.clone()
-        rows, cols = input_contiguous.shape
-        block_cols = 128
-        scatter_dim0_2d_kernel[
-            (rows, triton.cdiv(cols, block_cols))
-        ](
-            input_contiguous,
-            index_contiguous,
-            src_contiguous,
-            out,
-            rows,
-            cols,
-            index_contiguous.shape[0],
-            BLOCK_COLS=block_cols,
-            REDUCE_ADD=reduce_add,
-        )
-        if transposed:
-            out = out.transpose(0, 1).contiguous()
-    else:
-        rank = inp.ndim
-        input_shape = torch.tensor(
-            inp.shape, dtype=torch.int32, device=inp.device
-        )
-        index_shape = torch.tensor(
-            index.shape, dtype=torch.int32, device=inp.device
-        )
-        index_strides = torch.tensor(
-            index_contiguous.stride(), dtype=torch.int32, device=inp.device
-        )
-        scatter_output_kernel[(out.numel(),)](
-            input_contiguous,
-            index_contiguous,
-            src_contiguous,
-            out,
-            input_shape,
-            index_shape,
-            index_strides,
-            dim,
-            index.shape[dim],
-            rank,
-            REDUCE_ADD=reduce_add,
-            num_warps=1,
-        )
+    rank = inp.ndim
+    input_shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+    index_shape = torch.tensor(index.shape, dtype=torch.int32, device=inp.device)
+    index_strides = torch.tensor(
+        index_contiguous.stride(), dtype=torch.int32, device=inp.device
+    )
+    src_strides = torch.tensor(
+        src_contiguous.stride(), dtype=torch.int32, device=inp.device
+    )
+    scatter_output_kernel[(out.numel(),)](
+        input_contiguous,
+        index_contiguous,
+        src_contiguous,
+        out,
+        input_shape,
+        index_shape,
+        index_strides,
+        src_strides,
+        dim,
+        index.shape[dim],
+        rank,
+        REDUCE_ADD=reduce_add,
+        num_warps=1,
+    )
 
     if inplace:
         inp.copy_(out)

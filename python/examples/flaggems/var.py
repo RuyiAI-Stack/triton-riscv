@@ -8,16 +8,16 @@ def var_scalar_rows_kernel(X, Var, M, N, correction):
     row = tl.program_id(0)
     base = row * N
 
-    mean = tl.full((), 0.0, dtype=tl.float32)
+    acc_dtype = tl.float64 if X.dtype.element_ty is tl.float64 else tl.float32
+    mean = tl.full((), 0.0, dtype=acc_dtype)
+    squared_deviation = tl.full((), 0.0, dtype=acc_dtype)
+    count = tl.full((), 0.0, dtype=acc_dtype)
     for col in range(0, N):
-        mean += tl.load(X + base + col).to(tl.float32)
-    mean /= N
-
-    squared_deviation = tl.full((), 0.0, dtype=tl.float32)
-    for col in range(0, N):
-        value = tl.load(X + base + col).to(tl.float32)
+        value = tl.load(X + base + col).to(acc_dtype)
+        count += 1.0
         delta = value - mean
-        squared_deviation += delta * delta
+        mean += delta / count
+        squared_deviation += delta * (value - mean)
 
     tl.store(Var + row, squared_deviation / (N - correction))
 
@@ -65,9 +65,7 @@ def var_welford_kernel(
         _mean = cur_mean
         _count = count
 
-    _, _, acc = tl.reduce(
-        (_mean, _count, _acc), axis=1, combine_fn=welford_func
-    )
+    _, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
     var = acc / (N - correction)
     var = var[:, None]
     tl.store(Var, var, row_mask)
@@ -122,9 +120,7 @@ def var_kernel_2(
     average = tl.load(Average, mask, other=0.0).to(tl.float32)
     count = tl.load(Count, mask, other=0.0).to(tl.float32)
 
-    _, _, nvar = tl.reduce(
-        (average, count, acc), axis=0, combine_fn=welford_func
-    )
+    _, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
     var = nvar / (N - correction)
     tl.store(Var, var)
@@ -155,9 +151,7 @@ def var(x, dim=None, *, correction=None, keepdim=False):
     correction = 1.0 if correction is None else correction
     rows, M, N, compact_shape, keepdim_shape = _prepare_reduction_rows(x, dim)
     var_out = torch.empty((M,), dtype=x.dtype, device=x.device)
-    var_scalar_rows_kernel[(M,)](
-        rows, var_out, M, N, correction, num_warps=1
-    )
+    var_scalar_rows_kernel[(M,)](rows, var_out, M, N, correction, num_warps=1)
     return var_out.reshape(keepdim_shape if keepdim else compact_shape)
 
 

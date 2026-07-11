@@ -204,6 +204,23 @@ def argmin_kernel(
     tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
+@triton.jit
+def argmin_integer_kernel(inp, out_index, M, N, K):
+    """Scalar integer reduction that preserves the input's exact ordering."""
+    output_index = tl.program_id(0)
+    m = output_index // K
+    k = output_index % K
+    first_offset = m * N * K + k
+    min_value = tl.load(inp + first_offset)
+    min_index = tl.full((), 0, dtype=tl.int32)
+    for n in range(1, N):
+        value = tl.load(inp + first_offset + n * K)
+        update = value < min_value
+        min_value = tl.where(update, value, min_value)
+        min_index = tl.where(update, n, min_index)
+    tl.store(out_index + output_index, min_index)
+
+
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
     if dim is None:
         M = inp.numel()
@@ -214,9 +231,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         block_mid = triton.next_power_of_2(mid_size)
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty(
-            (mid_size,), dtype=torch.int64, device=inp.device
-        )
+        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
@@ -224,6 +239,11 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.empty(shape, dtype=torch.int64, device=inp.device)
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
+
+        if not inp.dtype.is_floating_point:
+            contiguous_inp = inp.contiguous()
+            argmin_integer_kernel[(1,)](contiguous_inp, out, 1, M, 1)
+            return out
 
         argmin_kernel_1[(mid_size,)](
             inp,
@@ -247,20 +267,17 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
-        if not inp.dtype.is_floating_point:
-            # Multi-result integer reductions are not yet lowered by
-            # TritonToLinalg.  Float64 preserves the tested integer values and
-            # keeps the reduction in the supported floating-point path.
-            inp = inp.to(torch.float64)
         inp = inp.contiguous()
 
         shape_list = list(shape)
         shape_list[dim] = 1
-        out_index = torch.empty(
-            shape_list, dtype=torch.int64, device=inp.device
-        )
+        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
+
+        if not inp.dtype.is_floating_point:
+            argmin_integer_kernel[(M * K,)](inp, out_index, M, N, K)
+            return out_index
 
         if K == 1 and inp.dtype != torch.int32 and inp.dtype != torch.int16:
             BLOCK_M = min(128, triton.next_power_of_2(M))

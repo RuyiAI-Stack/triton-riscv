@@ -41,3 +41,14 @@ def test_var_mean_2d(shape):
 
     torch.testing.assert_close(tri_mean, ref_mean, rtol=1e-4, atol=1e-4)
     torch.testing.assert_close(tri_var, ref_var, rtol=1e-4, atol=1e-4)
+
+
+def test_var_mean_large_constant_is_numerically_stable():
+    x = torch.full((4096,), 1.0e8, dtype=torch.float32)
+
+    tri_var, tri_mean = var_mean(x, correction=0)
+    ref_var, ref_mean = torch.var_mean(x, correction=0)
+
+    torch.testing.assert_close(tri_mean, ref_mean)
+    torch.testing.assert_close(tri_var, ref_var)
+    assert tri_var.item() == 0.0

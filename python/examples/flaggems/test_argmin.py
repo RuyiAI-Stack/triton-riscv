@@ -67,6 +67,22 @@ def test_argmin_int(shape, dim, dtype):
     torch.testing.assert_close(tri_out, ref_out)
 
 
+def test_argmin_int64_preserves_values_above_float64_integer_precision():
+    base = 2**60
+    x = torch.tensor(
+        [
+            [base + 3, base + 2, base + 1, base],
+            [base, base + 1, base + 2, base + 3],
+        ],
+        dtype=torch.int64,
+    )
+
+    ref_out = torch.argmin(x, dim=1)
+    tri_out = argmin(x, dim=1)
+
+    torch.testing.assert_close(tri_out, ref_out)
+
+
 # split_K kernel path: N%64==0, K%32==0, M%8==0, float
 @pytest.mark.parametrize("shape", [(16, 64, 64)])
 @pytest.mark.parametrize("dim", [1, 2])

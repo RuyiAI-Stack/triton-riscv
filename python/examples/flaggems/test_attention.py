@@ -21,15 +21,9 @@ from .attention import (
 @pytest.mark.parametrize("headdim", [16, 32])
 def test_scaled_dot_product_attention(batch, nheads, seqlen, headdim):
     torch.manual_seed(0)
-    q = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
-    k = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
-    v = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
+    q = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
+    k = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
+    v = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
 
     ref = F.scaled_dot_product_attention(q, k, v, is_causal=False)
     tri = scaled_dot_product_attention(q, k, v, is_causal=False)
@@ -43,15 +37,9 @@ def test_scaled_dot_product_attention(batch, nheads, seqlen, headdim):
 @pytest.mark.parametrize("headdim", [16, 32])
 def test_scaled_dot_product_attention_causal(batch, nheads, seqlen, headdim):
     torch.manual_seed(0)
-    q = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
-    k = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
-    v = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
+    q = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
+    k = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
+    v = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
 
     ref = F.scaled_dot_product_attention(q, k, v, is_causal=True)
     tri = scaled_dot_product_attention(q, k, v, is_causal=True)
@@ -65,15 +53,9 @@ def test_scaled_dot_product_attention_causal(batch, nheads, seqlen, headdim):
 @pytest.mark.parametrize("headdim", [16, 32])
 def test_scaled_dot_product_attention_forward(batch, nheads, seqlen, headdim):
     torch.manual_seed(0)
-    q = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
-    k = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
-    v = torch.randn(
-        batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32
-    )
+    q = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
+    k = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
+    v = torch.randn(batch, nheads, seqlen, headdim, device="cpu", dtype=torch.float32)
 
     ref = F.scaled_dot_product_attention(q, k, v, is_causal=False)
     tri, _ = scaled_dot_product_attention_forward(q, k, v, is_causal=False)
@@ -96,7 +78,7 @@ def test_scaled_dot_product_attention_scale(scale):
 
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("nheads", [2, 4])
-@pytest.mark.parametrize("seqlen", [8, 16])
+@pytest.mark.parametrize("seqlen", [8, 16, 160])
 @pytest.mark.parametrize("headdim", [16, 32])
 def test_scaled_dot_product_attention_backward(batch, nheads, seqlen, headdim):
     torch.manual_seed(0)
@@ -141,9 +123,7 @@ def test_scaled_dot_product_attention_backward(batch, nheads, seqlen, headdim):
     k2 = k.detach().clone().requires_grad_(True)
     v2 = v.detach().clone().requires_grad_(True)
 
-    tri = ScaleDotProductAttention.apply(
-        q2, k2, v2, None, 0.0, False, None, False
-    )
+    tri = ScaleDotProductAttention.apply(q2, k2, v2, None, 0.0, False, None, False)
     tri.backward(grad)
 
     torch.testing.assert_close(q2.grad, ref_dq, rtol=1e-3, atol=1e-3)
@@ -157,15 +137,9 @@ def test_scaled_dot_product_attention_backward(batch, nheads, seqlen, headdim):
 @pytest.mark.parametrize("headdim", [32])
 def test_flash_attention_forward(batch, seqlen_q, seqlen_k, headdim):
     torch.manual_seed(0)
-    q = torch.randn(
-        batch, seqlen_q, 2, headdim, device="cpu", dtype=torch.float16
-    )
-    k = torch.randn(
-        batch, seqlen_k, 2, headdim, device="cpu", dtype=torch.float16
-    )
-    v = torch.randn(
-        batch, seqlen_k, 2, headdim, device="cpu", dtype=torch.float16
-    )
+    q = torch.randn(batch, seqlen_q, 2, headdim, device="cpu", dtype=torch.float16)
+    k = torch.randn(batch, seqlen_k, 2, headdim, device="cpu", dtype=torch.float16)
+    v = torch.randn(batch, seqlen_k, 2, headdim, device="cpu", dtype=torch.float16)
 
     # PyTorch reference expects (B, H, L, D)
     ref = F.scaled_dot_product_attention(
@@ -173,27 +147,24 @@ def test_flash_attention_forward(batch, seqlen_q, seqlen_k, headdim):
         k.transpose(1, 2).to(torch.float32),
         v.transpose(1, 2).to(torch.float32),
         is_causal=False,
+    ).to(q.dtype)
+
+    tri_out, tri_q, tri_k, tri_v, lse, seed, offset, p = flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        None,
+        None,
+        0.0,
+        False,
+        False,
+        scale=None,
     )
 
-    tri_out, tri_q, tri_k, tri_v, lse, seed, offset, p = (
-        flash_attention_forward(
-            q,
-            k,
-            v,
-            None,
-            None,
-            None,
-            None,
-            0.0,
-            False,
-            False,
-            scale=None,
-        )
-    )
-
-    torch.testing.assert_close(
-        tri_out.transpose(1, 2), ref, rtol=1e-4, atol=1e-4
-    )
+    assert tri_out.dtype == q.dtype
+    torch.testing.assert_close(tri_out.transpose(1, 2), ref, rtol=1e-3, atol=5e-4)
 
 
 def test_flash_attention_forward_causal():
@@ -208,15 +179,14 @@ def test_flash_attention_forward_causal():
         k.transpose(1, 2).to(torch.float32),
         v.transpose(1, 2).to(torch.float32),
         is_causal=True,
-    )
+    ).to(q.dtype)
 
     tri_out, *_ = flash_attention_forward(
         q, k, v, None, None, None, None, 0.0, True, False, scale=None
     )
 
-    torch.testing.assert_close(
-        tri_out.transpose(1, 2), ref, rtol=1e-4, atol=1e-4
-    )
+    assert tri_out.dtype == q.dtype
+    torch.testing.assert_close(tri_out.transpose(1, 2), ref, rtol=1e-3, atol=5e-4)
 
 
 def test_flash_attention_forward_scale():
@@ -230,22 +200,19 @@ def test_flash_attention_forward_scale():
         k.transpose(1, 2).to(torch.float32),
         v.transpose(1, 2).to(torch.float32),
         scale=0.125,
-    )
+    ).to(q.dtype)
 
     tri_out, *_ = flash_attention_forward(
         q, k, v, None, None, None, None, 0.0, False, False, scale=0.125
     )
 
-    torch.testing.assert_close(
-        tri_out.transpose(1, 2), ref, rtol=1e-4, atol=1e-4
-    )
+    assert tri_out.dtype == q.dtype
+    torch.testing.assert_close(tri_out.transpose(1, 2), ref, rtol=1e-3, atol=5e-4)
 
 
 def test_flash_attn_varlen_not_supported():
     with pytest.raises(NotImplementedError):
-        flash_attn_varlen_func(
-            None, None, None, None, None, 1, None, None, 1.0, False
-        )
+        flash_attn_varlen_func(None, None, None, None, None, 1, None, None, 1.0, False)
 
 
 def test_flash_attn_varlen_opt_not_supported():

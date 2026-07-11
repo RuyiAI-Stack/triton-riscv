@@ -4,7 +4,7 @@ import torch
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 
 
-@pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
+@pytest.mark.parametrize("shape", [(512,), (1023,), (1024,), (1_100_000,)])
 @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
 def test_soft_margin_loss(shape, reduction):
     torch.manual_seed(0)

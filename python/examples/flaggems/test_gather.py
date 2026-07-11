@@ -8,9 +8,7 @@ from .gather import gather
 def test_gather_forward_1d(shape):
     inp = torch.randn(shape, device="cpu", dtype=torch.float32)
     dim = 0
-    index = torch.randint(
-        0, shape[dim], shape, device="cpu", dtype=torch.int64
-    )
+    index = torch.randint(0, shape[dim], shape, device="cpu", dtype=torch.int64)
     ref = torch.gather(inp, dim, index)
     out = gather(inp, dim, index)
     assert torch.allclose(out, ref, atol=1e-5, rtol=1e-5)
@@ -20,9 +18,7 @@ def test_gather_forward_1d(shape):
 def test_gather_forward_2d(shape):
     inp = torch.randn(shape, device="cpu", dtype=torch.float32)
     for dim in [0, 1]:
-        index = torch.randint(
-            0, shape[dim], shape, device="cpu", dtype=torch.int64
-        )
+        index = torch.randint(0, shape[dim], shape, device="cpu", dtype=torch.int64)
         ref = torch.gather(inp, dim, index)
         out = gather(inp, dim, index)
         assert torch.allclose(out, ref, atol=1e-5, rtol=1e-5)
@@ -53,13 +49,9 @@ def test_gather_negative_index():
 @pytest.mark.parametrize("shape", [(128, 512), (64, 256)])
 def test_gather_backward(shape):
     torch.manual_seed(0)
-    inp = torch.randn(
-        shape, device="cpu", dtype=torch.float32, requires_grad=True
-    )
+    inp = torch.randn(shape, device="cpu", dtype=torch.float32, requires_grad=True)
     dim = 0
-    index = torch.randint(
-        0, shape[dim], shape, device="cpu", dtype=torch.int64
-    )
+    index = torch.randint(0, shape[dim], shape, device="cpu", dtype=torch.int64)
 
     # Reference backward via torch
     ref_out = torch.gather(inp, dim, index)
@@ -74,3 +66,20 @@ def test_gather_backward(shape):
     tri_dx = gather_backward(grad, inp2, dim, index, sparse_grad=False)
 
     torch.testing.assert_close(tri_dx, ref_dx, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.parametrize("dim", [0, 1])
+def test_gather_backward_partial_shape_float64(dim):
+    from .gather import gather_backward
+
+    inp = torch.randn((3, 5), dtype=torch.float64, requires_grad=True)
+    index = torch.empty((2, 4), dtype=torch.int64)
+    index.random_(0, inp.shape[dim])
+    ref_out = torch.gather(inp, dim, index)
+    grad = torch.randn_like(ref_out)
+    ref_out.backward(grad)
+
+    tri_dx = gather_backward(grad, inp.detach(), dim, index, sparse_grad=False)
+
+    assert tri_dx.dtype == torch.float64
+    torch.testing.assert_close(tri_dx, inp.grad, rtol=1e-12, atol=1e-12)

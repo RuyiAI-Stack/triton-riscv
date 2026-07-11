@@ -12,6 +12,7 @@ def scatter_reduce_output_kernel(
     input_shape,
     index_shape,
     index_strides,
+    src_strides,
     dim,
     scan_size,
     rank: tl.constexpr,
@@ -21,6 +22,7 @@ def scatter_reduce_output_kernel(
     output_index = tl.program_id(0)
     remaining = output_index
     index_base = tl.full((), 0, dtype=tl.int32)
+    src_base = tl.full((), 0, dtype=tl.int32)
     output_dim_coordinate = tl.full((), 0, dtype=tl.int32)
     other_dims_valid = tl.full((), 1, dtype=tl.int1)
 
@@ -30,11 +32,13 @@ def scatter_reduce_output_kernel(
         remaining //= input_dim
         index_dim = tl.load(index_shape + axis)
         index_stride = tl.load(index_strides + axis)
+        src_stride = tl.load(src_strides + axis)
         is_scatter_dim = axis == dim
         output_dim_coordinate = tl.where(
             is_scatter_dim, coordinate, output_dim_coordinate
         )
         index_base += tl.where(is_scatter_dim, 0, coordinate * index_stride)
+        src_base += tl.where(is_scatter_dim, 0, coordinate * src_stride)
         other_dims_valid &= is_scatter_dim | (coordinate < index_dim)
 
     input_value = tl.load(inp + output_index)
@@ -46,15 +50,15 @@ def scatter_reduce_output_kernel(
         value = input_value if INCLUDE_SELF else float("-inf")
     else:
         value = input_value if INCLUDE_SELF else float("inf")
-    contribution_count = tl.full(
-        (), 1 if INCLUDE_SELF else 0, dtype=tl.int32
-    )
+    contribution_count = tl.full((), 1 if INCLUDE_SELF else 0, dtype=tl.int32)
 
-    scan_stride = tl.load(index_strides + dim)
+    index_scan_stride = tl.load(index_strides + dim)
+    src_scan_stride = tl.load(src_strides + dim)
     for scan_index in range(0, scan_size):
-        source_offset = index_base + scan_index * scan_stride
-        target = tl.load(index + source_offset).to(tl.int32)
-        source_value = tl.load(src + source_offset)
+        index_offset = index_base + scan_index * index_scan_stride
+        src_offset = src_base + scan_index * src_scan_stride
+        target = tl.load(index + index_offset).to(tl.int32)
+        source_value = tl.load(src + src_offset)
         selected = other_dims_valid & (target == output_dim_coordinate)
         contribution_count += selected.to(tl.int32)
         if REDUCE == 0 or REDUCE == 2:
@@ -68,9 +72,7 @@ def scatter_reduce_output_kernel(
 
     has_contribution = contribution_count > 0
     if REDUCE == 2:
-        value = tl.where(
-            has_contribution, value / contribution_count, input_value
-        )
+        value = tl.where(has_contribution, value / contribution_count, input_value)
     elif not INCLUDE_SELF:
         value = tl.where(has_contribution, value, input_value)
     tl.store(out + output_index, value)
@@ -83,19 +85,25 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     if reduce not in _REDUCTIONS:
         raise RuntimeError(f"unsupported scatter reduction: {reduce}")
     dim = dim % inp.ndim
+    if index.ndim != inp.ndim or src.ndim != inp.ndim:
+        raise RuntimeError("Index tensor must have the same number of dimensions")
+    for axis in range(inp.ndim):
+        if axis != dim and index.shape[axis] > inp.shape[axis]:
+            raise RuntimeError("index size exceeds self size outside scatter dim")
+        if index.shape[axis] > src.shape[axis]:
+            raise RuntimeError("index size exceeds src size")
     inp_contiguous = inp.contiguous()
     index_contiguous = index.contiguous()
     src_contiguous = src.contiguous()
     out = torch.empty_like(inp_contiguous)
     rank = inp.ndim
-    input_shape = torch.tensor(
-        inp.shape, dtype=torch.int32, device=inp.device
-    )
-    index_shape = torch.tensor(
-        index.shape, dtype=torch.int32, device=inp.device
-    )
+    input_shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+    index_shape = torch.tensor(index.shape, dtype=torch.int32, device=inp.device)
     index_strides = torch.tensor(
         index_contiguous.stride(), dtype=torch.int32, device=inp.device
+    )
+    src_strides = torch.tensor(
+        src_contiguous.stride(), dtype=torch.int32, device=inp.device
     )
     scatter_reduce_output_kernel[(out.numel(),)](
         inp_contiguous,
@@ -105,6 +113,7 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
         input_shape,
         index_shape,
         index_strides,
+        src_strides,
         dim,
         index.shape[dim],
         rank,
@@ -116,19 +125,13 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
-    result = scatter_reduce(
-        inp, dim, index, src, reduce, include_self=include_self
-    )
+    result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     inp.copy_(result)
     return inp
 
 
-def scatter_reduce_out(
-    inp, dim, index, src, reduce, *, include_self=True, out=None
-):
-    result = scatter_reduce(
-        inp, dim, index, src, reduce, include_self=include_self
-    )
+def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
+    result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:
         out.copy_(result)
         return out

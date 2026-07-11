@@ -52,6 +52,14 @@ def soft_margin_loss_sum_kernel(
     vals = tl.where(mask, vals, 0.0)
 
     acc = tl.sum(vals, axis=0)
+    tl.store(out_ptr + pid, acc)
+
+
+@triton.jit
+def soft_margin_loss_finalize_kernel(partials_ptr, out_ptr, num_partials):
+    acc = tl.full((), 0.0, dtype=tl.float32)
+    for offset in range(0, num_partials):
+        acc += tl.load(partials_ptr + offset).to(tl.float32)
     tl.store(out_ptr, acc)
 
 
@@ -84,9 +92,20 @@ def _check_tensors(input: torch.Tensor, target: torch.Tensor):
     return input, target
 
 
-def soft_margin_loss(
-    input: torch.Tensor, target: torch.Tensor, reduction="mean"
-):
+def _soft_margin_sum(input, target):
+    n_elements = input.numel()
+    block_size = 1024
+    num_partials = triton.cdiv(n_elements, block_size)
+    partials = torch.empty((num_partials,), device=input.device, dtype=torch.float32)
+    result = torch.empty((), device=input.device, dtype=torch.float32)
+    soft_margin_loss_sum_kernel[(num_partials,)](
+        input, target, partials, n_elements, BLOCK_SIZE=block_size
+    )
+    soft_margin_loss_finalize_kernel[(1,)](partials, result, num_partials)
+    return result
+
+
+def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"):
     input_c, target_c = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input_c.numel()
@@ -109,11 +128,7 @@ def soft_margin_loss(
                 return torch.full(
                     (), float("nan"), device=input.device, dtype=input.dtype
                 )
-        tmp_sum = torch.empty((), device=input.device, dtype=torch.float32)
-        BLOCK_SIZE = triton.next_power_of_2(n_elements)
-        soft_margin_loss_sum_kernel[(1,)](
-            input_c, target_c, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        tmp_sum = _soft_margin_sum(input_c, target_c)
         if red == 2:
             return tmp_sum.to(dtype=input.dtype)
         else:
@@ -142,11 +157,7 @@ def soft_margin_loss_out(input, target, reduction="mean", *, out=None):
                 out.fill_(float("nan"))
             return out
         input_c, target_c = _check_tensors(input, target)
-        tmp_sum = torch.empty((), device=input.device, dtype=torch.float32)
-        BLOCK_SIZE = triton.next_power_of_2(n_elements)
-        soft_margin_loss_sum_kernel[(1,)](
-            input_c, target_c, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        tmp_sum = _soft_margin_sum(input_c, target_c)
         if red == 2:
             out.fill_(tmp_sum.to(dtype=input.dtype))
         else:

@@ -24,4 +24,6 @@ def stack(
                 f"{list(expected_shape)} at entry 0 and {list(tensor.shape)} "
                 f"at entry {index}"
             )
+    if len(tensors) == 1:
+        return tensors[0].unsqueeze(dim).clone()
     return cat([tensor.unsqueeze(dim) for tensor in tensors], dim=dim)

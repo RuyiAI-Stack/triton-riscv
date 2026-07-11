@@ -67,14 +67,10 @@ def _fused_backward_kernel(
     iw_f = iws.to(tl.float32)
 
     # Scalar: which oh values contribute to this ih
-    oh_start = tl.maximum(
-        _f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0
-    )
+    oh_start = tl.maximum(_f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
     # Vector: which ow values contribute to each iw
-    ow_starts = tl.maximum(
-        _f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0
-    )
+    ow_starts = tl.maximum(_f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
     go_nc_base = nc.to(tl.int64) * stride_go_nc
 
@@ -90,9 +86,7 @@ def _fused_backward_kernel(
         xmin_w = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
         xsize_w = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin_w
         xsize_w_pos = tl.maximum(xsize_w, 0)
-        iw_in_range = (
-            ow_valid_base & (iws >= xmin_w) & (iws < xmin_w + xsize_w_pos)
-        )
+        iw_in_range = ow_valid_base & (iws >= xmin_w) & (iws < xmin_w + xsize_w_pos)
 
         # Inline total_wx computation (vector)
         xmin_w_f = xmin_w.to(tl.float32)
@@ -115,13 +109,9 @@ def _fused_backward_kernel(
             # Compute wy (scalar)
             center_h = h_scale * (oh + 0.5)
             ymin_h = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
-            ysize_h = (
-                tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin_h
-            )
+            ysize_h = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin_h
             ysize_h_pos = tl.maximum(ysize_h, 0)
-            ih_in_range = (
-                oh_valid & (ih >= ymin_h) & (ih < ymin_h + ysize_h_pos)
-            )
+            ih_in_range = oh_valid & (ih >= ymin_h) & (ih < ymin_h + ysize_h_pos)
 
             # Inline total_wy computation (scalar, very cheap)
             ymin_h_f = ymin_h.to(tl.float32)
@@ -131,12 +121,8 @@ def _fused_backward_kernel(
                 w_h = _cubic_aa_filter(arg_h)
                 total_wy += tl.where(j_h < ysize_h_pos, w_h, 0.0)
 
-            raw_wy = _cubic_aa_filter(
-                tl.abs((ih_f - center_h + 0.5) * invscale_h)
-            )
-            wy = tl.where(
-                ih_in_range & (total_wy != 0.0), raw_wy / total_wy, 0.0
-            )
+            raw_wy = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
+            wy = tl.where(ih_in_range & (total_wy != 0.0), raw_wy / total_wy, 0.0)
 
             # Load grad_out and accumulate
             valid = iw_in_range & ih_in_range
@@ -160,30 +146,23 @@ def _fused_backward_kernel(
 
 
 @triton.jit
-def _standard_cubic_filter(x):
-    a = -0.75
-    x2 = x * x
-    x3 = x2 * x
-    inner = (a + 2.0) * x3 - (a + 3.0) * x2 + 1.0
-    outer = a * x3 - 5.0 * a * x2 + 8.0 * a * x - 4.0 * a
-    return tl.where(x <= 1.0, inner, tl.where(x < 2.0, outer, 0.0))
-
-
-@triton.jit
-def _bicubic_backward_scalar_kernel(
+def _bicubic_aa_backward_scalar_kernel(
     grad_out_ptr,
     grad_in_ptr,
-    N,
-    C,
     H_in,
     W_in,
     H_out,
     W_out,
     scale_h,
     scale_w,
-    align_corners: tl.constexpr,
+    support_h,
+    support_w,
+    invscale_h,
+    invscale_w,
+    MAX_KSIZE_H: tl.constexpr,
+    MAX_KSIZE_W: tl.constexpr,
 ):
-    """Gather every output contribution for one input element."""
+    """Gather antialiased bicubic contributions for one input element."""
     output_index = tl.program_id(0)
     iw = output_index % W_in
     row_index = output_index // W_in
@@ -192,40 +171,36 @@ def _bicubic_backward_scalar_kernel(
 
     accumulator = tl.full((), 0.0, dtype=tl.float32)
     for oh in range(0, H_out):
-        if align_corners:
-            input_y = oh.to(tl.float32) * scale_h
-        else:
-            input_y = (oh.to(tl.float32) + 0.5) * scale_h - 0.5
-        y0f = tl.floor(input_y)
-        y0 = y0f.to(tl.int32)
-        ty = input_y - y0f
-
-        weight_y = tl.full((), 0.0, dtype=tl.float32)
-        for ky in tl.static_range(0, 4):
-            source_y = tl.maximum(0, tl.minimum(H_in - 1, y0 + ky - 1))
-            distance_y = tl.abs((ky - 1.0) - ty)
-            weight_y += tl.where(
-                source_y == ih, _standard_cubic_filter(distance_y), 0.0
+        center_y = scale_h * (oh.to(tl.float32) + 0.5)
+        start_y = tl.maximum(_f2i(center_y - support_h + 0.5), 0)
+        size_y = tl.minimum(_f2i(center_y + support_h + 0.5), H_in) - start_y
+        total_y = tl.full((), 0.0, dtype=tl.float32)
+        for ky in tl.static_range(MAX_KSIZE_H):
+            distance_y = tl.abs(
+                (ky + start_y.to(tl.float32) - center_y + 0.5) * invscale_h
             )
+            total_y += tl.where(ky < size_y, _cubic_aa_filter(distance_y), 0.0)
+        raw_y = _cubic_aa_filter(
+            tl.abs((ih.to(tl.float32) - center_y + 0.5) * invscale_h)
+        )
+        y_selected = (ih >= start_y) & (ih < start_y + size_y)
+        weight_y = tl.where(y_selected & (total_y != 0.0), raw_y / total_y, 0.0)
 
         for ow in range(0, W_out):
-            if align_corners:
-                input_x = ow.to(tl.float32) * scale_w
-            else:
-                input_x = (ow.to(tl.float32) + 0.5) * scale_w - 0.5
-            x0f = tl.floor(input_x)
-            x0 = x0f.to(tl.int32)
-            tx = input_x - x0f
-
-            weight_x = tl.full((), 0.0, dtype=tl.float32)
-            for kx in tl.static_range(0, 4):
-                source_x = tl.maximum(
-                    0, tl.minimum(W_in - 1, x0 + kx - 1)
+            center_x = scale_w * (ow.to(tl.float32) + 0.5)
+            start_x = tl.maximum(_f2i(center_x - support_w + 0.5), 0)
+            size_x = tl.minimum(_f2i(center_x + support_w + 0.5), W_in) - start_x
+            total_x = tl.full((), 0.0, dtype=tl.float32)
+            for kx in tl.static_range(MAX_KSIZE_W):
+                distance_x = tl.abs(
+                    (kx + start_x.to(tl.float32) - center_x + 0.5) * invscale_w
                 )
-                distance_x = tl.abs((kx - 1.0) - tx)
-                weight_x += tl.where(
-                    source_x == iw, _standard_cubic_filter(distance_x), 0.0
-                )
+                total_x += tl.where(kx < size_x, _cubic_aa_filter(distance_x), 0.0)
+            raw_x = _cubic_aa_filter(
+                tl.abs((iw.to(tl.float32) - center_x + 0.5) * invscale_w)
+            )
+            x_selected = (iw >= start_x) & (iw < start_x + size_x)
+            weight_x = tl.where(x_selected & (total_x != 0.0), raw_x / total_x, 0.0)
 
             grad_offset = (nc * H_out + oh) * W_out + ow
             accumulator += tl.load(grad_out_ptr + grad_offset) * weight_y * weight_x
@@ -287,9 +262,7 @@ def _pass1_w_gather_nchw_kernel(
     go_base = pid_row.to(tl.int64) * W_out
     buf_base = pid_row.to(tl.int64) * W_in
 
-    ow_starts = tl.maximum(
-        _f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0
-    )
+    ow_starts = tl.maximum(_f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
     accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
 
@@ -300,9 +273,7 @@ def _pass1_w_gather_nchw_kernel(
         center_w = w_scale * (ow.to(tl.float32) + 0.5)
         xmin = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
         xsize = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin
-        in_range = (
-            ow_valid & (iws >= xmin) & (iws < xmin + tl.maximum(xsize, 0))
-        )
+        in_range = ow_valid & (iws >= xmin) & (iws < xmin + tl.maximum(xsize, 0))
 
         raw_wx = _cubic_aa_filter(tl.abs((iw_f - center_w + 0.5) * invscale_w))
         ow_safe = tl.maximum(tl.minimum(ow, W_out - 1), 0)
@@ -346,9 +317,7 @@ def _pass2_h_gather_nchw_kernel(
     iws = iw_base + tl.arange(0, BLOCK_IW)
     iw_mask = iws < W_in
 
-    oh_start = tl.maximum(
-        _f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0
-    )
+    oh_start = tl.maximum(_f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
     buf_nc_base = nc.to(tl.int64) * stride_buf_hw
 
@@ -361,9 +330,7 @@ def _pass2_h_gather_nchw_kernel(
         center_h = h_scale * (oh + 0.5)
         ymin = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
         ysize = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin
-        ih_in_range = (
-            oh_valid & (ih >= ymin) & (ih < ymin + tl.maximum(ysize, 0))
-        )
+        ih_in_range = oh_valid & (ih >= ymin) & (ih < ymin + tl.maximum(ysize, 0))
 
         raw_wy = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
         oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
@@ -385,11 +352,7 @@ def _pass2_h_gather_nchw_kernel(
 
 def _compute_scale(input_size, output_size, align_corners, scale=None):
     if align_corners:
-        return (
-            float(input_size - 1) / (output_size - 1)
-            if output_size > 1
-            else 0.0
-        )
+        return float(input_size - 1) / (output_size - 1) if output_size > 1 else 0.0
     else:
         return (
             (1.0 / scale)
@@ -431,37 +394,9 @@ def _upsample_bicubic2d_aa_backward(
     h_scale = _compute_scale(H_in, H_out, align_corners, scales_h)
     w_scale = _compute_scale(W_in, W_out, align_corners, scales_w)
 
-    # Match the regular bicubic forward used by this example's tests.  A
-    # scalar output-centric gather avoids atomics and the backend's crash in
-    # pointer analysis for the old two-dimensional fused load pattern.
-    grad_in_flat = torch.empty(
-        (NC, H_in, W_in),
-        dtype=grad_output.dtype,
-        device=grad_output.device,
-    )
-    _bicubic_backward_scalar_kernel[(NC * H_in * W_in,)](
-        grad_out_flat,
-        grad_in_flat,
-        N,
-        C,
-        H_in,
-        W_in,
-        H_out,
-        W_out,
-        h_scale,
-        w_scale,
-        align_corners,
-        num_warps=1,
-    )
-    return grad_in_flat.reshape(N, C, H_in, W_in)
-
     INTERP_SIZE = 4
-    support_h = (
-        (INTERP_SIZE * 0.5) * h_scale if h_scale >= 1.0 else INTERP_SIZE * 0.5
-    )
-    support_w = (
-        (INTERP_SIZE * 0.5) * w_scale if w_scale >= 1.0 else INTERP_SIZE * 0.5
-    )
+    support_h = (INTERP_SIZE * 0.5) * h_scale if h_scale >= 1.0 else INTERP_SIZE * 0.5
+    support_w = (INTERP_SIZE * 0.5) * w_scale if w_scale >= 1.0 else INTERP_SIZE * 0.5
     invscale_h = 1.0 / h_scale if h_scale >= 1.0 else 1.0
     invscale_w = 1.0 / w_scale if w_scale >= 1.0 else 1.0
 
@@ -492,29 +427,22 @@ def _upsample_bicubic2d_aa_backward(
         grad_in_flat = torch.empty(
             NC, H_in, W_in, dtype=grad_output.dtype, device=grad_output.device
         )
-        grid = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
-        _fused_backward_kernel[grid](
+        _bicubic_aa_backward_scalar_kernel[(NC * H_in * W_in,)](
             grad_out_flat,
             grad_in_flat,
             H_in,
-            H_out,
-            h_scale,
-            support_h,
-            invscale_h,
-            inv_h_scale,
             W_in,
+            H_out,
             W_out,
+            h_scale,
             w_scale,
+            support_h,
             support_w,
+            invscale_h,
             invscale_w,
-            inv_w_scale,
-            H_out * W_out,  # stride_go_nc
-            BLOCK_IW=BLOCK_IW,
-            MAX_OH=MAX_OH,
-            MAX_OW=MAX_OW,
             MAX_KSIZE_H=MAX_KSIZE_H,
             MAX_KSIZE_W=MAX_KSIZE_W,
-            num_warps=nw,
+            num_warps=1,
         )
         return grad_in_flat.reshape(N, C, H_in, W_in)
 

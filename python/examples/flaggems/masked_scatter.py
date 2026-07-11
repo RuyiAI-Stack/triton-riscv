@@ -14,7 +14,6 @@ def masked_scatter_single_pass_kernel(
     mask_ptr,
     src_ptr,
     N,
-    SRC_N,
 ):
     offset = tl.program_id(0)
     src_index = tl.full((), 0, dtype=tl.int32)
@@ -22,8 +21,7 @@ def masked_scatter_single_pass_kernel(
         src_index += tl.load(mask_ptr + prior_offset).to(tl.int32)
 
     selected = tl.load(mask_ptr + offset) != 0
-    safe_src_index = tl.minimum(src_index, SRC_N - 1)
-    src_val = tl.load(src_ptr + safe_src_index)
+    src_val = tl.load(src_ptr + src_index, mask=selected, other=0.0)
     original = tl.load(inp_ptr + offset)
     tl.store(inp_ptr + offset, tl.where(selected, src_val, original))
 
@@ -44,9 +42,7 @@ def mask_part_sum_kernel(
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     acc = tl.zeros((BLOCK_SIZE,), dtype=part_sums_ptr.dtype.element_ty)
 
-    last_block_id = tl.minimum(
-        num_blocks - 1, start_block + num_blocks_per_row - 1
-    )
+    last_block_id = tl.minimum(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
     for block_id in range(start_block, last_block_id):
         select = tl.load(mask_ptr + offset)
@@ -95,9 +91,7 @@ def masked_scatter_kernel(
 
     advance = tl.load(part_sums_ptr + row_id)
 
-    last_block_id = tl.minimum(
-        num_blocks - 1, start_block + num_blocks_per_row - 1
-    )
+    last_block_id = tl.minimum(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
     for block_id in range(start_block, last_block_id):
         select_mask = tl.load(mask_ptr + offset).to(tl.int1)
@@ -114,9 +108,7 @@ def masked_scatter_kernel(
         offset += BLOCK_SIZE
 
     block_mask = offset < N
-    select_mask = tl.load(mask_ptr + offset, mask=block_mask, other=0).to(
-        tl.int1
-    )
+    select_mask = tl.load(mask_ptr + offset, mask=block_mask, other=0).to(tl.int1)
 
     select_ints = select_mask.to(tl.int32)
     block_cumsum = tl.cumsum(select_ints, axis=0) - 1
@@ -128,13 +120,12 @@ def masked_scatter_kernel(
 
 
 def masked_scatter_impl(inp, mask, source, N):
-    if source.numel() == 0:
-        if bool(mask.any().item()):
-            raise RuntimeError("Number of elements of source < number of ones in mask")
+    required_source_elements = int(torch.count_nonzero(mask).item())
+    if source.numel() < required_source_elements:
+        raise RuntimeError("Number of elements of source < number of ones in mask")
+    if required_source_elements == 0:
         return inp
-    masked_scatter_single_pass_kernel[(N,)](
-        inp, mask, source, N, source.numel()
-    )
+    masked_scatter_single_pass_kernel[(N,)](inp, mask, source, N)
     return inp
 
     # Retained legacy parallel implementation for reference.  It is not used

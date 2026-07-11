@@ -60,3 +60,23 @@ def test_scatter_add_reduce(size, dtype):
     out_torch = torch.scatter_add(inp, 0, index, src)
 
     torch.testing.assert_close(out_triton, out_torch, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("reduce", [None, "add"])
+def test_scatter_partial_index_and_larger_src(dim, reduce):
+    torch.manual_seed(0)
+    inp = torch.randn((3, 5), dtype=torch.float32)
+    index = torch.empty((2, 4), dtype=torch.int64)
+    index.random_(0, inp.shape[dim])
+    # A larger src has different contiguous strides from index; only its
+    # leading index-shaped region participates in scatter.
+    src = torch.randn((3, 5), dtype=torch.float32)
+
+    tri = scatter(inp, dim, index, src, reduce=reduce)
+    if reduce == "add":
+        ref = torch.scatter_add(inp, dim, index, src)
+    else:
+        ref = torch.scatter(inp, dim, index, src)
+
+    torch.testing.assert_close(tri, ref, rtol=1e-5, atol=1e-5)

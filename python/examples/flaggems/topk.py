@@ -82,7 +82,15 @@ def _get_iinfo_val(dtype, return_max):
 
 
 @triton.jit
-def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
+def _compare_and_swap(
+    x,
+    ids,
+    flip,
+    i: core.constexpr,
+    n_dims: core.constexpr,
+    stable: core.constexpr = False,
+    descending: core.constexpr = False,
+):
     n_outer: core.constexpr = x.numel >> n_dims
     shape: core.constexpr = [n_outer * 2**i, 2, 2 ** (n_dims - i - 1)]
 
@@ -92,21 +100,17 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
     # slice left/right with 'stride' 2**(n_dims - i - 1)
     mask = core.arange(0, 2)[None, :, None]
-    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape).to(
-        x.dtype
-    )
-    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape).to(
-        x.dtype
-    )
+    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape).to(x.dtype)
+    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape).to(x.dtype)
     left = core.reshape(left, x.shape)
     right = core.reshape(right, x.shape)
 
-    left_idx = core.broadcast_to(
-        tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape
-    ).to(ids.dtype)
-    right_idx = core.broadcast_to(
-        tl.sum(y_idx * mask, 1)[:, None, :], shape
-    ).to(ids.dtype)
+    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(
+        ids.dtype
+    )
+    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(
+        ids.dtype
+    )
     left_idx = core.reshape(left_idx, ids.shape)
     right_idx = core.reshape(right_idx, ids.shape)
 
@@ -126,7 +130,16 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     iright = right.to(idtype, bitcast=True)
     ix = x.to(idtype, bitcast=True)
 
-    cond = (left > right) ^ flip
+    cond = (left > right) != (flip != 0)
+    if stable:
+        # Treat the original index as a secondary key.  Bitonic intermediate
+        # runs alternate direction, so the secondary direction must alternate
+        # too; the final order always keeps equal elements in input order.
+        index_descending = (flip != descending) != 0
+        tie_cond = core.where(
+            index_descending, left_idx < right_idx, left_idx > right_idx
+        )
+        cond = core.where(left == right, tie_cond, cond)
     ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
 
     if core.constexpr(ids.dtype.primitive_bitwidth) == 8:
@@ -143,9 +156,7 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     ileft_idx = left_idx.to(idx_dtype, bitcast=True)
     iright_idx = right_idx.to(idx_dtype, bitcast=True)
     ix_idx = ids.to(idx_dtype, bitcast=True)
-    ret_idx = ix_idx ^ core.where(
-        cond, ileft_idx ^ iright_idx, zeros_like(ix_idx)
-    )
+    ret_idx = ix_idx ^ core.where(cond, ileft_idx ^ iright_idx, zeros_like(ix_idx))
 
     return ret.to(x.dtype, bitcast=True), ret_idx.to(ids.dtype, bitcast=True)
 
@@ -157,6 +168,8 @@ def _bitonic_merge(
     stage: core.constexpr,
     order: core.constexpr,
     n_dims: core.constexpr,
+    stable: core.constexpr = False,
+    descending: core.constexpr = False,
 ):
     n_outer: core.constexpr = x.numel >> n_dims
     core.static_assert(stage <= n_dims)
@@ -173,17 +186,37 @@ def _bitonic_merge(
         flip = order
     # perform `stage` rounds of `compare-and-swap`
     for i in core.static_range(stage):
-        x, ids = _compare_and_swap(x, ids, flip, i + (n_dims - stage), n_dims)
+        x, ids = _compare_and_swap(
+            x,
+            ids,
+            flip,
+            i + (n_dims - stage),
+            n_dims,
+            stable,
+            descending,
+        )
     return x, ids
 
 
 @triton.jit
-def argsort(x, ids, dim: tl.constexpr, descending: core.constexpr):
+def argsort(
+    x,
+    ids,
+    dim: tl.constexpr,
+    descending: core.constexpr,
+    stable: core.constexpr = False,
+):
     _dim: core.constexpr = dim
     n_dims: core.constexpr = _log2(x.shape[_dim])
     for i in core.static_range(1, n_dims + 1):
         x, ids = _bitonic_merge(
-            x, ids, i, 2 if i < n_dims else descending, n_dims
+            x,
+            ids,
+            i,
+            2 if i < n_dims else descending,
+            n_dims,
+            stable,
+            descending,
         )
     return x, ids
 
@@ -211,9 +244,7 @@ def topk_stage1_kernel(
     cols = tl.arange(0, CHUNK_SIZE)
     mask = (chunk_offset + cols) < N
 
-    mask_val = _get_finfo_val(
-        x_ptr.dtype.element_ty, return_max=not DESCENDING
-    )
+    mask_val = _get_finfo_val(x_ptr.dtype.element_ty, return_max=not DESCENDING)
     x_val = tl.load(x_ptr + cols, mask=mask, other=mask_val).to(tl.float32)
     for k_idx in range(k):
         if DESCENDING:
@@ -261,17 +292,13 @@ def topk_stage2_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    mask_val = _get_finfo_val(
-        chunk_x.dtype.element_ty, return_max=not DESCENDING
-    )
+    mask_val = _get_finfo_val(chunk_x.dtype.element_ty, return_max=not DESCENDING)
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
-    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(
-        tl.float32
+    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(tl.float32)
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(
+        tl.int32
     )
-    chunk_index_val = tl.load(
-        chunk_index + cols, mask=mask, other=mask_index_val
-    ).to(tl.int32)
 
     sorted_chunk_x, sorted_chunk_index = argsort(
         chunk_x_val, chunk_index_val, 0, descending=DESCENDING
@@ -309,9 +336,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
     chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
-    stage1_out = torch.empty(
-        batch_size * chunk_num * k, device=x.device, dtype=x.dtype
-    )
+    stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
     stage1_out_idx = torch.empty(
         batch_size * chunk_num * k, device=x.device, dtype=torch.int64
     )

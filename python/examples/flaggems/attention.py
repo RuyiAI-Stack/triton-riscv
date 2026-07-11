@@ -173,16 +173,13 @@ def _attn_fwd(
     kv_head_id = head_id // GROUP_HEAD
 
     q_offset = (
-        batch_id.to(tl.int64) * stride_q_batch
-        + head_id.to(tl.int64) * stride_q_head
+        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
     )
     o_offset = (
-        batch_id.to(tl.int64) * stride_o_batch
-        + head_id.to(tl.int64) * stride_o_head
+        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
     )
     kv_offset = (
-        batch_id.to(tl.int64) * stride_k_batch
-        + kv_head_id.to(tl.int64) * stride_k_head
+        batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
     )
 
     offs_headsize = tl.arange(0, HEAD_DIM)
@@ -304,9 +301,7 @@ def _attn_fwd(
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
-    tl.store(
-        O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None]
-    )
+    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
 @triton.jit
@@ -327,18 +322,12 @@ def _attn_bwd_preprocess(
     off_n = tl.arange(0, D_HEAD)
     # load
     o = tl.load(
-        Out
-        + off_hz * D_HEAD * Q_CTX
-        + off_m[:, None] * D_HEAD
-        + off_n[None, :],
+        Out + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     )
     do = tl.load(
-        DO
-        + off_hz * D_HEAD * Q_CTX
-        + off_m[:, None] * D_HEAD
-        + off_n[None, :],
+        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     ).to(tl.float32)
@@ -401,18 +390,12 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
-        m = tl.load(
-            M + offs_m, mask=offs_m_mask, other=float("inf")
-        )  # (BLOCK_M1, )
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
         qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
-        m = tl.broadcast_to(
-            m[None, :], (BLOCK_N1, BLOCK_M1)
-        )  # (BLOCK_N1, BLOCK_M1)
-        m = tl.where(
-            offs_n_mask[:, None], m, float("inf")
-        )  # (BLOCK_N1, BLOCK_M1)
+        m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
+        m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
         # pT = tl.math.exp2(qkT - m[None, :])
 
@@ -440,9 +423,7 @@ def _attn_bwd_dkdv(
         )  # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
         dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
         dsT = dsT.to(qT.dtype)
-        qT = tl.where(
-            offs_m_mask[None, :], qT, 0.0
-        )  # (BLOCK_DMODEL, BLOCK_M1)
+        qT = tl.where(offs_m_mask[None, :], qT, 0.0)  # (BLOCK_DMODEL, BLOCK_M1)
         dsT = tl.where(
             offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
         )  # (BLOCK_N1, BLOCK_M1)
@@ -554,9 +535,7 @@ def _attn_bwd(
     BLOCK_DMODEL: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
 ):
-    tl.device_assert(
-        Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1."
-    )
+    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
 
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
@@ -585,8 +564,6 @@ def _attn_bwd(
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
     start_n = pid * BLOCK_N1
-    start_m = start_n
-
     MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
     offs_n = start_n + tl.arange(0, BLOCK_N1)
     offs_n_mask = offs_n < KV_CTX
@@ -606,39 +583,65 @@ def _attn_bwd(
         other=0.0,
     )
 
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
+    if IS_CAUSAL:
+        start_m = start_n
+        num_steps = BLOCK_N1 // MASK_BLOCK_M1
+        dk, dv = _attn_bwd_dkdv(
+            dk,
+            dv,  #
+            Q,
+            key,
+            value,
+            sm_scale,  #
+            DO,  #
+            M,
+            D,  #
+            stride_tok,
+            stride_d,  #
+            H,
+            Q_CTX,  #
+            KV_CTX,  #
+            MASK_BLOCK_M1,
+            BLOCK_N1,
+            BLOCK_DMODEL,  #
+            start_n,
+            start_m,
+            num_steps,  #
+            MASK=True,  #
+        )
 
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=IS_CAUSAL,  #
-    )
-
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = Q_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
-
-    if num_steps > 0 and start_m < Q_CTX:
-        dk, dv = _attn_bwd_dkdv(  #
+        # Compute dK and dV for non-masked blocks below the diagonal.
+        start_m += num_steps * MASK_BLOCK_M1
+        remaining_m = Q_CTX - start_m
+        num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
+        if num_steps > 0 and start_m < Q_CTX:
+            dk, dv = _attn_bwd_dkdv(  #
+                dk,
+                dv,  #
+                Q,
+                key,
+                value,
+                sm_scale,  #
+                DO,  #
+                M,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,  #
+                start_n,
+                start_m,
+                num_steps,  #
+                MASK=False,  #
+            )
+    else:
+        # Every key block attends to every query block for non-causal attention.
+        num_steps = (Q_CTX + BLOCK_M1 - 1) // BLOCK_M1
+        dk, dv = _attn_bwd_dkdv(
             dk,
             dv,  #
             Q,
@@ -657,7 +660,7 @@ def _attn_bwd(
             BLOCK_N1,
             BLOCK_DMODEL,  #
             start_n,
-            start_m,
+            0,
             num_steps,  #
             MASK=False,  #
         )
@@ -674,11 +677,6 @@ def _attn_bwd(
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    end_n = min(
-        start_m + BLOCK_M2, KV_CTX
-    )  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
-
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
 
@@ -697,40 +695,66 @@ def _attn_bwd(
     m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
     m = m[:, None]
 
-    # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
+    if IS_CAUSAL:
+        end_n = min(start_m + BLOCK_M2, KV_CTX)
+        num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-    if num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            MASK_BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            start_n,
-            num_steps,  #
-            MASK=IS_CAUSAL,  #
-        )
+        # Stage 1 - Compute dQ for masked (diagonal) blocks.
+        # NOTE: This code scans each row of QK^T backward (from right to left,
+        # but inside each call to _attn_bwd_dq, from left to right), but that's
+        # not due to anything important.  I just wanted to reuse the loop
+        # structure for dK & dV above as much as possible.
+        if num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                MASK_BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                start_n,
+                num_steps,  #
+                MASK=True,  #
+            )
 
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
-
-    if stage2_num_steps > 0:
+        # Stage 2 - non-masked blocks to the left of the diagonal.
+        stage2_end_n = start_n
+        stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+        if stage2_num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                stage2_end_n - stage2_num_steps * BLOCK_N2,
+                stage2_num_steps,  #
+                MASK=False,  #
+            )
+    else:
+        # Every query block attends to the complete key/value sequence.
+        num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
         dq = _attn_bwd_dq(
             dq,
             query,
@@ -748,8 +772,8 @@ def _attn_bwd(
             BLOCK_N2,
             BLOCK_DMODEL,  #
             start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
-            stage2_num_steps,  #
+            0,
+            num_steps,  #
             MASK=False,  #
         )
     # Write back dQ.
@@ -954,7 +978,11 @@ def scaled_dot_product_attention_backward(
     )
 
     max_block_n1 = 128
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
+    grid = (
+        max(triton.cdiv(Q_CTX, max_block_n1), triton.cdiv(KV_CTX, max_block_n1)),
+        1,
+        BATCH * Q_HEAD,
+    )
 
     _attn_bwd[grid](
         query,
@@ -990,12 +1018,8 @@ def scaled_dot_product_attention_backward(
     )
 
     if group_head > 1:
-        dk = dk.reshape(
-            BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K
-        )
-        dv = dv.reshape(
-            BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V
-        )
+        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
+        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
         dk = dk.sum(dim=2)
         dv = dv.sum(dim=2)
 
@@ -1098,8 +1122,7 @@ def flash_attention_forward(
     disable_splitkv=False,
 ):
     assert (
-        cumulative_sequence_length_q is None
-        and cumulative_sequence_length_k is None
+        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
@@ -1151,7 +1174,7 @@ def flash_attention_forward(
             is_causal=is_causal,
             scale=softmax_scale,
         )
-        out = out.transpose(1, 2).contiguous()
+        out = out.transpose(1, 2).contiguous().to(query.dtype)
         if HEAD_DIM_K != original_head_dim:
             out = out[..., :original_head_dim]
         p = torch.empty((), dtype=torch.float32, device=query.device)

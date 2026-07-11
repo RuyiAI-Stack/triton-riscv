@@ -1,5 +1,4 @@
 import importlib.util
-import math
 import os
 import threading
 import uuid
@@ -20,8 +19,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -77,7 +75,9 @@ def _generate_gather_kernel(rank, kernel_name, code):
     code += "    BLOCK_SIZE_N: tl.constexpr,\n"
     code += "):\n"
     code += "    pid = tl.program_id(0)\n"
-    code += "    offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)\n\n"
+    code += (
+        "    offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)\n\n"
+    )
     code += "    cur_offset = offset\n"
     for i in range(rank - 1, -1, -1):
         code += f"    index_idx{i} = cur_offset % index_shape{i}\n"
@@ -86,16 +86,12 @@ def _generate_gather_kernel(rank, kernel_name, code):
     comp = " + ".join([f"index_idx{i} * index_stride{i}" for i in range(rank)])
     code += f"    index_offset = {comp}\n"
     code += "    mask = offset < N\n"
-    code += (
-        "    cur_index = tl.load(index + index_offset, mask=mask, other=0)\n\n"
-    )
+    code += "    cur_index = tl.load(index + index_offset, mask=mask, other=0)\n\n"
     comp = " + ".join([f"index_idx{i} * inp_stride{i}" for i in range(rank)])
     code += f"    inp_offset = {comp}\n"
     code += "    inp_offset += cur_index * dim_stride\n"
     code += "    cur_inp = tl.load(inp + inp_offset, mask=mask, other=0)\n\n"
-    comp_out = " + ".join(
-        [f"index_idx{i} * out_stride{i}" for i in range(rank)]
-    )
+    comp_out = " + ".join([f"index_idx{i} * out_stride{i}" for i in range(rank)])
     code += f"    out_offset = {comp_out}\n"
     code += "    tl.store(out + out_offset, value=cur_inp, mask=mask)\n\n"
     return code
@@ -109,9 +105,7 @@ def _generate_wrapper(rank, wrapper_name, kernel_name, code):
     code += "    index_stride = index.stride()\n"
     code += "    out_shape = out.shape\n"
     code += "    out_stride = out.stride()\n"
-    code += (
-        "    grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )\n"
-    )
+    code += "    grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )\n"
     code += f"    {kernel_name}[grid](\n"
     code += "        inp, index, out,\n"
     for i in range(rank):
@@ -176,20 +170,54 @@ _gather_func = GatherFunction()
 
 
 @triton.jit
-def gather_backward_kernel(grad, index, result, M, N, J, K):
+def gather_backward_kernel(
+    grad,
+    index,
+    result,
+    result_shape,
+    index_shape,
+    index_strides,
+    grad_strides,
+    dim,
+    scan_size,
+    rank: tl.constexpr,
+):
     """Accumulate gather gradients without unsupported atomic operations."""
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-    pid_k = tl.program_id(2)
-    accumulator = tl.full((), 0.0, dtype=tl.float32)
+    result_offset = tl.program_id(0)
+    remaining = result_offset
+    index_base = tl.full((), 0, dtype=tl.int32)
+    grad_base = tl.full((), 0, dtype=tl.int32)
+    output_dim_coordinate = tl.full((), 0, dtype=tl.int32)
+    other_dims_valid = tl.full((), 1, dtype=tl.int1)
 
-    for j in range(0, J):
-        source_offset = (pid_m * J + j) * K + pid_k
-        source_index = tl.load(index + source_offset).to(tl.int32)
-        source_grad = tl.load(grad + source_offset).to(tl.float32)
-        accumulator += tl.where(source_index == pid_n, source_grad, 0.0)
+    for axis in range(rank - 1, -1, -1):
+        result_dim = tl.load(result_shape + axis)
+        coordinate = remaining % result_dim
+        remaining //= result_dim
+        current_index_dim = tl.load(index_shape + axis)
+        index_stride = tl.load(index_strides + axis)
+        grad_stride = tl.load(grad_strides + axis)
+        is_gather_dim = axis == dim
+        output_dim_coordinate = tl.where(
+            is_gather_dim, coordinate, output_dim_coordinate
+        )
+        index_base += tl.where(is_gather_dim, 0, coordinate * index_stride)
+        grad_base += tl.where(is_gather_dim, 0, coordinate * grad_stride)
+        other_dims_valid &= is_gather_dim | (coordinate < current_index_dim)
 
-    result_offset = (pid_m * N + pid_n) * K + pid_k
+    accumulator = tl.full((), 0.0, dtype=result.dtype.element_ty)
+    index_scan_stride = tl.load(index_strides + dim)
+    grad_scan_stride = tl.load(grad_strides + dim)
+    for scan_index in range(0, scan_size):
+        index_offset = index_base + scan_index * index_scan_stride
+        grad_offset = grad_base + scan_index * grad_scan_stride
+        source_index = tl.load(
+            index + index_offset, mask=other_dims_valid, other=-1
+        ).to(tl.int32)
+        source_grad = tl.load(grad + grad_offset, mask=other_dims_valid, other=0.0)
+        selected = other_dims_valid & (source_index == output_dim_coordinate)
+        accumulator += tl.where(selected, source_grad, 0.0)
+
     tl.store(result + result_offset, accumulator)
 
 
@@ -216,9 +244,21 @@ def gather_backward(grad, self, dim, index, sparse_grad):
     grad = grad.contiguous()
     index = index.contiguous()
     result = grad.new_zeros(self.shape)
-    M = math.prod(index.shape[:dim])
-    N = self.shape[dim]
-    J = index.shape[dim]
-    K = math.prod(index.shape[dim + 1 :])
-    gather_backward_kernel[(M, N, K)](grad, index, result, M, N, J, K)
+    result_shape = torch.tensor(self.shape, dtype=torch.int32, device=self.device)
+    index_shape = torch.tensor(index.shape, dtype=torch.int32, device=index.device)
+    index_strides = torch.tensor(index.stride(), dtype=torch.int32, device=index.device)
+    grad_strides = torch.tensor(grad.stride(), dtype=torch.int32, device=grad.device)
+    gather_backward_kernel[(result.numel(),)](
+        grad,
+        index,
+        result,
+        result_shape,
+        index_shape,
+        index_strides,
+        grad_strides,
+        dim,
+        index.shape[dim],
+        self.ndim,
+        num_warps=1,
+    )
     return result

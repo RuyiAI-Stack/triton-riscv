@@ -37,3 +37,19 @@ def test_masked_scatter_inplace(shape):
     masked_scatter_(x, mask, source)
 
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.parametrize("inplace", [False, True])
+def test_masked_scatter_rejects_short_source(inplace):
+    x = torch.arange(6, dtype=torch.float32)
+    original = x.clone()
+    mask = torch.tensor([True, False, True, True, False, False])
+    source = torch.tensor([10.0, 20.0])
+
+    with pytest.raises(RuntimeError, match="source"):
+        if inplace:
+            masked_scatter_(x, mask, source)
+        else:
+            masked_scatter(x, mask, source)
+
+    torch.testing.assert_close(x, original)

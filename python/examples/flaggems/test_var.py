@@ -90,3 +90,12 @@ def test_var_dim_func_multi_dim(size):
     tri_out = var_dim(x, dim=[0, 1])
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
+
+
+def test_var_large_constant_is_numerically_stable():
+    x = torch.full((4096,), 1.0e8, dtype=torch.float32)
+
+    tri_out = var(x, correction=0)
+
+    torch.testing.assert_close(tri_out, torch.var(x, correction=0))
+    assert tri_out.item() == 0.0

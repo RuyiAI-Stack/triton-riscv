@@ -19,9 +19,7 @@ from .max_pool3d_with_indices import (
         (2, 2, 0, 1, (1, 1, 8, 1024, 1024)),
     ],
 )
-def test_max_pool3d_with_indices_forward(
-    kernel_size, stride, padding, dilation, shape
-):
+def test_max_pool3d_with_indices_forward(kernel_size, stride, padding, dilation, shape):
     torch.manual_seed(0)
     x = torch.randn(*shape, device="cpu", dtype=torch.float32)
 
@@ -55,9 +53,7 @@ def test_max_pool3d_with_indices_forward(
 )
 def test_max_pool3d_backward(kernel_size, stride, padding, dilation, shape):
     torch.manual_seed(0)
-    x = torch.randn(
-        *shape, device="cpu", dtype=torch.float32, requires_grad=True
-    )
+    x = torch.randn(*shape, device="cpu", dtype=torch.float32, requires_grad=True)
 
     ref_out, ref_idx = F.max_pool3d_with_indices(
         x,
@@ -88,3 +84,21 @@ def test_max_pool3d_backward(kernel_size, stride, padding, dilation, shape):
     )
 
     torch.testing.assert_close(tri_grad, x.grad, rtol=1e-4, atol=1e-4)
+
+
+def test_max_pool3d_preserves_int64_order_and_float64_gradient():
+    base = 2**60
+    integer_input = torch.arange(8, dtype=torch.int64).reshape(1, 1, 2, 2, 2) + base
+    ref_out, ref_idx = F.max_pool3d_with_indices(integer_input, 2)
+    tri_out, tri_idx = max_pool3d_with_indices(integer_input, 2)
+    torch.testing.assert_close(tri_out, ref_out)
+    torch.testing.assert_close(tri_idx, ref_idx)
+
+    x = torch.randn((1, 1, 3, 3, 3), dtype=torch.float64, requires_grad=True)
+    ref, _ = F.max_pool3d_with_indices(x, 2)
+    grad = torch.randn_like(ref)
+    ref.backward(grad)
+    _, indices = max_pool3d_with_indices(x.detach(), 2)
+    tri_grad = max_pool3d_backward(grad, x.detach(), indices, 2, None, 0, 1, False)
+    assert tri_grad.dtype == torch.float64
+    torch.testing.assert_close(tri_grad, x.grad)

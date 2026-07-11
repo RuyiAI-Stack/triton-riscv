@@ -3,6 +3,22 @@ import triton
 import triton.language as tl
 
 
+@triton.jit
+def get_dtype_min(dtype):
+    """Get a value which is less than all other values of that dtype."""
+    dtype_ = dtype.value
+    if dtype_.is_floating():
+        value: tl.constexpr = float("-inf")
+        return value
+    if dtype_.is_int_signed():
+        width: tl.constexpr = dtype_.int_bitwidth
+        value: tl.constexpr = -1 * 2 ** (width - 1)
+        return value
+    if dtype_.is_int_unsigned():
+        value: tl.constexpr = 0
+        return value
+
+
 def pool3d_output_size(
     in_size: int,
     kernel_size: int,
@@ -55,8 +71,9 @@ def max_pool3d_forward_kernel(
     input_volume = in_d * in_h * in_w
     input_base = nc_idx * input_volume
 
-    min_value: tl.constexpr = float("-inf")
-    max_value = tl.full((), min_value, dtype=tl.float32)
+    dtype = input_ptr.dtype.element_ty
+    min_value = get_dtype_min(dtype)
+    max_value = tl.full((), min_value, dtype=dtype)
     max_index = tl.full((), -1, dtype=tl.int32)
     for kd in tl.static_range(0, kernel_d):
         for kh in tl.static_range(0, kernel_h):
@@ -76,9 +93,7 @@ def max_pool3d_forward_kernel(
                 safe_h = tl.maximum(0, tl.minimum(h_in, in_h - 1))
                 safe_w = tl.maximum(0, tl.minimum(w_in, in_w - 1))
                 input_index = safe_d * in_h * in_w + safe_h * in_w + safe_w
-                value = tl.load(input_ptr + input_base + input_index).to(
-                    tl.float32
-                )
+                value = tl.load(input_ptr + input_base + input_index)
                 value = tl.where(valid, value, min_value)
                 update = valid & ((max_index < 0) | (value > max_value))
                 max_value = tl.where(update, value, max_value)
@@ -106,11 +121,11 @@ def max_pool3d_backward_kernel(
     input_index = input_offset % input_volume
     nc_idx = input_offset // input_volume
     output_volume = out_d * out_h * out_w
-    grad = tl.full((), 0.0, dtype=tl.float32)
+    grad = tl.full((), 0.0, dtype=grad_input_ptr.dtype.element_ty)
     for output_index in range(0, output_volume):
         offset = nc_idx * output_volume + output_index
         selected_index = tl.load(indices_ptr + offset).to(tl.int32)
-        output_grad = tl.load(grad_output_ptr + offset).to(tl.float32)
+        output_grad = tl.load(grad_output_ptr + offset)
         grad += tl.where(selected_index == input_index, output_grad, 0.0)
     tl.store(grad_input_ptr + input_offset, grad)
 
@@ -158,9 +173,7 @@ def max_pool3d_with_indices(
         device=input.device,
         dtype=input.dtype,
     )
-    indices = torch.empty(
-        output.shape, device=input.device, dtype=torch.int64
-    )
+    indices = torch.empty(output.shape, device=input.device, dtype=torch.int64)
     if output.numel() == 0:
         return output, indices
     max_pool3d_forward_kernel[(output.numel(),)](

@@ -23,13 +23,18 @@ def max_pool2d_output_size(
 
 @triton.jit
 def get_dtype_min(dtype):
+    """Get a value which is less than all other values of that dtype."""
     dtype_ = dtype.value
     if dtype_.is_floating():
-        return float("-inf")
+        value: tl.constexpr = float("-inf")
+        return value
     if dtype_.is_int_signed():
         width: tl.constexpr = dtype_.int_bitwidth
-        return -1 * 2 ** (width - 1)
-    return 0
+        value: tl.constexpr = -1 * 2 ** (width - 1)
+        return value
+    if dtype_.is_int_unsigned():
+        value: tl.constexpr = 0
+        return value
 
 
 @triton.jit
@@ -57,8 +62,9 @@ def max_pool2d_forward_kernel(
     nc_idx = remaining // out_h
     input_base = nc_idx * in_h * in_w
 
-    min_value: tl.constexpr = float("-inf")
-    max_value = tl.full((), min_value, dtype=tl.float32)
+    dtype = input_ptr.dtype.element_ty
+    min_value = get_dtype_min(dtype)
+    max_value = tl.full((), min_value, dtype=dtype)
     max_index = tl.full((), -1, dtype=tl.int32)
 
     for kh in tl.static_range(0, kernel_h):
@@ -68,9 +74,7 @@ def max_pool2d_forward_kernel(
             valid = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
             safe_h = tl.maximum(0, tl.minimum(h_in, in_h - 1))
             safe_w = tl.maximum(0, tl.minimum(w_in, in_w - 1))
-            value = tl.load(
-                input_ptr + input_base + safe_h * in_w + safe_w
-            ).to(tl.float32)
+            value = tl.load(input_ptr + input_base + safe_h * in_w + safe_w)
             value = tl.where(valid, value, min_value)
             update = valid & ((max_index < 0) | (value > max_value))
             max_value = tl.where(update, value, max_value)
@@ -95,11 +99,11 @@ def max_pool2d_backward_kernel(
     input_index = input_offset % input_hw
     nc_idx = input_offset // input_hw
     output_hw = out_h * out_w
-    grad = tl.full((), 0.0, dtype=tl.float32)
+    grad = tl.full((), 0.0, dtype=grad_input_ptr.dtype.element_ty)
     for output_index in range(0, output_hw):
         offset = nc_idx * output_hw + output_index
         selected_index = tl.load(indices_ptr + offset).to(tl.int32)
-        output_grad = tl.load(grad_output_ptr + offset).to(tl.float32)
+        output_grad = tl.load(grad_output_ptr + offset)
         grad += tl.where(selected_index == input_index, output_grad, 0.0)
     tl.store(grad_input_ptr + input_offset, grad)
 
@@ -115,13 +119,9 @@ def _parse_pool_params(kernel_size, stride, padding, dilation):
         raise ValueError(f"Invalid {name}: {param}")
 
     kernel_h, kernel_w = _parse_param(kernel_size, "kernel_size")
-    stride_h, stride_w = _parse_param(
-        stride, "stride", default=(kernel_h, kernel_w)
-    )
+    stride_h, stride_w = _parse_param(stride, "stride", default=(kernel_h, kernel_w))
     padding_h, padding_w = _parse_param(padding, "padding", default=(0, 0))
-    dilation_h, dilation_w = _parse_param(
-        dilation, "dilation", default=(1, 1)
-    )
+    dilation_h, dilation_w = _parse_param(dilation, "dilation", default=(1, 1))
     if stride_h <= 0 or stride_w <= 0:
         raise ValueError("stride must be positive")
     if padding_h < 0 or padding_w < 0:
@@ -170,9 +170,7 @@ def max_pool2d_with_indices(
     output = torch.empty(
         (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
     )
-    indices = torch.empty(
-        output.shape, device=input.device, dtype=torch.int64
-    )
+    indices = torch.empty(output.shape, device=input.device, dtype=torch.int64)
     if output.numel() == 0:
         return output, indices
     max_pool2d_forward_kernel[(output.numel(),)](

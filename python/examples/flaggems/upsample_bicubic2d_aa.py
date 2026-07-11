@@ -2,8 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-from .upsample_bicubic2d import upsample_bicubic2d
-
 
 @triton.jit
 def upsample_bicubic2d_aa_kernel(
@@ -33,12 +31,12 @@ def upsample_bicubic2d_aa_kernel(
     center_h = (oh + 0.5) * reciprocal_scale_h
     span_start_w = tl.maximum(center_w - support_w + 0.5, 0).to(tl.int32)
     span_start_h = tl.maximum(center_h - support_h + 0.5, 0).to(tl.int32)
-    span_size_w = (
-        tl.minimum(center_w + support_w + 0.5, IW) - span_start_w
-    ).to(tl.int32)
-    span_size_h = (
-        tl.minimum(center_h + support_h + 0.5, IH) - span_start_h
-    ).to(tl.int32)
+    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(
+        tl.int32
+    )
+    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(
+        tl.int32
+    )
     start_minus_center_w = span_start_w - center_w
     start_minus_center_h = span_start_h - center_h
     invscale_w = 1.0
@@ -386,28 +384,22 @@ def general_interpolate_bicubic2d_aa_kernel(
     center_h = (oh + 0.5) * reciprocal_scale_h
     span_start_w = tl.maximum(center_w - support_w + 0.5, 0).to(tl.int32)
     span_start_h = tl.maximum(center_h - support_h + 0.5, 0).to(tl.int32)
-    span_size_w = (
-        tl.minimum(center_w + support_w + 0.5, IW) - span_start_w
-    ).to(tl.int32)
-    span_size_h = (
-        tl.minimum(center_h + support_h + 0.5, IH) - span_start_h
-    ).to(tl.int32)
+    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(
+        tl.int32
+    )
+    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(
+        tl.int32
+    )
 
-    invscale_w = (
-        1.0 / reciprocal_scale_w if (reciprocal_scale_w >= 1.0) else 1.0
-    )
-    invscale_h = (
-        1.0 / reciprocal_scale_h if (reciprocal_scale_h >= 1.0) else 1.0
-    )
+    invscale_w = 1.0 / reciprocal_scale_w if (reciprocal_scale_w >= 1.0) else 1.0
+    invscale_h = 1.0 / reciprocal_scale_h if (reciprocal_scale_h >= 1.0) else 1.0
     start_minus_center_w = span_start_w - center_w
     start_minus_center_h = span_start_h - center_h
 
     a = -0.5
     for n in range(0, N, 1):
         for c in range(0, C, 1):
-            offset_base = (
-                (n * C + c) * IH + span_start_h[:, None]
-            ) * IW + span_start_w
+            offset_base = ((n * C + c) * IH + span_start_h[:, None]) * IW + span_start_w
             weight_y_total = tl.zeros((BLOCK_Y,), dtype=tl.float32)
             result = tl.zeros((BLOCK_Y, BLOCK_X), dtype=tl.float32)
             for y in range(0, interpolate_h, 1):
@@ -417,9 +409,7 @@ def general_interpolate_bicubic2d_aa_kernel(
                     tl.where(
                         wy < 1.0,
                         ((a + 2) * wy - (a + 3)) * wy * wy + 1,
-                        tl.where(
-                            wy < 2.0, (((wy - 5) * wy + 8) * wy - 4) * a, 0
-                        ),
+                        tl.where(wy < 2.0, (((wy - 5) * wy + 8) * wy - 4) * a, 0),
                     ),
                     0,
                 )
@@ -433,9 +423,7 @@ def general_interpolate_bicubic2d_aa_kernel(
                         tl.where(
                             wx < 1.0,
                             ((a + 2) * wx - (a + 3)) * wx * wx + 1,
-                            tl.where(
-                                wx < 2.0, (((wx - 5) * wx + 8) * wx - 4) * a, 0
-                            ),
+                            tl.where(wx < 2.0, (((wx - 5) * wx + 8) * wx - 4) * a, 0),
                         ),
                         0,
                     )
@@ -447,9 +435,7 @@ def general_interpolate_bicubic2d_aa_kernel(
                         other=0,
                     )
                     buffer += data * weight_x[None, :]
-                weight_x_total = tl.where(
-                    weight_x_total != 0, weight_x_total, 1
-                )
+                weight_x_total = tl.where(weight_x_total != 0, weight_x_total, 1)
                 result += buffer / weight_x_total[None, :] * weight_y[:, None]
             weight_y_total = tl.where(weight_y_total != 0, weight_y_total, 1)
             result /= weight_y_total[:, None]
@@ -477,14 +463,37 @@ def _upsample_bicubic2d_aa(
     scales_h: float | None = None,
     scales_w: float | None = None,
 ):
-    # The example's reference is PyTorch's regular bicubic interpolation
-    # (antialias=False).  Reuse the backend-compatible implementation so the
-    # coordinate transform, cubic coefficient (-0.75), and edge clamping stay
-    # identical for both upsampling and downsampling.
-    return upsample_bicubic2d(
-        input,
-        output_size=output_size,
-        align_corners=align_corners,
-        scales_h=scales_h,
-        scales_w=scales_w,
+    assert input.ndim == 4, "The ndim of input must be 4"
+    assert len(output_size) == 2, "The len of output_size must be 2"
+
+    OH, OW = output_size
+    N, C, IH, IW = input.shape
+
+    reciprocal_scale_h = bicubic_reciprocal_scale(IH, OH, align_corners, scales_h)
+    reciprocal_scale_w = bicubic_reciprocal_scale(IW, OW, align_corners, scales_w)
+
+    output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
+    BLOCK_X = 32
+    BLOCK_Y = 32
+    grid = (triton.cdiv(OW, BLOCK_X), triton.cdiv(OH, BLOCK_Y))
+    kernel = (
+        general_interpolate_bicubic2d_aa_kernel
+        if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0)
+        else upsample_bicubic2d_aa_kernel
     )
+    kernel[grid](
+        output,
+        input,
+        N,
+        C,
+        OH,
+        OW,
+        IH,
+        IW,
+        reciprocal_scale_h,
+        reciprocal_scale_w,
+        BLOCK_X=BLOCK_X,
+        BLOCK_Y=BLOCK_Y,
+        num_warps=4,
+    )
+    return output

@@ -34,6 +34,5 @@ def logical_or(A, B):
 
 
 def logical_or_(A, B):
-    result = logical_or(A, B)
-    A.data = result
+    A.copy_(logical_or(A, B))
     return A
