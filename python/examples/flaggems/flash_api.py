@@ -1,7 +1,6 @@
 import math
 
 import torch
-import torch.nn.functional as F
 import triton
 
 from .flash_kernel import (
@@ -67,26 +66,34 @@ def _cpu_mha_fwd(
         value = value.repeat_interleave(repeats, dim=1)
 
     scale = softmax_scale if softmax_scale is not None else head_size**-0.5
-    result = F.scaled_dot_product_attention(
-        query,
-        key,
-        value,
-        dropout_p=0.0,
-        is_causal=is_causal,
-        scale=scale,
-    )
-
     scores = torch.matmul(query, key.transpose(-2, -1)) * scale
     if is_causal:
-        causal_mask = torch.ones(
-            (seqlen_q, seqlen_k), dtype=torch.bool, device=q.device
-        ).triu(diagonal=1)
-        scores = scores.masked_fill(causal_mask, float("-inf"))
-    lse = torch.logsumexp(scores, dim=-1)
+        q_index = torch.arange(seqlen_q, device=q.device)[:, None]
+        k_index = torch.arange(seqlen_k, device=q.device)[None, :]
+        allowed = k_index <= q_index + seqlen_k - seqlen_q
+    else:
+        allowed = torch.ones((seqlen_q, seqlen_k), dtype=torch.bool, device=q.device)
 
-    result = result.transpose(1, 2).contiguous().to(q.dtype)
+    # Use one right-aligned mask for both probabilities and LSE.  Subtracting
+    # zero for fully masked rows avoids inf - inf, while a unit denominator
+    # makes their probabilities and output exactly zero.  Their LSE is -inf.
+    scores = scores.masked_fill(~allowed, float("-inf"))
+    row_has_keys = allowed.any(dim=-1)
+    row_max = scores.amax(dim=-1, keepdim=True)
+    safe_row_max = torch.where(row_has_keys[:, None], row_max, 0.0)
+    unnormalized = torch.exp(scores - safe_row_max)
+    denominator = unnormalized.sum(dim=-1, keepdim=True)
+    probabilities = unnormalized / torch.where(denominator > 0, denominator, 1.0)
+    result = torch.matmul(probabilities, value)
+    lse = torch.where(
+        row_has_keys,
+        torch.log(denominator.squeeze(-1)) + safe_row_max.squeeze(-1),
+        float("-inf"),
+    )
+
+    result = result.transpose(1, 2).contiguous()
     if out is None:
-        out = result
+        out = result.to(q.dtype)
     else:
         out.copy_(result.to(out.dtype))
 

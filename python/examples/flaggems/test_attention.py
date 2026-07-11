@@ -10,6 +10,42 @@ from .attention import (
     scaled_dot_product_attention,
     scaled_dot_product_attention_forward,
 )
+from .flash_api import mha_fwd
+
+
+def _flash_attention_cpu_reference(q, k, v, *, causal, scale=None):
+    """Independent float32 reference with FlashAttention's right-aligned mask."""
+    query = q.transpose(1, 2).contiguous().to(torch.float32)
+    key = k.transpose(1, 2).contiguous().to(torch.float32)
+    value = v.transpose(1, 2).contiguous().to(torch.float32)
+    if query.shape[1] != key.shape[1]:
+        repeats = query.shape[1] // key.shape[1]
+        key = key.repeat_interleave(repeats, dim=1)
+        value = value.repeat_interleave(repeats, dim=1)
+
+    seqlen_q = query.shape[-2]
+    seqlen_k = key.shape[-2]
+    actual_scale = scale if scale is not None else query.shape[-1] ** -0.5
+    allowed = None
+    if causal:
+        q_index = torch.arange(seqlen_q, device=q.device)[:, None]
+        k_index = torch.arange(seqlen_k, device=q.device)[None, :]
+        allowed = k_index <= q_index + seqlen_k - seqlen_q
+
+    output = F.scaled_dot_product_attention(
+        query,
+        key,
+        value,
+        attn_mask=allowed,
+        dropout_p=0.0,
+        is_causal=False,
+        scale=actual_scale,
+    )
+    scores = torch.matmul(query, key.transpose(-2, -1)) * actual_scale
+    if allowed is not None:
+        scores = scores.masked_fill(~allowed, float("-inf"))
+    lse = torch.logsumexp(scores, dim=-1)
+    return output.transpose(1, 2).contiguous(), lse, allowed
 
 
 # scaled_dot_product_attention tests
@@ -208,48 +244,100 @@ def test_flash_attention_forward(batch, seqlen_q, seqlen_k, headdim):
     assert p is None
 
 
-def test_flash_attention_forward_causal():
+@pytest.mark.parametrize("seqlen_q,seqlen_k", [(1, 8), (2, 5), (5, 2), (8, 8)])
+def test_flash_attention_forward_causal_right_aligned(seqlen_q, seqlen_k):
     torch.manual_seed(0)
-    # Expected layout for flash_attention_forward/mha_fwd: (B, L, H, D)
-    q = torch.randn(1, 8, 2, 32, device="cpu", dtype=torch.float16)
-    k = torch.randn(1, 8, 2, 32, device="cpu", dtype=torch.float16)
-    v = torch.randn(1, 8, 2, 32, device="cpu", dtype=torch.float16)
+    q = torch.randn(1, seqlen_q, 2, 32, dtype=torch.float16)
+    k = torch.randn(1, seqlen_k, 2, 32, dtype=torch.float16)
+    v = torch.randn(1, seqlen_k, 2, 32, dtype=torch.float16)
+    ref_out, ref_lse, allowed = _flash_attention_cpu_reference(q, k, v, causal=True)
 
-    ref = F.scaled_dot_product_attention(
-        q.transpose(1, 2).to(torch.float32),
-        k.transpose(1, 2).to(torch.float32),
-        v.transpose(1, 2).to(torch.float32),
-        is_causal=True,
-    ).to(q.dtype)
-
-    tri_out, *_ = flash_attention_forward(
+    tri_out, _, _, _, lse, _, _, _ = flash_attention_forward(
         q, k, v, None, None, None, None, 0.0, True, False, scale=None
     )
 
     assert tri_out.dtype == q.dtype
-    torch.testing.assert_close(tri_out.transpose(1, 2), ref, rtol=1e-3, atol=5e-4)
+    torch.testing.assert_close(tri_out.float(), ref_out, rtol=1e-3, atol=5e-4)
+    torch.testing.assert_close(lse, ref_lse, rtol=1e-5, atol=1e-5)
+    assert not torch.isnan(tri_out).any()
+    assert not torch.isnan(lse).any()
+    if seqlen_q > seqlen_k:
+        fully_masked = ~allowed.any(dim=-1)
+        assert torch.equal(
+            tri_out[:, fully_masked], torch.zeros_like(tri_out[:, fully_masked])
+        )
+        assert torch.isneginf(lse[..., fully_masked]).all()
 
 
 @pytest.mark.parametrize("scale", [0.0, 0.125])
 def test_flash_attention_forward_scale(scale):
     torch.manual_seed(0)
-    q = torch.randn(1, 8, 2, 32, device="cpu", dtype=torch.float16)
-    k = torch.randn(1, 8, 2, 32, device="cpu", dtype=torch.float16)
-    v = torch.randn(1, 8, 2, 32, device="cpu", dtype=torch.float16)
+    q = torch.randn(1, 3, 2, 32, dtype=torch.float16)
+    k = torch.randn(1, 5, 2, 32, dtype=torch.float16)
+    v = torch.randn(1, 5, 2, 32, dtype=torch.float16)
+    ref_out, ref_lse, _ = _flash_attention_cpu_reference(
+        q, k, v, causal=False, scale=scale
+    )
 
-    ref = F.scaled_dot_product_attention(
-        q.transpose(1, 2).to(torch.float32),
-        k.transpose(1, 2).to(torch.float32),
-        v.transpose(1, 2).to(torch.float32),
-        scale=scale,
-    ).to(q.dtype)
-
-    tri_out, *_ = flash_attention_forward(
+    tri_out, _, _, _, lse, _, _, _ = flash_attention_forward(
         q, k, v, None, None, None, None, 0.0, False, False, scale=scale
     )
 
     assert tri_out.dtype == q.dtype
-    torch.testing.assert_close(tri_out.transpose(1, 2), ref, rtol=1e-3, atol=5e-4)
+    torch.testing.assert_close(tri_out.float(), ref_out, rtol=1e-3, atol=5e-4)
+    torch.testing.assert_close(lse, ref_lse, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("kv_heads", [1, 2])
+def test_flash_attention_forward_cpu_mqa_gqa_right_aligned(kv_heads):
+    torch.manual_seed(11)
+    q = torch.randn(2, 2, 4, 32, dtype=torch.float16)
+    k = torch.randn(2, 5, kv_heads, 32, dtype=torch.float16)
+    v = torch.randn(2, 5, kv_heads, 32, dtype=torch.float16)
+    ref_out, ref_lse, _ = _flash_attention_cpu_reference(
+        q, k, v, causal=True, scale=0.25
+    )
+
+    out, _, _, _, lse, philox_args, rng_state, probabilities = flash_attention_forward(
+        q, k, v, None, None, None, None, 0.0, True, False, scale=0.25
+    )
+
+    torch.testing.assert_close(out.float(), ref_out, rtol=1e-3, atol=5e-4)
+    torch.testing.assert_close(lse, ref_lse, rtol=1e-5, atol=1e-5)
+    assert torch.equal(philox_args, torch.zeros(2, dtype=torch.int64))
+    assert rng_state is None
+    assert probabilities is None
+
+
+def test_mha_fwd_cpu_float32_out_preserves_precision():
+    torch.manual_seed(23)
+    q = torch.randn(1, 2, 2, 32, dtype=torch.float16)
+    k = torch.randn(1, 5, 2, 32, dtype=torch.float16)
+    v = torch.randn(1, 5, 2, 32, dtype=torch.float16)
+    ref_out, ref_lse, _ = _flash_attention_cpu_reference(
+        q, k, v, causal=True, scale=0.125
+    )
+    provided_out = torch.empty(q.shape, dtype=torch.float32)
+
+    out, _, _, _, lse, _, _, _ = mha_fwd(
+        q,
+        k,
+        v,
+        out=provided_out,
+        alibi_slopes=None,
+        p_dropout=0.0,
+        softmax_scale=0.125,
+        is_causal=True,
+        window_size_left=-1,
+        window_size_right=-1,
+        softcap=0.0,
+        return_softmax=False,
+    )
+
+    assert out is provided_out
+    assert out.dtype == torch.float32
+    torch.testing.assert_close(out, ref_out, rtol=1e-6, atol=1e-6)
+    torch.testing.assert_close(lse, ref_lse, rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.parametrize("unsupported", ["dropout", "softcap", "alibi", "local"])
