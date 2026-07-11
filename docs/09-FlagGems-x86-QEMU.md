@@ -19,7 +19,7 @@ pytest python/examples/ \
 The 2026-07-11 A800 validation result after review fixes was:
 
 ```text
-3934 passed, 15 skipped in 80.53s (0:01:20)
+3940 passed, 15 skipped in 78.55s (0:01:18)
 ```
 
 No test was disabled as part of the FlagGems compatibility work. The skipped
