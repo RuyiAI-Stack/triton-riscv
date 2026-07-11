@@ -17,30 +17,37 @@ def fill_scalar_kernel(
     tl.store(out_ptr + offsets, value, mask=mask)
 
 
-def fill_scalar(input, value):
-    out = torch.empty_like(input)
-    n_elements = input.numel()
+def _fill_scalar_impl(out, value):
+    n_elements = out.numel()
     if n_elements == 0:
         return out
 
+    kernel_out = out
+    kernel_value = value
+    if out.dtype == torch.bool:
+        # PyTorch bool tensors use byte storage.  Passing ptr<i1> through
+        # Triton creates a pointer bitcast unsupported by the CPU lowering.
+        kernel_out = out.view(torch.uint8)
+        kernel_value = int(bool(value))
+
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](out, value, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+    fill_scalar_kernel[grid](
+        kernel_out, kernel_value, n_elements, BLOCK_SIZE=BLOCK_SIZE
+    )
     return out
+
+
+def fill_scalar(input, value):
+    out = torch.empty_like(input)
+    return _fill_scalar_impl(out, value)
 
 
 def fill_scalar_out(input, value, *, out=None):
     if out is None:
         return fill_scalar(input, value)
 
-    n_elements = out.numel()
-    if n_elements == 0:
-        return out
-
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](out, value, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return out
+    return _fill_scalar_impl(out, value)
 
 
 def fill_tensor(input, value):
@@ -48,18 +55,9 @@ def fill_tensor(input, value):
         raise RuntimeError(
             "fill_ only supports 0-dimension value tensor "
             f"but got tensor with {value.ndim} dimensions."
-        )
-    out = torch.empty_like(input)
-    n_elements = input.numel()
-    if n_elements == 0:
-        return out
-
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](
-        out, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE
     )
-    return out
+    out = torch.empty_like(input)
+    return _fill_scalar_impl(out, value.item())
 
 
 def fill_tensor_out(input, value, *, out=None):
@@ -71,16 +69,7 @@ def fill_tensor_out(input, value, *, out=None):
             f"but got tensor with {value.ndim} dimensions."
         )
 
-    n_elements = out.numel()
-    if n_elements == 0:
-        return out
-
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](
-        out, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
-    return out
+    return _fill_scalar_impl(out, value.item())
 
 
 def fill_tensor_(self, value):
@@ -90,27 +79,11 @@ def fill_tensor_(self, value):
             f"but got tensor with {value.ndim} dimensions."
         )
 
-    n_elements = self.numel()
-    if n_elements == 0:
-        return self
-
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](
-        self, value.item(), n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
-    return self
+    return _fill_scalar_impl(self, value.item())
 
 
 def fill_scalar_(self, value):
-    n_elements = self.numel()
-    if n_elements == 0:
-        return self
-
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    fill_scalar_kernel[grid](self, value, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return self
+    return _fill_scalar_impl(self, value)
 
 
 fill = fill_tensor

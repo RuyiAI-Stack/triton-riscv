@@ -70,10 +70,13 @@ def _generate_index_kernel(
     code += "):\n"
     code += "    pid0 = tl.program_id(axis=0)\n"
     code += "    pid1 = tl.program_id(axis=1)\n"
-    code += "    offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]\n"
     if inp_rank == indices_len:
-        code += "    offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]\n"
+        # With no trailing input dimensions, keep addresses rank-1.  A
+        # synthetic singleton axis crashes TritonShared pointer analysis.
+        code += "    offset0 = pid0\n"
+        code += "    offset1 = 0\n"
     else:
+        code += "    offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]\n"
         code += "    offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]\n"
     code += "\n"
     code += "    cur_idx = offset0\n"
@@ -173,7 +176,8 @@ def _generate_wrapper(
         code += f"        out_stride[{i}],\n"
     code += "        M,\n"
     code += "        N,\n"
-    code += "        BLOCK_SIZE0=128,\n"
+    block_size0 = 1 if inp_rank == indices_len else 128
+    code += f"        BLOCK_SIZE0={block_size0},\n"
     code += "        BLOCK_SIZE1=512,\n"
     code += "    )\n"
     code += "    return out\n\n"

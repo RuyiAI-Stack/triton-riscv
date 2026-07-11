@@ -483,6 +483,41 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
     )
 
 
+@triton.jit
+def cummin_sequential_kernel(inp, out, out_indices, B, C):
+    pid_a = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    base_offset = pid_a * B * C + pid_c
+    max_value = get_dtype_max(inp.type.element_ty)
+
+    if tl.constexpr(
+        inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()
+    ):
+        compute_dtype = tl.float32
+    elif tl.constexpr(
+        inp.type.element_ty.is_int8() or inp.type.element_ty.is_int16()
+    ):
+        compute_dtype = tl.int32
+    else:
+        compute_dtype = inp.type.element_ty
+
+    prev_value = tl.full((), max_value, dtype=compute_dtype)
+    prev_index = tl.full((), 0, dtype=tl.int32)
+    for b_idx in range(0, B):
+        offset = base_offset + b_idx * C
+        value = tl.load(inp + offset).to(compute_dtype)
+        if tl.constexpr(compute_dtype.is_floating()):
+            value_is_nan = value != value
+            prev_is_nan = prev_value != prev_value
+            use_value = value_is_nan | (~prev_is_nan & (value <= prev_value))
+        else:
+            use_value = value <= prev_value
+        prev_value = tl.where(use_value, value, prev_value)
+        prev_index = tl.where(use_value, b_idx, prev_index)
+        tl.store(out + offset, prev_value.to(out.type.element_ty))
+        tl.store(out_indices + offset, prev_index.to(tl.int64))
+
+
 def cummin(
     input: Tensor,
     dim: int,
@@ -502,17 +537,15 @@ def cummin(
     dtype = input.dtype
     if dtype is torch.bool:
         dtype = torch.int64
-    out = torch.empty_like(input, dtype=dtype)
-    out_indices = torch.empty_like(input, dtype=torch.int64)
-
-    compute_dtype = out.dtype
-    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
-        compute_dtype = torch.float32
-
-    if M == 1 and K == 1:
-        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
-    elif M * K <= 16:
-        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
+    if out is None:
+        out_values = torch.empty_like(input, dtype=dtype)
+        out_indices = torch.empty_like(input, dtype=torch.int64)
     else:
-        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
-    return out, out_indices
+        if not isinstance(out, (tuple, list)) or len(out) != 2:
+            raise TypeError("out must be a tuple of (values, indices)")
+        out_values, out_indices = out
+
+    cummin_sequential_kernel[(M, K)](
+        input, out_values, out_indices, N, K
+    )
+    return out_values, out_indices

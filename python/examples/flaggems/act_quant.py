@@ -53,7 +53,7 @@ def act_quant_triton_kernel(
         X_ptr + row_offset[:, None] * stride_xm + col_offsets[None, :],
         mask=mask,
         other=0.0,
-    )
+    ).to(tl.float32)
 
     amax = tl.max(tl.abs(x), axis=1)
     amax = tl.maximum(amax, 1e-4)
@@ -69,7 +69,9 @@ def act_quant_triton_kernel(
         # scale = tl.math.exp2(log2_ceil)
         scale = fast_round_scale(amax, FP8_MAX_INV)
     else:
-        scale = amax * FP8_MAX_INV
+        # Match PyTorch's fp32 division exactly.  Multiplying by a rounded
+        # reciprocal can move values across an FP8 tie-breaking boundary.
+        scale = amax / FP8_MAX
 
     y = x / scale[:, None]
     y = tl.clamp(y, -FP8_MAX, FP8_MAX)
@@ -77,7 +79,7 @@ def act_quant_triton_kernel(
     y_offset = row_offset
     tl.store(
         Y_ptr + y_offset[:, None] * stride_ym + col_offsets[None, :],
-        y.to(tl.float8e4nv),
+        y,
         mask=mask,
     )
 
@@ -123,9 +125,12 @@ def act_quant_triton(
     m_blocks = triton.cdiv(M, BLOCK_M)
     n_blocks = N // BLOCK_N
 
-    y = torch.empty_like(x, dtype=torch.float8_e4m3fn)
+    # The CPU target does not advertise a native FP8 type.  Run the Triton
+    # quantization kernel with an fp32 output buffer, then use PyTorch's CPU
+    # conversion to encode the public float8_e4m3fn result.
+    y_fp32 = torch.empty_like(x, dtype=torch.float32)
     s = x.new_empty(*x.size()[:-1], n_blocks, dtype=torch.float32)
-    y_view = y.view(-1, N)
+    y_view = y_fp32.view(-1, N)
     s_view = s.view(-1, n_blocks)
 
     grid = (m_blocks, n_blocks)
@@ -143,4 +148,4 @@ def act_quant_triton(
         ROUND_SCALE=(scale_fmt is not None),
     )
 
-    return y, s
+    return y_fp32.to(torch.float8_e4m3fn), s

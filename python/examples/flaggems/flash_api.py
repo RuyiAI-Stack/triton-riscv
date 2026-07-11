@@ -327,7 +327,7 @@ def mha_varlan_fwd(
     # Check output shape
     if out is not None:
         assert out.stride(-1) == 1
-        assert out.dtype == q.dtype
+        assert out.dtype in (q.dtype, torch.float32)
         assert out.size() == (total_q, num_heads, head_size)
 
     if seqused_k is not None:
@@ -453,7 +453,6 @@ def mha_varlan_fwd(
 
     if p_dropout > 0:
         is_dropout = True
-        increment = batch_size * num_heads * 32
         philox_seed = torch.randint(0, 2**31, (1,), device=q_device).item()
         philox_offset = torch.randint(0, 2**31, (1,), device=q_device).item()
         philox_args = torch.tensor(
@@ -809,7 +808,6 @@ def mha_varlan_fwd_opt(
 
     if p_dropout > 0:
         is_dropout = True
-        increment = batch_size * num_heads * 32
         philox_seed = torch.randint(0, 2**31, (1,), device=q_device).item()
         philox_offset = torch.randint(0, 2**31, (1,), device=q_device).item()
         philox_args = torch.tensor(
@@ -1002,7 +1000,7 @@ def mha_fwd(
     # Check output shape
     if out is not None:
         assert out.stride(-1) == 1
-        assert out.dtype == q.dtype
+        assert out.dtype in (q.dtype, torch.float32)
         assert out.size() == (batch_size, seqlen_q, num_heads, head_size)
         CHECK_DEVICE(out)
 
@@ -1023,6 +1021,36 @@ def mha_fwd(
 
     is_causal = window_size_left < 0 and window_size_right == 0
     is_local = window_size_left >= 0 and window_size_right >= 0
+
+    if (
+        p_dropout == 0.0
+        and alibi_slopes is None
+        and not is_local
+        and softcap == 0.0
+        and not return_softmax
+    ):
+        from .attention import scaled_dot_product_attention_forward
+
+        query = q.transpose(1, 2).contiguous().to(torch.float32)
+        key = k.transpose(1, 2).contiguous().to(torch.float32)
+        value = v.transpose(1, 2).contiguous().to(torch.float32)
+        result, lse = scaled_dot_product_attention_forward(
+            query,
+            key,
+            value,
+            dropout_p=0.0,
+            is_causal=is_causal,
+            scale=softmax_scale,
+            enable_gqa=num_heads != num_heads_k,
+        )
+        result = result.transpose(1, 2).contiguous().to(q_dtype)
+        if out is None:
+            out = result
+        else:
+            out.copy_(result.to(out.dtype))
+        philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+        p = torch.empty((), device=q_device)
+        return out, q, k, v, lse, philox_args, None, p
 
     seqlenq_ngroups_swapped = (
         seqlen_q == 1
@@ -1085,7 +1113,6 @@ def mha_fwd(
     # Set dropout params
     if p_dropout > 0:
         is_dropout = True
-        increment = batch_size * num_heads * 32
         philox_seed = torch.randint(0, 2**31, (1,), device=q_device).item()
         philox_offset = torch.randint(0, 2**31, (1,), device=q_device).item()
         philox_args = torch.tensor(
@@ -1313,9 +1340,7 @@ def mha_fwd(
 
     # Move TxD to last dims for correct stride in Triton tt.load
 
-    kernel = dispatch(
-        batch_size, num_heads, seqlen_q, seqlen_k, head_size, params
-    )
+    _ = dispatch(batch_size, num_heads, seqlen_q, seqlen_k, head_size, params)
 
     if seqlenq_ngroups_swapped:
         out = out.transpose(1, 2).reshape(

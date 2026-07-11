@@ -193,6 +193,87 @@ def fp8_paged_mqa_logits_kernel(
 
 
 @triton.jit
+def fp8_paged_mqa_logits_decoded_kernel(
+    q_ptr,
+    kv_ptr,
+    scale_ptr,
+    weights_ptr,
+    logits_ptr,
+    block_tables_ptr,
+    context_lens_ptr,
+    stride_qb,
+    stride_qn,
+    stride_qh,
+    stride_qd,
+    stride_kvblk,
+    stride_kvpos,
+    stride_kvd,
+    stride_sblk,
+    stride_spos,
+    stride_wrow,
+    stride_wh,
+    stride_lrow,
+    stride_lcol,
+    stride_btb,
+    stride_bts,
+    next_n: tl.constexpr,
+    heads: tl.constexpr,
+    dim: tl.constexpr,
+    block_size: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    kv_position = tl.program_id(1)
+    batch_idx = row_idx // next_n
+    next_n_idx = row_idx % next_n
+    context_len = tl.load(context_lens_ptr + batch_idx)
+    query_position = context_len - next_n + next_n_idx
+
+    logical_block = kv_position // block_size
+    intra_block_position = kv_position % block_size
+    physical_block = tl.load(
+        block_tables_ptr
+        + batch_idx * stride_btb
+        + logical_block * stride_bts
+    )
+    kv_base = (
+        physical_block * stride_kvblk
+        + intra_block_position * stride_kvpos
+    )
+    scale = tl.load(
+        scale_ptr
+        + physical_block * stride_sblk
+        + intra_block_position * stride_spos
+    )
+
+    result = tl.full((), 0.0, dtype=tl.float32)
+    for head_idx in range(heads):
+        dot = tl.full((), 0.0, dtype=tl.float32)
+        for dim_idx in range(dim):
+            q_value = tl.load(
+                q_ptr
+                + batch_idx * stride_qb
+                + next_n_idx * stride_qn
+                + head_idx * stride_qh
+                + dim_idx * stride_qd
+            ).to(tl.float32)
+            kv_value = tl.load(
+                kv_ptr + kv_base + dim_idx * stride_kvd
+            ).to(tl.float32)
+            dot += q_value * kv_value
+        weight = tl.load(
+            weights_ptr + row_idx * stride_wrow + head_idx * stride_wh
+        ).to(tl.float32)
+        result += tl.maximum(dot * scale, 0.0) * weight
+
+    valid = (kv_position < context_len) & (kv_position <= query_position)
+    result = tl.where(valid, result, float("-inf"))
+    tl.store(
+        logits_ptr + row_idx * stride_lrow + kv_position * stride_lcol,
+        result,
+    )
+
+
+@triton.jit
 def fill_neg_inf_kernel(
     out_ptr,
     n_elements,
@@ -237,24 +318,23 @@ def fp8_paged_mqa_logits(
         device=q.device,
         dtype=torch.float32,
     )
-    n_elements = total_rows * max_model_len
-    FILL_BLOCK = 1024
-    fill_grid = (cdiv(n_elements, FILL_BLOCK),)
-    fill_neg_inf_kernel[fill_grid](logits, n_elements, BLOCK=FILL_BLOCK)
+    kv_values = (
+        kv_contig[..., :dim]
+        .contiguous()
+        .view(torch.float8_e4m3fn)
+        .to(torch.float32)
+    )
+    kv_scales = (
+        kv_contig[..., dim : dim + 4]
+        .contiguous()
+        .view(torch.float32)
+        .reshape(num_blocks, block_size)
+    )
 
-    max_context = block_tables_contig.shape[1] * block_size
-
-    BLOCK_KV = 32
-    BLOCK_D = min(triton.next_power_of_2(dim), 128)
-    BLOCK_H = min(triton.next_power_of_2(heads), 32)
-    NUM_D_TILES = cdiv(dim, BLOCK_D)
-
-    num_kv_tiles = cdiv(max_context, BLOCK_KV)
-    grid = (total_rows, num_kv_tiles)
-
-    fp8_paged_mqa_logits_kernel[grid](
+    fp8_paged_mqa_logits_decoded_kernel[(total_rows, max_model_len)](
         q_contig,
-        kv_contig,
+        kv_values,
+        kv_scales,
         weights_contig,
         logits,
         block_tables_contig,
@@ -263,10 +343,11 @@ def fp8_paged_mqa_logits(
         q_contig.stride(1),
         q_contig.stride(2),
         q_contig.stride(3),
-        kv_contig.stride(0),
-        kv_contig.stride(1),
-        kv_contig.stride(2),
-        kv_contig.stride(3),
+        kv_values.stride(0),
+        kv_values.stride(1),
+        kv_values.stride(3),
+        kv_scales.stride(0),
+        kv_scales.stride(1),
         weights_contig.stride(0),
         weights_contig.stride(1),
         logits.stride(0),
@@ -277,12 +358,6 @@ def fp8_paged_mqa_logits(
         heads,
         dim,
         block_size,
-        max_model_len,
-        dim_plus_4,
-        BLOCK_KV=BLOCK_KV,
-        BLOCK_D=BLOCK_D,
-        NUM_D_TILES=NUM_D_TILES,
-        BLOCK_H=BLOCK_H,
     )
 
     return logits

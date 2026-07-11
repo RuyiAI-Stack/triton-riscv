@@ -100,6 +100,44 @@ def embedding_grad_scale_kernel(
         )
 
 
+@triton.jit
+def embedding_backward_gather_kernel(
+    grad_in,
+    grad_out,
+    indices,
+    M,
+    padding_idx,
+    HAS_PADDING_IDX: tl.constexpr,
+    SCALE_GRAD_BY_FREQ: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_SIZE)
+    col_mask = cols < N
+    grad = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    frequency = tl.full((), 0, dtype=tl.int32)
+
+    for index_offset in range(0, M):
+        index_value = tl.load(indices + index_offset).to(tl.int32)
+        matches = index_value == row_idx
+        output_grad = tl.load(
+            grad_out + index_offset * N + cols,
+            mask=col_mask,
+            other=0.0,
+        ).to(tl.float32)
+        grad += tl.where(matches, output_grad, 0.0)
+        frequency += matches.to(tl.int32)
+
+    if SCALE_GRAD_BY_FREQ:
+        divisor = tl.where(frequency > 0, frequency, 1).to(tl.float32)
+        grad /= divisor
+    if HAS_PADDING_IDX:
+        grad = tl.where(row_idx == padding_idx, 0.0, grad)
+
+    tl.store(grad_in + row_idx * N + cols, grad, mask=col_mask)
+
+
 def embedding(
     weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False
 ):
@@ -131,6 +169,8 @@ def embedding_backward(
 ):
     assert not sparse, "Currently do not support sparse format"
 
+    grad_outputs = grad_outputs.contiguous()
+    indices = indices.contiguous()
     M = indices.numel()
     N = grad_outputs.shape[-1]
 
@@ -144,41 +184,19 @@ def embedding_backward(
         ),
     )
 
-    if scale_grad_by_freq:
-        indice_freq = torch.zeros(
-            (num_weights,),
-            requires_grad=False,
-            device=grad_outputs.device,
-            dtype=torch.int32,
-        )
-        INDICE_BLOCK_SIZE = 256
-        indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
-
-        indice_freq_kernel[indice_grid](
-            indice_freq, indices, M, INDICE_BLOCK_SIZE
-        )
-    else:
-        indice_freq = None
-
     BLOCK_SIZE = triton.next_power_of_2(N)
-
-    HAS_PADDING_IDX = padding_idx is not None
-
-    grid = (M,)
-    embedding_backward_kernel[grid](
+    HAS_PADDING_IDX = padding_idx is not None and padding_idx >= 0
+    embedding_backward_gather_kernel[(num_weights,)](
         grad_inputs,
         grad_outputs,
         indices,
+        M,
         padding_idx,
         HAS_PADDING_IDX,
-        N,
-        BLOCK_SIZE,
+        SCALE_GRAD_BY_FREQ=scale_grad_by_freq,
+        N=N,
+        BLOCK_SIZE=BLOCK_SIZE,
     )
-
-    if scale_grad_by_freq:
-        embedding_grad_scale_kernel[grid](
-            grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
-        )
     return (
         grad_inputs.to(torch.bfloat16)
         if grad_outputs.dtype is torch.bfloat16

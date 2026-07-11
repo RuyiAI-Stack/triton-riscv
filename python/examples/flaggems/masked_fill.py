@@ -38,7 +38,7 @@ def masked_fill(inp, mask, value):
 
     expand_mask = mask.expand(inp.shape)
     inp_c = inp.contiguous()
-    mask_c = expand_mask.contiguous()
+    mask_c = expand_mask.to(torch.uint8).contiguous()
     out = torch.empty_like(inp_c)
     n_elements = inp_c.numel()
     BLOCK_SIZE = 1024
@@ -62,7 +62,7 @@ def masked_fill_(inp, mask, value):
         return inp
 
     expand_mask = mask.expand(inp.shape)
-    mask_c = expand_mask.contiguous()
+    mask_c = expand_mask.to(torch.uint8).contiguous()
     inp_c = inp.contiguous()
     n_elements = inp_c.numel()
     BLOCK_SIZE = 1024

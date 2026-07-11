@@ -4,6 +4,26 @@ import triton.language as tl
 
 
 @triton.jit
+def _atan_approx(x):
+    ax = tl.abs(x)
+    reciprocal = ax > 1.0
+    z = tl.where(reciprocal, 1.0 / ax, ax)
+    reduce = z > 0.4142135623730950
+    t = tl.where(reduce, (z - 1.0) / (z + 1.0), z)
+    t2 = t * t
+    poly = -1.0 / 13.0
+    poly = 1.0 / 11.0 + t2 * poly
+    poly = -1.0 / 9.0 + t2 * poly
+    poly = 1.0 / 7.0 + t2 * poly
+    poly = -1.0 / 5.0 + t2 * poly
+    poly = 1.0 / 3.0 + t2 * poly
+    result = t - t * t2 * poly
+    result = tl.where(reduce, 0.7853981633974483 + result, result)
+    result = tl.where(reciprocal, 1.5707963267948966 - result, result)
+    return tl.where(x < 0.0, -result, result)
+
+
+@triton.jit
 def atan_kernel(
     x_ptr,
     out_ptr,
@@ -15,12 +35,8 @@ def atan_kernel(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask)
-    # NOTE: tl.math.atan is NOT available in the triton-riscv MLIR backend.
-    # The triton-riscv MLIR backend does not support tl.math.atan (it only supports
-    # basic arithmetic ops). When the backend gains support, this kernel should work
-    # as-is. Polynomial approximation was attempted but insufficient accuracy.
-    y = tl.math.atan(x.to(tl.float32))
+    x = tl.load(x_ptr + offsets, mask=mask).to(tl.float32)
+    y = _atan_approx(x)
 
     tl.store(out_ptr + offsets, y, mask=mask)
 

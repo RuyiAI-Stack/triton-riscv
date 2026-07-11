@@ -38,7 +38,7 @@ def isclose_kernel(
         actual = tl.abs(cast_x - cast_y)
         actual_finite = actual == actual
         close |= actual_finite & (actual <= allowed)
-    tl.store(out_ptr + offsets, close, mask=mask)
+    tl.store(out_ptr + offsets, close.to(tl.int8), mask=mask)
 
 
 def isclose(
@@ -65,7 +65,7 @@ def isclose(
     A_c = A.contiguous()
     B_c = B.contiguous()
     n_elements = A_c.numel()
-    out = torch.empty_like(A_c, dtype=torch.bool)
+    out = torch.empty_like(A_c, dtype=torch.uint8)
     zero_tol = (rtol == 0) and (atol == 0)
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
@@ -80,7 +80,7 @@ def isclose(
         zero_tol=zero_tol,
         BLOCK_SIZE=BLOCK_SIZE,
     )
-    return out.view_as(A)
+    return out.bool().view_as(A)
 
 
 def allclose(

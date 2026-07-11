@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .dropout import dropout
+
 
 @triton.jit
 def uint_to_uniform_float(x):
@@ -71,22 +73,17 @@ def apply_feature_mask_kernel(
     spatial_size,
     BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offset = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offset < numel
+    n_idx = tl.program_id(0)
+    c_idx = tl.program_id(1)
+    spatial_pid = tl.program_id(2)
+    spatial_offsets = spatial_pid * BLOCK + tl.arange(0, BLOCK)
+    spatial_mask = spatial_offsets < spatial_size
+    base_offset = (n_idx * C + c_idx) * spatial_size
+    offsets = base_offset + spatial_offsets
 
-    channel_spatial_size = C * spatial_size
-    n_idx = offset // channel_spatial_size
-    c_idx = (offset % channel_spatial_size) // spatial_size
-
-    mask_idx = n_idx * C + c_idx
-
-    x = tl.load(X + offset, mask=mask, other=0.0)
-    m = tl.load(MASK + mask_idx, mask=mask, other=0.0)
-
-    y = x * m
-
-    tl.store(Y + offset, y, mask=mask)
+    x = tl.load(X + offsets, mask=spatial_mask, other=0.0)
+    feature_scale = tl.load(MASK + n_idx * C + c_idx)
+    tl.store(Y + offsets, x * feature_scale, mask=spatial_mask)
 
 
 def feature_dropout(input, p, train=True):
@@ -116,30 +113,14 @@ def feature_dropout(input, p, train=True):
     N = batch_size
     C = num_channels
     numel = input.numel()
-    scale = 1.0 / (1.0 - p)
-
-    mask = torch.empty(N, C, device=device, dtype=torch.float32)
-
-    BLOCK_N = min(triton.next_power_of_2(N), 64)
-    BLOCK_C = min(triton.next_power_of_2(C), 64)
-    grid_mask = (triton.cdiv(N, BLOCK_N), triton.cdiv(C, BLOCK_C))
-
-    philox_seed = torch.initial_seed()
-    philox_offset = 0
-    generate_feature_mask_kernel[grid_mask](
-        mask,
-        N,
-        C,
+    mask, _ = dropout(
+        torch.ones((N, C), device=device, dtype=torch.float32),
         p,
-        scale,
-        philox_seed,
-        philox_offset,
-        BLOCK_N=BLOCK_N,
-        BLOCK_C=BLOCK_C,
+        train=True,
     )
 
     BLOCK = 1024
-    grid_apply = (triton.cdiv(numel, BLOCK),)
+    grid_apply = (N, C, triton.cdiv(spatial_size, BLOCK))
 
     apply_feature_mask_kernel[grid_apply](
         input,

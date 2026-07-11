@@ -40,7 +40,7 @@ def all_kernel_dim(
         a = tl.load(inp_ptrs + cols, mask=mask, other=1.0)
         _all = _all and (a != 0)
     all_res = tl.reduce(_all, axis=1, combine_fn=reduce_all)
-    tl.store(out_ptrs, all_res[:, None], mask=row_mask)
+    tl.store(out_ptrs, all_res[:, None].to(tl.int8), mask=row_mask)
 
 
 @triton.jit
@@ -57,7 +57,7 @@ def all_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
     all_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_all)
     mid_ptr = mid + pid
-    tl.store(mid_ptr, all_val)
+    tl.store(mid_ptr, all_val.to(tl.int8))
 
 
 @triton.jit
@@ -72,10 +72,12 @@ def all_kernel_2(
     mask = offset < MID_SIZE
     mid_val = tl.load(mid_ptrs, mask=mask, other=1).to(tl.int1)
     all_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_all)
-    tl.store(out, all_val)
+    tl.store(out, all_val.to(tl.int8))
 
 
 def _dim_compress(inp, dims):
+    if inp.dtype == torch.bool:
+        inp = inp.to(torch.uint8)
     if not isinstance(dims, (list, tuple)):
         dims = [dims]
 
@@ -94,18 +96,20 @@ def _dim_compress(inp, dims):
 
 
 def all(inp):
+    if inp.dtype == torch.bool:
+        inp = inp.to(torch.uint8)
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=torch.uint8, device=inp.device)
+    out = torch.empty([], dtype=torch.uint8, device=inp.device)
 
     all_kernel_1[(mid_size,)](inp, mid, n_elements, BLOCK_SIZE=block_size)
     all_kernel_2[(1,)](mid, out, mid_size, BLOCK_MID=block_mid)
 
-    return out
+    return out.to(torch.bool)
 
 
 def all_dim(inp, dim=None, keepdim=False):
@@ -123,7 +127,7 @@ def all_dim(inp, dim=None, keepdim=False):
     shape[dim] = 1
     M = inp_compressed.numel() // N
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    out = torch.empty(shape, dtype=torch.uint8, device=inp.device)
 
     BLOCK_M = 32
     BLOCK_N = 32
@@ -136,6 +140,7 @@ def all_dim(inp, dim=None, keepdim=False):
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
     )
+    out = out.to(torch.bool)
 
     if not keepdim:
         out = out.squeeze(dim=dim)
@@ -158,7 +163,7 @@ def all_dims(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp_compressed.numel() // N
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    out = torch.empty(shape, dtype=torch.uint8, device=inp.device)
 
     BLOCK_M = 32
     BLOCK_N = 32
@@ -171,6 +176,7 @@ def all_dims(inp, dim=None, keepdim=False):
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
     )
+    out = out.to(torch.bool)
 
     if not keepdim:
         for d in sorted(dim, reverse=True):

@@ -11,34 +11,33 @@ def _paged_mqa_logits_metadata_kernel(
     batch_size,
     split_kv,
     num_sms,
-    BLOCK_SIZE: tl.constexpr,
 ):
     sm_idx = tl.program_id(0)
-
-    offsets = tl.arange(0, BLOCK_SIZE)
-    mask = offsets < batch_size
-
-    ctx_lens = tl.load(
-        context_lens_ptr + offsets * context_lens_stride, mask=mask, other=0
-    )
-
-    num_segs = (ctx_lens + split_kv - 1) // split_kv
-    num_segs = tl.where(mask, num_segs, 0)
-
-    prefix_sum = tl.cumsum(num_segs, axis=0)
-
-    total_segs = tl.max(prefix_sum)
+    total_segs = tl.full((), 0, dtype=tl.int32)
+    for batch_idx in range(0, batch_size):
+        ctx_len = tl.load(
+            context_lens_ptr + batch_idx * context_lens_stride
+        ).to(tl.int32)
+        total_segs += (ctx_len + split_kv - 1) // split_kv
 
     q = total_segs // num_sms
     r = total_segs % num_sms
     min_r = sm_idx if sm_idx < r else r
     seg_starts = sm_idx * q + min_r
 
-    is_le = (prefix_sum <= seg_starts) & mask
-    q_idx = tl.sum(tl.where(is_le, 1, 0))
-
-    prev_mask = offsets < q_idx
-    prev_prefix = tl.max(tl.where(prev_mask, prefix_sum, 0))
+    prefix_sum = tl.full((), 0, dtype=tl.int32)
+    q_idx = tl.full((), 0, dtype=tl.int32)
+    prev_prefix = tl.full((), 0, dtype=tl.int32)
+    for batch_idx in range(0, batch_size):
+        ctx_len = tl.load(
+            context_lens_ptr + batch_idx * context_lens_stride
+        ).to(tl.int32)
+        prefix_sum += (ctx_len + split_kv - 1) // split_kv
+        belongs_to_previous_query = prefix_sum <= seg_starts
+        q_idx = tl.where(belongs_to_previous_query, batch_idx + 1, q_idx)
+        prev_prefix = tl.where(
+            belongs_to_previous_query, prefix_sum, prev_prefix
+        )
     kv_split_idx = seg_starts - prev_prefix
 
     out_idx = sm_idx * 2
@@ -64,8 +63,6 @@ def get_paged_mqa_logits_metadata(
 
     grid = (num_sms + 1,)
 
-    BLOCK_SIZE = triton.next_power_of_2(max(16, batch_size))
-
     schedule_metadata = torch.zeros(
         (num_sms + 1, 2), dtype=torch.int32, device=device
     )
@@ -77,7 +74,6 @@ def get_paged_mqa_logits_metadata(
         batch_size,
         SPLIT_KV,
         num_sms,
-        BLOCK_SIZE=BLOCK_SIZE,
     )
 
     return schedule_metadata

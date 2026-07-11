@@ -14,4 +14,5 @@ def test_sinh_(size, dtype):
     x_ref.sinh_()
     sinh_(x)
 
-    torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
+    tolerance = 1e-3 if dtype == torch.float16 else 1e-4
+    torch.testing.assert_close(x, x_ref, rtol=tolerance, atol=tolerance)

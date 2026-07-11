@@ -52,7 +52,7 @@ def soft_margin_loss_sum_kernel(
     vals = tl.where(mask, vals, 0.0)
 
     acc = tl.sum(vals, axis=0)
-    tl.atomic_add(out_ptr, acc)
+    tl.store(out_ptr, acc)
 
 
 def _normalize_reduction(reduction):
@@ -109,10 +109,9 @@ def soft_margin_loss(
                 return torch.full(
                     (), float("nan"), device=input.device, dtype=input.dtype
                 )
-        tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
-        BLOCK_SIZE = 1024
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        soft_margin_loss_sum_kernel[grid](
+        tmp_sum = torch.empty((), device=input.device, dtype=torch.float32)
+        BLOCK_SIZE = triton.next_power_of_2(n_elements)
+        soft_margin_loss_sum_kernel[(1,)](
             input_c, target_c, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
         )
         if red == 2:
@@ -143,10 +142,9 @@ def soft_margin_loss_out(input, target, reduction="mean", *, out=None):
                 out.fill_(float("nan"))
             return out
         input_c, target_c = _check_tensors(input, target)
-        tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
-        BLOCK_SIZE = 1024
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        soft_margin_loss_sum_kernel[grid](
+        tmp_sum = torch.empty((), device=input.device, dtype=torch.float32)
+        BLOCK_SIZE = triton.next_power_of_2(n_elements)
+        soft_margin_loss_sum_kernel[(1,)](
             input_c, target_c, tmp_sum, n_elements, BLOCK_SIZE=BLOCK_SIZE
         )
         if red == 2:

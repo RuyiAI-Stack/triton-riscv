@@ -68,17 +68,19 @@ def max_kernel(
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
     min_value = get_dtype_min(dtype)
     result_value = tl.full([BLOCK_M], value=min_value, dtype=acc_type)
-    result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
+    result_index = tl.zeros([BLOCK_M], dtype=tl.int32)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
         update_mask = max_value > result_value
         result_value = tl.where(update_mask, max_value, result_value)
-        result_index = tl.where(update_mask, i + max_index, result_index)
+        result_index = tl.where(
+            update_mask, (i + max_index).to(tl.int32), result_index
+        )
     mask1 = m_offset < M
     offset_index = m_offset
     out_value_ptrs = out_value + offset_index

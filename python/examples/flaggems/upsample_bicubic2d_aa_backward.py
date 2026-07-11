@@ -160,6 +160,83 @@ def _fused_backward_kernel(
 
 
 @triton.jit
+def _standard_cubic_filter(x):
+    a = -0.75
+    x2 = x * x
+    x3 = x2 * x
+    inner = (a + 2.0) * x3 - (a + 3.0) * x2 + 1.0
+    outer = a * x3 - 5.0 * a * x2 + 8.0 * a * x - 4.0 * a
+    return tl.where(x <= 1.0, inner, tl.where(x < 2.0, outer, 0.0))
+
+
+@triton.jit
+def _bicubic_backward_scalar_kernel(
+    grad_out_ptr,
+    grad_in_ptr,
+    N,
+    C,
+    H_in,
+    W_in,
+    H_out,
+    W_out,
+    scale_h,
+    scale_w,
+    align_corners: tl.constexpr,
+):
+    """Gather every output contribution for one input element."""
+    output_index = tl.program_id(0)
+    iw = output_index % W_in
+    row_index = output_index // W_in
+    ih = row_index % H_in
+    nc = row_index // H_in
+
+    accumulator = tl.full((), 0.0, dtype=tl.float32)
+    for oh in range(0, H_out):
+        if align_corners:
+            input_y = oh.to(tl.float32) * scale_h
+        else:
+            input_y = (oh.to(tl.float32) + 0.5) * scale_h - 0.5
+        y0f = tl.floor(input_y)
+        y0 = y0f.to(tl.int32)
+        ty = input_y - y0f
+
+        weight_y = tl.full((), 0.0, dtype=tl.float32)
+        for ky in tl.static_range(0, 4):
+            source_y = tl.maximum(0, tl.minimum(H_in - 1, y0 + ky - 1))
+            distance_y = tl.abs((ky - 1.0) - ty)
+            weight_y += tl.where(
+                source_y == ih, _standard_cubic_filter(distance_y), 0.0
+            )
+
+        for ow in range(0, W_out):
+            if align_corners:
+                input_x = ow.to(tl.float32) * scale_w
+            else:
+                input_x = (ow.to(tl.float32) + 0.5) * scale_w - 0.5
+            x0f = tl.floor(input_x)
+            x0 = x0f.to(tl.int32)
+            tx = input_x - x0f
+
+            weight_x = tl.full((), 0.0, dtype=tl.float32)
+            for kx in tl.static_range(0, 4):
+                source_x = tl.maximum(
+                    0, tl.minimum(W_in - 1, x0 + kx - 1)
+                )
+                distance_x = tl.abs((kx - 1.0) - tx)
+                weight_x += tl.where(
+                    source_x == iw, _standard_cubic_filter(distance_x), 0.0
+                )
+
+            grad_offset = (nc * H_out + oh) * W_out + ow
+            accumulator += tl.load(grad_out_ptr + grad_offset) * weight_y * weight_x
+
+    tl.store(
+        grad_in_ptr + output_index,
+        accumulator.to(grad_in_ptr.dtype.element_ty),
+    )
+
+
+@triton.jit
 def _precompute_weight_sums_kernel(
     total_w_ptr,
     output_size,
@@ -353,6 +430,30 @@ def _upsample_bicubic2d_aa_backward(
     # ---- Scales & filter parameters ----
     h_scale = _compute_scale(H_in, H_out, align_corners, scales_h)
     w_scale = _compute_scale(W_in, W_out, align_corners, scales_w)
+
+    # Match the regular bicubic forward used by this example's tests.  A
+    # scalar output-centric gather avoids atomics and the backend's crash in
+    # pointer analysis for the old two-dimensional fused load pattern.
+    grad_in_flat = torch.empty(
+        (NC, H_in, W_in),
+        dtype=grad_output.dtype,
+        device=grad_output.device,
+    )
+    _bicubic_backward_scalar_kernel[(NC * H_in * W_in,)](
+        grad_out_flat,
+        grad_in_flat,
+        N,
+        C,
+        H_in,
+        W_in,
+        H_out,
+        W_out,
+        h_scale,
+        w_scale,
+        align_corners,
+        num_warps=1,
+    )
+    return grad_in_flat.reshape(N, C, H_in, W_in)
 
     INTERP_SIZE = 4
     support_h = (

@@ -521,7 +521,7 @@ def _prepare_pass1_kernel(
     tl.store(num_m_blocks_ptr + b_offs, m_blocks, mask=mask)
     tl.store(num_n_blocks_ptr + b_offs, n_blocks, mask=mask)
     total = m_blocks * n_blocks
-    tl.atomic_add(total_blocks_ptr, tl.sum(total, axis=0))
+    tl.store(total_blocks_ptr, tl.sum(total, axis=0))
 
 
 @triton.jit
@@ -745,8 +745,10 @@ def get_scheduler_metadata(
     total_blocks = torch.zeros((1,), dtype=dtype, device=device)
     num_splits_dynamic = torch.empty_like(seqlen_q)
 
-    BLOCK_SIZE_B = 128
-    grid = (triton.cdiv(batch_size, BLOCK_SIZE_B),)
+    # A single batch-wide program can write the reduction directly and avoids
+    # the atomic add that TritonShared cannot lower on CPU targets.
+    BLOCK_SIZE_B = triton.next_power_of_2(max(1, batch_size))
+    grid = (1,)
 
     total_blocks_val = total_blocks.item()
 

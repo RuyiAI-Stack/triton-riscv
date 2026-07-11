@@ -81,25 +81,25 @@ def dropout_forward_kernel(
 
     tl.store(
         dropout_mask + off_0,
-        mask0,
+        mask0.to(tl.int8),
         mask=off_0 < N,
         eviction_policy="evict_first",
     )
     tl.store(
         dropout_mask + off_1,
-        mask1,
+        mask1.to(tl.int8),
         mask=off_1 < N,
         eviction_policy="evict_first",
     )
     tl.store(
         dropout_mask + off_2,
-        mask2,
+        mask2.to(tl.int8),
         mask=off_2 < N,
         eviction_policy="evict_first",
     )
     tl.store(
         dropout_mask + off_3,
-        mask3,
+        mask3.to(tl.int8),
         mask=off_3 < N,
         eviction_policy="evict_first",
     )
@@ -150,10 +150,10 @@ def dropout(input, p, train=True):
 
     input = input.contiguous()
     out = torch.empty_like(input)
-    mask = torch.empty_like(input, dtype=torch.bool)
+    mask = torch.empty_like(input, dtype=torch.uint8)
     N = input.numel()
 
-    BLOCK = 1024
+    BLOCK = min(1024, triton.next_power_of_2(triton.cdiv(N, UNROLL)))
     grid = (triton.cdiv(N, BLOCK * UNROLL),)
 
     # We need a seed and offset. We can use a random seed for now.
@@ -162,11 +162,12 @@ def dropout(input, p, train=True):
     dropout_forward_kernel[grid](
         input, out, mask, N, p, philox_seed, philox_offset, BLOCK=BLOCK
     )
-    return out, mask
+    return out, mask.bool()
 
 
 def dropout_backward(grad_output, mask, scale):
     grad_output = grad_output.contiguous()
+    mask = mask.to(torch.uint8).contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()
 

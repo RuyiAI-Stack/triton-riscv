@@ -23,7 +23,7 @@ def test_get_scheduler_metadata(
     headdim_v,
 ):
     torch.manual_seed(0)
-    device = "cuda"
+    device = "cpu"
     dtype = torch.float16
 
     seqused_k = torch.full(
@@ -66,7 +66,7 @@ def test_get_scheduler_metadata_causal(
     headdim_v,
 ):
     torch.manual_seed(0)
-    device = "cuda"
+    device = "cpu"
     dtype = torch.float16
 
     seqused_k = torch.full(
@@ -102,7 +102,7 @@ def test_get_scheduler_metadata_causal(
 )
 def test_get_scheduler_metadata_varying_seqlen(shape):
     torch.manual_seed(0)
-    device = "cuda"
+    device = "cpu"
     dtype = torch.float16
 
     batch_size = 2

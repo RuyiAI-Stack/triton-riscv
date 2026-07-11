@@ -272,32 +272,24 @@ def weight_bias_backward_kernel(
     dB,
     M,
     N,
-    BLOCK_ROW_SIZE: tl.constexpr,
-    BLOCK_COL_SIZE: tl.constexpr,
+    HAS_WEIGHT_GRAD: tl.constexpr,
+    HAS_BIAS_GRAD: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
-    col_mask = pid < N
-    dY += pid[None, :]
-    X += pid[None, :]
-    accW = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    accB = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    for off in range(0, M, BLOCK_ROW_SIZE):
-        rows = off + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-        row_mask = rows < M
-        mask = row_mask and col_mask[None, :]
-        dy = tl.load(dY + rows * N, mask).to(tl.float32)
-        x = tl.load(X + rows * N, mask).to(tl.float32)
-        mean = tl.load(Mean + rows, mask=rows < M).to(tl.float32)
-        rstd = tl.load(Rstd + rows, mask=rows < M).to(tl.float32)
-        x = tl.where(mask, x - mean, 0.0)
-        accW += dy * x * rstd
+    col = tl.program_id(0)
+    accW = tl.full((), 0.0, dtype=tl.float32)
+    accB = tl.full((), 0.0, dtype=tl.float32)
+    for row in range(0, M):
+        offset = row * N + col
+        dy = tl.load(dY + offset).to(tl.float32)
+        x = tl.load(X + offset).to(tl.float32)
+        mean = tl.load(Mean + row).to(tl.float32)
+        rstd = tl.load(Rstd + row).to(tl.float32)
+        accW += dy * (x - mean) * rstd
         accB += dy
-    if dW:
-        dw = tl.sum(accW, axis=0)
-        tl.store(dW + pid, dw, mask=col_mask)
-    if dB:
-        db = tl.sum(accB, axis=0)
-        tl.store(dB + pid, db, mask=col_mask)
+    if HAS_WEIGHT_GRAD:
+        tl.store(dW + col, accW)
+    if HAS_BIAS_GRAD:
+        tl.store(dB + col, accB)
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
@@ -408,9 +400,7 @@ def layer_norm_backward(
     if output_mask[1] is False and output_mask[2] is False:
         return in_grad, None, None
 
-    BLOCK_ROW_SIZE = 16
-    BLOCK_COL_SIZE = 64
-    grid = (triton.cdiv(N, BLOCK_COL_SIZE), 1, 1)
+    grid = (N,)
     weight_grad = torch.empty_like(weight) if output_mask[1] else None
     bias_grad = torch.empty_like(bias) if output_mask[2] else None
     weight_bias_backward_kernel[grid](
@@ -422,7 +412,7 @@ def layer_norm_backward(
         bias_grad,
         M,
         N,
-        BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
-        BLOCK_COL_SIZE=BLOCK_COL_SIZE,
+        HAS_WEIGHT_GRAD=output_mask[1],
+        HAS_BIAS_GRAD=output_mask[2],
     )
     return in_grad, weight_grad, bias_grad

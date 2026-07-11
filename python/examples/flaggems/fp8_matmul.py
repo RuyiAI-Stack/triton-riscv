@@ -149,8 +149,15 @@ def fp8_matmul(
         b_s = b_s.to(torch.float32)
 
     out_shape = (*a.size()[:-1], N)
-    a_2d = a.view(M, K)
+    a_2d = a.view(M, K).to(torch.float32)
+    b_2d = b.to(torch.float32)
     a_s_2d = a_s.view(M, -1)
+    if b_s.numel() == 0:
+        b_s = torch.ones(
+            (triton.cdiv(N, GROUP_SIZE), triton.cdiv(K, GROUP_SIZE)),
+            device=b.device,
+            dtype=torch.float32,
+        )
 
     C = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
 
@@ -158,7 +165,7 @@ def fp8_matmul(
 
     fp8_matmul_kernel[grid](
         a_2d,
-        b,
+        b_2d,
         C,
         a_s_2d,
         b_s,
@@ -167,8 +174,8 @@ def fp8_matmul(
         K,
         a_2d.stride(0),
         a_2d.stride(1),
-        b.stride(0),
-        b.stride(1),
+        b_2d.stride(0),
+        b_2d.stride(1),
         C.stride(0),
         C.stride(1),
         a_s_2d.stride(0),

@@ -351,8 +351,24 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
         inp = inp.contiguous()
 
     dtype = inp.dtype
-    num_bits_per_pass = 1 if dtype == torch.bool else 4
-    out, out_index = radix_sort(inp, num_bits_per_pass, descending)
+    if sort_elem_cnt <= 1024:
+        out = torch.empty_like(inp)
+        out_index_i32 = torch.empty_like(inp, dtype=torch.int32)
+        block_size = triton.next_power_of_2(sort_elem_cnt)
+        rows = inp.numel() // sort_elem_cnt
+        sort_kernel[(rows,)](
+            inp,
+            out,
+            out_index_i32,
+            sort_elem_cnt,
+            block_size,
+            descending,
+            dtype.is_floating_point,
+        )
+        out_index = out_index_i32.to(torch.int64)
+    else:
+        num_bits_per_pass = 1 if dtype == torch.bool else 4
+        out, out_index = radix_sort(inp, num_bits_per_pass, descending)
 
     if dim != inp.ndim - 1:
         out = torch.movedim(out, -1, dim)

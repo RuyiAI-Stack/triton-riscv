@@ -13,34 +13,22 @@ def masked_select_single_pass_kernel(
     mask_ptr,
     out_ptr,
     N,
-    BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp = tl.load(inp_ptr + offsets, mask=offsets < N)
-    mask = tl.load(mask_ptr + offsets, mask=offsets < N).to(tl.int1)
-    mask_ints = mask.to(tl.int32)
-    out_offsets = tl.cumsum(mask_ints, axis=0) - 1
+    target_index = tl.program_id(0)
+    selected_count = tl.full((), 0, dtype=tl.int32)
+    input_offset = tl.full((), 0, dtype=tl.int32)
+    for offset in range(0, N):
+        mask_value = tl.load(mask_ptr + offset).to(tl.int32)
+        is_target = (mask_value != 0) & (selected_count == target_index)
+        input_offset = tl.where(is_target, offset, input_offset)
+        selected_count += mask_value
 
-    tl.store(out_ptr + out_offsets, inp, mask=(offsets < N) & mask)
+    tl.store(out_ptr + target_index, tl.load(inp_ptr + input_offset))
 
 
 def masked_select_single_pass(inp, mask, out, N):
-    BLOCK_SIZE = triton.next_power_of_2(N)
-    if BLOCK_SIZE <= 512:
-        num_warps = 4
-    elif BLOCK_SIZE <= 2048:
-        num_warps = 8
-    else:
-        num_warps = 16
-    masked_select_single_pass_kernel[(1,)](
-        inp,
-        mask,
-        out,
-        N,
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
-    )
+    if out.numel() > 0:
+        masked_select_single_pass_kernel[(out.numel(),)](inp, mask, out, N)
     return out
 
 
@@ -56,8 +44,6 @@ def mask_part_sum_kernel(
     NP_BLOCK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    nr = num_blocks
-    row_stride = num_blocks_per_row
     row_id = tl.program_id(0)
     start_block = row_id * num_blocks_per_row
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -136,15 +122,14 @@ def masked_select(inp, mask):
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()
-    mask = mask.contiguous()
+    mask = mask.to(torch.uint8).contiguous()
 
     N = inp.numel()
-    if N <= 4096:
-        out = torch.empty(
-            mask.sum().item(), dtype=inp.dtype, device=inp.device
-        )
-        return masked_select_single_pass(inp, mask, out, N)
+    out = torch.empty(mask.sum().item(), dtype=inp.dtype, device=inp.device)
+    return masked_select_single_pass(inp, mask, out, N)
 
+    # Retained legacy parallel implementation for reference.  It is not used
+    # on TritonShared because it requires atomics and scan lowering.
     BLOCK_SIZE = _bracket_next_power_of_2(N, 128, 4096)
     num_warps = min(16, BLOCK_SIZE // 32)
 

@@ -146,7 +146,8 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         min_mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         max_mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
 
-        if out is not None:
+        out_provided = out is not None
+        if out_provided:
             min_out = out[0] if isinstance(out, tuple) else out
             max_out = out[1] if isinstance(out, tuple) else out
             if not keepdim:
@@ -189,7 +190,8 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
             shape[i] = 1
         M = inp.numel() // N
 
-        if out is not None:
+        out_provided = out is not None
+        if out_provided:
             min_out = out[0] if isinstance(out, tuple) else out
             max_out = out[1] if isinstance(out, tuple) else out
         else:
@@ -210,7 +212,9 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
             BLOCK_N=BLOCK_N,
         )
 
-        if not keepdim:
+        # User-provided outputs already have the public squeezed shape.  Only
+        # squeeze the internal keepdim-shaped allocation made above.
+        if not keepdim and not out_provided:
             for d in sorted(dim, reverse=True):
                 min_out = min_out.squeeze(dim=d)
                 max_out = max_out.squeeze(dim=d)

@@ -147,15 +147,19 @@ def conv3d_forward_kernel(
             output_c_offset < out_per_group_c
         )[None, :]
 
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
+        input_block = tl.load(
+            curr_input_pointer, mask=input_mask, other=0.0
+        )
+        weight_block = tl.load(
+            curr_weight_pointer, mask=weight_mask, other=0.0
+        )
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
     bias_pointer += (pid_group[None] * out_per_group_c)[
         None, :
     ] + output_c_offset[None, :]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
-    bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
+    bias = tl.load(bias_pointer, mask_bias, other=0.0).to(tl.float32)
     accum += bias
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]

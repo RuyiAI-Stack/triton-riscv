@@ -16,7 +16,7 @@ def logical_and_kernel(
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    res = x.to(tl.int1).logical_and(y.to(tl.int1))
+    res = x & y
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -38,23 +38,19 @@ def logical_and_kernel_(
 
 def logical_and(A, B):
     A, B = torch.broadcast_tensors(A, B)
-    A_c = A.contiguous()
-    B_c = B.contiguous()
-    out = torch.empty_like(A_c, dtype=torch.bool)
+    result_dtype = torch.result_type(A, B)
+    A_c = A.to(torch.uint8) if A.dtype == torch.bool else A.contiguous()
+    B_c = B.to(torch.uint8) if B.dtype == torch.bool else B.contiguous()
+    kernel_dtype = torch.uint8 if result_dtype == torch.bool else result_dtype
+    out = torch.empty_like(A_c, dtype=kernel_dtype)
     n_elements = A_c.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     logical_and_kernel[grid](A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return out.view_as(A)
+    result = out.bool() if result_dtype == torch.bool else out
+    return result.view_as(A)
 
 
 def logical_and_(A, B):
-    A, B = torch.broadcast_tensors(A, B)
-    A_c = A.contiguous()
-    B_c = B.contiguous()
-    n_elements = A_c.numel()
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    logical_and_kernel_[grid](A_c, B_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    A.copy_(A_c)
+    A.copy_(logical_and(A, B))
     return A

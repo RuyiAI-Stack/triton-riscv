@@ -16,7 +16,7 @@ def where_kernel(
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    cond = tl.load(cond_ptr + offsets, mask=mask)
+    cond = tl.load(cond_ptr + offsets, mask=mask, other=0) != 0
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
     res = tl.where(cond, x, y)
@@ -54,7 +54,7 @@ def where_self_out(condition, self, other, out=None):
         out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
         out = torch.empty(out_shape, dtype=result_type, device="cpu")
 
-    c = c.expand(out.shape).contiguous()
+    c = c.expand(out.shape).contiguous().view(torch.uint8)
     a = a.expand(out.shape).contiguous()
     b = b.expand(out.shape).contiguous()
     n_elements = out.numel()

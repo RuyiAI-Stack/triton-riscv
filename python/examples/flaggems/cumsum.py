@@ -326,6 +326,26 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 # === 公共接口 ===
 
 
+@triton.jit
+def cumsum_sequential_kernel(inp, out, B, C):
+    pid_a = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    base_offset = pid_a * B * C + pid_c
+
+    if tl.constexpr(
+        out.type.element_ty.is_fp16() or out.type.element_ty.is_bf16()
+    ):
+        compute_dtype = tl.float32
+    else:
+        compute_dtype = out.type.element_ty
+
+    total = tl.full((), 0, dtype=compute_dtype)
+    for b_idx in range(0, B):
+        offset = base_offset + b_idx * C
+        total += tl.load(inp + offset).to(compute_dtype)
+        tl.store(out + offset, total.to(out.type.element_ty))
+
+
 def cumsum_wrapper(inp, dim=0, *, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
@@ -344,18 +364,7 @@ def cumsum_wrapper(inp, dim=0, *, dtype=None, out=None):
     N = shape[dim]
     K = inp.numel() // M // N
 
-    compute_dtype = (
-        torch.float32
-        if inp.dtype in (torch.float16, torch.bfloat16)
-        else dtype
-    )
-    if not inp.dtype.is_floating_point:
-        compute_dtype = torch.int64
-
-    if K == 1:
-        reduce_then_scan_row(inp, out, M, N, compute_dtype)
-    else:
-        scan_then_fan(inp, out, M, N, K, compute_dtype)
+    cumsum_sequential_kernel[(M, K)](inp, out, N, K)
 
     return out
 
@@ -377,28 +386,35 @@ def normed_cumsum(inp, dim=-1):
     )
     shape = inp.shape
     dim = dim % inp.ndim
-    N = shape[dim]
-    M = inp.numel() // N
+    A = math.prod(shape[:dim])
+    B = shape[dim]
+    C = math.prod(shape[dim + 1 :])
     inp = inp.contiguous()
 
     out = torch.empty_like(inp)
-
-    BLOCK = triton.next_power_of_2(N) if N <= 1024 * 4 else 1024
-
-    grid = (M,)
-    normed_cumsum_kernel[grid](inp, out, N, BLOCK=BLOCK)
+    normed_cumsum_kernel[(A, C)](inp, out, B, C)
     return out
 
 
 @triton.jit
-def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
-    row_start = program_id(0) * K
-    row_off = tl.arange(0, BLOCK)
-    mask = row_off < K
-    x = tl.load(inp + row_start + row_off, mask=mask, other=0.0)
-    if tl.constexpr(x.dtype.is_fp16()):
-        x = x.to(tl.float32)
-    y_sum = tl.sum(x, 0)
-    y = tl.cumsum(x, 0)
-    y = y / y_sum
-    tl.store(out + row_start + row_off, y, mask=mask)
+def normed_cumsum_kernel(inp, out, B, C):
+    pid_a = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    base_offset = pid_a * B * C + pid_c
+    if tl.constexpr(
+        inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()
+    ):
+        compute_dtype = tl.float32
+    else:
+        compute_dtype = inp.type.element_ty
+
+    row_sum = tl.full((), 0, dtype=compute_dtype)
+    for b_idx in range(0, B):
+        offset = base_offset + b_idx * C
+        row_sum += tl.load(inp + offset).to(compute_dtype)
+
+    prefix = tl.full((), 0, dtype=compute_dtype)
+    for b_idx in range(0, B):
+        offset = base_offset + b_idx * C
+        prefix += tl.load(inp + offset).to(compute_dtype)
+        tl.store(out + offset, (prefix / row_sum).to(out.type.element_ty))

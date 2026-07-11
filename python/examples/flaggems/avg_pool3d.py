@@ -83,6 +83,7 @@ def avg_pool3d_forward_kernel(
     for kd in range(0, kernel_d):
         d_in = d_idx * stride_d - padding_d + kd * dilation_d
         d_valid = (d_in >= 0) & (d_in < in_d)
+        safe_d_in = tl.minimum(tl.maximum(d_in, 0), in_d - 1)
         for kh in range(0, kernel_h):
             for kw in range(0, kernel_w):
                 h_in = (
@@ -100,14 +101,15 @@ def avg_pool3d_forward_kernel(
                 )
                 in_mask = hw_mask & d_valid
 
+                safe_h_in = tl.minimum(tl.maximum(h_in, 0), in_h - 1)
+                safe_w_in = tl.minimum(tl.maximum(w_in, 0), in_w - 1)
+
                 input_offset = (
-                    d_in * in_stride_d
-                    + h_in * in_stride_h
-                    + w_in * in_stride_w
+                    safe_d_in * in_stride_d
+                    + safe_h_in * in_stride_h
+                    + safe_w_in * in_stride_w
                 )
-                current_val = tl.load(
-                    input_base_ptr + input_offset, mask=in_mask, other=0.0
-                )
+                current_val = tl.load(input_base_ptr + input_offset)
 
                 sum_acc += tl.where(in_mask, current_val, 0.0)
                 count_acc += in_mask.to(tl.int32)
@@ -296,13 +298,17 @@ def avg_pool3d_backward_kernel(
 
                 divisor = tl.where(divisor == 0, 1.0, divisor)
 
+                safe_d_out = tl.minimum(tl.maximum(d_out, 0), out_d - 1)
+                safe_h_out = tl.minimum(tl.maximum(h_out, 0), out_h - 1)
+                safe_w_out = tl.minimum(tl.maximum(w_out, 0), out_w - 1)
+
                 grad_out_ptr = (
                     grad_output_base
-                    + d_out * out_stride_d
-                    + h_out * out_stride_h
-                    + w_out * out_stride_w
+                    + safe_d_out * out_stride_d
+                    + safe_h_out * out_stride_h
+                    + safe_w_out * out_stride_w
                 )
-                grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
+                grad_out_val = tl.load(grad_out_ptr)
                 grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
 
     grad_input_store_ptr = (

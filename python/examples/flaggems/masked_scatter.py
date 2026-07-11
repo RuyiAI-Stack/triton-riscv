@@ -14,23 +14,18 @@ def masked_scatter_single_pass_kernel(
     mask_ptr,
     src_ptr,
     N,
-    BLOCK_SIZE: tl.constexpr,
+    SRC_N,
 ):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    offset = tl.program_id(0)
+    src_index = tl.full((), 0, dtype=tl.int32)
+    for prior_offset in range(0, offset):
+        src_index += tl.load(mask_ptr + prior_offset).to(tl.int32)
 
-    block_mask = offsets < N
-
-    mask_val = tl.load(mask_ptr + offsets, mask=block_mask, other=0).to(
-        tl.int1
-    )
-
-    mask_ints = mask_val.to(tl.int32)
-    src_indices = tl.cumsum(mask_ints, axis=0) - 1
-
-    active = block_mask & mask_val
-    src_val = tl.load(src_ptr + src_indices, mask=active)
-    tl.store(inp_ptr + offsets, src_val, mask=active)
+    selected = tl.load(mask_ptr + offset) != 0
+    safe_src_index = tl.minimum(src_index, SRC_N - 1)
+    src_val = tl.load(src_ptr + safe_src_index)
+    original = tl.load(inp_ptr + offset)
+    tl.store(inp_ptr + offset, tl.where(selected, src_val, original))
 
 
 @triton.jit(do_not_specialize=["N", "num_blocks", "num_blocks_per_row"])
@@ -133,19 +128,17 @@ def masked_scatter_kernel(
 
 
 def masked_scatter_impl(inp, mask, source, N):
-    if N <= 4096:
-        BLOCK_SIZE = triton.next_power_of_2(N)
-        num_warps = 4
-        if BLOCK_SIZE >= 2048:
-            num_warps = 8
-        if BLOCK_SIZE >= 4096:
-            num_warps = 16
-
-        masked_scatter_single_pass_kernel[(1,)](
-            inp, mask, source, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-        )
+    if source.numel() == 0:
+        if bool(mask.any().item()):
+            raise RuntimeError("Number of elements of source < number of ones in mask")
         return inp
+    masked_scatter_single_pass_kernel[(N,)](
+        inp, mask, source, N, source.numel()
+    )
+    return inp
 
+    # Retained legacy parallel implementation for reference.  It is not used
+    # on TritonShared because it requires atomics and scan lowering.
     BLOCK_SIZE = _bracket_next_power_of_2(N, 128, 4096)
     num_warps = min(16, BLOCK_SIZE // 32)
 
@@ -193,8 +186,7 @@ def masked_scatter(inp, mask, source):
     out = inp.clone()
     if not out.is_contiguous():
         out = out.contiguous()
-    if not mask.is_contiguous():
-        mask = mask.contiguous()
+    mask = mask.to(torch.uint8).contiguous()
     if not source.is_contiguous():
         source = source.contiguous()
 
@@ -213,7 +205,7 @@ def masked_scatter_(inp, mask, source):
             "in-place operation currently requires contiguous input tensor. "
         )
 
-    mask = mask if mask.is_contiguous() else mask.contiguous()
+    mask = mask.to(torch.uint8).contiguous()
     source = source if source.is_contiguous() else source.contiguous()
 
     N = inp.numel()

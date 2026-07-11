@@ -70,17 +70,19 @@ def min_kernel(
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
     max_val = get_dtype_max(dtype)
     min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_val)
-    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    argmin_values = tl.full([BLOCK_M], dtype=tl.int32, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_val)
         local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
         update = local_min < min_values
         min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+        argmin_values = tl.where(
+            update, (start_n + local_argmin).to(tl.int32), argmin_values
+        )
 
     offset_index = m_offset
     out_value_ptrs = out_value + offset_index

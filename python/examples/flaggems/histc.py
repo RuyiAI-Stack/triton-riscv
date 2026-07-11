@@ -63,38 +63,21 @@ def histc_kernel_simple(
     bins,
     min_val,
     max_val,
-    BLOCK_SIZE: tl.constexpr,
 ):
-    """Simple histogram kernel - each program handles one element at a time."""
-    pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
+    """Count one output bin per program without shared atomic updates."""
+    target_bin = tl.program_id(0)
+    count = tl.full((), 0, dtype=tl.int32)
 
-    # Load input values
-    inp_val = tl.load(inp_ptr + offset, mask=mask, other=float("nan"))
+    for offset in range(0, n_elements):
+        inp_val = tl.load(inp_ptr + offset).to(tl.float32)
+        in_range = (inp_val >= min_val) & (inp_val <= max_val)
+        normalized = (inp_val - min_val) * bins / (max_val - min_val)
+        safe_normalized = tl.where(in_range, normalized, 0.0)
+        bin_idx = tl.floor(safe_normalized).to(tl.int32)
+        bin_idx = tl.where(inp_val == max_val, bins - 1, bin_idx)
+        count += (in_range & (bin_idx == target_bin)).to(tl.int32)
 
-    # Convert to float32 for computation
-    inp_val = inp_val.to(tl.float32)
-
-    # Compute bin indices using multiplication to avoid float division precision loss
-    bin_idx = tl.floor((inp_val - min_val) * bins / (max_val - min_val)).to(
-        tl.int64
-    )
-
-    # Handle edge case: elements exactly equal to max go to last bin
-    bin_idx = tl.where(inp_val == max_val, bins - 1, bin_idx)
-
-    # Check if elements are in valid range (excludes NaN)
-    in_range = (inp_val >= min_val) & (inp_val <= max_val)
-
-    # Clamp bin indices to valid range
-    bin_idx = tl.where(bin_idx < 0, 0, bin_idx)
-    bin_idx = tl.where(bin_idx >= bins, bins - 1, bin_idx)
-
-    valid_mask = mask & in_range
-
-    # Atomically add to histogram
-    tl.atomic_add(out_ptr + bin_idx, 1.0, mask=valid_mask, sem="relaxed")
+    tl.store(out_ptr + target_bin, count.to(out_ptr.type.element_ty))
 
 
 def histc(inp, bins=100, min=0, max=0):
@@ -138,11 +121,7 @@ def histc(inp, bins=100, min=0, max=0):
     if n_elements == 0:
         return out
 
-    # Choose block size
-    BLOCK_SIZE = 1024
-
-    # Calculate grid size
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    grid = (bins,)
 
     histc_kernel_simple[grid](
         inp,
@@ -151,7 +130,6 @@ def histc(inp, bins=100, min=0, max=0):
         bins,
         min_val,
         max_val,
-        BLOCK_SIZE=BLOCK_SIZE,
     )
 
     return out

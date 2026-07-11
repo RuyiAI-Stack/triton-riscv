@@ -51,6 +51,57 @@ _STRIDED_SELECT_LIMIT = 4096
 
 
 @triton.jit
+def median_scalar_select_kernel(
+    inp,
+    values,
+    indices,
+    reduction_size,
+    inner_size,
+):
+    output_index = tl.program_id(0)
+    inner_index = output_index % inner_size
+    outer_index = output_index // inner_size
+    base = outer_index * reduction_size * inner_size + inner_index
+    rank = (reduction_size - 1) // 2
+
+    selected_index = tl.full((), -1, dtype=tl.int32)
+    nan_index = tl.full((), -1, dtype=tl.int32)
+    selected_value = tl.load(inp + base)
+
+    for candidate_index in range(0, reduction_size):
+        candidate = tl.load(inp + base + candidate_index * inner_size)
+        if inp.dtype.element_ty.is_floating():
+            is_nan = candidate != candidate
+            nan_index = tl.where(
+                (nan_index < 0) & is_nan,
+                candidate_index,
+                nan_index,
+            )
+
+        less = tl.full((), 0, dtype=tl.int32)
+        equal = tl.full((), 0, dtype=tl.int32)
+        for sample_index in range(0, reduction_size):
+            sample = tl.load(inp + base + sample_index * inner_size)
+            less += (sample < candidate).to(tl.int32)
+            equal += (sample == candidate).to(tl.int32)
+
+        is_median = (less <= rank) & (rank < less + equal)
+        take = (selected_index < 0) & is_median
+        selected_value = tl.where(take, candidate, selected_value)
+        selected_index = tl.where(take, candidate_index, selected_index)
+
+    if inp.dtype.element_ty.is_floating():
+        has_nan = nan_index >= 0
+        safe_nan_index = tl.maximum(nan_index, 0)
+        nan_value = tl.load(inp + base + safe_nan_index * inner_size)
+        selected_value = tl.where(has_nan, nan_value, selected_value)
+        selected_index = tl.where(has_nan, nan_index, selected_index)
+
+    tl.store(values + output_index, selected_value)
+    tl.store(indices + output_index, selected_index)
+
+
+@triton.jit
 def median_small_dim_kernel(
     inp,
     values,
@@ -749,7 +800,8 @@ def median_fp32_strided_key_select_kernel(
 
 
 def _has_names(inp):
-    return any(name is not None for name in inp.names)
+    names = getattr(inp, "names", None)
+    return names is not None and any(name is not None for name in names)
 
 
 def _anonymous(inp):
@@ -1230,6 +1282,25 @@ def _median_direct_dim(inp, dim, output_shape):
     return values, indices
 
 
+def _median_scalar_select(inp, dim, output_shape):
+    reduction_size = inp.shape[dim]
+    inner_size = math.prod(inp.shape[dim + 1 :])
+    total_outputs = math.prod(output_shape)
+    values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
+    indices_i32 = torch.empty(
+        output_shape, dtype=torch.int32, device=inp.device
+    )
+    median_scalar_select_kernel[(total_outputs,)](
+        inp,
+        values.reshape(-1),
+        indices_i32.reshape(-1),
+        reduction_size,
+        inner_size,
+        num_warps=1,
+    )
+    return values, indices_i32.to(torch.int64)
+
+
 def _copy_out(src, out, name):
     if out.device != src.device:
         raise RuntimeError(
@@ -1257,6 +1328,9 @@ def median(inp):
 
     flat = inp.contiguous().reshape(-1)
     row_data = flat.reshape(1, inp.numel())
+    if inp.dtype == torch.float32:
+        values, _ = _median_scalar_select(row_data, 1, ())
+        return values.reshape(())
     if _use_float_key_select(inp.dtype, inp.numel()):
         values, _ = _median_float_key_select_rows(row_data, ())
         return values.reshape(())
@@ -1325,7 +1399,11 @@ def median_dim(inp, dim=0, keepdim=False):
     else:
         if work.dtype.is_complex:
             _raise_dim_dtype(work.dtype)
-        if work.dtype == torch.bool:
+        if work.dtype == torch.float32:
+            values, indices = _median_scalar_select(
+                work.contiguous(), dim, output_shape
+            )
+        elif work.dtype == torch.bool:
             values, indices = _median_bool_dim(
                 work.contiguous(), dim, output_shape
             )

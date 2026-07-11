@@ -89,6 +89,17 @@ def isin_by_comparation_kernel(
         )
 
 
+@triton.jit
+def isin_scalar_kernel(in0_ptr, in1_ptr, out_ptr, N, invert: tl.constexpr):
+    element_idx = tl.program_id(0)
+    value = tl.load(in0_ptr + element_idx)
+    found = tl.full((), False, dtype=tl.int1)
+    for test_idx in range(0, N):
+        found |= value == tl.load(in1_ptr + test_idx)
+    result = ~found if invert else found
+    tl.store(out_ptr + element_idx, result.to(tl.int8))
+
+
 def isin_by_comparation(
     in0: torch.tensor,
     in1: torch.tensor,
@@ -98,33 +109,9 @@ def isin_by_comparation(
     in1_ravel = in1.contiguous().ravel()
     M = in0.numel()
     N = in1.numel()
-    if M <= 1024:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 256, N, 4)
-    elif M <= 3072:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(2, 256, N, 4)
-    elif M <= 6144:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
-    elif M <= 9216:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 256, N, 8)
-    else:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
-    ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
-    tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
-    grid = (ctas_num,)
-    out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    isin_by_comparation_kernel[grid](
-        in0_ravel,
-        in1_ravel,
-        out,
-        M,
-        N,
-        BLOCK_M,
-        BLOCK_N,
-        tiles_per_cta=tiles_per_cta,
-        invert=invert,
-        num_warps=num_warps,
-    )
-    return out.view_as(in0)
+    out = torch.empty_like(in0_ravel, dtype=torch.uint8)
+    isin_scalar_kernel[(M,)](in0_ravel, in1_ravel, out, N, invert=invert)
+    return out.bool().view_as(in0)
 
 
 @triton.jit
@@ -256,7 +243,7 @@ def isin(
         assert torch.is_tensor(in0)
         in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
-        return torch.zeros_like(in0, dtype=torch.bool)
+        return torch.full_like(in0, invert, dtype=torch.bool)
     elif in0.numel() <= 12288 and in1.numel() <= 12288:
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:

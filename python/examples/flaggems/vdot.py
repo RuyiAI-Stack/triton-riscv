@@ -176,6 +176,23 @@ def dot_kernel_fp32(
     tl.atomic_add(out_ptr, out)
 
 
+@triton.jit
+def dot_scalar_kernel(
+    inp_ptr,
+    other_ptr,
+    out_ptr,
+    n_elements,
+    inp_stride,
+    other_stride,
+):
+    accumulator = tl.full((), 0.0, dtype=tl.float32)
+    for offset in range(0, n_elements):
+        inp = tl.load(inp_ptr + offset * inp_stride).to(tl.float32)
+        other = tl.load(other_ptr + offset * other_stride).to(tl.float32)
+        accumulator += inp * other
+    tl.store(out_ptr, accumulator)
+
+
 def vdot(input: torch.Tensor, other: torch.Tensor):
     assert input.dtype == other.dtype, (
         f"Input tensors must have the same dtype. Got {input.dtype} and {other.dtype}."
@@ -236,51 +253,15 @@ def vdot(input: torch.Tensor, other: torch.Tensor):
             BLOCK_SIZE=triton.next_power_of_2(grid_size),
         )
         return torch.view_as_complex(output_real)
-    elif inp.dtype == torch.float32:
-        output = torch.zeros([], dtype=torch.float32, device=inp.device)
-        n_elements = inp.numel()
-
-        def grid(meta):
-            return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-        dot_kernel_fp32[grid](
-            inp,
-            other,
-            output,
-            n_elements=n_elements,
-            inp_stride=inp_stride,
-            other_stride=other_stride,
-            BLOCK_SIZE=1024,
-        )
-        return output
     else:
-        # For other dtypes, use simple accumulation approach
-        n_elements = inp.numel()
-        BLOCK_SIZE = 1024
-        num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
-        grid_size = min(num_blocks, 1024)
-
-        grid = (num_blocks,)
-        partial_sums = torch.empty(
-            grid_size, dtype=torch.float32, device=inp.device
-        )
-
-        dot_kernel[grid](
+        output = torch.empty((), dtype=input.dtype, device=inp.device)
+        dot_scalar_kernel[(1,)](
             inp,
             other,
-            partial_sums,
-            n_elements=n_elements,
-            inp_stride=inp_stride,
-            other_stride=other_stride,
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-        output = torch.empty([], dtype=input.dtype, device=inp.device)
-
-        reduce_bs = min(triton.next_power_of_2(grid_size), 1024)
-        reduce_kernel[(1,)](
-            partial_sums,
             output,
-            num_blocks,
-            BLOCK_SIZE=reduce_bs,
+            inp.numel(),
+            inp_stride,
+            other_stride,
+            num_warps=1,
         )
         return output

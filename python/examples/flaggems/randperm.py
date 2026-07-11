@@ -407,6 +407,19 @@ def sort_by_key(key, value, valid_bits, generator=None):
         return v_out
 
 
+@triton.jit
+def fisher_yates_kernel(values, n, seed):
+    state = seed.to(tl.int64)
+    for step in range(0, n - 1):
+        index = n - 1 - step
+        state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+        swap_index = (state % (index + 1)).to(tl.int32)
+        value = tl.load(values + index)
+        swap_value = tl.load(values + swap_index)
+        tl.store(values + index, swap_value)
+        tl.store(values + swap_index, value)
+
+
 def randperm(
     n,
     *,
@@ -420,43 +433,24 @@ def randperm(
 ):
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
-    in_range = torch.arange(n, dtype=dtype, device=device)
+    if n < 0:
+        raise RuntimeError("n must be non-negative")
 
-    u8max = 2**8
-    u16max = 2**16
-    u24max = 2**24
-    u32max = 2**32
+    work = torch.arange(n, dtype=torch.int32, device=device)
+    if n > 1:
+        seed = torch.randint(
+            0,
+            2**31 - 1,
+            (),
+            dtype=torch.int64,
+            device=device,
+            generator=generator,
+        ).item()
+        fisher_yates_kernel[(1,)](work, n, seed, num_warps=1)
 
-    if n <= u8max:
-        valid_bits = 8
-        key_dtype = torch.int8
-        keymin = _MIN_INT8_VAL
-        keymax = _MAX_INT8_VAL
-    elif n <= u16max:
-        valid_bits = 16
-        key_dtype = torch.int16
-        keymin = _MIN_INT16_VAL
-        keymax = _MAX_INT16_VAL
-    elif n <= u24max:
-        valid_bits = 24
-        key_dtype = torch.int32
-        keymin = _MIN_INT24_VAL
-        keymax = _MAX_INT24_VAL
-    elif n <= u32max:
-        valid_bits = 32
-        key_dtype = torch.int32
-        keymin = _MIN_INT32_VAL
-        keymax = _MAX_INT32_VAL
-    else:
-        valid_bits = 64
-        key_dtype = torch.int64
-        keymin = _MIN_INT64_VAL
-        keymax = _MAX_INT64_VAL
-
-    rand_key = torch.randint(
-        low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
-    )
-    perm_range = sort_by_key(
-        rand_key, in_range, valid_bits, generator=generator
-    )
-    return perm_range
+    result = work.to(dtype)
+    if out is not None:
+        out.resize_(n)
+        out.copy_(result)
+        return out
+    return result

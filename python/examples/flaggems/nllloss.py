@@ -17,12 +17,12 @@ def nll_loss_forward_kernel(
 ):
     pid_n = tl.program_id(0)
     offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
     mask_n = offsets_n < N
 
-    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
-    ignore_mask = (tgt != ignore_index) & mask_n
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0).to(tl.int32)
+    ignore_mask = (
+        (tgt != ignore_index) & (tgt >= 0) & (tgt < C) & mask_n
+    )
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -42,18 +42,13 @@ def nll_loss_forward_kernel(
     elif reduction == 1:
         total_out = tl.sum(out)
         total_wgt = tl.sum(wgt_tgt)
-        tl.atomic_add(out_ptr, total_out, sem="relaxed")  # output
-        tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
-        tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
-        counter = tl.load(out_ptr + 2)
-        if counter == tl.num_programs(0):
-            total_out = tl.load(out_ptr)
-            total_wgt = tl.load(out_ptr + 1)
-            tl.store(out_ptr + 3, total_out / total_wgt)
+        tl.store(out_ptr, total_out)
+        tl.store(out_ptr + 1, total_wgt)
+        tl.store(out_ptr + 3, total_out / total_wgt)
     # sum
     else:
         total_out = tl.sum(out)
-        tl.atomic_add(out_ptr, total_out, sem="relaxed")
+        tl.store(out_ptr, total_out)
 
 
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -70,12 +65,15 @@ def nll_loss_backward_kernel(
     BLOCK_N: tl.constexpr = 128,
 ):
     pid_n = tl.program_id(0)
-    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offsets < N * C
+    offsets_n = offsets // C
+    offsets_c = offsets % C
 
-    mask_n = offsets_n < N
-
-    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    ignore_mask = (tgt != ignore_index) & mask_n
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask, other=0).to(tl.int32)
+    ignore_mask = (
+        (tgt != ignore_index) & (tgt >= 0) & (tgt < C) & mask
+    )
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -86,7 +84,7 @@ def nll_loss_backward_kernel(
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offsets_n
-        out_grad = tl.load(out_grad_ptrs, mask=mask_n, other=0).to(tl.float32)
+        out_grad = tl.load(out_grad_ptrs, mask=mask, other=0).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
@@ -95,9 +93,9 @@ def nll_loss_backward_kernel(
     else:
         total_w = 1
 
-    inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + tgt
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_n)
+    selected = ignore_mask & (offsets_c == tgt)
+    inp_grad = tl.where(selected, -1 * out_grad * wgt_tgt / total_w, 0)
+    tl.store(inp_grad_ptr + offsets, inp_grad, mask=mask)
 
 
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -121,9 +119,10 @@ def nll_loss2d_forward_kernel(
     mask_block = offset_nd < N * D
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
-    ignore_mask = (tgt != ignore_index) & mask_block
+    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0).to(tl.int32)
+    ignore_mask = (
+        (tgt != ignore_index) & (tgt >= 0) & (tgt < C) & mask_block
+    )
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -144,18 +143,13 @@ def nll_loss2d_forward_kernel(
     elif reduction == 1:
         total_out = tl.sum(out)
         total_wgt = tl.sum(wgt_tgt)
-        tl.atomic_add(out_ptr, total_out, sem="relaxed")  # output
-        tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
-        tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
-        counter = tl.load(out_ptr + 2)
-        if counter == tl.num_programs(0):
-            total_out = tl.load(out_ptr)
-            total_wgt = tl.load(out_ptr + 1)
-            tl.store(out_ptr + 3, total_out / total_wgt)
+        tl.store(out_ptr, total_out)
+        tl.store(out_ptr + 1, total_wgt)
+        tl.store(out_ptr + 3, total_out / total_wgt)
     # sum
     else:
         total_out = tl.sum(out)
-        tl.atomic_add(out_ptr, total_out, sem="relaxed")
+        tl.store(out_ptr, total_out)
 
 
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -164,12 +158,14 @@ def nll_loss2d_backward_kernel(
     tgt_ptr,
     wgt_ptr,
     inp_grad_ptr,
+    inp_ptr,
     ignore_index,
     total_weight,
     N,
     C,
     D,
     reduction: tl.constexpr = 1,
+    FUSE_LOG_SOFTMAX: tl.constexpr = True,
     BLOCK_ND: tl.constexpr = 128,
 ):
     pid_nd = tl.program_id(0)
@@ -180,8 +176,10 @@ def nll_loss2d_backward_kernel(
     mask_block = offset_nd < N * D
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    ignore_mask = (tgt != ignore_index) & mask_block
+    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0).to(tl.int32)
+    ignore_mask = (
+        (tgt != ignore_index) & (tgt >= 0) & (tgt < C) & mask_block
+    )
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -204,8 +202,19 @@ def nll_loss2d_backward_kernel(
         total_w = 1
 
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
+    if FUSE_LOG_SOFTMAX:
+        for channel in range(0, C):
+            offsets = offset_n * C * D + channel * D + offset_d
+            log_probability = tl.load(
+                inp_ptr + offsets, mask=mask_block, other=0.0
+            ).to(tl.float32)
+            channel_grad = inp_grad * (
+                (tgt == channel).to(tl.float32) - tl.exp(log_probability)
+            )
+            tl.store(inp_grad_ptr + offsets, channel_grad, mask=mask_block)
+    else:
+        inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
+        tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
 
 
 def nll_loss_forward(
@@ -235,7 +244,7 @@ def nll_loss_forward(
     else:
         out = torch.zeros([], dtype=torch.float32, device=self.device)
 
-    BLOCK_N = 128
+    BLOCK_N = 128 if reduction == 0 else triton.next_power_of_2(N)
     grid = (triton.cdiv(N, BLOCK_N),)
     nll_loss_forward_kernel[grid](
         self,
@@ -282,7 +291,7 @@ def nll_loss_backward(
     grad_input = torch.zeros_like(self).contiguous()
 
     BLOCK_N = 128
-    grid = (triton.cdiv(N, BLOCK_N),)
+    grid = (triton.cdiv(N * C, BLOCK_N),)
 
     nll_loss_backward_kernel[grid](
         grad_output,
@@ -327,7 +336,9 @@ def nll_loss2d_forward(
     else:
         out = torch.zeros([], dtype=torch.float32, device=self.device)
 
-    BLOCK_ND = 128
+    BLOCK_ND = (
+        128 if reduction == 0 else triton.next_power_of_2(N * D)
+    )
     grid = (triton.cdiv(N * D, BLOCK_ND),)
     nll_loss2d_forward_kernel[grid](
         self,
@@ -381,12 +392,14 @@ def nll_loss2d_backward(
         target,
         weight,
         grad_input,
+        self,
         ignore_index,
         total_weight,
         N,
         C,
         D,
         reduction=reduction,
+        FUSE_LOG_SOFTMAX=True,
         BLOCK_ND=BLOCK_ND,
     )
 

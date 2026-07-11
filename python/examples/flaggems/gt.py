@@ -16,8 +16,8 @@ def gt_kernel_tt(
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    res = x.to(tl.float32) > y
-    tl.store(out_ptr + offsets, res, mask=mask)
+    res = x > y
+    tl.store(out_ptr + offsets, res.to(tl.int8), mask=mask)
 
 
 @triton.jit
@@ -32,8 +32,8 @@ def gt_kernel_ts(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    res = x.to(tl.float32) > y_val
-    tl.store(out_ptr + offsets, res, mask=mask)
+    res = x > y_val
+    tl.store(out_ptr + offsets, res.to(tl.int8), mask=mask)
 
 
 def gt(A, B):
@@ -41,11 +41,11 @@ def gt(A, B):
     n_elements = A.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    out = torch.empty_like(A, dtype=torch.bool)
+    out = torch.empty_like(A, dtype=torch.uint8)
     A_c = A.contiguous()
     B_c = B.contiguous()
     gt_kernel_tt[grid](A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return out
+    return out.bool()
 
 
 def gt_scalar(A, B):
@@ -53,7 +53,7 @@ def gt_scalar(A, B):
     n_elements = A.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    out = torch.empty_like(A, dtype=torch.bool)
+    out = torch.empty_like(A, dtype=torch.uint8)
     A_c = A.contiguous()
     gt_kernel_ts[grid](A_c, B, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return out
+    return out.bool()

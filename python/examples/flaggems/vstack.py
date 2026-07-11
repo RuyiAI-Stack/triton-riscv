@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .cat import cat
+
 
 @triton.jit
 def vstack_kernel(
@@ -56,74 +58,6 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    tensors = torch.atleast_2d(tensors)
-    num_tensors = len(tensors)
-    assert num_tensors > 0
-
-    device = tensors[0].device
-    dtype = tensors[0].dtype
-    for tensor in tensors:
-        assert (
-            tensor.device == device
-            and tensor.dtype == dtype
-            and tensors[0].shape[1:] == tensor.shape[1:]
-        )
-
-    c_tensors = [t.contiguous() for t in tensors]
-    total_rows = sum(tensor.shape[0] for tensor in c_tensors)
-    output_shape = list(c_tensors[0].shape)
-    output_shape[0] = total_rows
-    output = torch.empty(output_shape, device=device, dtype=dtype)
-    row_stride = c_tensors[0].stride(0)
-
-    outer_iters = triton.cdiv(num_tensors, 4)
-    total_row_offset = 0
-    for i in range(outer_iters):
-        max_rows = 1
-        itensors = []
-        exclusive_row = []
-        local_row = []
-        array_row_offset = 0
-        scheduled_num_tensors = 0
-        for j in range(4):
-            tensor_idx = i * 4 + j
-            if tensor_idx < num_tensors:
-                scheduled_num_tensors += 1
-                itensors.append(c_tensors[tensor_idx])
-                local_row.append(c_tensors[tensor_idx].shape[0])
-                exclusive_row.append(array_row_offset)
-                array_row_offset += c_tensors[tensor_idx].shape[0]
-                max_rows = max(max_rows, c_tensors[tensor_idx].shape[0])
-            else:
-                empty_tensor = torch.empty(
-                    0, dtype=c_tensors[0].dtype, device=c_tensors[0].device
-                )
-                itensors.append(empty_tensor)
-                local_row.append(local_row[-1])
-                exclusive_row.append(exclusive_row[-1])
-        max_tile_elems = max_rows * row_stride
-        grid = (
-            triton.cdiv(max_tile_elems, 1024),
-            scheduled_num_tensors,
-        )
-        vstack_kernel[grid](
-            itensors[0],
-            itensors[1],
-            itensors[2],
-            itensors[3],
-            output,
-            local_row[0],
-            local_row[1],
-            local_row[2],
-            local_row[3],
-            exclusive_row[0],
-            exclusive_row[1],
-            exclusive_row[2],
-            exclusive_row[3],
-            total_row_offset,
-            row_stride,
-            max_tile_elems,
-            BLOCK_SIZE=1024,
-        )
-        total_row_offset += array_row_offset
-    return output
+    if len(tensors) == 0:
+        raise RuntimeError("vstack expects a non-empty TensorList")
+    return cat([torch.atleast_2d(tensor) for tensor in tensors], dim=0)

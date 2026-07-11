@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .embedding import embedding_backward
+
 
 @triton.jit
 def _embedding_dense_backward_kernel(
@@ -90,57 +92,14 @@ def embedding_dense_backward(
         torch.int64,
     ), "Indices must be int32 or int64."
 
-    device = grad_output.device
     assert grad_output.dim() >= 2, (
         "grad_output must have embedding dimension as the last dim."
     )
 
-    D = grad_output.shape[-1]
-    go = grad_output.contiguous().view(-1, D)  # (N, D)
-    idx = indices.contiguous().view(-1)
-    N = idx.numel()
-
-    assert go.shape[0] == N, "indices number must match grad_output rows."
-    grad_weight_fp32 = torch.zeros(
-        (num_weights, D), device=device, dtype=torch.float32
+    return embedding_backward(
+        grad_output,
+        indices,
+        num_weights,
+        padding_idx=padding_idx,
+        scale_grad_by_freq=scale_grad_by_freq,
     )
-
-    BLOCK_D = 128
-    grid = (N, triton.cdiv(D, BLOCK_D))
-
-    if scale_grad_by_freq:
-        counts = torch.zeros((num_weights,), device=device, dtype=torch.int32)
-        BLOCK_N = 512
-        _embedding_dense_backward_count_kernel[(triton.cdiv(N, BLOCK_N),)](
-            idx,
-            counts,
-            N,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_N=BLOCK_N,
-        )
-
-        _embedding_dense_backward_kernel_scale_by_freq[grid](
-            go,
-            idx,
-            counts,
-            grad_weight_fp32,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_D=BLOCK_D,
-            EMBED_DIM=D,
-        )
-    else:
-        _embedding_dense_backward_kernel[grid](
-            go,
-            idx,
-            grad_weight_fp32,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_D=BLOCK_D,
-            EMBED_DIM=D,
-        )
-
-    if grad_output.dtype != torch.float32:
-        return grad_weight_fp32.to(grad_output.dtype)
-    return grad_weight_fp32

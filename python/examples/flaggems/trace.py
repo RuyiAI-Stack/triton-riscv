@@ -14,7 +14,7 @@ def trace_kernel(
 ):
     inp_dtype = inp_ptr.type.element_ty
     if inp_dtype.is_int():
-        acc_dtype = tl.int64
+        acc_dtype = tl.int32
         other_val = 0
     elif inp_dtype == tl.float64:
         acc_dtype = tl.float64

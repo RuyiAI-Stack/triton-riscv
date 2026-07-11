@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import os
 import threading
 import uuid
@@ -88,15 +89,17 @@ def _generate_index_put_kernel(
     code += "    M,\n"
     code += "    N,\n"
     code += "    IS_ACCUMULATE: tl.constexpr,\n"
-    code += "    BLOCK_SIZE0: tl.constexpr = 2,\n"
+    block_size0 = 1 if inp_rank == indices_len else 2
+    code += f"    BLOCK_SIZE0: tl.constexpr = {block_size0},\n"
     code += "    BLOCK_SIZE1: tl.constexpr = 2048,\n"
     code += "):\n"
     code += "    pid0 = tl.program_id(axis=0)\n"
     code += "    pid1 = tl.program_id(axis=1)\n"
-    code += "    offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]\n"
     if inp_rank == indices_len:
-        code += "    offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]\n"
+        code += "    offset0 = pid0\n"
+        code += "    offset1 = 0\n"
     else:
+        code += "    offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]\n"
         code += "    offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]\n"
     code += "\n"
     code += "    cur_idx = offset0\n"
@@ -364,6 +367,36 @@ def index_put_(inp, indices, values, accumulate=False):
         values = values.permute(val_perm)
     else:
         values = values.broadcast_to(target_shape)
+
+    if accumulate:
+        # Collapse the advanced-index dimensions into one linear row index,
+        # then reuse index_add's output-centric reduction.  This preserves
+        # duplicate-index accumulation without unsupported atomics.
+        linear_indices = tensors[0].to(torch.int64)
+        for axis in range(1, len(tensors)):
+            linear_indices = (
+                linear_indices * inp_view.shape[axis] + tensors[axis]
+            )
+
+        indexed_rank = len(tensors)
+        indexed_size = math.prod(inp_view.shape[:indexed_rank])
+        slice_shape = tuple(inp_view.shape[indexed_rank:])
+        working = inp_view.contiguous()
+        flat_input = working.reshape(indexed_size, *slice_shape)
+        flat_values = values.contiguous().reshape(
+            linear_indices.numel(), *slice_shape
+        )
+        from .index_add import index_add_
+
+        index_add_(
+            flat_input,
+            0,
+            linear_indices.reshape(-1),
+            flat_values,
+        )
+        if working.data_ptr() != inp_view.data_ptr():
+            inp_view.copy_(working)
+        return inp
 
     _index_put_func(inp_view, tensors, values, accumulate)
 

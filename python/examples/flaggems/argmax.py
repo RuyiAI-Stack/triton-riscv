@@ -85,7 +85,7 @@ def argmax_kernel_non_inner(
     if ONE_TILE_PER_CTA:
         n_offset = tl.arange(0, TILE_N)
         offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-        mask = k_offset < K and n_offset[:, None] < N
+        mask = (k_offset < K) & (n_offset[:, None] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         local_max, local_argmax = tl.max(
@@ -100,12 +100,14 @@ def argmax_kernel_non_inner(
         tl.store(out_index_ptrs, local_argmax, mask=mask1)
     else:
         max_values = tl.full([TILE_K], dtype=cdtype, value=min_value)
-        argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0)
+        # TritonToLinalg can carry i32 tensors through this loop but not i64
+        # tensors.  Reduction indices fit in i32 and are widened on store.
+        argmax_values = tl.full([TILE_K], dtype=tl.int32, value=0)
 
         for start_n in range(0, N, TILE_N):
             n_offset = start_n + tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-            mask = k_offset < K and n_offset[:, None] < N
+            mask = (k_offset < K) & (n_offset[:, None] < N)
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
             local_max, local_argmax = tl.max(
@@ -267,7 +269,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 K,
                 TILE_K=TILE_K,
                 TILE_N=TILE_N,
-                ONE_TILE_PER_CTA=False,
+                ONE_TILE_PER_CTA=(N <= TILE_N),
             )
         else:
             TILE_N = 1024
@@ -278,6 +280,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 TILE_N=TILE_N,
-                ONE_TILE_PER_CTA=False,
+                ONE_TILE_PER_CTA=(N <= TILE_N),
             )
         return out_index

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from .flash_api import mha_fwd, mha_varlan_fwd
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -311,7 +311,7 @@ def _attn_fwd(
 
 @triton.jit
 def _attn_bwd_preprocess(
-    O,
+    Out,
     DO,
     Delta,
     Z,
@@ -327,7 +327,10 @@ def _attn_bwd_preprocess(
     off_n = tl.arange(0, D_HEAD)
     # load
     o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
+        Out
+        + off_hz * D_HEAD * Q_CTX
+        + off_m[:, None] * D_HEAD
+        + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     )
@@ -549,6 +552,7 @@ def _attn_bwd(
     BLOCK_N2: tl.constexpr,  #
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
 ):
     tl.device_assert(
         Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1."
@@ -625,7 +629,7 @@ def _attn_bwd(
         start_n,
         start_m,
         num_steps,  #
-        MASK=True,  #
+        MASK=IS_CAUSAL,  #
     )
 
     # Compute dK and dV for non-masked blocks.
@@ -719,7 +723,7 @@ def _attn_bwd(
             start_m,
             start_n,
             num_steps,  #
-            MASK=True,  #
+            MASK=IS_CAUSAL,  #
         )
 
     # Stage 2 - non-masked blocks
@@ -980,6 +984,7 @@ def scaled_dot_product_attention_backward(
         BLOCK_N2=32,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
+        IS_CAUSAL=is_causal,  #
         num_warps=4,  #
         num_stages=1,  #
     )
@@ -1127,6 +1132,31 @@ def flash_attention_forward(
     else:
         non_null_window_right = -1
 
+    # The specialized FlashAttention kernels still expose unsupported loop
+    # lowering on the CPU backend.  The general Triton attention kernel is
+    # already fully supported, so use it for the common non-windowed path and
+    # preserve the eight-value FlashAttention API contract.
+    if (
+        dropout_p == 0.0
+        and alibi_slopes is None
+        and non_null_window_left == -1
+        and non_null_window_right == -1
+        and softcap == 0.0
+    ):
+        out, lse = scaled_dot_product_attention_forward(
+            query.transpose(1, 2).contiguous().to(torch.float32),
+            key.transpose(1, 2).contiguous().to(torch.float32),
+            value.transpose(1, 2).contiguous().to(torch.float32),
+            dropout_p=0.0,
+            is_causal=is_causal,
+            scale=softmax_scale,
+        )
+        out = out.transpose(1, 2).contiguous()
+        if HEAD_DIM_K != original_head_dim:
+            out = out[..., :original_head_dim]
+        p = torch.empty((), dtype=torch.float32, device=query.device)
+        return (out, query, key, value, lse, 0, 0, p)
+
     out = torch.empty_like(query)
     if cumulative_sequence_length_q is not None:
         out, q, k, v, lse, philox_seed, philox_offset, p = mha_varlan_fwd(
@@ -1171,7 +1201,7 @@ def flash_attention_forward(
 
     if HEAD_DIM_K != original_head_dim:
         out = out[..., :original_head_dim]
-    return (out, lse, philox_seed, philox_offset, p)
+    return (out, q, k, v, lse, philox_seed, philox_offset, p)
 
 
 # Adapted from https://github.com/vllm-project/flash-attention/blob/main/vllm_flash_attn/flash_attn_interface.py

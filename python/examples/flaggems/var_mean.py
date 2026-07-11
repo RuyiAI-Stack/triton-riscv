@@ -2,6 +2,28 @@ import torch
 import triton
 import triton.language as tl
 
+from .var import _prepare_reduction_rows
+
+
+@triton.jit
+def var_mean_scalar_rows_kernel(X, Var, Mean, M, N, correction):
+    row = tl.program_id(0)
+    base = row * N
+
+    mean = tl.full((), 0.0, dtype=tl.float32)
+    for col in range(0, N):
+        mean += tl.load(X + base + col).to(tl.float32)
+    mean /= N
+
+    squared_deviation = tl.full((), 0.0, dtype=tl.float32)
+    for col in range(0, N):
+        value = tl.load(X + base + col).to(tl.float32)
+        delta = value - mean
+        squared_deviation += delta * delta
+
+    tl.store(Mean + row, mean)
+    tl.store(Var + row, squared_deviation / (N - correction))
+
 
 @triton.jit
 def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
@@ -118,61 +140,12 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    if correction is None:
-        correction = 1.0
-
-    if dim is None or len(dim) == x.ndim:
-        dim = list(range(x.ndim))
-        shape = [1] * x.ndim
-        N = x.numel()
-        var = torch.empty(shape, dtype=x.dtype, device=x.device)
-        mean = torch.empty(shape, dtype=x.dtype, device=x.device)
-        BLOCK_N = 1024
-        BLOCK_NUM = triton.cdiv(N, BLOCK_N)
-        acc = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-
-        var_mean_kernel_1[(BLOCK_NUM,)](
-            x, acc, average, count, N, BLOCK_N=BLOCK_N
-        )
-        var_mean_kernel_2[(1,)](
-            acc,
-            average,
-            count,
-            var,
-            mean,
-            N,
-            correction,
-            BLOCK_NUM,
-            BLOCK_N=1024,
-        )
-    else:
-        shape = list(x.shape)
-        dim = [d % x.ndim for d in dim]
-
-        # Simplified dim_compress: permute dims to end and reshape
-        remaining_dims = [i for i in range(x.ndim) if i not in dim]
-        permuted = x.permute(remaining_dims + dim)
-        new_shape = [*list(permuted.shape[: len(remaining_dims)]), -1]
-        x = permuted.reshape(new_shape)
-
-        N = 1
-        for i in dim:
-            N *= shape[i]
-            shape[i] = 1
-        M = x.numel() // N
-        var = torch.empty(shape, dtype=x.dtype, device=x.device)
-        mean = torch.empty(shape, dtype=x.dtype, device=x.device)
-
-        def grid(META):
-            return (triton.cdiv(M, META["BLOCK_M"]),)
-
-        var_mean_welford_kernel[grid](
-            x, var, mean, M, N, correction, BLOCK_M=1, BLOCK_N=1024
-        )
-
-    if not keepdim:
-        var = var.squeeze(dim=dim)
-        mean = mean.squeeze(dim=dim)
-    return var, mean
+    correction = 1.0 if correction is None else correction
+    rows, M, N, compact_shape, keepdim_shape = _prepare_reduction_rows(x, dim)
+    var_out = torch.empty((M,), dtype=x.dtype, device=x.device)
+    mean_out = torch.empty((M,), dtype=x.dtype, device=x.device)
+    var_mean_scalar_rows_kernel[(M,)](
+        rows, var_out, mean_out, M, N, correction, num_warps=1
+    )
+    output_shape = keepdim_shape if keepdim else compact_shape
+    return var_out.reshape(output_shape), mean_out.reshape(output_shape)

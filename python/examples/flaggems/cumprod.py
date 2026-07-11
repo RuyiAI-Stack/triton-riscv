@@ -181,6 +181,28 @@ def scan_then_fan(inp, out, A, B, C, dtype):
         )
 
 
+@triton.jit
+def cumprod_sequential_kernel(inp, out, B, C):
+    pid_a = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    base_offset = pid_a * B * C + pid_c
+
+    if tl.constexpr(
+        inp.type.element_ty.is_fp16() or inp.type.element_ty.is_bf16()
+    ):
+        compute_dtype = tl.float32
+    elif tl.constexpr(inp.type.element_ty.is_int()):
+        compute_dtype = tl.int64
+    else:
+        compute_dtype = inp.type.element_ty
+
+    product = tl.full((), 1, dtype=compute_dtype)
+    for b_idx in range(0, B):
+        offset = base_offset + b_idx * C
+        product *= tl.load(inp + offset).to(compute_dtype)
+        tl.store(out + offset, product.to(out.type.element_ty))
+
+
 def cumprod(inp, dim: int):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
@@ -194,21 +216,10 @@ def cumprod(inp, dim: int):
     dtype = torch.int64 if not inp.dtype.is_floating_point else inp.dtype
     out = torch.empty_like(inp, dtype=dtype)
 
-    compute_dtype = (
-        torch.float32
-        if inp.dtype in (torch.float16, torch.bfloat16)
-        else dtype
-    )
-    if not inp.dtype.is_floating_point:
-        compute_dtype = torch.int64
-
     if inp.numel() == 0:
         return out
 
-    if K == 1:
-        scan_then_fan_col(inp, out, N, compute_dtype)
-    else:
-        scan_then_fan(inp, out, M, N, K, compute_dtype)
+    cumprod_sequential_kernel[(M, K)](inp, out, N, K)
 
     return out
 

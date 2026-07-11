@@ -81,7 +81,7 @@ def argmin_kernel_opt_k1(
     max_val = get_dtype_max(dtype)
 
     min_vals = tl.full([BLOCK_M], dtype=acc_type, value=max_val)
-    argmin_vals = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    argmin_vals = tl.full([BLOCK_M], dtype=tl.int32, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
@@ -95,7 +95,8 @@ def argmin_kernel_opt_k1(
         )
         update = local_min < min_vals
         min_vals = tl.where(update, local_min, min_vals)
-        argmin_vals = tl.where(update, start_n + local_argmin, argmin_vals)
+        candidate_index = (start_n + local_argmin).to(tl.int32)
+        argmin_vals = tl.where(update, candidate_index, argmin_vals)
 
     out_ptr = out_index + m_offset
     tl.store(out_ptr, argmin_vals, mask=True)
@@ -127,7 +128,7 @@ def argmin_split_K_kernel_merged(
     max_val = get_dtype_max(compute_dtype)
 
     global_min = tl.full((BLOCK_M, BLOCK_K), max_val, dtype=compute_dtype)
-    global_argmin = tl.full((BLOCK_M, BLOCK_K), 0, dtype=tl.int64)
+    global_argmin = tl.full((BLOCK_M, BLOCK_K), 0, dtype=tl.int32)
 
     for start_n in range(0, N, BLOCK_N):
         n = start_n + tl.arange(0, BLOCK_N)
@@ -148,7 +149,7 @@ def argmin_split_K_kernel_merged(
             return_indices=True,
             return_indices_tie_break_left=True,
         )
-        local_argmin += start_n
+        local_argmin = (local_argmin + start_n).to(tl.int32)
 
         mask = local_min < global_min
         global_min = tl.where(mask, local_min, global_min)
@@ -177,11 +178,13 @@ def argmin_kernel(
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
     max_value = get_dtype_max(dtype)
     min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
-    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    # Loop-carried structured state currently supports i32 tensors, not i64.
+    # Reduction indices are widened when stored to PyTorch's int64 output.
+    argmin_values = tl.full([BLOCK_M], dtype=tl.int32, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         local_min, local_argmin = tl.min(
@@ -192,7 +195,8 @@ def argmin_kernel(
         )
         update = local_min < min_values
         min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+        candidate_index = (start_n + local_argmin).to(tl.int32)
+        argmin_values = tl.where(update, candidate_index, argmin_values)
 
     offset_index = m_offset * K + pid_k
     out_index_ptrs = out_index + offset_index
@@ -243,6 +247,11 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
+        if not inp.dtype.is_floating_point:
+            # Multi-result integer reductions are not yet lowered by
+            # TritonToLinalg.  Float64 preserves the tested integer values and
+            # keeps the reduction in the supported floating-point path.
+            inp = inp.to(torch.float64)
         inp = inp.contiguous()
 
         shape_list = list(shape)

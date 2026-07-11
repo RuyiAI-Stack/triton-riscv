@@ -32,12 +32,12 @@ def signbit_kernel(
     else:
         result = x < 0
 
-    tl.store(y_ptr + offsets, result, mask=mask)
+    tl.store(y_ptr + offsets, result.to(tl.int8), mask=mask)
 
 
 def signbit(x):
     x_contig = x.contiguous()
-    out = torch.empty_like(x_contig, dtype=torch.bool)
+    out = torch.empty_like(x_contig, dtype=torch.uint8)
     n_elements = out.numel()
     BLOCK_SIZE = 1024
 
@@ -45,18 +45,22 @@ def signbit(x):
         return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     signbit_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
-    return out
+    return out.bool()
 
 
 def signbit_out(x, *, out=None):
     if out is None:
         return signbit(x)
     x_contig = x.contiguous()
-    n_elements = out.numel()
+    kernel_out = torch.empty_like(x_contig, dtype=torch.uint8)
+    n_elements = kernel_out.numel()
     BLOCK_SIZE = 1024
 
     def grid(meta):
         return (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
-    signbit_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+    signbit_kernel[grid](
+        x_contig, kernel_out, n_elements, BLOCK_SIZE=BLOCK_SIZE
+    )
+    out.copy_(kernel_out.bool())
     return out

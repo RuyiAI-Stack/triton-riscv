@@ -163,26 +163,23 @@ def gcd_kernel_i64(
     y = tl.load(y_ptr + offsets, mask=mask, other=0)
     min_x = x == -(1 << 63)
     min_y = y == -(1 << 63)
-    ax = tl.where(min_x, x, tl.abs(x)).to(tl.int64)
-    ay = tl.where(min_y, y, tl.abs(y)).to(tl.int64)
+    a = tl.where(min_x, x, tl.abs(x)).to(tl.int64)
+    b = tl.where(min_y, y, tl.abs(y)).to(tl.int64)
 
-    special_mask = mask & (min_x | min_y)
-    normal = mask & (~special_mask)
-    normal_res = _binary_gcd(ax, ay, normal)
+    # TritonShared cannot carry tensor<i64> values through a structured while
+    # loop.  A signed 64-bit Euclidean GCD needs at most 92 divisions (the
+    # consecutive-Fibonacci worst case), so a statically unrolled bound keeps
+    # the numeric state out of the unsupported loop representation.
+    active = mask & (b != 0)
+    for _ in tl.static_range(0, 96):
+        remainder = _c_rem_i64(a, tl.where(active, b, 1))
+        next_a = tl.where(active, b, a)
+        next_b = tl.where(active, remainder, b)
+        a = next_a
+        b = next_b
+        active = active & (b != 0)
 
-    sa = ax
-    sb = ay
-    special = special_mask & (sa != 0)
-    while tl.sum(special.to(tl.int32), axis=0) > 0:
-        next_sa = tl.where(
-            special, _c_rem_i64(sb, tl.where(special, sa, 1)), sa
-        )
-        sb = tl.where(special, sa, sb)
-        sa = next_sa
-        special = special & (sa != 0)
-
-    out = tl.where(mask & (~normal), sb, normal_res)
-    tl.store(out_ptr + offsets, out.to(out_ptr.type.element_ty), mask=mask)
+    tl.store(out_ptr + offsets, a.to(out_ptr.type.element_ty), mask=mask)
 
 
 def _kernel_meta(dtype):

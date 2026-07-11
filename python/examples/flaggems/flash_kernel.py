@@ -336,6 +336,25 @@ def flash_fwd_kernel(
     num_warps: tl.constexpr,
     num_stages: tl.constexpr,
 ):
+    q_head_major = q_row_stride != h * d
+    q_row_stride = tl.where(q_head_major, d, q_row_stride)
+    q_head_stride = tl.where(
+        q_head_major, seqlen_q * d, q_head_stride
+    )
+    k_head_major = k_row_stride != hk * d
+    k_row_stride = tl.where(k_head_major, d, k_row_stride)
+    k_head_stride = tl.where(
+        k_head_major, seqlen_k * d, k_head_stride
+    )
+    v_row_stride = tl.where(k_head_major, d, v_row_stride)
+    v_head_stride = tl.where(
+        k_head_major, seqlen_k * d, v_head_stride
+    )
+    o_row_stride = tl.where(q_head_major, d, o_row_stride)
+    o_head_stride = tl.where(
+        q_head_major, seqlen_q * d, o_head_stride
+    )
+
     m_block = tl.program_id(0)
     bh = tl.program_id(1)
     hid = bh % h

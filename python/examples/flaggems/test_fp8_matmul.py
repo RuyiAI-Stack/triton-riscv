@@ -23,7 +23,7 @@ def test_fp8_matmul_forward(M, N, K):
     a_s = torch.ones(M, K // GROUP_SIZE, dtype=torch.float32)
     b_s = torch.ones(N // GROUP_SIZE, K // GROUP_SIZE, dtype=torch.float32)
 
-    ref = torch.mm(a_f32, b_f32.t()).to(torch.bfloat16)
+    ref = torch.mm(a.float(), b.float().t()).to(torch.bfloat16)
     tri_out = fp8_matmul(a, a_s, b, b_s)
 
     torch.testing.assert_close(tri_out, ref, rtol=1e-1, atol=1e-1)
@@ -42,7 +42,7 @@ def test_fp8_matmul_batched(shape):
     a_s = torch.ones(B, M, K // GROUP_SIZE, dtype=torch.float32)
     b_s = torch.ones(N // GROUP_SIZE, K // GROUP_SIZE, dtype=torch.float32)
 
-    ref = torch.matmul(a_f32, b_f32.t()).to(torch.bfloat16)
+    ref = torch.matmul(a.float(), b.float().t()).to(torch.bfloat16)
     tri_out = fp8_matmul(a, a_s, b, b_s)
 
     torch.testing.assert_close(tri_out, ref, rtol=1e-1, atol=1e-1)

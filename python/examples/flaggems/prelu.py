@@ -12,24 +12,19 @@ def prelu_kernel(
     S,
     C,
     w_is_scalar: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    x = tl.load(x_ptr + offsets, mask=mask)
+    offset = tl.program_id(axis=0)
+    x = tl.load(x_ptr + offset)
 
     if w_is_scalar:
         alpha = tl.load(w_ptr)  # scalar
         y = tl.where(x >= 0, x, alpha * x)
     else:
-        c = (offsets // S) % C
-        alpha = tl.load(w_ptr + c, mask=mask)
+        c = (offset // S) % C
+        alpha = tl.load(w_ptr + c)
         y = tl.where(x >= 0, x, alpha * x)
 
-    tl.store(out_ptr + offsets, y, mask=mask)
+    tl.store(out_ptr + offset, y)
 
 
 def prelu(*args, **kwargs):
@@ -81,10 +76,7 @@ def prelu(*args, **kwargs):
     C = max(int(C), 1)
     S = max(int(S), 1)
 
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-
-    prelu_kernel[grid](
+    prelu_kernel[(n_elements,)](
         x,
         weight,
         out,
@@ -92,6 +84,6 @@ def prelu(*args, **kwargs):
         S,
         C,
         w_is_scalar=w_is_scalar,
-        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=1,
     )
     return out

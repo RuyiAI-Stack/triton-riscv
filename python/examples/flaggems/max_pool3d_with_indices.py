@@ -3,22 +3,6 @@ import triton
 import triton.language as tl
 
 
-@triton.jit
-def get_dtype_min(dtype):
-    """Get a value which is less that all other values of that dtype"""
-    dtype_ = dtype.value  # tl.dtype
-    if dtype_.is_floating():
-        value: tl.constexpr = float("-inf")
-        return value
-    if dtype_.is_int_signed():
-        width: tl.constexpr = dtype_.int_bitwidth
-        value: tl.constexpr = -1 * 2 ** (width - 1)
-        return value
-    if dtype_.is_int_unsigned():
-        value: tl.constexpr = 0
-        return value
-
-
 def pool3d_output_size(
     in_size: int,
     kernel_size: int,
@@ -33,9 +17,8 @@ def pool3d_output_size(
         output_size = (numerator + stride - 1) // stride + 1
         if (output_size - 1) * stride >= in_size + padding:
             output_size -= 1
-    else:
-        output_size = numerator // stride + 1
-    return output_size
+        return output_size
+    return numerator // stride + 1
 
 
 @triton.jit
@@ -43,12 +26,6 @@ def max_pool3d_forward_kernel(
     input_ptr,
     output_ptr,
     indices_ptr,
-    in_stride_n,
-    in_stride_c,
-    in_stride_d,
-    in_stride_h,
-    in_stride_w,
-    in_c,
     in_d,
     in_h,
     in_w,
@@ -67,93 +44,49 @@ def max_pool3d_forward_kernel(
     dilation_d: tl.constexpr,
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
 ):
-    pid_nc = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
+    output_offset = tl.program_id(0)
+    w_out = output_offset % out_w
+    remaining = output_offset // out_w
+    h_out = remaining % out_h
+    remaining //= out_h
+    d_out = remaining % out_d
+    nc_idx = remaining // out_d
+    input_volume = in_d * in_h * in_w
+    input_base = nc_idx * input_volume
 
-    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-
-    d_block_idx = pid_dhw // (num_h_blocks * num_w_blocks)
-    hw_remainder = pid_dhw % (num_h_blocks * num_w_blocks)
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
-
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
-
-    d_out = d_block_idx
-
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
-    dtype = input_ptr.type.element_ty
-    min_val = get_dtype_min(dtype)
-    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
-
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-
+    min_value: tl.constexpr = float("-inf")
+    max_value = tl.full((), min_value, dtype=tl.float32)
+    max_index = tl.full((), -1, dtype=tl.int32)
     for kd in tl.static_range(0, kernel_d):
-        d_in = d_out * stride_d - padding_d + kd * dilation_d
-        d_valid = (d_in >= 0) & (d_in < in_d)
         for kh in tl.static_range(0, kernel_h):
             for kw in tl.static_range(0, kernel_w):
-                h_in = (
-                    h_out_offsets[:, None] * stride_h
-                    - padding_h
-                    + kh * dilation_h
-                )
-                w_in = (
-                    w_out_offsets[None, :] * stride_w
-                    - padding_w
-                    + kw * dilation_w
-                )
-                in_mask = (
-                    d_valid
+                d_in = d_out * stride_d - padding_d + kd * dilation_d
+                h_in = h_out * stride_h - padding_h + kh * dilation_h
+                w_in = w_out * stride_w - padding_w + kw * dilation_w
+                valid = (
+                    (d_in >= 0)
+                    & (d_in < in_d)
                     & (h_in >= 0)
                     & (h_in < in_h)
                     & (w_in >= 0)
                     & (w_in < in_w)
                 )
-                input_offset = (
-                    d_in * in_stride_d
-                    + h_in * in_stride_h
-                    + w_in * in_stride_w
+                safe_d = tl.maximum(0, tl.minimum(d_in, in_d - 1))
+                safe_h = tl.maximum(0, tl.minimum(h_in, in_h - 1))
+                safe_w = tl.maximum(0, tl.minimum(w_in, in_w - 1))
+                input_index = safe_d * in_h * in_w + safe_h * in_w + safe_w
+                value = tl.load(input_ptr + input_base + input_index).to(
+                    tl.float32
                 )
-                current_val = tl.load(
-                    input_base_ptr + input_offset, mask=in_mask, other=min_val
-                )
-                current_idx = d_in * in_h * in_w + h_in * in_w + w_in
+                value = tl.where(valid, value, min_value)
+                update = valid & ((max_index < 0) | (value > max_value))
+                max_value = tl.where(update, value, max_value)
+                flat_index = d_in * in_h * in_w + h_in * in_w + w_in
+                max_index = tl.where(update, flat_index, max_index)
 
-                is_new_max = current_val > max_val_acc
-                max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
-                max_idx_acc = tl.where(
-                    is_new_max & in_mask, current_idx, max_idx_acc
-                )
-
-    out_spatial = out_h * out_w
-    out_base_offset = pid_nc * out_d * out_spatial + d_out * out_spatial
-    out_base_ptr = output_ptr + out_base_offset
-    indices_base_ptr = indices_ptr + out_base_offset
-    out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-    indices_block_ptr = (
-        indices_base_ptr
-        + out_h_offsets[:, None] * out_w
-        + out_w_offsets[None, :]
-    )
-
-    out_mask = (out_h_offsets[:, None] < out_h) & (
-        out_w_offsets[None, :] < out_w
-    )
-    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
-    tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
+    tl.store(output_ptr + output_offset, max_value)
+    tl.store(indices_ptr + output_offset, max_index)
 
 
 @triton.jit
@@ -167,114 +100,19 @@ def max_pool3d_backward_kernel(
     out_d,
     out_h,
     out_w,
-    out_stride_nc,
-    out_stride_d,
-    out_stride_h,
-    out_stride_w,
-    kernel_d: tl.constexpr,
-    kernel_h: tl.constexpr,
-    kernel_w: tl.constexpr,
-    stride_d: tl.constexpr,
-    stride_h: tl.constexpr,
-    stride_w: tl.constexpr,
-    padding_d: tl.constexpr,
-    padding_h: tl.constexpr,
-    padding_w: tl.constexpr,
-    dilation_d: tl.constexpr,
-    dilation_h: tl.constexpr,
-    dilation_w: tl.constexpr,
-    BLOCK_IN_H: tl.constexpr,
-    BLOCK_IN_W: tl.constexpr,
 ):
-    nc_idx = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
-
-    num_h_blocks = tl.cdiv(in_h, BLOCK_IN_H)
-    num_w_blocks = tl.cdiv(in_w, BLOCK_IN_W)
-
-    d_in_idx = pid_dhw // (num_h_blocks * num_w_blocks)
-    hw_remainder = pid_dhw % (num_h_blocks * num_w_blocks)
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
-
-    h_in_offsets = h_block_idx * BLOCK_IN_H + tl.arange(0, BLOCK_IN_H)
-    w_in_offsets = w_block_idx * BLOCK_IN_W + tl.arange(0, BLOCK_IN_W)
-
-    current_input_flat_idx = (
-        d_in_idx * in_h * in_w
-        + h_in_offsets[:, None] * in_w
-        + w_in_offsets[None, :]
-    )
-    grad_acc = tl.zeros((BLOCK_IN_H, BLOCK_IN_W), dtype=tl.float32)
-
-    indices_base_ptr = indices_ptr + nc_idx * out_stride_nc
-    grad_output_base_ptr = grad_output_ptr + nc_idx * out_stride_nc
-
-    for kd in tl.static_range(0, kernel_d):
-        numerator_d = d_in_idx + padding_d - kd * dilation_d
-        valid_d = numerator_d % stride_d == 0
-        d_out = numerator_d // stride_d
-        d_bounds = (d_out >= 0) & (d_out < out_d)
-        d_valid = valid_d & d_bounds
-
-        for kh in tl.static_range(0, kernel_h):
-            for kw in tl.static_range(0, kernel_w):
-                numerator_h = (
-                    h_in_offsets[:, None] + padding_h - kh * dilation_h
-                )
-                numerator_w = (
-                    w_in_offsets[None, :] + padding_w - kw * dilation_w
-                )
-
-                valid_map_mask = (
-                    d_valid
-                    & (numerator_h % stride_h == 0)
-                    & (numerator_w % stride_w == 0)
-                )
-                h_out = numerator_h // stride_h
-                w_out = numerator_w // stride_w
-                out_bounds_mask = (
-                    (h_out >= 0)
-                    & (h_out < out_h)
-                    & (w_out >= 0)
-                    & (w_out < out_w)
-                )
-                load_mask = valid_map_mask & out_bounds_mask
-
-                safe_h_out = tl.where(load_mask, h_out, 0)
-                safe_w_out = tl.where(load_mask, w_out, 0)
-                safe_d_out = tl.where(load_mask, d_out, 0)
-                out_offsets = (
-                    safe_d_out * out_stride_d
-                    + safe_h_out * out_stride_h
-                    + safe_w_out
-                )
-
-                indices_block = tl.load(
-                    indices_base_ptr + out_offsets, mask=load_mask, other=-1
-                )
-                match_mask = indices_block == current_input_flat_idx
-
-                grad_block = tl.load(
-                    grad_output_base_ptr + out_offsets,
-                    mask=match_mask,
-                    other=0.0,
-                )
-                grad_acc += grad_block
-
-    in_spatial = in_h * in_w
-    grad_input_base_ptr = grad_input_ptr + nc_idx * in_d * in_spatial
-    grad_input_offsets = (
-        d_in_idx * in_spatial
-        + h_in_offsets[:, None] * in_w
-        + w_in_offsets[None, :]
-    )
-    store_mask = (h_in_offsets[:, None] < in_h) & (
-        w_in_offsets[None, :] < in_w
-    )
-    tl.store(
-        grad_input_base_ptr + grad_input_offsets, grad_acc, mask=store_mask
-    )
+    input_offset = tl.program_id(0)
+    input_volume = in_d * in_h * in_w
+    input_index = input_offset % input_volume
+    nc_idx = input_offset // input_volume
+    output_volume = out_d * out_h * out_w
+    grad = tl.full((), 0.0, dtype=tl.float32)
+    for output_index in range(0, output_volume):
+        offset = nc_idx * output_volume + output_index
+        selected_index = tl.load(indices_ptr + offset).to(tl.int32)
+        output_grad = tl.load(grad_output_ptr + offset).to(tl.float32)
+        grad += tl.where(selected_index == input_index, output_grad, 0.0)
+    tl.store(grad_input_ptr + input_offset, grad)
 
 
 def _parse_pool3d_params(kernel_size, stride, padding, dilation):
@@ -291,20 +129,12 @@ def _parse_pool3d_params(kernel_size, stride, padding, dilation):
     sd, sh, sw = _parse_param(stride, "stride", default=(kd, kh, kw))
     pd, ph, pw = _parse_param(padding, "padding", default=(0, 0, 0))
     dd, dh, dw = _parse_param(dilation, "dilation", default=(1, 1, 1))
-
     if sd <= 0 or sh <= 0 or sw <= 0:
-        raise ValueError(
-            f"stride must be positive, but got stride=({sd}, {sh}, {sw})"
-        )
+        raise ValueError("stride must be positive")
     if pd < 0 or ph < 0 or pw < 0:
-        raise ValueError(
-            f"padding must be non-negative, but got padding=({pd}, {ph}, {pw})"
-        )
+        raise ValueError("padding must be non-negative")
     if dd <= 0 or dh <= 0 or dw <= 0:
-        raise ValueError(
-            f"dilation must be positive, but got dilation=({dd}, {dh}, {dw})"
-        )
-
+        raise ValueError("dilation must be positive")
     return kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw
 
 
@@ -317,68 +147,45 @@ def max_pool3d_with_indices(
     ceil_mode=False,
 ):
     input = input.contiguous()
-
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
     kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw = params
-
     in_n, in_c, in_d, in_h, in_w = input.shape
     out_d = pool3d_output_size(in_d, kd, sd, pd, dd, ceil_mode)
     out_h = pool3d_output_size(in_h, kh, sh, ph, dh, ceil_mode)
     out_w = pool3d_output_size(in_w, kw, sw, pw, dw, ceil_mode)
-
     output = torch.empty(
         (in_n, in_c, out_d, out_h, out_w),
         device=input.device,
         dtype=input.dtype,
     )
     indices = torch.empty(
-        (in_n, in_c, out_d, out_h, out_w),
-        device=input.device,
-        dtype=torch.int64,
+        output.shape, device=input.device, dtype=torch.int64
     )
-
     if output.numel() == 0:
         return output, indices
-
-    BLOCK_H = 16
-    BLOCK_W = 16
-    grid = (
-        in_n * in_c,
-        out_d * triton.cdiv(out_h, BLOCK_H) * triton.cdiv(out_w, BLOCK_W),
-    )
-
-    max_pool3d_forward_kernel[grid](
+    max_pool3d_forward_kernel[(output.numel(),)](
         input,
         output,
         indices,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
-        input.stride(4),
-        in_c,
         in_d,
         in_h,
         in_w,
         out_d,
         out_h,
         out_w,
-        kd,
-        kh,
-        kw,
-        sd,
-        sh,
-        sw,
-        pd,
-        ph,
-        pw,
-        dd,
-        dh,
-        dw,
-        BLOCK_H=BLOCK_H,
-        BLOCK_W=BLOCK_W,
+        kernel_d=kd,
+        kernel_h=kh,
+        kernel_w=kw,
+        stride_d=sd,
+        stride_h=sh,
+        stride_w=sw,
+        padding_d=pd,
+        padding_h=ph,
+        padding_w=pw,
+        dilation_d=dd,
+        dilation_h=dh,
+        dilation_w=dw,
     )
-
     return output, indices
 
 
@@ -394,36 +201,12 @@ def max_pool3d_backward(
 ):
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
-
-    params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
-    kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw = params
-
     in_n, in_c, in_d, in_h, in_w = input.shape
-    out_d, out_h, out_w = (
-        grad_output.shape[2],
-        grad_output.shape[3],
-        grad_output.shape[4],
-    )
-
-    grad_input = torch.zeros_like(input)
-
+    out_d, out_h, out_w = grad_output.shape[2:]
+    grad_input = torch.empty_like(input, memory_format=torch.contiguous_format)
     if grad_input.numel() == 0:
         return grad_input
-
-    out_spatial = out_h * out_w
-    out_stride_nc = out_d * out_spatial
-    out_stride_d = out_spatial
-    out_stride_h = out_w
-    out_stride_w = 1
-
-    BLOCK_IN_H = 16
-    BLOCK_IN_W = 16
-    grid = (
-        in_n * in_c,
-        in_d * triton.cdiv(in_h, BLOCK_IN_H) * triton.cdiv(in_w, BLOCK_IN_W),
-    )
-
-    max_pool3d_backward_kernel[grid](
+    max_pool3d_backward_kernel[(grad_input.numel(),)](
         grad_output,
         indices,
         grad_input,
@@ -433,24 +216,5 @@ def max_pool3d_backward(
         out_d,
         out_h,
         out_w,
-        out_stride_nc,
-        out_stride_d,
-        out_stride_h,
-        out_stride_w,
-        kd,
-        kh,
-        kw,
-        sd,
-        sh,
-        sw,
-        pd,
-        ph,
-        pw,
-        dd,
-        dh,
-        dw,
-        BLOCK_IN_H=BLOCK_IN_H,
-        BLOCK_IN_W=BLOCK_IN_W,
     )
-
     return grad_input

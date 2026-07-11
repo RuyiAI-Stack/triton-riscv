@@ -157,6 +157,19 @@ To run a single test:
 pytest python/examples/test_vec_add.py -v
 ```
 
+To run the complete FlagGems compatibility suite:
+
+```sh
+pytest python/examples/ \
+    --ignore=python/examples/test_core.py \
+    --ignore=python/examples/test_annotations.py \
+    -v
+```
+
+See [docs/09-FlagGems-x86-QEMU.md](docs/09-FlagGems-x86-QEMU.md) for the
+validated x86 result, QEMU smoke workflow, failure classification, and current
+standalone-runner limitations.
+
 ## Generate and run RVV ELF files with QEMU
 
 The backend can compile a Python Triton kernel directly to a self-contained RISC-V Linux ELF, automatically generate its runner, execute it with QEMU, and verify outputs. No user-written C runner is required.

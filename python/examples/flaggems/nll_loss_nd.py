@@ -95,11 +95,71 @@ def nll_loss_nd_forward_kernel(
 
 
 @triton.jit
+def nll_loss_nd_reduce_kernel(
+    input_ptr,
+    target_ptr,
+    weight_ptr,
+    out_ptr,
+    total_weight_ptr,
+    N,
+    C,
+    S,
+    stride_in_n,
+    stride_in_c,
+    stride_in_s,
+    stride_tgt_n,
+    stride_tgt_s,
+    ignore_index,
+    HAS_WEIGHT: tl.constexpr,
+    REDUCTION: tl.constexpr,
+    BLOCK_ELEMENTS: tl.constexpr,
+):
+    offsets = tl.arange(0, BLOCK_ELEMENTS)
+    mask = offsets < N * S
+    n_offsets = offsets // S
+    s_offsets = offsets % S
+
+    target_offsets = n_offsets * stride_tgt_n + s_offsets * stride_tgt_s
+    target = tl.load(
+        target_ptr + target_offsets, mask=mask, other=ignore_index
+    ).to(tl.int32)
+    valid = mask & (target != ignore_index) & (target >= 0) & (target < C)
+
+    input_offsets = (
+        n_offsets * stride_in_n
+        + target * stride_in_c
+        + s_offsets * stride_in_s
+    )
+    input_value = tl.load(
+        input_ptr + input_offsets, mask=valid, other=0.0
+    ).to(tl.float32)
+    if HAS_WEIGHT:
+        sample_weight = tl.load(
+            weight_ptr + target, mask=valid, other=0.0
+        ).to(tl.float32)
+    else:
+        sample_weight = tl.where(valid, 1.0, 0.0).to(tl.float32)
+
+    loss = tl.where(valid, -input_value * sample_weight, 0.0)
+    total_loss = tl.sum(loss, axis=0)
+    total_weight = tl.sum(sample_weight, axis=0)
+    if REDUCTION == 1:
+        result = tl.where(
+            total_weight == 0.0, 0.0, total_loss / total_weight
+        )
+    else:
+        result = total_loss
+    tl.store(out_ptr, result.to(out_ptr.dtype.element_ty))
+    tl.store(total_weight_ptr, total_weight)
+
+
+@triton.jit
 def nll_loss_nd_backward_kernel(
     grad_out_ptr,
     target_ptr,
     weight_ptr,
     grad_in_ptr,
+    input_ptr,
     total_weight_ptr,
     C,
     S,
@@ -113,6 +173,7 @@ def nll_loss_nd_backward_kernel(
     ignore_index,
     HAS_WEIGHT: tl.constexpr,
     REDUCTION: tl.constexpr,
+    FUSE_LOG_SOFTMAX: tl.constexpr,
     BLOCK_S: tl.constexpr = 1024,
 ):
     pid_s = tl.program_id(0)
@@ -149,14 +210,33 @@ def nll_loss_nd_backward_kernel(
     else:  # sum or none
         grad_in_val = -w * out_grad
 
-    in_offsets = (
-        pid_n * stride_in_n + t * stride_in_c + s_offsets * stride_in_s
-    )
-    tl.store(
-        grad_in_ptr + in_offsets,
-        grad_in_val.to(grad_in_ptr.dtype.element_ty),
-        mask=valid,
-    )
+    if FUSE_LOG_SOFTMAX:
+        for channel in range(0, C):
+            in_offsets = (
+                pid_n * stride_in_n
+                + channel * stride_in_c
+                + s_offsets * stride_in_s
+            )
+            log_probability = tl.load(
+                input_ptr + in_offsets, mask=mask_s, other=0.0
+            ).to(tl.float32)
+            channel_grad = grad_in_val * (
+                (t == channel).to(tl.float32) - tl.exp(log_probability)
+            )
+            tl.store(
+                grad_in_ptr + in_offsets,
+                channel_grad.to(grad_in_ptr.dtype.element_ty),
+                mask=mask_s,
+            )
+    else:
+        in_offsets = (
+            pid_n * stride_in_n + t * stride_in_c + s_offsets * stride_in_s
+        )
+        tl.store(
+            grad_in_ptr + in_offsets,
+            grad_in_val.to(grad_in_ptr.dtype.element_ty),
+            mask=valid,
+        )
 
 
 def nll_loss_nd_forward(
@@ -243,14 +323,16 @@ def nll_loss_nd_forward(
 
         else:
             out = torch.empty(1, device=input.device, dtype=input.dtype)
-            scratch = torch.zeros(3, device=input.device, dtype=torch.float32)
+            scratch = torch.empty(1, device=input.device, dtype=torch.float32)
 
-            nll_loss_nd_forward_kernel[grid](
+            block_elements = triton.next_power_of_2(N * S)
+            nll_loss_nd_reduce_kernel[(1,)](
                 inp,
                 tgt,
                 w,
                 out,
                 scratch,
+                N,
                 C,
                 S,
                 stride_in_n,
@@ -261,12 +343,12 @@ def nll_loss_nd_forward(
                 ignore_index,
                 HAS_WEIGHT=has_weight,
                 REDUCTION=reduction,
-                BLOCK_S=BLOCK_S,
+                BLOCK_ELEMENTS=block_elements,
             )
             out = out[0]
 
             if reduction == 1:
-                total_weight = scratch[1]
+                total_weight = scratch[0]
             else:
                 total_weight = torch.empty(
                     [], device=input.device, dtype=input.dtype
@@ -283,6 +365,7 @@ def nll_loss_nd_backward(
     reduction: int = 1,
     ignore_index: int = -100,
     total_weight: torch.Tensor = None,
+    _fuse_log_softmax: bool = True,
 ):
     if input.dim() < 3:
         return nll_loss_2d_backward(
@@ -329,6 +412,7 @@ def nll_loss_nd_backward(
             tgt,
             w,
             grad_input,
+            input,
             total_weight,
             C,
             S,
@@ -342,6 +426,7 @@ def nll_loss_nd_backward(
             ignore_index,
             HAS_WEIGHT=has_weight,
             REDUCTION=reduction,
+            FUSE_LOG_SOFTMAX=_fuse_log_softmax,
             BLOCK_S=BLOCK_S,
         )
 
@@ -374,6 +459,7 @@ def nll_loss_nd(input, target, weight=None, reduction=1, ignore_index=-100):
                     ctx.reduction,
                     ctx.ignore_index,
                     tw,
+                    _fuse_log_softmax=False,
                 )
                 return grad, None, None, None, None
 

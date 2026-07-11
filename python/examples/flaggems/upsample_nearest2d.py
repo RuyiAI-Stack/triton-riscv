@@ -20,17 +20,15 @@ def upsample_nearest2d_kernel(
     SAME_W: tl.constexpr,
     USE_INT32_IDX: tl.constexpr,
 ):
-    if USE_INT32_IDX:
-        pid = tl.program_id(axis=0)
-    else:
-        pid = tl.program_id(axis=0).to(tl.int64)
-    nc_stride = tl.num_programs(axis=1)
-    NC = N * C
-    nc_iter = tl.program_id(axis=1)
-
+    pid = tl.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    ow = idx % OW
-    oh = idx // OW % OH
+    output_plane = OH * OW
+    total = N * C * output_plane
+    mask = idx < total
+    spatial_index = idx % output_plane
+    nc = idx // output_plane
+    ow = spatial_index % OW
+    oh = spatial_index // OW
 
     if SAME_H:
         ih = oh
@@ -43,17 +41,9 @@ def upsample_nearest2d_kernel(
     else:
         iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
 
-    offset_o = (nc_iter * OH + oh) * OW + ow
-    offset_i = (nc_iter * IH + ih) * IW + iw
-    src_index_stride = nc_stride * IH * IW
-    dst_index_stride = nc_stride * OH * OW
-
-    while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
-        ptr_i += src_index_stride
-        ptr_o += dst_index_stride
-        nc_iter += nc_stride
+    offset_i = (nc * IH + ih) * IW + iw
+    data = tl.load(ptr_i + offset_i, mask=mask)
+    tl.store(ptr_o + idx, data, mask=mask)
 
 
 def upsample_nearest2d(
@@ -82,11 +72,8 @@ def upsample_nearest2d(
     output = torch.empty(
         (N, C, OH, OW), device=input.device, dtype=input.dtype
     )
-    total_threads = OH * OW
-    grid = (
-        triton.cdiv(total_threads, 1024),
-        triton.cdiv(N * C, 4),
-    )
+    total_threads = N * C * OH * OW
+    grid = (triton.cdiv(total_threads, 1024),)
     same_h = IH == OH
     same_w = IW == OW
 

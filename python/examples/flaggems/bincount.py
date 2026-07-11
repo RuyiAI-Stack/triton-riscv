@@ -10,14 +10,16 @@ def bincount_kernel(
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
-
-    indices = tl.load(inp_ptr + offsets, mask=mask, other=0)
-
-    ones = tl.full((BLOCK_SIZE,), 1, dtype=tl.int64)
-    tl.atomic_add(out_ptr + indices, ones, mask=mask, sem="relaxed")
+    bin_idx = tl.program_id(0)
+    offsets = tl.arange(0, BLOCK_SIZE)
+    count = tl.zeros((1,), dtype=tl.int32)
+    for block_start in range(0, N, BLOCK_SIZE):
+        block_offsets = block_start + offsets
+        mask = block_offsets < N
+        indices = tl.load(inp_ptr + block_offsets, mask=mask, other=-1)
+        matches = mask & (indices == bin_idx)
+        count += tl.sum(matches.to(tl.int32))
+    tl.store(out_ptr + bin_idx, tl.sum(count).to(tl.int64))
 
 
 @triton.jit
@@ -28,14 +30,16 @@ def bincount_weights_kernel(
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
-
-    indices = tl.load(inp_ptr + offsets, mask=mask, other=0)
-    weights = tl.load(weights_ptr + offsets, mask=mask, other=0.0)
-
-    tl.atomic_add(out_ptr + indices, weights, mask=mask, sem="relaxed")
+    bin_idx = tl.program_id(0)
+    offsets = tl.arange(0, BLOCK_SIZE)
+    count = tl.zeros((1,), dtype=tl.float64)
+    for block_start in range(0, N, BLOCK_SIZE):
+        block_offsets = block_start + offsets
+        mask = block_offsets < N
+        indices = tl.load(inp_ptr + block_offsets, mask=mask, other=-1)
+        weights = tl.load(weights_ptr + block_offsets, mask=mask, other=0.0)
+        count += tl.sum(tl.where(mask & (indices == bin_idx), weights, 0.0))
+    tl.store(out_ptr + bin_idx, tl.sum(count))
 
 
 def bincount(inp, weights=None, minlength=0):
@@ -56,6 +60,9 @@ def bincount(inp, weights=None, minlength=0):
                 minlength, dtype=weights.dtype, device=inp.device
             )
         return torch.zeros(minlength, dtype=torch.int64, device=inp.device)
+
+    if int(inp.min().item()) < 0:
+        raise RuntimeError("bincount only supports non-negative inputs")
 
     max_val = int(inp.max().item())
     output_size = max(max_val + 1, minlength)
@@ -80,7 +87,7 @@ def bincount(inp, weights=None, minlength=0):
             )
 
         BLOCK_SIZE = 1024
-        grid = (triton.cdiv(N, BLOCK_SIZE),)
+        grid = (output_size,)
 
         bincount_weights_kernel[grid](
             inp,
@@ -97,7 +104,7 @@ def bincount(inp, weights=None, minlength=0):
     else:
         out = torch.zeros(output_size, dtype=torch.int64, device=inp.device)
         BLOCK_SIZE = 1024
-        grid = (triton.cdiv(N, BLOCK_SIZE),)
+        grid = (output_size,)
         bincount_kernel[grid](
             inp,
             out,

@@ -73,12 +73,16 @@ def avg_pool2d_forward_kernel(
             w_in = (
                 w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
             )
-            in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
+            h_valid = (h_in >= 0) & (h_in < in_h)
+            w_valid = (w_in >= 0) & (w_in < in_w)
+            in_mask = h_valid & w_valid
 
-            input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=0.0
-            )
+            # Avoid feeding a four-way broadcast mask into pointer analysis;
+            # clamp the address and apply validity to the loaded value.
+            safe_h = tl.maximum(0, tl.minimum(h_in, in_h - 1))
+            safe_w = tl.maximum(0, tl.minimum(w_in, in_w - 1))
+            input_offset = safe_h * in_stride_h + safe_w * in_stride_w
+            current_val = tl.load(input_base_ptr + input_offset)
 
             sum_acc += tl.where(in_mask, current_val, 0.0)
             count_acc += in_mask.to(tl.int32)
@@ -211,12 +215,14 @@ def avg_pool2d_backward_kernel(
 
             divisor = tl.where(divisor == 0, 1.0, divisor)
 
+            safe_h_out = tl.maximum(0, tl.minimum(h_out, out_h - 1))
+            safe_w_out = tl.maximum(0, tl.minimum(w_out, out_w - 1))
             grad_out_ptr = (
                 grad_output_base_ptr
-                + h_out * out_stride_h
-                + w_out * out_stride_w
+                + safe_h_out * out_stride_h
+                + safe_w_out * out_stride_w
             )
-            grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
+            grad_out_val = tl.load(grad_out_ptr)
             grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
 
     grad_input_store_ptr = (

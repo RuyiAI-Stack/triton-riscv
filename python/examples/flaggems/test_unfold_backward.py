@@ -31,7 +31,7 @@ def test_unfold_backward(size):
     x_unfolded = x.unfold(0, window_size, step)
     grad_in = torch.randn(x_unfolded.shape, dtype=torch.float32, device="cpu")
 
-    x_unfolded.sum().backward()
+    x_unfolded.backward(grad_in)
     ref_grad = x.grad
     tri_grad = unfold_backward(grad_in, input_sizes, 0, window_size, step)
 
@@ -51,7 +51,7 @@ def test_unfold_backward_2d(size):
     x_unfolded = x.unfold(1, window_size, step)
     grad_in = torch.randn(x_unfolded.shape, dtype=torch.float32, device="cpu")
 
-    x_unfolded.sum().backward()
+    x_unfolded.backward(grad_in)
     ref_grad = x.grad
     tri_grad = unfold_backward(grad_in, input_sizes, 1, window_size, step)
 

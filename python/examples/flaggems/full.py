@@ -69,19 +69,22 @@ def full(
             dtype = torch.get_default_dtype()
     else:
         fill_value = check_dtype(fill_value, dtype, device)
-    out = torch.empty(size, device=device, dtype=dtype)
+    kernel_dtype = torch.uint8 if dtype == torch.bool else dtype
+    out = torch.empty(size, device=device, dtype=kernel_dtype)
     n_elements = out.numel()
     if n_elements == 0:
-        return out
+        return out.bool() if dtype == torch.bool else out
 
     if isinstance(fill_value, torch.Tensor):
-        fill_tensor = fill_value.to(device=device, dtype=dtype)
+        fill_tensor = fill_value.to(device=device, dtype=kernel_dtype)
     else:
-        fill_tensor = torch.tensor(fill_value, device=device, dtype=dtype)
+        fill_tensor = torch.tensor(
+            fill_value, device=device, dtype=kernel_dtype
+        )
 
     BLOCK_SIZE = 1024
     num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
     full_kernel[(num_blocks,)](
         out, fill_tensor, n_elements, BLOCK_SIZE=BLOCK_SIZE
     )
-    return out
+    return out.bool() if dtype == torch.bool else out

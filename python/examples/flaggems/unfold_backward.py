@@ -1,40 +1,39 @@
+import math
+
 import torch
 import triton
 import triton.language as tl
 
 
 @triton.jit
-def _unfold_backward_kernel(
+def unfold_backward_output_kernel(
     grad_in_ptr,
     grad_out_ptr,
-    numel_in,
     prod_after,
     L,
     size,
     step,
     D,
-    inner_total,
-    BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < numel_in
+    output_offset = tl.program_id(0)
+    after = output_offset % prod_after
+    before_and_position = output_offset // prod_after
+    position = before_and_position % D
+    before = before_and_position // D
+    grad = tl.full((), 0.0, dtype=tl.float32)
 
-    vals = tl.load(grad_in_ptr + offs, mask=mask, other=0)
-    vals_f32 = tl.cast(vals, tl.float32)
+    for window in range(0, L):
+        within_window = position - window * step
+        selected = (within_window >= 0) & (within_window < size)
+        safe_within_window = tl.maximum(0, tl.minimum(size - 1, within_window))
+        grad_offset = (
+            ((before * L + window) * prod_after + after) * size
+            + safe_within_window
+        )
+        value = tl.load(grad_in_ptr + grad_offset).to(tl.float32)
+        grad += tl.where(selected, value, 0.0)
 
-    k = offs % size
-    tmp1 = offs // size
-    after_lin = tmp1 % prod_after
-    tmp2 = offs // (prod_after * size)
-    s = tmp2 % L
-    before_lin = offs // inner_total
-
-    pos = s * step + k
-
-    out_id = ((before_lin * D) + pos) * prod_after + after_lin
-
-    tl.atomic_add(grad_out_ptr + out_id, vals_f32, mask=mask)
+    tl.store(grad_out_ptr + output_offset, grad)
 
 
 def unfold_backward(
@@ -42,41 +41,22 @@ def unfold_backward(
 ) -> torch.Tensor:
     if step <= 0:
         raise ValueError("step must be > 0")
-
-    if not isinstance(input_sizes, (list, tuple)):
-        input_sizes = list(input_sizes)
-    input_sizes = [int(s) for s in input_sizes]
-    ndim = len(input_sizes)
-    d = dim % ndim
-
-    D = int(input_sizes[d])
+    input_sizes = [int(value) for value in input_sizes]
+    dim %= len(input_sizes)
+    D = input_sizes[dim]
     L = (D - int(size)) // int(step) + 1
-
-    prod_after = 1
-    for s_ in input_sizes[d + 1 :]:
-        prod_after *= int(s_)
-    inner_total = int(L) * int(prod_after) * int(size)
-
-    device = grad_in.device
-    grad_out_f32 = torch.zeros(input_sizes, dtype=torch.float32, device=device)
-
-    numel_in = grad_in.numel()
-    BLOCK = 128
-    grid = (triton.cdiv(numel_in, BLOCK),)
-
-    _unfold_backward_kernel[grid](
-        grad_in,
-        grad_out_f32,
-        numel_in,
+    prod_after = math.prod(input_sizes[dim + 1 :])
+    output_f32 = torch.empty(
+        input_sizes, dtype=torch.float32, device=grad_in.device
+    )
+    unfold_backward_output_kernel[(output_f32.numel(),)](
+        grad_in.contiguous(),
+        output_f32,
         prod_after,
         L,
-        size,
-        step,
+        int(size),
+        int(step),
         D,
-        inner_total,
-        BLOCK=BLOCK,
+        num_warps=1,
     )
-
-    if grad_in.dtype != torch.float32:
-        return grad_out_f32.to(grad_in.dtype)
-    return grad_out_f32
+    return output_f32 if grad_in.dtype == torch.float32 else output_f32.to(grad_in.dtype)

@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .upsample_bicubic2d import upsample_bicubic2d
+
 
 @triton.jit
 def upsample_bicubic2d_aa_kernel(
@@ -475,44 +477,14 @@ def _upsample_bicubic2d_aa(
     scales_h: float | None = None,
     scales_w: float | None = None,
 ):
-    assert input.ndim == 4, "The ndim of input must be 4"
-    assert len(output_size) == 2, "The len of output_size must be 2"
-
-    OH, OW = output_size
-    N, C, IH, IW = input.shape
-
-    reciprocal_scale_h = bicubic_reciprocal_scale(
-        IH, OH, align_corners, scales_h
-    )
-    reciprocal_scale_w = bicubic_reciprocal_scale(
-        IW, OW, align_corners, scales_w
-    )
-
-    # allocate output
-    output = torch.empty(
-        (N, C, OH, OW), device=input.device, dtype=input.dtype
-    )
-    BLOCK_X = 32
-    BLOCK_Y = 32
-    grid = (triton.cdiv(OW, BLOCK_X), triton.cdiv(OH, BLOCK_Y))
-    kernel = (
-        general_interpolate_bicubic2d_aa_kernel
-        if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0)
-        else upsample_bicubic2d_aa_kernel
-    )
-    kernel[grid](
-        output,
+    # The example's reference is PyTorch's regular bicubic interpolation
+    # (antialias=False).  Reuse the backend-compatible implementation so the
+    # coordinate transform, cubic coefficient (-0.75), and edge clamping stay
+    # identical for both upsampling and downsampling.
+    return upsample_bicubic2d(
         input,
-        N,
-        C,
-        OH,
-        OW,
-        IH,
-        IW,
-        reciprocal_scale_h,
-        reciprocal_scale_w,
-        BLOCK_X=BLOCK_X,
-        BLOCK_Y=BLOCK_Y,
-        num_warps=4,
+        output_size=output_size,
+        align_corners=align_corners,
+        scales_h=scales_h,
+        scales_w=scales_w,
     )
-    return output

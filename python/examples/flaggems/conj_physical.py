@@ -5,8 +5,10 @@ import triton.language as tl
 
 @triton.jit
 def conj_physical_kernel(
-    in_ptr,
-    out_ptr,
+    real_ptr,
+    imag_ptr,
+    out_real_ptr,
+    out_imag_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -14,12 +16,11 @@ def conj_physical_kernel(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    base = offsets * 2
-    real = tl.load(in_ptr + base, mask=mask)
-    imag = tl.load(in_ptr + base + 1, mask=mask)
+    real = tl.load(real_ptr + offsets, mask=mask)
+    imag = tl.load(imag_ptr + offsets, mask=mask)
 
-    tl.store(out_ptr + base, real, mask=mask)
-    tl.store(out_ptr + base + 1, -imag, mask=mask)
+    tl.store(out_real_ptr + offsets, real, mask=mask)
+    tl.store(out_imag_ptr + offsets, -imag, mask=mask)
 
 
 def conj_physical(input):
@@ -27,18 +28,20 @@ def conj_physical(input):
         return input
 
     n_elements = input.numel()
-    src = input if input.is_contiguous() else input.contiguous()
-    output = torch.empty_like(src)
-    in_real_ptr = torch.view_as_real(src)
-    out_real_ptr = torch.view_as_real(output)
+    real = input.real.contiguous()
+    imag = input.imag.contiguous()
+    output_real = torch.empty_like(real)
+    output_imag = torch.empty_like(imag)
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     conj_physical_kernel[grid](
-        in_real_ptr,
-        out_real_ptr,
+        real,
+        imag,
+        output_real,
+        output_imag,
         n_elements,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
-    return output
+    return torch.complex(output_real, output_imag)

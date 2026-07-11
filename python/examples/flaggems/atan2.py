@@ -6,6 +6,35 @@ import triton.language as tl
 
 
 @triton.jit
+def _atan_unit_interval(z):
+    reduce = z > 0.4142135623730950
+    t = tl.where(reduce, (z - 1.0) / (z + 1.0), z)
+    t2 = t * t
+    poly = -1.0 / 13.0
+    poly = 1.0 / 11.0 + t2 * poly
+    poly = -1.0 / 9.0 + t2 * poly
+    poly = 1.0 / 7.0 + t2 * poly
+    poly = -1.0 / 5.0 + t2 * poly
+    poly = 1.0 / 3.0 + t2 * poly
+    result = t - t * t2 * poly
+    return tl.where(reduce, 0.7853981633974483 + result, result)
+
+
+@triton.jit
+def _atan2_approx(y, x):
+    ax = tl.abs(x)
+    ay = tl.abs(y)
+    swap = ay > ax
+    hi = tl.maximum(ax, ay)
+    lo = tl.minimum(ax, ay)
+    ratio = lo / tl.where(hi == 0.0, 1.0, hi)
+    result = _atan_unit_interval(ratio)
+    result = tl.where(swap, 1.5707963267948966 - result, result)
+    result = tl.where(x < 0.0, 3.141592653589793 - result, result)
+    return tl.where(y < 0.0, -result, result)
+
+
+@triton.jit
 def atan2_kernel_tt(
     x_ptr,
     y_ptr,
@@ -19,10 +48,7 @@ def atan2_kernel_tt(
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    # NOTE: tl.math.atan2 is NOT available in the triton-riscv MLIR backend.
-    # The backend only supports basic arithmetic ops. Polynomial approximation
-    # was attempted but insufficient accuracy (error > 1e-3).
-    res = tl.math.atan2(x.to(tl.float32), y.to(tl.float32))
+    res = _atan2_approx(x.to(tl.float32), y.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -39,7 +65,7 @@ def atan2_kernel_ts(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    res = tl.math.atan2(x.to(tl.float32), y_val.to(tl.float32))
+    res = _atan2_approx(x.to(tl.float32), y_val.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -56,7 +82,7 @@ def atan2_kernel_st(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     y = tl.load(y_ptr + offsets, mask=mask)
-    res = tl.math.atan2(x_val.to(tl.float32), y.to(tl.float32))
+    res = _atan2_approx(x_val.to(tl.float32), y.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
 

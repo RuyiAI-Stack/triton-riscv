@@ -52,6 +52,71 @@ def simple_unique_consecutive_flat_kernel(
 
 
 @triton.jit
+def consecutive_run_count_scalar_kernel(data_ptr, run_count_ptr, num_tasks):
+    previous = tl.load(data_ptr)
+    run_count = tl.full((), 0, dtype=tl.int32)
+    for i in range(0, num_tasks):
+        value = tl.load(data_ptr + i)
+        is_new = (i == 0) | (value != previous)
+        run_count += is_new.to(tl.int32)
+        previous = value
+    tl.store(run_count_ptr, run_count)
+
+
+@triton.jit
+def consecutive_values_counts_scalar_kernel(
+    data_ptr,
+    data_out_ptr,
+    counts_ptr,
+    num_tasks,
+    return_counts: tl.constexpr,
+):
+    output_index = tl.program_id(0)
+    previous = tl.load(data_ptr)
+    run_index = tl.full((), -1, dtype=tl.int32)
+    run_start = tl.full((), 0, dtype=tl.int32)
+    run_end = num_tasks
+
+    for i in range(0, num_tasks):
+        value = tl.load(data_ptr + i)
+        is_new = (i == 0) | (value != previous)
+        next_run_index = run_index + is_new.to(tl.int32)
+        run_start = tl.where(
+            is_new & (next_run_index == output_index), i, run_start
+        )
+        run_end = tl.where(
+            is_new & (next_run_index == output_index + 1), i, run_end
+        )
+        run_index = next_run_index
+        previous = value
+
+    tl.store(data_out_ptr + output_index, tl.load(data_ptr + run_start))
+    if return_counts:
+        tl.store(counts_ptr + output_index, run_end - run_start)
+
+
+@triton.jit
+def consecutive_inverse_scalar_kernel(
+    data_ptr,
+    inverse_indices_ptr,
+    num_tasks,
+):
+    output_index = tl.program_id(0)
+    previous = tl.load(data_ptr)
+    run_index = tl.full((), -1, dtype=tl.int32)
+    inverse_index = tl.full((), 0, dtype=tl.int32)
+
+    for i in range(0, num_tasks):
+        value = tl.load(data_ptr + i)
+        is_new = (i == 0) | (value != previous)
+        run_index += is_new.to(tl.int32)
+        inverse_index = tl.where(i == output_index, run_index, inverse_index)
+        previous = value
+
+    tl.store(inverse_indices_ptr + output_index, inverse_index)
+
+
+@triton.jit
 def output_counts_impl(
     global_pid,
     idx_ptr: tl.tensor,
@@ -300,54 +365,41 @@ def simple_unique_consecutive_flat(
     return_inverse: bool,
     return_counts: bool,
 ):
-    """Handle small inputs with a single kernel launch."""
+    """Handle small inputs without the unsupported ttx.cumsum operation."""
     num_tasks = data.numel()
-    grid = (1, 1, 1)
-
-    # allocate tensors
-    data_out = torch.empty_like(data)
-    inverse_indices = (
-        torch.empty(num_tasks, dtype=torch.int64, device=data.device)
-        if return_inverse
-        else None
+    run_count = torch.empty((1,), dtype=torch.int32, device=data.device)
+    consecutive_run_count_scalar_kernel[(1,)](
+        data, run_count, num_tasks, num_warps=1
     )
-    idx = (
-        torch.empty(num_tasks, dtype=torch.int64, device=data.device)
+    out_size = run_count.item()
+
+    data_out = torch.empty(
+        (out_size,), dtype=data.dtype, device=data.device
+    )
+    counts = (
+        torch.empty((out_size,), dtype=torch.int64, device=data.device)
         if return_counts
         else None
     )
-    unique_size = torch.empty([1], dtype=torch.int64, device=data.device)
-
-    # launch kernel
-    simple_unique_consecutive_flat_kernel[grid](
+    consecutive_values_counts_scalar_kernel[(out_size,)](
         data,
         data_out,
-        inverse_indices,
-        idx,
-        unique_size,
-        return_inverse,
-        return_counts,
+        counts,
         num_tasks,
-        tile_size=triton.next_power_of_2(num_tasks),
-        num_warps=8,
+        return_counts,
+        num_warps=1,
     )
 
-    out_size = unique_size.item()
-    counts = None
-    if return_counts:
-        idx = idx[:out_size]
-        counts = torch.empty_like(idx)
-        output_counts_kernel[grid](
-            idx,
-            num_tasks,
-            counts,
-            num_tasks=out_size,
-            tiles_per_cta=1,
-            tile_size=triton.next_power_of_2(out_size),
-            num_warps=8,
+    inverse_indices = None
+    if return_inverse:
+        inverse_indices = torch.empty(
+            (num_tasks,), dtype=torch.int64, device=data.device
+        )
+        consecutive_inverse_scalar_kernel[(num_tasks,)](
+            data, inverse_indices, num_tasks, num_warps=1
         )
 
-    return data_out[:out_size], inverse_indices, counts
+    return data_out, inverse_indices, counts
 
 
 def large_unique_consecutive_flat(

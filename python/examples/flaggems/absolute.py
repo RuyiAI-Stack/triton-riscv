@@ -23,7 +23,8 @@ def _absolute_kernel(
 
 @triton.jit
 def _absolute_complex_kernel(
-    ri_ptr,
+    real_ptr,
+    imag_ptr,
     out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
@@ -32,9 +33,8 @@ def _absolute_complex_kernel(
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    base = offsets * 2
-    re = tl.load(ri_ptr + base, mask=mask)
-    im = tl.load(ri_ptr + base + 1, mask=mask)
+    re = tl.load(real_ptr + offsets, mask=mask)
+    im = tl.load(imag_ptr + offsets, mask=mask)
     y = tl.sqrt(re * re + im * im)
     tl.store(out_ptr + offsets, y, mask=mask)
 
@@ -46,11 +46,15 @@ def absolute(input: torch.Tensor):
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     if x.is_complex():
-        ri = torch.view_as_real(x).contiguous()
+        ri = torch.view_as_real(x)
+        # Feed the kernel unit-stride buffers.  StructuredToMemref currently
+        # cannot lower two interleaved (stride-two) views of the same pointer.
+        real = ri[..., 0].contiguous()
+        imag = ri[..., 1].contiguous()
         out_dtype = x.real.dtype
         out = torch.empty(x.shape, dtype=out_dtype, device=x.device)
         _absolute_complex_kernel[grid](
-            ri, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
+            real, imag, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
         )
         return out
     else:

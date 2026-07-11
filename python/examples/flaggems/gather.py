@@ -1,12 +1,13 @@
 import importlib.util
+import math
 import os
 import threading
 import uuid
 from pathlib import Path
 
 import torch
-
-from .scatter import scatter_
+import triton
+import triton.language as tl
 
 
 def write_atomic(
@@ -126,7 +127,8 @@ def _generate_wrapper(rank, wrapper_name, kernel_name, code):
     for i in range(rank):
         code += f"        out_stride[{i}],\n"
     code += "        dim, dim_stride, N,\n"
-    code += "        BLOCK_SIZE_N=512,\n"
+    block_size = 1 if rank == 1 else 512
+    code += f"        BLOCK_SIZE_N={block_size},\n"
     code += "    )\n"
     code += "    return out\n\n"
     return code
@@ -173,6 +175,24 @@ class GatherFunction:
 _gather_func = GatherFunction()
 
 
+@triton.jit
+def gather_backward_kernel(grad, index, result, M, N, J, K):
+    """Accumulate gather gradients without unsupported atomic operations."""
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_k = tl.program_id(2)
+    accumulator = tl.full((), 0.0, dtype=tl.float32)
+
+    for j in range(0, J):
+        source_offset = (pid_m * J + j) * K + pid_k
+        source_index = tl.load(index + source_offset).to(tl.int32)
+        source_grad = tl.load(grad + source_offset).to(tl.float32)
+        accumulator += tl.where(source_index == pid_n, source_grad, 0.0)
+
+    result_offset = (pid_m * N + pid_n) * K + pid_k
+    tl.store(result + result_offset, accumulator)
+
+
 def gather(inp, dim, index, out=None, sparse_grad=False):
     if inp.ndim != index.ndim:
         raise IndexError(
@@ -189,5 +209,16 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
+    if sparse_grad:
+        raise NotImplementedError("sparse gather gradients are not supported")
+
+    dim %= self.ndim
+    grad = grad.contiguous()
+    index = index.contiguous()
     result = grad.new_zeros(self.shape)
-    return scatter_(result, dim, index, grad, reduce="add")
+    M = math.prod(index.shape[:dim])
+    N = self.shape[dim]
+    J = index.shape[dim]
+    K = math.prod(index.shape[dim + 1 :])
+    gather_backward_kernel[(M, N, K)](grad, index, result, M, N, J, K)
+    return result

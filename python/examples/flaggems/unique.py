@@ -49,6 +49,78 @@ def simple_unique_flat_kernel(
 
 
 @triton.jit
+def unique_size_scalar_kernel(sorted_data_ptr, unique_size_ptr, num_tasks):
+    """Count sorted runs without relying on the unsupported ttx.cumsum op."""
+    previous = tl.load(sorted_data_ptr)
+    unique_size = tl.full((), 0, dtype=tl.int32)
+    for i in range(0, num_tasks):
+        value = tl.load(sorted_data_ptr + i)
+        is_new = (i == 0) | (value != previous)
+        unique_size += is_new.to(tl.int32)
+        previous = value
+    tl.store(unique_size_ptr, unique_size)
+
+
+@triton.jit
+def unique_values_counts_scalar_kernel(
+    sorted_data_ptr,
+    data_out_ptr,
+    counts_ptr,
+    num_tasks,
+    return_counts: tl.constexpr,
+):
+    """Materialize one sorted run per program using output-centric stores."""
+    output_index = tl.program_id(0)
+    previous = tl.load(sorted_data_ptr)
+    run_index = tl.full((), -1, dtype=tl.int32)
+    run_start = tl.full((), 0, dtype=tl.int32)
+    run_end = num_tasks
+
+    for i in range(0, num_tasks):
+        value = tl.load(sorted_data_ptr + i)
+        is_new = (i == 0) | (value != previous)
+        next_run_index = run_index + is_new.to(tl.int32)
+        run_start = tl.where(
+            is_new & (next_run_index == output_index), i, run_start
+        )
+        run_end = tl.where(
+            is_new & (next_run_index == output_index + 1), i, run_end
+        )
+        run_index = next_run_index
+        previous = value
+
+    tl.store(data_out_ptr + output_index, tl.load(sorted_data_ptr + run_start))
+    if return_counts:
+        tl.store(counts_ptr + output_index, run_end - run_start)
+
+
+@triton.jit
+def unique_inverse_scalar_kernel(
+    sorted_data_ptr,
+    sorted_indices_ptr,
+    inverse_indices_ptr,
+    num_tasks,
+):
+    """Invert the sort permutation while tracking the current sorted run."""
+    output_index = tl.program_id(0)
+    previous = tl.load(sorted_data_ptr)
+    run_index = tl.full((), -1, dtype=tl.int32)
+    inverse_index = tl.full((), 0, dtype=tl.int32)
+
+    for i in range(0, num_tasks):
+        value = tl.load(sorted_data_ptr + i)
+        is_new = (i == 0) | (value != previous)
+        run_index += is_new.to(tl.int32)
+        original_index = tl.load(sorted_indices_ptr + i).to(tl.int32)
+        inverse_index = tl.where(
+            original_index == output_index, run_index, inverse_index
+        )
+        previous = value
+
+    tl.store(inverse_indices_ptr + output_index, inverse_index)
+
+
+@triton.jit
 def output_counts_flat_impl(
     global_pid,
     idx_ptr: tl.tensor,
@@ -725,51 +797,44 @@ def simple_unique_flat(
     return_counts: bool,
 ):
     num_tasks = sorted_data.numel()
-    grid = (1, 1, 1)
-
-    # allocate tensor
-    data_out = torch.empty_like(sorted_data)
-    if return_inverse:
-        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
-    else:
-        inverse_indices = None
-    if return_counts:
-        idx = torch.empty_like(sorted_data, dtype=torch.int64)
-    else:
-        idx = None
     unique_size = torch.empty(
-        [1], dtype=torch.int64, device=sorted_data.device
+        (1,), dtype=torch.int32, device=sorted_data.device
+    )
+    unique_size_scalar_kernel[(1,)](
+        sorted_data, unique_size, num_tasks, num_warps=1
+    )
+    out_size = unique_size.item()
+
+    data_out = torch.empty(
+        (out_size,), dtype=sorted_data.dtype, device=sorted_data.device
+    )
+    counts = (
+        torch.empty((out_size,), dtype=torch.int64, device=sorted_data.device)
+        if return_counts
+        else None
+    )
+    unique_values_counts_scalar_kernel[(out_size,)](
+        sorted_data,
+        data_out,
+        counts,
+        num_tasks,
+        return_counts,
+        num_warps=1,
     )
 
-    # launch kernel
-    simple_unique_flat_kernel[grid](
-        sorted_data,
-        sorted_indices,  # in
-        data_out,
-        inverse_indices,
-        idx,
-        unique_size,  # out
-        return_inverse,
-        return_counts,
-        num_tasks,
-        tile_size=triton.next_power_of_2(num_tasks),
-        num_warps=8,
-    )
-    out_size = unique_size.item() + 1
-    counts = None
-    if return_counts:
-        idx = idx[:out_size]
-        counts = torch.empty_like(idx)
-        output_counts_flat_kernel[grid](
-            idx,
-            num_tasks,  # in
-            counts,  # out
-            num_tasks=out_size,
-            tiles_per_cta=1,
-            tile_size=triton.next_power_of_2(out_size),
-            num_warps=8,
+    inverse_indices = None
+    if return_inverse:
+        inverse_indices = torch.empty(
+            (num_tasks,), dtype=torch.int64, device=sorted_data.device
         )
-    return data_out[:out_size], inverse_indices, counts
+        unique_inverse_scalar_kernel[(num_tasks,)](
+            sorted_data,
+            sorted_indices,
+            inverse_indices,
+            num_tasks,
+            num_warps=1,
+        )
+    return data_out, inverse_indices, counts
 
 
 def _unique2(
@@ -778,6 +843,20 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    if in0.numel() == 0:
+        values = in0.ravel().clone()
+        inverse_indices = (
+            torch.empty_like(in0, dtype=torch.int64)
+            if return_inverse
+            else None
+        )
+        counts = (
+            torch.empty((0,), dtype=torch.int64, device=in0.device)
+            if return_counts
+            else None
+        )
+        return values, inverse_indices, counts
+
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
