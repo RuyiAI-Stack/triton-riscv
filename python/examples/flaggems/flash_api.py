@@ -1,6 +1,7 @@
 import math
 
 import torch
+import torch.nn.functional as F
 import triton
 
 from .flash_kernel import (
@@ -15,6 +16,82 @@ from .flash_kernel import (
 
 def CHECK_DEVICE(x):
     pass
+
+
+# All FlashAttention forward entry points return the same eight fields:
+# (out, q, k, v, softmax_lse, philox_args, rng_state, softmax_probs).
+# `rng_state` and `softmax_probs` are None when the selected implementation
+# does not produce them.  `philox_args` is always a deterministic int64 pair.
+def _cpu_mha_fwd(
+    q,
+    k,
+    v,
+    out,
+    alibi_slopes,
+    p_dropout,
+    softmax_scale,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    softcap,
+    return_softmax,
+):
+    """Execute the supported fixed-length FlashAttention subset on CPU."""
+    if p_dropout != 0.0:
+        raise NotImplementedError("CPU FlashAttention does not support dropout")
+    if softcap != 0.0:
+        raise NotImplementedError("CPU FlashAttention does not support softcap")
+    if alibi_slopes is not None:
+        raise NotImplementedError("CPU FlashAttention does not support ALiBi")
+    if window_size_left >= 0 or window_size_right >= 0:
+        raise NotImplementedError(
+            "CPU FlashAttention does not support local window attention"
+        )
+    if return_softmax:
+        raise NotImplementedError(
+            "CPU FlashAttention does not return softmax/debug probabilities"
+        )
+
+    batch_size, seqlen_q, num_heads, head_size = q.shape
+    seqlen_k = k.shape[1]
+    num_heads_k = k.shape[2]
+    if num_heads % num_heads_k != 0:
+        raise ValueError("Number of KV heads must divide the number of query heads")
+
+    query = q.transpose(1, 2).contiguous().to(torch.float32)
+    key = k.transpose(1, 2).contiguous().to(torch.float32)
+    value = v.transpose(1, 2).contiguous().to(torch.float32)
+    if num_heads != num_heads_k:
+        repeats = num_heads // num_heads_k
+        key = key.repeat_interleave(repeats, dim=1)
+        value = value.repeat_interleave(repeats, dim=1)
+
+    scale = softmax_scale if softmax_scale is not None else head_size**-0.5
+    result = F.scaled_dot_product_attention(
+        query,
+        key,
+        value,
+        dropout_p=0.0,
+        is_causal=is_causal,
+        scale=scale,
+    )
+
+    scores = torch.matmul(query, key.transpose(-2, -1)) * scale
+    if is_causal:
+        causal_mask = torch.ones(
+            (seqlen_q, seqlen_k), dtype=torch.bool, device=q.device
+        ).triu(diagonal=1)
+        scores = scores.masked_fill(causal_mask, float("-inf"))
+    lse = torch.logsumexp(scores, dim=-1)
+
+    result = result.transpose(1, 2).contiguous().to(q.dtype)
+    if out is None:
+        out = result
+    else:
+        out.copy_(result.to(out.dtype))
+
+    philox_args = torch.zeros((2,), dtype=torch.int64, device=q.device)
+    return out, q, k, v, lse, philox_args, None, None
 
 
 class fwd_params:
@@ -278,6 +355,10 @@ def mha_varlan_fwd(
 ):
     CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_device = q.device
+    if q_device.type == "cpu":
+        raise NotImplementedError(
+            "CPU FlashAttention does not support variable-length attention"
+        )
     q_dtype = q.dtype
     assert q_dtype in (
         torch.float16,
@@ -285,15 +366,9 @@ def mha_varlan_fwd(
     ), "FlashAttention only support fp16 and bf16 data type"
     assert q_dtype == k.dtype
     assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert k.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert v.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
 
     assert cu_seqlens_q.dtype == torch.int32
     assert cu_seqlens_q.is_contiguous()
@@ -402,9 +477,7 @@ def mha_varlan_fwd(
     def round_multiple(x, m):
         return (x + m - 1) // m * m
 
-    head_size_rounded = (
-        round_multiple(head_size, 32) if head_size <= 192 else 256
-    )
+    head_size_rounded = round_multiple(head_size, 32) if head_size <= 192 else 256
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
@@ -460,7 +533,7 @@ def mha_varlan_fwd(
         )
     else:
         is_dropout = False
-        philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+        philox_args = torch.zeros((2,), dtype=torch.int64, device=q_device)
 
     p_dropout = 1 - p_dropout
     p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -473,7 +546,7 @@ def mha_varlan_fwd(
             device=q_device,
         )
     else:
-        p = torch.empty((), device=q_device)
+        p = None
 
     if zero_tensors:
         out.zero_()
@@ -585,23 +658,18 @@ def mha_varlan_fwd(
     kernel(*args, **cfg_params)
 
     if seqlenq_ngroups_swapped:
-        out = out.reshape(
-            batch_size, max_seqlen_q, num_heads_k, head_size
-        ).transpose(1, 2)
+        out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
+            1, 2
+        )
         if out_ is not None:
-            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(
-                out
-            )
+            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
             out = out_
         else:
-            out = out.reshape(
-                batch_size, num_heads_k * max_seqlen_q, head_size
-            )
+            out = out.reshape(batch_size, num_heads_k * max_seqlen_q, head_size)
         lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
         lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
 
-    unused = torch.empty((), dtype=torch.int64, device=q_device)
-    return out, q, k, v, lse, philox_args, unused, p
+    return out, q, k, v, lse, philox_args, None, p
 
 
 def mha_varlan_fwd_opt(
@@ -630,6 +698,10 @@ def mha_varlan_fwd_opt(
 ):
     CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_device = q.device
+    if q_device.type == "cpu":
+        raise NotImplementedError(
+            "CPU FlashAttention does not support variable-length attention"
+        )
     q_dtype = q.dtype
     assert q_dtype in (
         torch.float16,
@@ -637,15 +709,9 @@ def mha_varlan_fwd_opt(
     ), "FlashAttention only support fp16 and bf16 data type"
     assert q_dtype == k.dtype
     assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert k.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert v.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
 
     assert cu_seqlens_q.dtype == torch.int32
     assert cu_seqlens_q.is_contiguous()
@@ -754,9 +820,7 @@ def mha_varlan_fwd_opt(
     def round_multiple(x, m):
         return (x + m - 1) // m * m
 
-    head_size_rounded = (
-        round_multiple(head_size, 32) if head_size <= 192 else 256
-    )
+    head_size_rounded = round_multiple(head_size, 32) if head_size <= 192 else 256
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
@@ -802,9 +866,7 @@ def mha_varlan_fwd_opt(
         o_batch_stride = out.stride(0) * max_seqlen_q
 
     if lse is None:
-        lse = torch.empty(
-            (num_heads, total_q), dtype=torch.float, device=q_device
-        )
+        lse = torch.empty((num_heads, total_q), dtype=torch.float, device=q_device)
 
     if p_dropout > 0:
         is_dropout = True
@@ -815,8 +877,7 @@ def mha_varlan_fwd_opt(
         )
     else:
         is_dropout = False
-        # philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
-        philox_args = None
+        philox_args = torch.zeros((2,), dtype=torch.int64, device=q_device)
 
     p_dropout = 1 - p_dropout
     p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -941,24 +1002,18 @@ def mha_varlan_fwd_opt(
     kernel(*args, **cfg_params)
 
     if seqlenq_ngroups_swapped:
-        out = out.reshape(
-            batch_size, max_seqlen_q, num_heads_k, head_size
-        ).transpose(1, 2)
+        out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
+            1, 2
+        )
         if out_ is not None:
-            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(
-                out
-            )
+            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
             out = out_
         else:
-            out = out.reshape(
-                batch_size, num_heads_k * max_seqlen_q, head_size
-            )
+            out = out.reshape(batch_size, num_heads_k * max_seqlen_q, head_size)
         lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
         lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
 
-    # unused = torch.empty((), dtype=torch.int64, device=q_device)
-    unused = None
-    return out, q, k, v, lse, philox_args, unused, p
+    return out, q, k, v, lse, philox_args, None, p
 
 
 def mha_fwd(
@@ -985,15 +1040,9 @@ def mha_fwd(
     ), "FlashAttention only support fp16 and bf16 data type"
     assert q_dtype == k.dtype
     assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert k.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert v.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     batch_size, seqlen_q, num_heads, head_size = q.size()
     _, seqlen_k, num_heads_k, _ = k.size()
 
@@ -1010,6 +1059,22 @@ def mha_fwd(
     assert num_heads % num_heads_k == 0, (
         "Number of heads in key/value must divide number of heads in query"
     )
+    if q_device.type == "cpu":
+        return _cpu_mha_fwd(
+            q,
+            k,
+            v,
+            out,
+            alibi_slopes,
+            p_dropout,
+            softmax_scale,
+            is_causal,
+            window_size_left,
+            window_size_right,
+            softcap,
+            return_softmax,
+        )
+
     if window_size_left >= seqlen_k:
         window_size_left = -1
     if window_size_right >= seqlen_k:
@@ -1022,36 +1087,6 @@ def mha_fwd(
     is_causal = window_size_left < 0 and window_size_right == 0
     is_local = window_size_left >= 0 and window_size_right >= 0
 
-    if (
-        p_dropout == 0.0
-        and alibi_slopes is None
-        and not is_local
-        and softcap == 0.0
-        and not return_softmax
-    ):
-        from .attention import scaled_dot_product_attention_forward
-
-        query = q.transpose(1, 2).contiguous().to(torch.float32)
-        key = k.transpose(1, 2).contiguous().to(torch.float32)
-        value = v.transpose(1, 2).contiguous().to(torch.float32)
-        result, lse = scaled_dot_product_attention_forward(
-            query,
-            key,
-            value,
-            dropout_p=0.0,
-            is_causal=is_causal,
-            scale=softmax_scale,
-            enable_gqa=num_heads != num_heads_k,
-        )
-        result = result.transpose(1, 2).contiguous().to(q_dtype)
-        if out is None:
-            out = result
-        else:
-            out.copy_(result.to(out.dtype))
-        philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
-        p = torch.empty((), device=q_device)
-        return out, q, k, v, lse, philox_args, None, p
-
     seqlenq_ngroups_swapped = (
         seqlen_q == 1
         and alibi_slopes is None
@@ -1063,9 +1098,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(
-            1, 2
-        )
+        q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
 
@@ -1104,9 +1137,9 @@ def mha_fwd(
 
     if out is not None:
         if seqlenq_ngroups_swapped:
-            out = out.reshape(
-                batch_size, num_heads_k, q_groups, head_size
-            ).transpose(1, 2)
+            out = out.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(
+                1, 2
+            )
     else:
         out = torch.empty_like(q, dtype=v.dtype)
 
@@ -1120,7 +1153,7 @@ def mha_fwd(
         )
     else:
         is_dropout = False
-        philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+        philox_args = torch.zeros((2,), dtype=torch.int64, device=q_device)
 
     p_dropout = 1 - p_dropout
     p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -1133,7 +1166,7 @@ def mha_fwd(
             device=q_device,
         )
     else:
-        p = torch.empty((), device=q_device)
+        p = None
 
     M_LOG2E = 1.4426950408889634074
     if softcap > 0.0:
@@ -1361,6 +1394,4 @@ def mha_fwd(
         )
         lse = lse.reshape((batch_size, num_heads_k * seqlen_q, 1))
 
-    unused = torch.empty((), dtype=torch.int64, device=q_device)
-
-    return out, q, k, v, lse, philox_args, unused, p
+    return out, q, k, v, lse, philox_args, None, p

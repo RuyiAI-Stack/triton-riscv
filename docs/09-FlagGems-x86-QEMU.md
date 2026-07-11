@@ -1,8 +1,9 @@
 # FlagGems validation on x86 and QEMU
 
-This workflow validates the FlagGems examples with the Triton-RISCV CPU
-backend on an x86 host and checks representative generated RV64 executables
-with QEMU.
+This workflow validates the FlagGems examples on an x86 host and checks
+representative generated RV64 executables with QEMU. The result combines
+Triton-RISCV kernel coverage with explicit CPU reference fallbacks; those two
+categories are reported separately below.
 
 ## x86 test suite
 
@@ -15,16 +16,45 @@ pytest python/examples/ \
   -v
 ```
 
-The 2026-07-11 A800 validation result was:
+The 2026-07-11 A800 validation result after review fixes was:
 
 ```text
-3887 passed, 15 skipped in 885.32s (0:14:45)
+3934 passed, 15 skipped in 80.53s (0:01:20)
 ```
 
 No test was disabled as part of the FlagGems compatibility work. The skipped
 cases are guarded by existing environment capability markers, including tests
 that require execution on native RISC-V hardware with RVV. Their corresponding
 RISC-V object-generation tests still run on x86.
+
+This aggregate pytest count is not a count of kernels lowered through
+Triton-RISCV. Some API tests intentionally exercise CPU reference fallbacks.
+
+## Coverage categories
+
+### A. Triton-RISCV lowering coverage
+
+The operator tests in this category compile and execute Triton kernels through
+the CPU backend. Together they cover lowering patterns including reductions,
+scans, atomics or their deterministic replacements, scatter/gather addressing,
+masked memory operations, and indirect pointer/offset calculations. The QEMU
+smoke tests below additionally compile representative kernels to RV64 ELF and
+execute the generated code under `qemu-riscv64`.
+
+### B. CPU reference fallback coverage
+
+Fallback tests validate wrapper semantics and API compatibility, but do not
+claim Triton-RISCV lowering coverage. In particular, fixed-length CPU
+FlashAttention supports only normal or causal attention with optional custom
+scale. It computes in float32 and converts the output to the documented dtype.
+Dropout, softcap, ALiBi, local windows, variable-length modes, and debug
+probability outputs raise `NotImplementedError` instead of entering a Triton
+GPU-oriented path or silently ignoring arguments.
+
+Other wrappers may also use a CPU reference when an FP8 helper or a dependent
+backend feature is unavailable. Such tests establish fallback correctness only;
+they must not be counted as evidence that the corresponding operation lowered
+to RV64 code.
 
 ## QEMU smoke validation
 
@@ -44,9 +74,11 @@ The FlagGems smoke program compiles and executes four backend patterns:
 - `var`: multi-row scalar reduction with multiple program IDs;
 - `upsample_nearest1d`: output-centric index mapping.
 
-Each case generates a static RV64 ELF, runs it with `qemu-riscv64`, and checks
-the output in the generated C runner. The vector-add disassembly should include
-RVV instructions such as `vsetivli`, `vle32.v`, `vfadd.vv`, and `vse32.v`.
+Each case uses deterministic input, computes its expected result with NumPy,
+generates a static RV64 ELF, runs it with `qemu-riscv64`, and compares the QEMU
+result in the generated C runner. A numerical mismatch exits nonzero and fails
+the smoke test. The vector-add disassembly should include RVV instructions such
+as `vsetivli`, `vle32.v`, `vfadd.vv`, and `vse32.v`.
 
 ## Failure classes and fixes
 

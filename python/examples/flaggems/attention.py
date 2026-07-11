@@ -546,6 +546,9 @@ def _attn_bwd(
     kv_head_id = q_head_id // GROUP_HEAD
     adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
     kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    # DK/DV are allocated with query-head count but KV sequence length, so
+    # their batch/head offsets must not reuse Q's Q_CTX-based strides.
+    dkv_adj = ((batch_id * H + q_head_id) * KV_CTX * BLOCK_DMODEL).to(tl.int64)
 
     pid = tl.program_id(0)
 
@@ -555,8 +558,8 @@ def _attn_bwd(
     V += kv_adj
     DO += adj
     DQ += adj
-    DK += adj
-    DV += adj
+    DK += dkv_adj
+    DV += dkv_adj
     M += off_chz
     D += off_chz
 
@@ -1121,9 +1124,41 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
-    assert (
-        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
-    ), "varlen is not supported yet."
+    """Return (out, q, k, v, lse, philox_args, rng_state, softmax_probs)."""
+    is_varlen = (
+        cumulative_sequence_length_q is not None
+        or cumulative_sequence_length_k is not None
+        or seqused_k is not None
+    )
+    if (cumulative_sequence_length_q is None) != (cumulative_sequence_length_k is None):
+        raise ValueError("Both cumulative sequence length tensors are required")
+
+    non_null_window_left = window_size_left if window_size_left is not None else -1
+    non_null_window_right = window_size_right if window_size_right is not None else -1
+    softmax_scale = scale if scale is not None else query.shape[-1] ** -0.5
+
+    # CPU execution is deliberately limited to fixed-length normal/causal
+    # attention.  It must return here and must never dispatch a Triton kernel.
+    if query.device.type == "cpu":
+        if is_varlen:
+            raise NotImplementedError(
+                "CPU FlashAttention does not support variable-length attention"
+            )
+        return mha_fwd(
+            query,
+            key,
+            value,
+            None,
+            alibi_slopes,
+            dropout_p,
+            softmax_scale,
+            is_causal,
+            non_null_window_left,
+            non_null_window_right,
+            softcap,
+            return_debug_mask,
+            disable_splitkv=disable_splitkv,
+        )
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
@@ -1145,15 +1180,7 @@ def flash_attention_forward(
         value = F.pad(value, (0, pad))
         HEAD_DIM_K = padded_head_dim
 
-    softmax_scale = scale or 1.0 / (original_head_dim**0.5)
-    if window_size_left is not None:
-        non_null_window_left = window_size_left
-    else:
-        non_null_window_left = -1
-    if window_size_right is not None:
-        non_null_window_right = window_size_right
-    else:
-        non_null_window_right = -1
+    softmax_scale = scale if scale is not None else 1.0 / (original_head_dim**0.5)
 
     # The specialized FlashAttention kernels still expose unsupported loop
     # lowering on the CPU backend.  The general Triton attention kernel is
@@ -1165,6 +1192,7 @@ def flash_attention_forward(
         and non_null_window_left == -1
         and non_null_window_right == -1
         and softcap == 0.0
+        and not return_debug_mask
     ):
         out, lse = scaled_dot_product_attention_forward(
             query.transpose(1, 2).contiguous().to(torch.float32),
@@ -1177,12 +1205,12 @@ def flash_attention_forward(
         out = out.transpose(1, 2).contiguous().to(query.dtype)
         if HEAD_DIM_K != original_head_dim:
             out = out[..., :original_head_dim]
-        p = torch.empty((), dtype=torch.float32, device=query.device)
-        return (out, query, key, value, lse, 0, 0, p)
+        philox_args = torch.zeros((2,), dtype=torch.int64, device=query.device)
+        return (out, query, key, value, lse, philox_args, None, None)
 
     out = torch.empty_like(query)
     if cumulative_sequence_length_q is not None:
-        out, q, k, v, lse, philox_seed, philox_offset, p = mha_varlan_fwd(
+        out, q, k, v, lse, philox_args, rng_state, p = mha_varlan_fwd(
             query,
             key,
             value,
@@ -1196,7 +1224,7 @@ def flash_attention_forward(
             max_q,
             max_k,
             dropout_p,
-            scale,
+            softmax_scale,
             False,
             is_causal,
             non_null_window_left,
@@ -1206,7 +1234,7 @@ def flash_attention_forward(
             None,
         )
     else:
-        out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
+        out, q, k, v, lse, philox_args, rng_state, p = mha_fwd(
             query,
             key,
             value,
@@ -1224,7 +1252,7 @@ def flash_attention_forward(
 
     if HEAD_DIM_K != original_head_dim:
         out = out[..., :original_head_dim]
-    return (out, q, k, v, lse, philox_seed, philox_offset, p)
+    return (out, q, k, v, lse, philox_args, rng_state, p)
 
 
 # Adapted from https://github.com/vllm-project/flash-attention/blob/main/vllm_flash_attn/flash_attn_interface.py
