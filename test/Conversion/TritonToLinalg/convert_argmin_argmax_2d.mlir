@@ -79,11 +79,15 @@ module {
 // CHECK:           ^bb0([[in_:.+]]: i32, [[out_:.+]]: i32):
 // CHECK:             linalg.yield [[in_]] : i32
 // CHECK:           } -> tensor<4x4xi32>
-// CHECK:           [[VAR_7_:%.+]] = tensor.empty() : tensor<4xf32>
-// CHECK-DAG:       [[VAR_8_:%.+]] = linalg.fill ins([[CST_0_]] : f32) outs([[VAR_7_]] : tensor<4xf32>) -> tensor<4xf32>
-// CHECK-DAG:       [[VAR_9_:%.+]] = tensor.empty() : tensor<4xi32>
-// CHECK:           [[VAR_10_:%.+]] = linalg.fill ins([[CST_minus_1_]] : i32) outs([[VAR_9_]] : tensor<4xi32>) -> tensor<4xi32>
-// CHECK:           [[VAR_reduced_:%.+]]:2 = linalg.reduce ins([[VAR_4_]], [[VAR_6_]] : tensor<4x4xf32>, tensor<4x4xi32>) outs([[VAR_8_]], [[VAR_10_]] : tensor<4xf32>, tensor<4xi32>) dimensions = [1]
+// CHECK:           [[VAR_7_:%.+]] = tensor.empty() : tensor<4x4xf32>
+// CHECK:           [[TRANSPOSE_0:%.+]] = linalg.transpose ins([[VAR_4_]] : tensor<4x4xf32>) outs([[VAR_7_]] : tensor<4x4xf32>) permutation = [1, 0]
+// CHECK:           [[VAR_8_:%.+]] = tensor.empty() : tensor<4x4xi32>
+// CHECK:           [[TRANSPOSE_1:%.+]] = linalg.transpose ins([[VAR_6_]] : tensor<4x4xi32>) outs([[VAR_8_]] : tensor<4x4xi32>) permutation = [1, 0]
+// CHECK:           [[VAR_9_:%.+]] = tensor.empty() : tensor<4xf32>
+// CHECK-DAG:       [[VAR_10_:%.+]] = linalg.fill ins([[CST_0_]] : f32) outs([[VAR_9_]] : tensor<4xf32>) -> tensor<4xf32>
+// CHECK-DAG:       [[VAR_11_:%.+]] = tensor.empty() : tensor<4xi32>
+// CHECK:           [[VAR_12_:%.+]] = linalg.fill ins([[CST_minus_1_]] : i32) outs([[VAR_11_]] : tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           [[VAR_reduced_:%.+]]:2 = linalg.reduce ins([[TRANSPOSE_0]], [[TRANSPOSE_1]] : tensor<4x4xf32>, tensor<4x4xi32>) outs([[VAR_10_]], [[VAR_12_]] : tensor<4xf32>, tensor<4xi32>) dimensions = [0]
 // CHECK:             ([[in_:.+]]: f32, [[in_1_:.+]]: i32, [[init:.+]]: f32, [[init_2:.+]]: i32) {
 // CHECK-DAG:           [[VAR_13_1_:%.+]] = arith.cmpf oeq, [[in_]], [[init]] : f32
 // CHECK-DAG:           [[VAR_14_1_:%.+]] = arith.cmpi slt, [[in_1_]], [[init_2]] : i32
@@ -96,13 +100,13 @@ module {
 // CHECK:               linalg.yield [[VAR_18_]], [[VAR_19_]] : f32, i32
 // CHECK:             }
 // CHECK-DAG:       [[VAR_reinterpret_cast_0_:%.+]] = memref.reinterpret_cast [[PARAM_1_]] to offset: [0], sizes: [4], strides: [1] : memref<*xf32> to memref<4xf32, strided<[1]>>
-// CHECK-DAG:       [[VAR_11_:%.+]] = tensor.empty() : tensor<4xf32>
-// CHECK:           [[VAR_12_:%.+]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins([[VAR_reduced_]]#1 : tensor<4xi32>) outs([[VAR_11_]] : tensor<4xf32>) {
+// CHECK-DAG:       [[VAR_13_:%.+]] = tensor.empty() : tensor<4xf32>
+// CHECK:           [[VAR_14_:%.+]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins([[VAR_reduced_]]#1 : tensor<4xi32>) outs([[VAR_13_]] : tensor<4xf32>) {
 // CHECK:           ^bb0([[in_:.+]]: i32, [[out_:.+]]: f32):
 // CHECK:             [[VAR_13_2_:%.+]] = arith.sitofp [[in_]] : i32 to f32
 // CHECK:             linalg.yield [[VAR_13_2_]] : f32
 // CHECK:           } -> tensor<4xf32>
-// CHECK:           bufferization.materialize_in_destination [[VAR_12_]] in writable [[VAR_reinterpret_cast_0_]]
+// CHECK:           bufferization.materialize_in_destination [[VAR_14_]] in writable [[VAR_reinterpret_cast_0_]]
 // CHECK:           return
 // CHECK:         }
 
@@ -187,11 +191,15 @@ module {
 // CHECK:           ^bb0([[in_:.+]]: i32, [[out_:.+]]: i32):
 // CHECK:             linalg.yield [[in_]] : i32
 // CHECK:           } -> tensor<4x4xi32>
-// CHECK:           [[VAR_7_:%.+]] = tensor.empty() : tensor<4xf32>
-// CHECK-DAG:       [[VAR_8_:%.+]] = linalg.fill ins([[CST_0_]] : f32) outs([[VAR_7_]] : tensor<4xf32>) -> tensor<4xf32>
-// CHECK-DAG:       [[VAR_9_:%.+]] = tensor.empty() : tensor<4xi32>
-// CHECK:           [[VAR_10_:%.+]] = linalg.fill ins([[CST_minus_1_]] : i32) outs([[VAR_9_]] : tensor<4xi32>) -> tensor<4xi32>
-// CHECK:           [[VAR_reduced_:%.+]]:2 = linalg.reduce ins([[VAR_4_]], [[VAR_6_]] : tensor<4x4xf32>, tensor<4x4xi32>) outs([[VAR_8_]], [[VAR_10_]] : tensor<4xf32>, tensor<4xi32>) dimensions = [1]
+// CHECK:           [[VAR_7_:%.+]] = tensor.empty() : tensor<4x4xf32>
+// CHECK:           [[TRANSPOSE_0:%.+]] = linalg.transpose ins([[VAR_4_]] : tensor<4x4xf32>) outs([[VAR_7_]] : tensor<4x4xf32>) permutation = [1, 0]
+// CHECK:           [[VAR_8_:%.+]] = tensor.empty() : tensor<4x4xi32>
+// CHECK:           [[TRANSPOSE_1:%.+]] = linalg.transpose ins([[VAR_6_]] : tensor<4x4xi32>) outs([[VAR_8_]] : tensor<4x4xi32>) permutation = [1, 0]
+// CHECK:           [[VAR_9_:%.+]] = tensor.empty() : tensor<4xf32>
+// CHECK-DAG:       [[VAR_10_:%.+]] = linalg.fill ins([[CST_0_]] : f32) outs([[VAR_9_]] : tensor<4xf32>) -> tensor<4xf32>
+// CHECK-DAG:       [[VAR_11_:%.+]] = tensor.empty() : tensor<4xi32>
+// CHECK:           [[VAR_12_:%.+]] = linalg.fill ins([[CST_minus_1_]] : i32) outs([[VAR_11_]] : tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           [[VAR_reduced_:%.+]]:2 = linalg.reduce ins([[TRANSPOSE_0]], [[TRANSPOSE_1]] : tensor<4x4xf32>, tensor<4x4xi32>) outs([[VAR_10_]], [[VAR_12_]] : tensor<4xf32>, tensor<4xi32>) dimensions = [0]
 // CHECK:             ([[in_:.+]]: f32, [[in_1_:.+]]: i32, [[init:.+]]: f32, [[init_2:.+]]: i32) {
 // CHECK-DAG:           [[VAR_13_1_:%.+]] = arith.cmpf oeq, [[in_]], [[init]] : f32
 // CHECK-DAG:           [[VAR_14_1_:%.+]] = arith.cmpi slt, [[in_1_]], [[init_2]] : i32
@@ -204,12 +212,12 @@ module {
 // CHECK:               linalg.yield [[VAR_18_]], [[VAR_19_]] : f32, i32
 // CHECK:             }
 // CHECK-DAG:       [[VAR_reinterpret_cast_0_:%.+]] = memref.reinterpret_cast [[PARAM_1_]] to offset: [0], sizes: [4], strides: [1] : memref<*xf32> to memref<4xf32, strided<[1]>>
-// CHECK-DAG:       [[VAR_11_:%.+]] = tensor.empty() : tensor<4xf32>
-// CHECK:           [[VAR_12_:%.+]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins([[VAR_reduced_]]#1 : tensor<4xi32>) outs([[VAR_11_]] : tensor<4xf32>) {
+// CHECK-DAG:       [[VAR_13_:%.+]] = tensor.empty() : tensor<4xf32>
+// CHECK:           [[VAR_14_:%.+]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins([[VAR_reduced_]]#1 : tensor<4xi32>) outs([[VAR_13_]] : tensor<4xf32>) {
 // CHECK:           ^bb0([[in_:.+]]: i32, [[out_:.+]]: f32):
 // CHECK:             [[VAR_13_2_:%.+]] = arith.sitofp [[in_]] : i32 to f32
 // CHECK:             linalg.yield [[VAR_13_2_]] : f32
 // CHECK:           } -> tensor<4xf32>
-// CHECK:           bufferization.materialize_in_destination [[VAR_12_]] in writable [[VAR_reinterpret_cast_0_]]
+// CHECK:           bufferization.materialize_in_destination [[VAR_14_]] in writable [[VAR_reinterpret_cast_0_]]
 // CHECK:           return
 // CHECK:         }

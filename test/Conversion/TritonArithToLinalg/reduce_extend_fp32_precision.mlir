@@ -83,9 +83,9 @@ module {
 // CHECK-DAG:       [[VAR_0_:%.+]] = tts.make_tptr [[PARAM_0_]] to sizes: [32], strides: [1], offsets: [0], shape: [0], order: [] : <f16> to tensor<32x!tt.ptr<f16>>
 // CHECK-DAG:       [[VAR_1_:%.+]] = "tts.load"([[VAR_0_]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<32x!tt.ptr<f16>>) -> tensor<32xf16>
 // CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_dot_000000_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xf16>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_2_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_filled_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_2_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xf16>) outs([[VAR_filled_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:.+]]: f16, [[init_:.+]]: f32) {
 // CHECK:               [[VAR_13_:%.+]] = arith.extf [[in_]] : f16 to f32
 // CHECK:               [[VAR_14_:%.+]] = arith.addf [[VAR_13_]], [[init_]] : f32
@@ -123,9 +123,9 @@ module {
 // CHECK-DAG:       [[VAR_0_:%.+]] = tts.make_tptr [[PARAM_0_]] to sizes: [32], strides: [1], offsets: [0], shape: [0], order: [] : <f16> to tensor<32x!tt.ptr<f16>>
 // CHECK-DAG:       [[VAR_1_:%.+]] = "tts.load"([[VAR_0_]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<32x!tt.ptr<f16>>) -> tensor<32xf16>
 // CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_dot_000000_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xf16>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_2_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_filled_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_2_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xf16>) outs([[VAR_filled_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:.+]]: f16, [[init_:.+]]: f32) {
 // CHECK:               [[VAR_8_:%.+]] = arith.extf [[in_]] : f16 to f32
 // CHECK:               [[VAR_9_:%.+]] = arith.addf [[VAR_8_]], [[init_]] : f32
@@ -150,9 +150,9 @@ module {
 // CHECK-DAG:       [[VAR_0_:%.+]] = tts.make_tptr [[PARAM_0_]] to sizes: [32], strides: [1], offsets: [0], shape: [0], order: [] : <bf16> to tensor<32x!tt.ptr<bf16>>
 // CHECK-DAG:       [[VAR_1_:%.+]] = "tts.load"([[VAR_0_]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<32x!tt.ptr<bf16>>) -> tensor<32xbf16>
 // CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_dot_000000_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xbf16>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_2_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_filled_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_2_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xbf16>) outs([[VAR_filled_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:.+]]: bf16, [[init_:.+]]: f32) {
 // CHECK:               [[VAR_8_:%.+]] = arith.extf [[in_]] : bf16 to f32
 // CHECK:               [[VAR_9_:%.+]] = arith.addf [[VAR_8_]], [[init_]] : f32
@@ -177,9 +177,9 @@ module {
 // CHECK-DAG:       [[VAR_0_:%.+]] = tts.make_tptr [[PARAM_0_]] to sizes: [32], strides: [1], offsets: [0], shape: [0], order: [] : <f32> to tensor<32x!tt.ptr<f32>>
 // CHECK-DAG:       [[VAR_1_:%.+]] = "tts.load"([[VAR_0_]]) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<32x!tt.ptr<f32>>) -> tensor<32xf32>
 // CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_dot_000000_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xf32>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_2_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_filled_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_2_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<32xf32>) outs([[VAR_filled_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:.+]]: f32, [[init_:.+]]: f32) {
 // CHECK:               [[VAR_7_:%.+]] = arith.addf [[in_]], [[init_]] : f32
 // CHECK:               linalg.yield [[VAR_7_]] : f32

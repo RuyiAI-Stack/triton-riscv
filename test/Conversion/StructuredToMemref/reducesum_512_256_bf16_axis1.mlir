@@ -9,6 +9,7 @@
 
 
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
+// CHECK: #[[$ATTR_0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
 // CHECK-SAME:                      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
@@ -18,22 +19,29 @@
 // CHECK-SAME:                      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : bf16
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [512, 256], strides: [256, 1] : memref<*xbf16> to memref<512x256xbf16, strided<[256, 1]>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<512x256xbf16>
 // CHECK:           memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<512x256xbf16, strided<[256, 1]>> to memref<512x256xbf16>
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<512x256xbf16> to tensor<512x256xbf16>
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<256x512xbf16>
 // CHECK:           %[[TRANSPOSE_0:.*]] = linalg.transpose ins(%[[TO_TENSOR_0]] : tensor<512x256xbf16>) outs(%[[EMPTY_0]] : tensor<256x512xbf16>) permutation = [1, 0]
-// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<512xbf16>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : bf16) outs(%[[EMPTY_1]] : tensor<512xbf16>) -> tensor<512xbf16>
-// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TRANSPOSE_0]] : tensor<256x512xbf16>) outs(%[[FILL_0]] : tensor<512xbf16>) dimensions = [0]
-// CHECK:             (%[[VAL_0:.*]]: bf16, %[[VAL_1:.*]]: bf16) {
-// CHECK:               %[[ADDF_0:.*]] = arith.addf %[[VAL_0]], %[[VAL_1]] : bf16
-// CHECK:               linalg.yield %[[ADDF_0]] : bf16
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<512xf32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_1]] : tensor<512xf32>) -> tensor<512xf32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TRANSPOSE_0]] : tensor<256x512xbf16>) outs(%[[FILL_0]] : tensor<512xf32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: bf16, %[[VAL_1:.*]]: f32) {
+// CHECK:               %[[EXTF_0:.*]] = arith.extf %[[VAL_0]] : bf16 to f32
+// CHECK:               %[[ADDF_0:.*]] = arith.addf %[[EXTF_0]], %[[VAL_1]] : f32
+// CHECK:               linalg.yield %[[ADDF_0]] : f32
 // CHECK:             }
+// CHECK:           %[[EMPTY_2:.*]] = tensor.empty() : tensor<512xbf16>
+// CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[REDUCE_0]] : tensor<512xf32>) outs(%[[EMPTY_2]] : tensor<512xbf16>) {
+// CHECK:           ^bb0(%[[VAL_2:.*]]: f32, %[[VAL_3:.*]]: bf16):
+// CHECK:             %[[TRUNCF_0:.*]] = arith.truncf %[[VAL_2]] : f32 to bf16
+// CHECK:             linalg.yield %[[TRUNCF_0]] : bf16
+// CHECK:           } -> tensor<512xbf16>
 // CHECK:           %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[ARG1]] to offset: [0], sizes: [512], strides: [1] : memref<*xbf16> to memref<512xbf16, strided<[1]>>
-// CHECK:           bufferization.materialize_in_destination %[[REDUCE_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<512xbf16>, memref<512xbf16, strided<[1]>>) -> ()
+// CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_1]] : (tensor<512xbf16>, memref<512xbf16, strided<[1]>>) -> ()
 // CHECK:           return
 // CHECK:         }
 module {

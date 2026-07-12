@@ -18,19 +18,26 @@
 // CHECK-SAME:                      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0xFF80 : bf16
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0xFF800000 : f32
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [32, 256, 16], strides: [256, 1, 1] : memref<*xbf16> to memref<32x256x16xbf16, strided<[256, 1, 1]>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<32x256x16xbf16>
 // CHECK:           memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<32x256x16xbf16, strided<[256, 1, 1]>> to memref<32x256x16xbf16>
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<32x256x16xbf16> to tensor<32x256x16xbf16>
-// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<256x16xbf16>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : bf16) outs(%[[EMPTY_0]] : tensor<256x16xbf16>) -> tensor<256x16xbf16>
-// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<32x256x16xbf16>) outs(%[[FILL_0]] : tensor<256x16xbf16>) dimensions = [0]
-// CHECK:             (%[[VAL_0:.*]]: bf16, %[[VAL_1:.*]]: bf16) {
-// CHECK:               %[[MAXIMUMF_0:.*]] = arith.maximumf %[[VAL_0]], %[[VAL_1]] : bf16
-// CHECK:               linalg.yield %[[MAXIMUMF_0]] : bf16
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<256x16xf32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_0]] : tensor<256x16xf32>) -> tensor<256x16xf32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<32x256x16xbf16>) outs(%[[FILL_0]] : tensor<256x16xf32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: bf16, %[[VAL_1:.*]]: f32) {
+// CHECK:               %[[EXTF_0:.*]] = arith.extf %[[VAL_0]] : bf16 to f32
+// CHECK:               %[[MAXIMUMF_0:.*]] = arith.maximumf %[[EXTF_0]], %[[VAL_1]] : f32
+// CHECK:               linalg.yield %[[MAXIMUMF_0]] : f32
 // CHECK:             }
-// CHECK:           bufferization.materialize_in_destination %[[REDUCE_0]] in writable %[[ARG1]] : (tensor<256x16xbf16>, memref<256x16xbf16>) -> ()
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<256x16xbf16>
+// CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]} ins(%[[REDUCE_0]] : tensor<256x16xf32>) outs(%[[EMPTY_1]] : tensor<256x16xbf16>) {
+// CHECK:           ^bb0(%[[IN:.*]]: f32, %[[OUT:.*]]: bf16):
+// CHECK:             %[[TRUNCF_0:.*]] = arith.truncf %[[IN]] : f32 to bf16
+// CHECK:             linalg.yield %[[TRUNCF_0]] : bf16
+// CHECK:           } -> tensor<256x16xbf16>
+// CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[ARG1]] : (tensor<256x16xbf16>, memref<256x16xbf16>) -> ()
 // CHECK:           return
 // CHECK:         }
 module {

@@ -18,8 +18,8 @@ module {
 // CHECK:           %[[VAL_7:.*]] = arith.constant 0 : i32
 // CHECK:           %[[VAL_8:.*]] = tensor.empty() : tensor<4096xi32>
 // CHECK:           %[[VAL_9:.*]] = linalg.fill ins(%[[VAL_7]] : i32) outs(%[[VAL_8]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK:           %[[VAL_10:.*]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:           %[[VAL_11:.*]] = tensor.insert %[[VAL_7]] into %[[VAL_10]][] : tensor<i32>
+// CHECK:           %[[VAL_10:.*]] = tensor.empty() : tensor<i32>
+// CHECK:           %[[VAL_11:.*]] = linalg.fill ins(%[[VAL_7]] : i32) outs(%[[VAL_10]] : tensor<i32>) -> tensor<i32>
 // CHECK:           %[[VAL_12:.*]] = linalg.reduce ins(%[[VAL_9]] : tensor<4096xi32>) outs(%[[VAL_11]] : tensor<i32>) dimensions = [0]
 // CHECK:             (%[[VAL_13:.*]]: i32, %[[VAL_14:.*]]: i32) {
 // CHECK:               %[[VAL_15:.*]] = arith.addi %[[VAL_13]], %[[VAL_14]] : i32
