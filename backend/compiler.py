@@ -267,9 +267,25 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
 def _vectorir_to_llir(vectorir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         vector_path = os.path.join(tmpdir, "vector.mlir")
+        transformed_vector_path = os.path.join(tmpdir, "vector-transformed.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(vector_path).write_text(vectorir)
+        transform_passes = ["--expand-float8-conversions"]
+        triton_shared_opt_path = _get_triton_shared_opt_path()
+        subprocess.check_call(
+            [
+                triton_shared_opt_path,
+                vector_path,
+                *transform_passes,
+                "--canonicalize",
+                "--mlir-print-debuginfo",
+                "-o",
+                transformed_vector_path,
+            ]
+        )
+        _dump_ir_if_needed([transformed_vector_path])
+        vector_path = transformed_vector_path
         buddy_opt_path = _get_buddy_opt_path()
         # TritonShared-MLIR to LLVM-MLIR
         subprocess.check_call(
@@ -459,10 +475,12 @@ class CPUOptions:
     extern_libs = None
     cluster_dims: tuple = (1, 1, 1)
     shared: bool = False
-    # Disable FP8 here since this is a sample CPU backend.
-    # Target specific backends can eanble it with supported types.
-    supported_fp8_dtypes: Tuple[str] = ()
-    allow_fp8e4nv: bool = False
+    # The RISC-V backend supports fp8_e4m3fn storage/conversion through
+    # Triton's fp8e4nv IR type. Keep the list explicit so unsupported fp8
+    # variants still fail at frontend type legalization.
+    supported_fp8_dtypes: Tuple[str] = ("fp8e4nv",)
+    allow_fp8e4nv: bool = True
+    max_num_imprecise_acc_default: int = 0
     allowed_dot_input_precisions: Tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
     instrumentation_mode: str = ""
