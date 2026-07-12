@@ -398,6 +398,11 @@ LogicalResult MaskState::parseAnd(arith::AndIOp andOp, const Location loc,
                                                      OpBuilder &builder,
                                                      Location loc) {
             OpFoldResult ofr = state.isMask() ? state.dims[dim] : state.scalar;
+            if (!ofr) {
+              // No structured bound for this dimension means the structured
+              // side does not restrict the unstructured mask.
+              return Value();
+            }
             if (auto intV = getIntAttr(ofr)) {
               if (intV == size) {
                 // Full mask.
