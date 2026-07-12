@@ -14,6 +14,7 @@ namespace mlir {
 namespace triton {
 
 std::unique_ptr<OperationPass<ModuleOp>> createUnstructuredToMemrefPass();
+std::unique_ptr<OperationPass<ModuleOp>> createLowerAtomicCASToLLVMPass();
 
 } // namespace triton
 } // namespace mlir

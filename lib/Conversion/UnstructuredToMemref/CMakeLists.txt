@@ -16,6 +16,7 @@ add_triton_library(UnstructuredToMemref
   MLIRArithDialect
   MLIRDialectUtils
   MLIRIR
+  MLIRLLVMDialect
   MLIRMathDialect
   MLIRPass
   MLIRTensorDialect

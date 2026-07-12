@@ -227,13 +227,11 @@ module {
 // CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
 // CHECK:           %[[CONSTANT_2:.*]] = arith.constant 8 : index
 // CHECK:           %[[CONSTANT_3:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 0 : i32
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:           %[[CONSTANT_6:.*]] = arith.constant 8 : i32
-// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4xi32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_4]] : i32) outs(%[[EMPTY_0]] : tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 8 : i32
 // CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<4x8xi32>
-// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_6]] : i32) outs(%[[EMPTY_1]] : tensor<4x8xi32>) -> tensor<4x8xi32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_5]] : i32) outs(%[[EMPTY_1]] : tensor<4x8xi32>) -> tensor<4x8xi32>
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4xi32>
 // CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]]], iterator_types = ["parallel"]} outs(%[[EMPTY_0]] : tensor<4xi32>) {
 // CHECK:           ^bb0(%[[VAL_0:.*]]: i32):
 // CHECK:             %[[INDEX_0:.*]] = linalg.index 0 : index
@@ -280,10 +278,14 @@ module {
 // CHECK:             %[[FOR_1:.*]] = scf.for %[[VAL_17:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_2]] step %[[CONSTANT_0]] iter_args(%[[VAL_18:.*]] = %[[VAL_16]]) -> (tensor<4x8xf32>) {
 // CHECK:               %[[EXTRACT_0:.*]] = tensor.extract %[[GENERIC_6]]{{\[}}%[[VAL_15]], %[[VAL_17]]] : tensor<4x8xi32>
 // CHECK:               %[[INDEX_CAST_2:.*]] = arith.index_cast %[[EXTRACT_0]] : i32 to index
-// CHECK:               %[[LOAD_0:.*]] = memref.load %[[CAST_0]]{{\[}}%[[INDEX_CAST_2]]] : memref<?xf32>
 // CHECK:               %[[EXTRACT_1:.*]] = tensor.extract %[[GENERIC_4]]{{\[}}%[[VAL_15]], %[[VAL_17]]] : tensor<4x8xi1>
-// CHECK:               %[[SELECT_0:.*]] = arith.select %[[EXTRACT_1]], %[[LOAD_0]], %[[CONSTANT_5]] : f32
-// CHECK:               %[[INSERT_0:.*]] = tensor.insert %[[SELECT_0]] into %[[VAL_18]]{{\[}}%[[VAL_15]], %[[VAL_17]]] : tensor<4x8xf32>
+// CHECK:               %[[IF_0:.*]] = scf.if %[[EXTRACT_1]] -> (f32) {
+// CHECK:                 %[[LOAD_0:.*]] = memref.load %[[CAST_0]]{{\[}}%[[INDEX_CAST_2]]] : memref<?xf32>
+// CHECK:                 scf.yield %[[LOAD_0]] : f32
+// CHECK:               } else {
+// CHECK:                 scf.yield %[[CONSTANT_4]] : f32
+// CHECK:               }
+// CHECK:               %[[INSERT_0:.*]] = tensor.insert %[[IF_0]] into %[[VAL_18]]{{\[}}%[[VAL_15]], %[[VAL_17]]] : tensor<4x8xf32>
 // CHECK:               scf.yield %[[INSERT_0]] : tensor<4x8xf32>
 // CHECK:             }
 // CHECK:             scf.yield %[[FOR_1]] : tensor<4x8xf32>
@@ -291,18 +293,16 @@ module {
 // CHECK:           %[[EMPTY_5:.*]] = tensor.empty() : tensor<8x4xf32>
 // CHECK:           %[[TRANSPOSE_0:.*]] = linalg.transpose ins(%[[FOR_0]] : tensor<4x8xf32>) outs(%[[EMPTY_5]] : tensor<8x4xf32>) permutation = [1, 0]
 // CHECK:           %[[EMPTY_6:.*]] = tensor.empty() : tensor<4xf32>
-// CHECK:           %[[FILL_3:.*]] = linalg.fill ins(%[[CONSTANT_5]] : f32) outs(%[[EMPTY_6]] : tensor<4xf32>) -> tensor<4xf32>
+// CHECK:           %[[FILL_3:.*]] = linalg.fill ins(%[[CONSTANT_4]] : f32) outs(%[[EMPTY_6]] : tensor<4xf32>) -> tensor<4xf32>
 // CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TRANSPOSE_0]] : tensor<8x4xf32>) outs(%[[FILL_3]] : tensor<4xf32>) dimensions = [0]
 // CHECK:             (%[[VAL_19:.*]]: f32, %[[VAL_20:.*]]: f32) {
 // CHECK:               %[[ADDF_0:.*]] = arith.addf %[[VAL_19]], %[[VAL_20]] : f32
 // CHECK:               linalg.yield %[[ADDF_0]] : f32
 // CHECK:             }
 // CHECK:           %[[CAST_1:.*]] = memref.cast %[[ARG1]] : memref<*xf32> to memref<?xf32>
-// CHECK:           linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[FILL_0]], %[[REDUCE_0]] : tensor<4xi32>, tensor<4xf32>) {
-// CHECK:           ^bb0(%[[VAL_21:.*]]: i32, %[[VAL_22:.*]]: f32):
-// CHECK:             %[[INDEX_CAST_3:.*]] = arith.index_cast %[[VAL_21]] : i32 to index
-// CHECK:             memref.store %[[VAL_22]], %[[CAST_1]]{{\[}}%[[INDEX_CAST_3]]] : memref<?xf32>
-// CHECK:             linalg.yield
+// CHECK:           scf.for %[[VAL_21:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_3]] step %[[CONSTANT_0]] {
+// CHECK:             %[[EXTRACT_2:.*]] = tensor.extract %[[REDUCE_0]]{{\[}}%[[VAL_21]]] : tensor<4xf32>
+// CHECK:             memref.store %[[EXTRACT_2]], %[[CAST_1]]{{\[}}%[[CONSTANT_1]]] : memref<?xf32>
 // CHECK:           }
 // CHECK:           return
 // CHECK:         }

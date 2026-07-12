@@ -15,4 +15,10 @@ def UnstructuredToMemref : Pass<"unstructured-to-memref", "mlir::ModuleOp"> {
   let constructor = "triton::createUnstructuredToMemrefPass()";
 }
 
+def LowerAtomicCASToLLVM
+    : Pass<"lower-atomic-cas-to-llvm", "mlir::ModuleOp"> {
+  let summary = "Lower atomic CAS helper calls to LLVM cmpxchg";
+  let constructor = "triton::createLowerAtomicCASToLLVMPass()";
+}
+
 #endif

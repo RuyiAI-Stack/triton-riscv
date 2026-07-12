@@ -29,42 +29,53 @@ module {
   }
 }
 
-// CHECK-DAG:   [[MAP_0_:#.+]] = affine_map<(d0) -> (d0)>
-// CHECK:         tt.func public @gather_simple_mask_no_other([[PARAM_0_:%.+]]: !tt.ptr<f32>, [[PARAM_1_:%.+]]: !tt.ptr<f32>) attributes {noinline = false} {
-// CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[CST_8_:%.+]] = arith.constant 8 : i32
-// CHECK-DAG:       [[VAR_cst_:%.+]] = arith.constant dense<4> : tensor<64xi32>
-// CHECK-DAG:       [[CST_16_:%.+]] = arith.constant 16 : i32
-// CHECK-DAG:       [[VAR_cst_0_:%.+]] = arith.constant dense<64> : tensor<64xi32>
-// CHECK-DAG:       [[CST_2_:%.+]] = arith.constant 2 : i32
-// CHECK-DAG:       [[CST_1_:%.+]] = arith.constant 1 : i32
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0 : i32
-// CHECK-DAG:       [[VAR_0_:%.+]] = builtin.unrealized_conversion_cast [[PARAM_1_]] : !tt.ptr<f32> to memref<*xf32>
-// CHECK-DAG:       [[VAR_1_:%.+]] = builtin.unrealized_conversion_cast [[PARAM_0_]] : !tt.ptr<f32> to memref<*xf32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_3_:%.+]]:3 = scf.for [[VAR_arg2_:%.+]] = [[CST_0_]] to [[CST_2_]] step [[CST_1_]] iter_args([[VAR_arg3_:%.+]] = [[CST_8_]], [[VAR_arg4_:%.+]] = [[VAR_2_]], [[VAR_arg5_:%.+]] = [[VAR_2_]]) -> (i32, tensor<64xi32>, tensor<64xi32>)  : i32 {
-// CHECK-DAG:         [[VAR_4_:%.+]] = arith.divsi [[VAR_arg4_]], [[VAR_cst_]] : tensor<64xi32>
-// CHECK-DAG:         [[VAR_5_:%.+]] = tt.splat [[VAR_arg3_]] : i32 -> tensor<64xi32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:         [[VAR_6_:%.+]] = arith.cmpi slt, [[VAR_4_]], [[VAR_5_]] : tensor<64xi32>
-// CHECK-DAG:         [[VAR_cast_:%.+]] = memref.cast [[VAR_1_]] : memref<*xf32> to memref<?xf32>
-// CHECK:             scf.for
-// CHECK:             tensor.extract
-// CHECK:             memref.load
-// CHECK:             arith.select
-// CHECK:             tensor.insert
-// CHECK:             [[VAR_cast_2_:%.+]] = memref.cast [[VAR_0_]] : memref<*xf32> to memref<?xf32>
-// CHECK:             linalg.generic {indexing_maps = [[[MAP_0_]], [[MAP_0_]]], iterator_types = ["parallel"]} ins([[VAR_arg5_]], {{.*}} : tensor<64xi32>, tensor<64xf32>) {
-// CHECK:             ^bb0([[IN_3_:%.+]]: i32, [[IN_4_:%.+]]: f32):
-// CHECK:               [[VAR_12_:%.+]] = arith.index_cast [[IN_3_]] : i32 to index
-// CHECK:               memref.store [[IN_4_]], [[VAR_cast_2_]]{{.}}[[VAR_12_]]{{.}} : memref<?xf32>
-// CHECK:               linalg.yield
+
+// CHECK-LABEL:   tt.func public @gather_simple_mask_no_other(
+// CHECK-SAME:  %[[VAL_0:.*]]: !tt.ptr<f32>, %[[VAL_1:.*]]: !tt.ptr<f32>) attributes {noinline = false} {
+// CHECK:           %[[VAL_2:.*]] = arith.constant 1 : index
+// CHECK:           %[[VAL_3:.*]] = arith.constant 0 : index
+// CHECK:           %[[VAL_4:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[VAL_5:.*]] = arith.constant 64 : index
+// CHECK:           %[[VAL_6:.*]] = arith.constant 8 : i32
+// CHECK:           %[[VAL_7:.*]] = arith.constant dense<4> : tensor<64xi32>
+// CHECK:           %[[VAL_8:.*]] = arith.constant 16 : i32
+// CHECK:           %[[VAL_9:.*]] = arith.constant dense<64> : tensor<64xi32>
+// CHECK:           %[[VAL_10:.*]] = arith.constant 2 : i32
+// CHECK:           %[[VAL_11:.*]] = arith.constant 1 : i32
+// CHECK:           %[[VAL_12:.*]] = arith.constant 0 : i32
+// CHECK:           %[[VAL_13:.*]] = builtin.unrealized_conversion_cast %[[VAL_1]] : !tt.ptr<f32> to memref<*xf32>
+// CHECK:           %[[VAL_14:.*]] = builtin.unrealized_conversion_cast %[[VAL_0]] : !tt.ptr<f32> to memref<*xf32>
+// CHECK:           %[[VAL_15:.*]] = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+// CHECK:           %[[VAL_16:.*]]:3 = scf.for %[[VAL_17:.*]] = %[[VAL_12]] to %[[VAL_10]] step %[[VAL_11]] iter_args(%[[VAL_18:.*]] = %[[VAL_6]], %[[VAL_19:.*]] = %[[VAL_15]], %[[VAL_20:.*]] = %[[VAL_15]]) -> (i32, tensor<64xi32>, tensor<64xi32>)  : i32 {
+// CHECK:             %[[VAL_21:.*]] = arith.divsi %[[VAL_19]], %[[VAL_7]] : tensor<64xi32>
+// CHECK:             %[[VAL_22:.*]] = tt.splat %[[VAL_18]] : i32 -> tensor<64xi32>
+// CHECK:             %[[VAL_23:.*]] = arith.cmpi slt, %[[VAL_21]], %[[VAL_22]] : tensor<64xi32>
+// CHECK:             %[[VAL_24:.*]] = memref.cast %[[VAL_14]] : memref<*xf32> to memref<?xf32>
+// CHECK:             %[[VAL_25:.*]] = tensor.empty() : tensor<64xf32>
+// CHECK:             %[[VAL_26:.*]] = scf.for %[[VAL_27:.*]] = %[[VAL_3]] to %[[VAL_5]] step %[[VAL_2]] iter_args(%[[VAL_28:.*]] = %[[VAL_25]]) -> (tensor<64xf32>) {
+// CHECK:               %[[VAL_29:.*]] = tensor.extract %[[VAL_21]]{{\[}}%[[VAL_27]]] : tensor<64xi32>
+// CHECK:               %[[VAL_30:.*]] = arith.index_cast %[[VAL_29]] : i32 to index
+// CHECK:               %[[VAL_31:.*]] = tensor.extract %[[VAL_23]]{{\[}}%[[VAL_27]]] : tensor<64xi1>
+// CHECK:               %[[VAL_32:.*]] = scf.if %[[VAL_31]] -> (f32) {
+// CHECK:                 %[[VAL_33:.*]] = memref.load %[[VAL_24]]{{\[}}%[[VAL_30]]] : memref<?xf32>
+// CHECK:                 scf.yield %[[VAL_33]] : f32
+// CHECK:               } else {
+// CHECK:                 scf.yield %[[VAL_4]] : f32
+// CHECK:               }
+// CHECK:               %[[VAL_34:.*]] = tensor.insert %[[VAL_32]] into %[[VAL_28]]{{\[}}%[[VAL_27]]] : tensor<64xf32>
+// CHECK:               scf.yield %[[VAL_34]] : tensor<64xf32>
 // CHECK:             }
-// CHECK-DAG:         [[VAR_15_:%.+]] = arith.addi [[VAR_arg3_]], [[CST_16_]] : i32
-// CHECK-DAG:         [[VAR_16_:%.+]] = arith.addi [[VAR_arg4_]], [[VAR_cst_0_]] : tensor<64xi32>
-// CHECK-DAG:         [[VAR_17_:%.+]] = arith.addi [[VAR_arg5_]], [[VAR_cst_0_]] : tensor<64xi32>
-// CHECK:             scf.yield [[VAR_15_]], [[VAR_16_]], [[VAR_17_]] : i32, tensor<64xi32>, tensor<64xi32>
+// CHECK:             %[[VAL_35:.*]] = memref.cast %[[VAL_13]] : memref<*xf32> to memref<?xf32>
+// CHECK:             scf.for %[[VAL_36:.*]] = %[[VAL_3]] to %[[VAL_5]] step %[[VAL_2]] {
+// CHECK:               %[[VAL_37:.*]] = tensor.extract %[[VAL_20]]{{\[}}%[[VAL_36]]] : tensor<64xi32>
+// CHECK:               %[[VAL_38:.*]] = arith.index_cast %[[VAL_37]] : i32 to index
+// CHECK:               %[[VAL_39:.*]] = tensor.extract %[[VAL_26]]{{\[}}%[[VAL_36]]] : tensor<64xf32>
+// CHECK:               memref.store %[[VAL_39]], %[[VAL_35]]{{\[}}%[[VAL_38]]] : memref<?xf32>
+// CHECK:             }
+// CHECK:             %[[VAL_40:.*]] = arith.addi %[[VAL_18]], %[[VAL_8]] : i32
+// CHECK:             %[[VAL_41:.*]] = arith.addi %[[VAL_19]], %[[VAL_9]] : tensor<64xi32>
+// CHECK:             %[[VAL_42:.*]] = arith.addi %[[VAL_20]], %[[VAL_9]] : tensor<64xi32>
+// CHECK:             scf.yield %[[VAL_40]], %[[VAL_41]], %[[VAL_42]] : i32, tensor<64xi32>, tensor<64xi32>
 // CHECK:           }
 // CHECK:           tt.return
 // CHECK:         }
