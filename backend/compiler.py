@@ -104,6 +104,8 @@ def _optimize_ttsharedir(ttsharedir: str):
 def _ttsharedir_to_llir(ttsharedir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
+        ime_pre_llvm_path = os.path.join(tmpdir, "ime-pre-llvm.mlir")
+        atomic_cas_path = os.path.join(tmpdir, "ttshared-atomic-cas.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(ttshared_path).write_text(ttsharedir)
@@ -115,40 +117,75 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # Lowers linalg.matmul (f16) to ime.vfmadot via buddy-mlir passes,
             # then cross-compiles to a RISC-V ELF object with +xsmtime.
             # ---------------------------------------------------------------
+            ime_lowering_passes = [
+                # Bufferize tensor ops before IME lowering
+                "--empty-tensor-to-alloc-tensor",
+                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                # One-shot bufferization creates heap-backed temporary
+                # memrefs. Insert and lower their deallocations while the
+                # memref-level ownership information is still available.
+                "--buffer-deallocation-pipeline",
+                # Lower linalg.matmul (memref) → ime.vfmadot / ime.vmadot
+                "--lower-linalg-to-ime",
+                # Lower IME dialect → vector / loop ops
+                "--lower-ime",
+                # Lower any remaining linalg / affine / SCF ops
+                "--convert-linalg-to-loops",
+                "--lower-affine",
+                "--expand-strided-metadata",
+                "--convert-scf-to-cf",
+            ]
+            llvm_lowering_passes = [
+                # Lower to LLVM dialect
+                "--convert-cf-to-llvm",
+                "--convert-arith-to-llvm",
+                "--convert-math-to-llvm",
+                "--convert-complex-to-llvm",
+                "--convert-vector-to-llvm",
+                "--convert-index-to-llvm",
+                "--convert-func-to-llvm",
+                "--memref-expand",
+                "--finalize-memref-to-llvm",
+                # Lowering memrefs creates more affine.apply ops; run again.
+                "--lower-affine",
+                "--convert-arith-to-llvm",
+                "--reconcile-unrealized-casts",
+            ]
+
+            buddy_input_path = ttshared_path
+            buddy_passes = [*ime_lowering_passes, *llvm_lowering_passes]
+            if "__triton_shared_atomic_cas_" in ttsharedir:
+                # LLVM cmpxchg is not bufferizable, so lower helper calls only
+                # after Buddy has completed its tensor-to-memref work.
+                subprocess.check_call(
+                    [
+                        buddy_opt_path,
+                        ttshared_path,
+                        *ime_lowering_passes,
+                        "--mlir-print-debuginfo",
+                        "-o",
+                        ime_pre_llvm_path,
+                    ]
+                )
+                subprocess.check_call(
+                    [
+                        _get_triton_shared_opt_path(),
+                        ime_pre_llvm_path,
+                        "--lower-atomic-cas-to-llvm",
+                        "--canonicalize",
+                        "--mlir-print-debuginfo",
+                        "-o",
+                        atomic_cas_path,
+                    ]
+                )
+                buddy_input_path = atomic_cas_path
+                buddy_passes = llvm_lowering_passes
+
             subprocess.check_call(
                 [
                     buddy_opt_path,
-                    ttshared_path,
-                    # Bufferize tensor ops before IME lowering
-                    "--empty-tensor-to-alloc-tensor",
-                    "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                    # One-shot bufferization creates heap-backed temporary
-                    # memrefs. Insert and lower their deallocations while the
-                    # memref-level ownership information is still available.
-                    "--buffer-deallocation-pipeline",
-                    # Lower linalg.matmul (memref) → ime.vfmadot / ime.vmadot
-                    "--lower-linalg-to-ime",
-                    # Lower IME dialect → vector / loop ops
-                    "--lower-ime",
-                    # Lower any remaining linalg / affine / SCF ops
-                    "--convert-linalg-to-loops",
-                    "--lower-affine",
-                    "--expand-strided-metadata",
-                    "--convert-scf-to-cf",
-                    # Lower to LLVM dialect
-                    "--convert-cf-to-llvm",
-                    "--convert-arith-to-llvm",
-                    "--convert-math-to-llvm",
-                    "--convert-complex-to-llvm",
-                    "--convert-vector-to-llvm",
-                    "--convert-index-to-llvm",
-                    "--convert-func-to-llvm",
-                    "--memref-expand",
-                    "--finalize-memref-to-llvm",
-                    # Lowering memrefs creates more affine.apply ops; run again.
-                    "--lower-affine",
-                    "--convert-arith-to-llvm",
-                    "--reconcile-unrealized-casts",
+                    buddy_input_path,
+                    *buddy_passes,
                     "--mlir-print-debuginfo",
                     "-o",
                     llmlir_path,
@@ -267,9 +304,28 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
 def _vectorir_to_llir(vectorir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         vector_path = os.path.join(tmpdir, "vector.mlir")
+        transformed_vector_path = os.path.join(tmpdir, "vector-transformed.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(vector_path).write_text(vectorir)
+        transform_passes = []
+        if "__triton_shared_atomic_cas_" in vectorir:
+            transform_passes.append("--lower-atomic-cas-to-llvm")
+        transform_passes.append("--expand-float8-conversions")
+        triton_shared_opt_path = _get_triton_shared_opt_path()
+        subprocess.check_call(
+            [
+                triton_shared_opt_path,
+                vector_path,
+                *transform_passes,
+                "--canonicalize",
+                "--mlir-print-debuginfo",
+                "-o",
+                transformed_vector_path,
+            ]
+        )
+        _dump_ir_if_needed([transformed_vector_path])
+        vector_path = transformed_vector_path
         buddy_opt_path = _get_buddy_opt_path()
         # TritonShared-MLIR to LLVM-MLIR
         subprocess.check_call(
@@ -459,10 +515,12 @@ class CPUOptions:
     extern_libs = None
     cluster_dims: tuple = (1, 1, 1)
     shared: bool = False
-    # Disable FP8 here since this is a sample CPU backend.
-    # Target specific backends can eanble it with supported types.
-    supported_fp8_dtypes: Tuple[str] = ()
-    allow_fp8e4nv: bool = False
+    # The RISC-V backend supports fp8_e4m3fn storage/conversion through
+    # Triton's fp8e4nv IR type. Keep the list explicit so unsupported fp8
+    # variants still fail at frontend type legalization.
+    supported_fp8_dtypes: Tuple[str] = ("fp8e4nv",)
+    allow_fp8e4nv: bool = True
+    max_num_imprecise_acc_default: int = 0
     allowed_dot_input_precisions: Tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
     instrumentation_mode: str = ""
