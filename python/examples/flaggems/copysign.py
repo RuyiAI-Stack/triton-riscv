@@ -59,9 +59,7 @@ def copysign(input, other, *, out=None):
             out_c = out if out.is_contiguous() else out.contiguous()
         n_elements = A_c.numel()
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        copysign_kernel_tt[grid](
-            A_c, B_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        copysign_kernel_tt[grid](A_c, B_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         if out is not None and out_c.data_ptr() != out.data_ptr():
             out.copy_(out_c)
         return out_t if out is None else out
@@ -73,9 +71,7 @@ def copysign(input, other, *, out=None):
         out_c = out if out.is_contiguous() else out.contiguous()
     n_elements = A_c.numel()
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    copysign_kernel_ts[grid](
-        A_c, other, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    copysign_kernel_ts[grid](A_c, other, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     if out is not None and out_c.data_ptr() != out.data_ptr():
         out.copy_(out_c)
     return out_t if out is None else out

@@ -49,5 +49,3 @@ def test_resolve_conj_large_2d(shape):
     r = resolve_conj(y)
     ref = torch.resolve_conj(y)
     torch.testing.assert_close(r, ref)
-
-

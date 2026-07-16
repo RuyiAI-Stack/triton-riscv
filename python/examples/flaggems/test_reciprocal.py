@@ -15,6 +15,7 @@ def test_reciprocal(shape):
 
 def test_reciprocal_inplace():
     x = torch.tensor([0.5, 2.0, 4.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().reciprocal_()
+    x_ref = x.clone()
+    torch.reciprocal(x_ref, out=x_ref)
     reciprocal_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)

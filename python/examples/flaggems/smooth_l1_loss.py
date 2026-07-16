@@ -22,9 +22,7 @@ def _smooth_l1_loss_kernel(
     if beta == 0.0:
         loss = diff
     else:
-        loss = tl.where(
-            diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta
-        )
+        loss = tl.where(diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta)
     tl.store(out + offsets, loss, mask=mask)
 
 
@@ -48,9 +46,7 @@ def _smooth_l1_loss_partial_sum_kernel(
     if beta == 0.0:
         loss = diff
     else:
-        loss = tl.where(
-            diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta
-        )
+        loss = tl.where(diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta)
     loss = tl.where(mask, loss, 0.0)
     acc = tl.sum(loss, axis=0)
     if reduction == 1:
@@ -89,22 +85,16 @@ def _smooth_l1_loss_backward_kernel(
     diff = inp_val - target_val
 
     if beta == 0.0:
-        grad = tl.where(
-            diff == 0.0, float("nan"), tl.where(diff > 0.0, 1.0, -1.0)
-        )
+        grad = tl.where(diff == 0.0, float("nan"), tl.where(diff > 0.0, 1.0, -1.0))
     else:
-        grad = tl.where(
-            diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff / beta)
-        )
+        grad = tl.where(diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff / beta))
 
     if GRAD_OUTPUT_SCALAR:
         grad_out = tl.load(grad_output).to(tl.float32)
         if reduction == 1:
             grad_out = grad_out * (1.0 / reduction_elements)
     else:
-        grad_out = tl.load(grad_output + offsets, mask=mask, other=0.0).to(
-            tl.float32
-        )
+        grad_out = tl.load(grad_output + offsets, mask=mask, other=0.0).to(tl.float32)
         if reduction == 1:
             grad_out = grad_out * (1.0 / reduction_elements)
     tl.store(out + offsets, grad * grad_out, mask=mask)
@@ -125,9 +115,7 @@ def _normalize_reduction(reduction):
 
 def _check_input(input, target, beta):
     if beta < 0:
-        raise RuntimeError(
-            "smooth_l1_loss does not support negative values for beta."
-        )
+        raise RuntimeError("smooth_l1_loss does not support negative values for beta.")
     input, target = torch.broadcast_tensors(input, target)
     return input.contiguous(), target.contiguous()
 
@@ -144,9 +132,7 @@ def _empty_reduction(input, reduction):
     if reduction == 0:
         return torch.empty_like(input)
     if reduction == 1:
-        return torch.full(
-            (), float("nan"), device=input.device, dtype=input.dtype
-        )
+        return torch.full((), float("nan"), device=input.device, dtype=input.dtype)
     return torch.zeros((), device=input.device, dtype=input.dtype)
 
 
@@ -157,14 +143,10 @@ def _smooth_l1_loss_none(input, target, beta, out=None):
         out_contiguous = out
     else:
         if out.device != input.device:
-            raise RuntimeError(
-                "smooth_l1_loss.out: out must be on the same device."
-            )
+            raise RuntimeError("smooth_l1_loss.out: out must be on the same device.")
         if tuple(out.shape) != tuple(input.shape):
             out.resize_(input.shape)
-        out_contiguous = (
-            out if out.is_contiguous() else torch.empty_like(input)
-        )
+        out_contiguous = out if out.is_contiguous() else torch.empty_like(input)
 
     if n_elements > 0:
 
@@ -191,9 +173,7 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         if out is None:
             return result
         if out.device != input.device:
-            raise RuntimeError(
-                "smooth_l1_loss.out: out must be on the same device."
-            )
+            raise RuntimeError("smooth_l1_loss.out: out must be on the same device.")
         if out.dim() != 0:
             out.resize_(())
         out.copy_(result)
@@ -208,9 +188,7 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         result = torch.empty((), device=input.device, dtype=input.dtype)
     else:
         if result.device != input.device:
-            raise RuntimeError(
-                "smooth_l1_loss.out: out must be on the same device."
-            )
+            raise RuntimeError("smooth_l1_loss.out: out must be on the same device.")
         if result.dim() != 0:
             result.resize_(())
 
@@ -223,9 +201,7 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         reduction=reduction,
         BLOCK_SIZE=block_size,
     )
-    _smooth_l1_loss_sum_kernel[(1,)](
-        mid, result, mid_size, BLOCK_MID=block_mid
-    )
+    _smooth_l1_loss_sum_kernel[(1,)](mid, result, mid_size, BLOCK_MID=block_mid)
     return result
 
 
@@ -254,9 +230,7 @@ def smooth_l1_loss_out(
     input, target = _check_input(input, target, float(beta))
     if reduction == 0:
         return _smooth_l1_loss_none(input, target, float(beta), out=out)
-    return _smooth_l1_loss_reduce(
-        input, target, float(beta), reduction, out=out
-    )
+    return _smooth_l1_loss_reduce(input, target, float(beta), reduction, out=out)
 
 
 def smooth_l1_loss_backward(

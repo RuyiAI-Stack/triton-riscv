@@ -37,9 +37,7 @@ def lift_fresh_copy(*args, **kwargs):
     n_elements = x_contig.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    lift_fresh_copy_kernel[grid](
-        x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    lift_fresh_copy_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out.view_as(x_contig)
 
 
@@ -53,9 +51,7 @@ def lift_fresh_copy_out(x, out=None):
         out = torch.empty_like(x_contig)
     else:
         if out.dtype != x_contig.dtype:
-            raise ValueError(
-                "Output tensor 'out' must have the same dtype as input"
-            )
+            raise ValueError("Output tensor 'out' must have the same dtype as input")
         if out.numel() != x_contig.numel() or not out.is_contiguous():
             out.resize_(x_contig.shape)
             if not out.is_contiguous():
@@ -64,7 +60,5 @@ def lift_fresh_copy_out(x, out=None):
     n_elements = x_contig.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    lift_fresh_copy_kernel[grid](
-        x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    lift_fresh_copy_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out.view_as(x_contig)

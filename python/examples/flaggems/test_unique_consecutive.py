@@ -9,9 +9,7 @@ def test_unique_consecutive_values(size):
     torch.manual_seed(0)
     # Create input with some consecutive duplicates
     x = torch.repeat_interleave(
-        torch.randint(
-            0, size // 4, (size // 2,), dtype=torch.float32, device="cpu"
-        ),
+        torch.randint(0, size // 4, (size // 2,), dtype=torch.float32, device="cpu"),
         2,
     )[:size]
 
@@ -25,9 +23,7 @@ def test_unique_consecutive_values(size):
 def test_unique_consecutive_return_inverse(size):
     torch.manual_seed(0)
     x = torch.repeat_interleave(
-        torch.randint(
-            0, size // 4, (size // 2,), dtype=torch.float32, device="cpu"
-        ),
+        torch.randint(0, size // 4, (size // 2,), dtype=torch.float32, device="cpu"),
         2,
     )[:size]
 
@@ -42,9 +38,7 @@ def test_unique_consecutive_return_inverse(size):
 def test_unique_consecutive_return_counts(size):
     torch.manual_seed(0)
     x = torch.repeat_interleave(
-        torch.randint(
-            0, size // 4, (size // 2,), dtype=torch.float32, device="cpu"
-        ),
+        torch.randint(0, size // 4, (size // 2,), dtype=torch.float32, device="cpu"),
         2,
     )[:size]
 

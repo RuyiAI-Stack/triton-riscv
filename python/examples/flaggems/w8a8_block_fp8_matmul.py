@@ -5,9 +5,7 @@ import triton
 import triton.language as tl
 
 
-def _get_default_w8a8_block_fp8_config(
-    block_n: int, block_k: int
-) -> dict[str, Any]:
+def _get_default_w8a8_block_fp8_config(block_n: int, block_k: int) -> dict[str, Any]:
     return {
         "BLOCK_SIZE_M": 64,
         "BLOCK_SIZE_N": block_n,
@@ -67,12 +65,8 @@ def w8a8_block_fp8_matmul_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(
-            a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0
-        )
-        b = tl.load(
-            b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0
-        )
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
 
         k_start = k * BLOCK_SIZE_K
         offs_ks = k_start // group_k
@@ -124,8 +118,7 @@ def w8a8_block_fp8_matmul(
 
     def grid(META):
         return (
-            triton.cdiv(M, META["BLOCK_SIZE_M"])
-            * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         )
 
     w8a8_block_fp8_matmul_kernel[grid](

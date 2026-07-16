@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .rand import philox_backend_seed_offset
+
 
 @triton.jit
 def uint_to_uniform_float(x):
@@ -14,8 +16,7 @@ def uint_to_uniform_float(x):
         scale = 4.6566127342e-10
     else:
         tl.static_assert(
-            tl.constexpr(x.dtype == tl.uint64)
-            or tl.constexpr(x.dtype == tl.int64)
+            tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
         )
         x = x.to(tl.int64, bitcast=True)
         scale = 1.0842020432385337e-19
@@ -53,18 +54,10 @@ def uniform_kernel(
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
-    tl.store(
-        out_ptr + off_0, r0, mask=off_0 < N, eviction_policy="evict_first"
-    )
-    tl.store(
-        out_ptr + off_1, r1, mask=off_1 < N, eviction_policy="evict_first"
-    )
-    tl.store(
-        out_ptr + off_2, r2, mask=off_2 < N, eviction_policy="evict_first"
-    )
-    tl.store(
-        out_ptr + off_3, r3, mask=off_3 < N, eviction_policy="evict_first"
-    )
+    tl.store(out_ptr + off_0, r0, mask=off_0 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_1, r1, mask=off_1 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_2, r2, mask=off_2 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_3, r3, mask=off_3 < N, eviction_policy="evict_first")
 
 
 UNROLL = 4
@@ -72,6 +65,8 @@ UNROLL = 4
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     N = volume(self.shape)
+    if N == 0:
+        return self
 
     BLOCK = 128
 
@@ -79,14 +74,11 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
         return (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed = torch.randint(
-        0, 2**32 - 1, (1,), dtype=torch.int64, device="cpu"
-    ).item()
-    philox_offset = increment
-
-    uniform_kernel[grid](
-        self, N, philox_seed, philox_offset, from_, to, BLOCK=BLOCK
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
     )
+
+    uniform_kernel[grid](self, N, philox_seed, philox_offset, from_, to, BLOCK=BLOCK)
     return self
 
 

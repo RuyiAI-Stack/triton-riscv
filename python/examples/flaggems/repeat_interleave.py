@@ -63,9 +63,7 @@ def repeat_interleave_tensor_kernel(
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
-    assert repeats.ndim == 1, (
-        "repeat_interleave only accept 1D vector as repeat"
-    )
+    assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
 
     cumsum = repeats.cumsum(axis=0)
     result_size = cumsum[-1].item() if repeats.numel() > 0 else 0
@@ -75,9 +73,7 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     if result_size == 0:
         return torch.empty((0,), dtype=repeats.dtype, device=repeats.device)
 
-    out = torch.empty(
-        (result_size,), dtype=repeats.dtype, device=repeats.device
-    )
+    out = torch.empty((result_size,), dtype=repeats.dtype, device=repeats.device)
     size = repeats.size(0)
 
     grid = (size,)

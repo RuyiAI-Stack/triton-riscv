@@ -55,9 +55,7 @@ def _minimum_internal(A, B):
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        minimum_kernel_tt[grid](
-            A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        minimum_kernel_tt[grid](A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(A)
     elif isinstance(A, torch.Tensor):
         A_c = A.contiguous()

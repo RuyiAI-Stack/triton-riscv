@@ -18,9 +18,7 @@ def test_cudnn_convolution(N, C_in, C_out, D, H, W, kernel_size):
     ndim = len(kernel_size)
     if ndim == 1:
         x = torch.randn(N, C_in, D, device="cpu", dtype=torch.float32)
-        w = torch.randn(
-            C_out, C_in, *kernel_size, device="cpu", dtype=torch.float32
-        )
+        w = torch.randn(C_out, C_in, *kernel_size, device="cpu", dtype=torch.float32)
         stride = (1,)
         padding = (0,)
         dilation = (1,)
@@ -35,9 +33,7 @@ def test_cudnn_convolution(N, C_in, C_out, D, H, W, kernel_size):
         )
     elif ndim == 2:
         x = torch.randn(N, C_in, H, W, device="cpu", dtype=torch.float32)
-        w = torch.randn(
-            C_out, C_in, *kernel_size, device="cpu", dtype=torch.float32
-        )
+        w = torch.randn(C_out, C_in, *kernel_size, device="cpu", dtype=torch.float32)
         stride = (1, 1)
         padding = (0, 0)
         dilation = (1, 1)

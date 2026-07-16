@@ -20,9 +20,9 @@ def simple_unique_consecutive_flat_kernel(
     mask = i0 < num_tasks
 
     # load current and previous elements
-    a = tl.load(data_ptr + i0, mask=mask)
+    a = tl.load(data_ptr + i0, mask=mask, other=0)
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
-    b = tl.load(data_ptr + i0_prev, mask=mask)
+    b = tl.load(data_ptr + i0_prev, mask=mask, other=0)
 
     # Check if element differs from previous (first element always starts a new group)
     ne_result = tl.where(i0 > 0, a != b, 1)
@@ -33,9 +33,7 @@ def simple_unique_consecutive_flat_kernel(
 
     # unique_size is the last cumsum value
     unique_size_mask = i0 == num_tasks - 1
-    tl.store(
-        unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask
-    )
+    tl.store(unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask)
 
     # data_out: scatter unique values to their output positions
     # Only write when this is the first element of a consecutive group
@@ -66,17 +64,15 @@ def output_counts_impl(
     mask = i0 < num_tasks
 
     # load idx
-    idx = tl.load(idx_ptr + i0, mask=mask)
+    idx = tl.load(idx_ptr + i0, mask=mask, other=0)
 
     # load idx_next
     i0_next = i0 + 1
     next_mask = i0_next < num_tasks
-    idx_next = tl.load(idx_ptr + i0_next, mask=next_mask)
+    idx_next = tl.load(idx_ptr + i0_next, mask=next_mask, other=0)
 
     # counts = next_idx - current_idx (or total - current_idx for last element)
-    counts = tl.where(
-        i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx
-    )
+    counts = tl.where(i0_next < num_tasks, idx_next - idx, origin_num_tasks - idx)
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
@@ -122,8 +118,8 @@ def local_ne_consecutive_impl(
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
 
     # load current and previous
-    a = tl.load(data_ptr + i0, mask=mask)
-    b = tl.load(data_ptr + i0_prev, mask=mask)
+    a = tl.load(data_ptr + i0, mask=mask, other=0)
+    b = tl.load(data_ptr + i0_prev, mask=mask, other=0)
 
     # compute ne_result
     ne_result = tl.where(i0 > 0, a != b, 1)
@@ -187,7 +183,7 @@ def global_cumsum_consecutive_impl(
     mask = i0 < num_tasks
 
     # load data
-    data = tl.load(data_ptr + i0, mask=mask)
+    data = tl.load(data_ptr + i0, mask=mask, other=0)
 
     # load tile_sum for previous tiles
     p = tl.arange(0, next_power_global_ctas_num)
@@ -201,7 +197,7 @@ def global_cumsum_consecutive_impl(
 
     # cumsum within tile
     total += tl.sum(pre_tile_sum)
-    ne_result = tl.load(ne_result_ptr + i0, mask=mask)
+    ne_result = tl.load(ne_result_ptr + i0, mask=mask, other=0)
     ne_result_i1 = ne_result.to(tl.int1)
     ne_result_i32 = ne_result.to(tl.int32)
     cumsum = tl.cumsum(ne_result_i32)
@@ -377,9 +373,7 @@ def large_unique_consecutive_flat(
 
     # allocate tensors
     ne_result = torch.empty(num_tasks, dtype=torch.bool, device=data.device)
-    tile_sum = torch.empty(
-        global_ctas_num, dtype=torch.int64, device=data.device
-    )
+    tile_sum = torch.empty(global_ctas_num, dtype=torch.int64, device=data.device)
     data_out = torch.empty_like(data)
     inverse_indices = (
         torch.empty(num_tasks, dtype=torch.int64, device=data.device)

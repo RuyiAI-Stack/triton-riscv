@@ -51,7 +51,7 @@ def test_all_dims(shape, dims, keepdim):
 
     # PyTorch's torch.all does not natively support tuple of dims in standard api
     # but torch.amax works similarly for boolean contexts or we can sequentially apply it
-    ref_out = x != 0
+    ref_out = torch.ne(x, 0)
     for d in sorted([dim % x.ndim for dim in dims], reverse=True):
         ref_out = torch.all(ref_out, dim=d, keepdim=keepdim)
 

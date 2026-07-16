@@ -27,9 +27,7 @@ def test_arange_start_int(start, end, step):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    "start, end, step", [(0.0, 5.5, 0.5), (10.0, -2.0, -1.5)]
-)
+@pytest.mark.parametrize("start, end, step", [(0.0, 5.5, 0.5), (10.0, -2.0, -1.5)])
 def test_arange_start_float(start, end, step):
     torch.manual_seed(0)
 

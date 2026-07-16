@@ -44,9 +44,7 @@ def argmax_kernel_1(
 
 
 @triton.jit
-def argmax_kernel_2(
-    mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
-):
+def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
@@ -85,7 +83,7 @@ def argmax_kernel_non_inner(
     if ONE_TILE_PER_CTA:
         n_offset = tl.arange(0, TILE_N)
         offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-        mask = k_offset < K and n_offset[:, None] < N
+        mask = (k_offset < K) & (n_offset[:, None] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         local_max, local_argmax = tl.max(
@@ -105,7 +103,7 @@ def argmax_kernel_non_inner(
         for start_n in range(0, N, TILE_N):
             n_offset = start_n + tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-            mask = k_offset < K and n_offset[:, None] < N
+            mask = (k_offset < K) & (n_offset[:, None] < N)
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
             local_max, local_argmax = tl.max(
@@ -116,9 +114,7 @@ def argmax_kernel_non_inner(
             )
             update = local_max > max_values
             max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(
-                update, start_n + local_argmax, argmax_values
-            )
+            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
         offset_index = pid_m * K + k_offset
         out_index_ptrs = out_index + offset_index
         mask1 = k_offset < K
@@ -208,9 +204,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         block_mid = triton.next_power_of_2(mid_size)
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty(
-            (mid_size,), dtype=torch.int64, device=inp.device
-        )
+        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
@@ -226,9 +220,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             M,
             BLOCK_SIZE=block_size,
         )
-        argmax_kernel_2[(1,)](
-            mid_value, mid_index, out, mid_size, BLOCK_MID=block_mid
-        )
+        argmax_kernel_2[(1,)](mid_value, mid_index, out, mid_size, BLOCK_MID=block_mid)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -249,9 +241,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
 
         shape_list = list(shape)
         shape_list[dim] = 1
-        out_index = torch.empty(
-            shape_list, dtype=torch.int64, device=inp.device
-        )
+        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 

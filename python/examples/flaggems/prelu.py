@@ -60,9 +60,7 @@ def prelu(*args, **kwargs):
         w_is_scalar = True
     else:
         if ndim == 0:
-            raise AssertionError(
-                "Non-scalar weight provided for a 0-dim input."
-            )
+            raise AssertionError("Non-scalar weight provided for a 0-dim input.")
         if ndim == 1:
             C = x.shape[0]
             S = 1

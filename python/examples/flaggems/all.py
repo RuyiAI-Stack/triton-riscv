@@ -12,7 +12,7 @@ import triton.language as tl
 
 @triton.jit
 def reduce_all(a, b):
-    return a and b
+    return a & b
 
 
 @triton.jit
@@ -38,7 +38,7 @@ def all_kernel_dim(
         mask = row_mask & col_mask
 
         a = tl.load(inp_ptrs + cols, mask=mask, other=1.0)
-        _all = _all and (a != 0)
+        _all = _all & (a != 0)
     all_res = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out_ptrs, all_res[:, None], mask=row_mask)
 

@@ -31,21 +31,11 @@ def conv1d(
             il = input.shape[-1]
             kernel_size = weight.shape[-1]
             padding_width = math.ceil(
-                (
-                    stride_width * (il - 1)
-                    + 1
-                    + dilation_width * (kernel_size - 1)
-                    - il
-                )
+                (stride_width * (il - 1) + 1 + dilation_width * (kernel_size - 1) - il)
                 / 2
             )
             ol = int(
-                (
-                    il
-                    + 2 * padding_width
-                    - dilation_width * (kernel_size - 1)
-                    - 1
-                )
+                (il + 2 * padding_width - dilation_width * (kernel_size - 1) - 1)
                 / stride_width
                 + 1
             )

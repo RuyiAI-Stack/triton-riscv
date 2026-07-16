@@ -41,12 +41,10 @@ def _std_reduce_kernel(
     for off in range(0, BLOCK_NUM, BLOCK_SIZE):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < BLOCK_NUM
-        tmp_sum_vals = tl.load(Tmp_sum + offset, mask=mask, other=0.0).to(
+        tmp_sum_vals = tl.load(Tmp_sum + offset, mask=mask, other=0.0).to(tl.float32)
+        tmp_sum_sq_vals = tl.load(Tmp_sum_sq + offset, mask=mask, other=0.0).to(
             tl.float32
         )
-        tmp_sum_sq_vals = tl.load(
-            Tmp_sum_sq + offset, mask=mask, other=0.0
-        ).to(tl.float32)
         total_sum_acc += tmp_sum_vals
         total_sum_sq_acc += tmp_sum_sq_vals
     total_sum = tl.sum(total_sum_acc, axis=0)
@@ -122,12 +120,8 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
         BLOCK_N_MAP = 1024
         BLOCK_NUM = triton.cdiv(N, BLOCK_N_MAP)
-        tmp_sum = torch.empty(
-            (BLOCK_NUM,), dtype=torch.float32, device=x.device
-        )
-        tmp_sum_sq = torch.empty(
-            (BLOCK_NUM,), dtype=torch.float32, device=x.device
-        )
+        tmp_sum = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
+        tmp_sum_sq = torch.empty((BLOCK_NUM,), dtype=torch.float32, device=x.device)
         _std_map_kernel[(BLOCK_NUM,)](
             x.contiguous(), tmp_sum, tmp_sum_sq, N, BLOCK_N_MAP
         )
@@ -166,9 +160,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
         if M * N > 0 and (N - effective_correction <= 0):
             final_shape = [
-                s
-                for i, s in enumerate(original_shape)
-                if i not in dim_list_normalized
+                s for i, s in enumerate(original_shape) if i not in dim_list_normalized
             ]
             return torch.full(
                 final_shape if not keepdim else output_shape_kept,
@@ -179,11 +171,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
         out = torch.empty(output_shape_kept, device=x.device, dtype=x.dtype)
         if M * N == 0:
-            return (
-                out.squeeze(dim=tuple(dim_list_normalized))
-                if not keepdim
-                else out
-            )
+            return out.squeeze(dim=tuple(dim_list_normalized)) if not keepdim else out
 
         BLOCK_M = 128
         BLOCK_N = 128
@@ -200,6 +188,4 @@ def std(x, dim=None, *, correction=None, keepdim=False):
             BLOCK_N=BLOCK_N,
         )
 
-        return (
-            out.squeeze(dim=tuple(dim_list_normalized)) if not keepdim else out
-        )
+        return out.squeeze(dim=tuple(dim_list_normalized)) if not keepdim else out

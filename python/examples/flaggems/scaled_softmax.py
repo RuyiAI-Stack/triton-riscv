@@ -188,12 +188,12 @@ def scaled_softmax_backward_kernel(
         ptr_P = output_row_ptr[:, None] + k_offsets[None, :]
         ptr_dP = grad_output_row_ptr[:, None] + k_offsets[None, :]
 
-        P_block = tl.load(
-            ptr_P, mask=mask, other=0.0, cache_modifier=".ca"
-        ).to(tl.float32)
-        dP_block = tl.load(
-            ptr_dP, mask=mask, other=0.0, cache_modifier=".ca"
-        ).to(tl.float32)
+        P_block = tl.load(ptr_P, mask=mask, other=0.0, cache_modifier=".ca").to(
+            tl.float32
+        )
+        dP_block = tl.load(ptr_dP, mask=mask, other=0.0, cache_modifier=".ca").to(
+            tl.float32
+        )
 
         dot_block = P_block * dP_block
         D += tl.sum(tl.where(mask, dot_block, 0.0), axis=1)

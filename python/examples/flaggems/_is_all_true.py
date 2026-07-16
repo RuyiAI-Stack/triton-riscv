@@ -55,9 +55,7 @@ def _is_all_true(inp):
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
 
-    is_all_true_kernel_1[(mid_size,)](
-        inp, mid, n_elements, BLOCK_SIZE=block_size
-    )
+    is_all_true_kernel_1[(mid_size,)](inp, mid, n_elements, BLOCK_SIZE=block_size)
     is_all_true_kernel_2[(1,)](mid, out, mid_size, BLOCK_MID=block_mid)
 
     return out

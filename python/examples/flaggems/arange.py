@@ -66,9 +66,7 @@ def arange_start(
     if device is None:
         device = "cpu"
 
-    result = torch.empty(
-        (size,), device=device, dtype=dtype, pin_memory=pin_memory
-    )
+    result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
     arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
     return result
 

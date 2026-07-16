@@ -22,16 +22,12 @@ def log_softmax_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            tl.float32
-        )
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m_new = tl.maximum(inp, m)
         all_neg_inf = m_new == float("-inf")
-        z = tl.where(
-            all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-        )
+        z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
         m = m_new
 
     m_reduced = tl.max(m, 1)
@@ -41,11 +37,9 @@ def log_softmax_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            tl.float32
-        )
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         o = inp - m[:, None] - tl.log(z[:, None])
         tl.store(output_ptr + offset, o, mask=mask)
 
@@ -69,7 +63,7 @@ def log_softmax_backward_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         out_grad_ptrs = out_grad_ptr + offsets
         out_grad = tl.load(out_grad_ptrs, mask=mask, other=0.0).to(tl.float32)
         scale += out_grad
@@ -78,7 +72,7 @@ def log_softmax_backward_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         out_ptrs = out_ptr + offsets
         out = tl.load(out_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         out_grad_ptrs = out_grad_ptr + offsets
@@ -171,6 +165,4 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
 
 def log_softmax_backward(grad_output, output, dim, input_dtype):
     in_grad = torch.empty_like(output, dtype=input_dtype)
-    return log_softmax_backward_out(
-        grad_output, output, dim, input_dtype, out=in_grad
-    )
+    return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)

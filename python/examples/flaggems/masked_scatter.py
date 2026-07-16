@@ -21,15 +21,13 @@ def masked_scatter_single_pass_kernel(
 
     block_mask = offsets < N
 
-    mask_val = tl.load(mask_ptr + offsets, mask=block_mask, other=0).to(
-        tl.int1
-    )
+    mask_val = tl.load(mask_ptr + offsets, mask=block_mask, other=0).to(tl.int1)
 
     mask_ints = mask_val.to(tl.int32)
     src_indices = tl.cumsum(mask_ints, axis=0) - 1
 
     active = block_mask & mask_val
-    src_val = tl.load(src_ptr + src_indices, mask=active)
+    src_val = tl.load(src_ptr + src_indices, mask=active, other=0)
     tl.store(inp_ptr + offsets, src_val, mask=active)
 
 
@@ -49,9 +47,7 @@ def mask_part_sum_kernel(
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     acc = tl.zeros((BLOCK_SIZE,), dtype=part_sums_ptr.dtype.element_ty)
 
-    last_block_id = tl.minimum(
-        num_blocks - 1, start_block + num_blocks_per_row - 1
-    )
+    last_block_id = tl.minimum(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
     for block_id in range(start_block, last_block_id):
         select = tl.load(mask_ptr + offset)
@@ -71,7 +67,7 @@ def mask_part_sum_kernel(
 
     if count == np - 1:
         mask = tl.arange(0, NP_BLOCK) < np
-        part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask)
+        part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask, other=0)
         final_sum = tl.sum(part_sums, axis=0)
         pre_sums = tl.cumsum(part_sums, axis=0)
         tl.store(
@@ -100,9 +96,7 @@ def masked_scatter_kernel(
 
     advance = tl.load(part_sums_ptr + row_id)
 
-    last_block_id = tl.minimum(
-        num_blocks - 1, start_block + num_blocks_per_row - 1
-    )
+    last_block_id = tl.minimum(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
     for block_id in range(start_block, last_block_id):
         select_mask = tl.load(mask_ptr + offset).to(tl.int1)
@@ -113,22 +107,20 @@ def masked_scatter_kernel(
 
         advance += tl.sum(select_ints, axis=0)
 
-        src_val = tl.load(src_ptr + global_src_idx, mask=select_mask)
+        src_val = tl.load(src_ptr + global_src_idx, mask=select_mask, other=0)
         tl.store(inp_ptr + offset, src_val, mask=select_mask)
 
         offset += BLOCK_SIZE
 
     block_mask = offset < N
-    select_mask = tl.load(mask_ptr + offset, mask=block_mask, other=0).to(
-        tl.int1
-    )
+    select_mask = tl.load(mask_ptr + offset, mask=block_mask, other=0).to(tl.int1)
 
     select_ints = select_mask.to(tl.int32)
     block_cumsum = tl.cumsum(select_ints, axis=0) - 1
     global_src_idx = advance + block_cumsum
 
     active = block_mask & select_mask
-    src_val = tl.load(src_ptr + global_src_idx, mask=active)
+    src_val = tl.load(src_ptr + global_src_idx, mask=active, other=0)
     tl.store(inp_ptr + offset, src_val, mask=active)
 
 

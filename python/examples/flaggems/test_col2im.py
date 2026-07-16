@@ -24,9 +24,7 @@ def test_col2im(batch, C, out_size, kernel, stride):
     dilation = 1
 
     x = torch.randn(batch, C, out_h, out_w, dtype=torch.float32, device="cpu")
-    unfolded = F.unfold(
-        x, kernel, dilation=dilation, padding=padding, stride=stride
-    )
+    unfolded = F.unfold(x, kernel, dilation=dilation, padding=padding, stride=stride)
 
     ref = F.fold(
         unfolded,

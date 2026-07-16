@@ -7,7 +7,7 @@ from .conj_physical import conj_physical
 @pytest.mark.parametrize("shape", [(4, 4), (16, 16)])
 def test_conj_physical(shape):
     x = torch.randn(shape, dtype=torch.complex64, device="cpu")
-    ref = x.conj_physical()
+    ref = torch.conj_physical(x)
     tri = conj_physical(x)
     torch.testing.assert_close(tri, ref)
 

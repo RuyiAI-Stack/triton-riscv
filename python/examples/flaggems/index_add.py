@@ -17,8 +17,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -67,17 +66,15 @@ def _generate_index_add_kernel(rank, kernel_name, code):
     code += f"    src_offset = {comp}\n\n"
     code += "    pre_cal = (inp_stride_dim * src_shape_dim)\n\n"
     code += "    pre_idx = (src_offset // pre_cal).to(tl.int64)\n"
-    code += (
-        "    dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)\n"
-    )
+    code += "    dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)\n"
     code += "    src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)\n"
-    code += '    assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"\n'
+    code += '    assert (src_dim_idx >= 0) & (src_dim_idx < inp_shape_dim), "0 <= index < self.size(dim)"\n'
     code += "    input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)\n"
     code += "    input_mask = input_idx < inp_numel\n"
+    code += "    add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha\n"
     code += (
-        "    add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha\n"
+        "    tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')\n\n"
     )
-    code += "    tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')\n\n"
     return code
 
 

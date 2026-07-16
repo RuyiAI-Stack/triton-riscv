@@ -54,9 +54,7 @@ def _candidate_triton(
     return _candidate_triton_multi_dim(inp, shift_values, _as_tuple(dims))
 
 
-def _candidate_triton_last_dim(
-    inp: torch.Tensor, shifts: IntOrInts
-) -> torch.Tensor:
+def _candidate_triton_last_dim(inp: torch.Tensor, shifts: IntOrInts) -> torch.Tensor:
     shift = _as_tuple(shifts)[0] % inp.shape[-1]
     if shift == 0:
         return inp.contiguous().clone()
@@ -66,17 +64,13 @@ def _candidate_triton_last_dim(
     return out
 
 
-def _candidate_triton_first_dim(
-    inp: torch.Tensor, shifts: IntOrInts
-) -> torch.Tensor:
+def _candidate_triton_first_dim(inp: torch.Tensor, shifts: IntOrInts) -> torch.Tensor:
     shift = (_as_tuple(shifts)[0] % inp.shape[0]) * inp.stride(0)
     if shift == 0:
         return inp.contiguous().clone()
 
     out = torch.empty_like(inp)
-    _launch_roll_flat_kernel(
-        inp.reshape(-1), out.reshape(-1), shift, block=1024
-    )
+    _launch_roll_flat_kernel(inp.reshape(-1), out.reshape(-1), shift, block=1024)
     return out
 
 
@@ -129,9 +123,19 @@ def _candidate_triton_multi_dim(
             return _candidate_triton_last_dim(inp, shift)
         return _candidate_triton_single_dim(inp, shift, dim)
 
-    # Multi-dim roll: use PyTorch fallback since the Triton multi-dim kernel
-    # has incorrect dim offset computation
-    return _candidate_fallback(inp, shifts, dims)
+    inp_contig = inp.contiguous()
+    if not inp_contig.is_cuda:
+        result = inp_contig
+        for dim, shift in active_dims:
+            result = _candidate_triton_single_dim(result, shift, dim)
+        return result
+
+    out = torch.empty_like(inp_contig)
+    sizes = [inp_contig.size(dim) for dim, _ in active_dims]
+    strides = [inp_contig.stride(dim) for dim, _ in active_dims]
+    active_shifts = [shift for _, shift in active_dims]
+    _launch_roll_multi_dim_kernel(inp_contig, out, sizes, strides, active_shifts)
+    return out
 
 
 def _candidate_fallback(
@@ -141,18 +145,14 @@ def _candidate_fallback(
 
     if dims is None or _is_empty_sequence(dims):
         flattened = inp.reshape(-1)
-        return _roll_along_dim(flattened, shift_values[0], 0).reshape(
-            inp.shape
-        )
+        return _roll_along_dim(flattened, shift_values[0], 0).reshape(inp.shape)
 
     result = inp
     for shift, dim in zip(shift_values, _as_tuple(dims)):
         result = _roll_along_dim(
             result,
             shift,
-            _canonicalize_dim(
-                dim, inp.dim(), allow_empty_wrap=inp.numel() == 0
-            ),
+            _canonicalize_dim(dim, inp.dim(), allow_empty_wrap=inp.numel() == 0),
         )
     return result
 
@@ -163,9 +163,7 @@ def validate_inputs(
     if not isinstance(inp, torch.Tensor):
         raise TypeError("roll(): argument 'input' must be Tensor")
     if not _is_int_or_int_sequence(shifts):
-        raise TypeError(
-            "roll(): argument 'shifts' must be int or tuple of ints"
-        )
+        raise TypeError("roll(): argument 'shifts' must be int or tuple of ints")
     shift_count = 1 if isinstance(shifts, int) else len(shifts)
     if shift_count == 0:
         raise RuntimeError("`shifts` required")
@@ -199,13 +197,9 @@ def _roll_along_dim(inp: torch.Tensor, shift: int, dim: int) -> torch.Tensor:
     )
 
 
-def _canonicalize_dim(
-    dim: int, ndim: int, allow_empty_wrap: bool = False
-) -> int:
+def _canonicalize_dim(dim: int, ndim: int, allow_empty_wrap: bool = False) -> int:
     if ndim == 0:
-        raise IndexError(
-            f"Dimension specified as {dim} but tensor has no dimensions"
-        )
+        raise IndexError(f"Dimension specified as {dim} but tensor has no dimensions")
     if allow_empty_wrap:
         return dim % ndim
     if dim < -ndim or dim >= ndim:
@@ -225,19 +219,13 @@ def _can_use_triton(inp: torch.Tensor) -> bool:
     return inp.dim() <= MAX_DIMS and not inp.dtype.is_complex
 
 
-def _can_use_first_dim_triton(
-    inp: torch.Tensor, dims: IntOrInts | None
-) -> bool:
+def _can_use_first_dim_triton(inp: torch.Tensor, dims: IntOrInts | None) -> bool:
     if not _can_use_triton(inp) or not inp.is_contiguous() or inp.dim() <= 1:
         return False
 
     if isinstance(dims, int):
         dim = dims
-    elif (
-        isinstance(dims, Sequence)
-        and not isinstance(dims, int)
-        and len(dims) == 1
-    ):
+    elif isinstance(dims, Sequence) and not isinstance(dims, int) and len(dims) == 1:
         dim = dims[0]
     else:
         return False
@@ -245,23 +233,13 @@ def _can_use_first_dim_triton(
     return dim in (0, -inp.dim()) and inp.numel() >= (1 << 20)
 
 
-def _can_use_flat_single_dim_triton(
-    inp: torch.Tensor, dims: IntOrInts | None
-) -> bool:
-    if (
-        not _can_use_triton(inp)
-        or inp.dim() != 1
-        or inp.dtype is not torch.float32
-    ):
+def _can_use_flat_single_dim_triton(inp: torch.Tensor, dims: IntOrInts | None) -> bool:
+    if not _can_use_triton(inp) or inp.dim() != 1 or inp.dtype is not torch.float32:
         return False
 
     if isinstance(dims, int):
         dim = dims
-    elif (
-        isinstance(dims, Sequence)
-        and not isinstance(dims, int)
-        and len(dims) == 1
-    ):
+    elif isinstance(dims, Sequence) and not isinstance(dims, int) and len(dims) == 1:
         dim = dims[0]
     else:
         return False
@@ -269,19 +247,13 @@ def _can_use_flat_single_dim_triton(
     return dim in (0, -1)
 
 
-def _can_use_last_dim_triton(
-    inp: torch.Tensor, dims: IntOrInts | None
-) -> bool:
+def _can_use_last_dim_triton(inp: torch.Tensor, dims: IntOrInts | None) -> bool:
     if not _can_use_triton(inp) or not inp.is_contiguous() or inp.dim() == 0:
         return False
 
     if isinstance(dims, int):
         dim = dims
-    elif (
-        isinstance(dims, Sequence)
-        and not isinstance(dims, int)
-        and len(dims) == 1
-    ):
+    elif isinstance(dims, Sequence) and not isinstance(dims, int) and len(dims) == 1:
         dim = dims[0]
     else:
         return False
@@ -420,15 +392,11 @@ def _is_int_or_int_sequence(value: object) -> bool:
 
 def _is_empty_sequence(value: object) -> bool:
     return (
-        isinstance(value, Sequence)
-        and not isinstance(value, int)
-        and len(value) == 0
+        isinstance(value, Sequence) and not isinstance(value, int) and len(value) == 0
     )
 
 
-def _pad_right(
-    values: Sequence[int], total: int, fill_value: int
-) -> list[int]:
+def _pad_right(values: Sequence[int], total: int, fill_value: int) -> list[int]:
     padded = [int(value) for value in values]
     padded.extend([fill_value] * (total - len(padded)))
     return padded
@@ -489,21 +457,21 @@ def _roll_multi_dim_kernel(
     inp_ptr,
     out_ptr,
     numel,
-    size0: tl.constexpr,
-    stride0: tl.constexpr,
-    shift0: tl.constexpr,
-    size1: tl.constexpr,
-    stride1: tl.constexpr,
-    shift1: tl.constexpr,
-    size2: tl.constexpr,
-    stride2: tl.constexpr,
-    shift2: tl.constexpr,
-    size3: tl.constexpr,
-    stride3: tl.constexpr,
-    shift3: tl.constexpr,
-    size4: tl.constexpr,
-    stride4: tl.constexpr,
-    shift4: tl.constexpr,
+    size0,
+    stride0,
+    shift0,
+    size1,
+    stride1,
+    shift1,
+    size2,
+    stride2,
+    shift2,
+    size3,
+    stride3,
+    shift3,
+    size4,
+    stride4,
+    shift4,
     DIMS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -514,33 +482,23 @@ def _roll_multi_dim_kernel(
     if DIMS >= 1:
         dim_index0 = (offsets // stride0) % size0
         source_dim_index0 = (dim_index0 + size0 - shift0) % size0
-        source_offsets += (source_dim_index0 - dim_index0) * (
-            stride0 + tl.zeros((BLOCK,), dtype=tl.int32)
-        )
+        source_offsets += (source_dim_index0 - dim_index0) * stride0
     if DIMS >= 2:
         dim_index1 = (offsets // stride1) % size1
         source_dim_index1 = (dim_index1 + size1 - shift1) % size1
-        source_offsets += (source_dim_index1 - dim_index1) * (
-            stride1 + tl.zeros((BLOCK,), dtype=tl.int32)
-        )
+        source_offsets += (source_dim_index1 - dim_index1) * stride1
     if DIMS >= 3:
         dim_index2 = (offsets // stride2) % size2
         source_dim_index2 = (dim_index2 + size2 - shift2) % size2
-        source_offsets += (source_dim_index2 - dim_index2) * (
-            stride2 + tl.zeros((BLOCK,), dtype=tl.int32)
-        )
+        source_offsets += (source_dim_index2 - dim_index2) * stride2
     if DIMS >= 4:
         dim_index3 = (offsets // stride3) % size3
         source_dim_index3 = (dim_index3 + size3 - shift3) % size3
-        source_offsets += (source_dim_index3 - dim_index3) * (
-            stride3 + tl.zeros((BLOCK,), dtype=tl.int32)
-        )
+        source_offsets += (source_dim_index3 - dim_index3) * stride3
     if DIMS >= 5:
         dim_index4 = (offsets // stride4) % size4
         source_dim_index4 = (dim_index4 + size4 - shift4) % size4
-        source_offsets += (source_dim_index4 - dim_index4) * (
-            stride4 + tl.zeros((BLOCK,), dtype=tl.int32)
-        )
+        source_offsets += (source_dim_index4 - dim_index4) * stride4
 
     values = tl.load(inp_ptr + source_offsets, mask=mask, other=0)
     tl.store(out_ptr + offsets, values, mask=mask)

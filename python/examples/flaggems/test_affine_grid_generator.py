@@ -12,9 +12,7 @@ def test_affine_grid_generator(N, H, W, align_corners):
     theta = torch.randn(N, 2, 3, device="cpu", dtype=torch.float32)
 
     ref = F.affine_grid(theta, (N, 3, H, W), align_corners=align_corners)
-    tri = affine_grid_generator(
-        theta, (N, 3, H, W), align_corners=align_corners
-    )
+    tri = affine_grid_generator(theta, (N, 3, H, W), align_corners=align_corners)
 
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
@@ -25,9 +23,7 @@ def test_affine_grid_generator_identity(align_corners):
     theta = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]])
 
     ref = F.affine_grid(theta, (N, 3, H, W), align_corners=align_corners)
-    tri = affine_grid_generator(
-        theta, (N, 3, H, W), align_corners=align_corners
-    )
+    tri = affine_grid_generator(theta, (N, 3, H, W), align_corners=align_corners)
 
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 

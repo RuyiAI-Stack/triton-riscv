@@ -69,17 +69,11 @@ def _fp8_mqa_logits_kernel(
                 + h_idx * stride_qh
                 + d_offs[None, :] * stride_qd
             )
-            q = tl.load(
-                q_ptrs, mask=mask_m[:, None] & d_mask[None, :], other=0.0
-            )
+            q = tl.load(q_ptrs, mask=mask_m[:, None] & d_mask[None, :], other=0.0)
             q = q.to(tl.float32)
 
-            k_ptrs = (
-                K + offs_n[:, None] * stride_kn + d_offs[None, :] * stride_kd
-            )
-            k = tl.load(
-                k_ptrs, mask=mask_n[:, None] & d_mask[None, :], other=0.0
-            )
+            k_ptrs = K + offs_n[:, None] * stride_kn + d_offs[None, :] * stride_kd
+            k = tl.load(k_ptrs, mask=mask_n[:, None] & d_mask[None, :], other=0.0)
             k = k.to(tl.float32) * k_scales[:, None]
 
             score_h += tl.dot(q, tl.trans(k))

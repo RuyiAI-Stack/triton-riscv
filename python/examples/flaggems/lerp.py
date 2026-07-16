@@ -71,9 +71,7 @@ def lerp_tensor(input, end, weight):
     n_elements = A_c.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    lerp_tensor_kernel[grid](
-        A_c, B_c, W_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    lerp_tensor_kernel[grid](A_c, B_c, W_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out.view_as(A)
 
 
@@ -85,9 +83,7 @@ def lerp_tensor_(input, end, weight):
     n_elements = A_c.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    lerp_tensor_kernel[grid](
-        A_c, B_c, W_c, A_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    lerp_tensor_kernel[grid](A_c, B_c, W_c, A_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     input.copy_(A_c)
     return input
 

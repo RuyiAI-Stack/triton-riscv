@@ -5,11 +5,6 @@ import triton
 import triton.language as tl
 
 
-# NOTE: angle_complex uses tl.math.atan2 which is NOT available in the
-# triton-riscv MLIR backend. Use polynomial approximation or backend needs
-# to add math.atan2 support.
-
-
 @triton.jit
 def angle_complex_kernel(
     ri_ptr,
@@ -53,10 +48,7 @@ def angle_real_kernel(
 
 
 def angle(input_tensor: torch.Tensor) -> torch.Tensor:
-    if (
-        input_tensor.dtype == torch.complex32
-        or input_tensor.dtype == torch.complex64
-    ):
+    if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         ri = torch.view_as_real(input_tensor).contiguous()
         n_elements = input_tensor.numel()
         out_dtype = input_tensor.real.dtype
@@ -75,10 +67,7 @@ def angle(input_tensor: torch.Tensor) -> torch.Tensor:
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
-    if (
-        input_tensor.dtype == torch.complex32
-        or input_tensor.dtype == torch.complex64
-    ):
+    if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         angle_complex_kernel[grid](ri, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     else:
         x_c = input_tensor.contiguous()

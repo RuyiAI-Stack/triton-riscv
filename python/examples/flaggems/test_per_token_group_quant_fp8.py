@@ -31,9 +31,7 @@ def ref_per_token_group_quant_fp8(
         y_s = torch.exp2(
             torch.ceil(
                 torch.log2(
-                    torch.maximum(
-                        torch.abs(y_s), torch.tensor(1e-10, dtype=y_s.dtype)
-                    )
+                    torch.maximum(torch.abs(y_s), torch.tensor(1e-10, dtype=y_s.dtype))
                 )
             )
         )
@@ -43,9 +41,9 @@ def ref_per_token_group_quant_fp8(
     x_q = y_q.reshape_as(x)
     if column_major_scales:
         shape = (x.shape[-1] // group_size,) + x.shape[:-1]
-        x_s_out = torch.empty(
-            shape, device=x.device, dtype=torch.float32
-        ).permute(*range(1, x.ndim), 0)
+        x_s_out = torch.empty(shape, device=x.device, dtype=torch.float32).permute(
+            *range(1, x.ndim), 0
+        )
         x_s_out.copy_(y_s.reshape(*x.shape[:-1], x.shape[-1] // group_size))
         x_s = x_s_out
     else:
@@ -65,9 +63,7 @@ def ref_per_token_group_quant_fp8(
 )
 @pytest.mark.parametrize("column_major_scales", [False, True])
 @pytest.mark.parametrize("scale_ue8m0", [False, True])
-def test_per_token_group_quant_fp8(
-    shape, group_size, column_major_scales, scale_ue8m0
-):
+def test_per_token_group_quant_fp8(shape, group_size, column_major_scales, scale_ue8m0):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32)
 

@@ -52,9 +52,7 @@ def bincount(inp, weights=None, minlength=0):
 
     if N == 0:
         if weights is not None:
-            return torch.zeros(
-                minlength, dtype=weights.dtype, device=inp.device
-            )
+            return torch.zeros(minlength, dtype=weights.dtype, device=inp.device)
         return torch.zeros(minlength, dtype=torch.int64, device=inp.device)
 
     max_val = int(inp.max().item())
@@ -63,21 +61,15 @@ def bincount(inp, weights=None, minlength=0):
     inp = inp.contiguous()
 
     if weights is not None:
-        assert weights.shape == inp.shape, (
-            "weights must have same shape as input"
-        )
+        assert weights.shape == inp.shape, "weights must have same shape as input"
         weights = weights.contiguous()
 
         weights_dtype = weights.dtype
         if weights_dtype in (torch.float16, torch.bfloat16):
             weights = weights.to(torch.float32)
-            out = torch.zeros(
-                output_size, dtype=torch.float32, device=inp.device
-            )
+            out = torch.zeros(output_size, dtype=torch.float32, device=inp.device)
         else:
-            out = torch.zeros(
-                output_size, dtype=weights.dtype, device=inp.device
-            )
+            out = torch.zeros(output_size, dtype=weights.dtype, device=inp.device)
 
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(N, BLOCK_SIZE),)

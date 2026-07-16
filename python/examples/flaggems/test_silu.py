@@ -37,9 +37,7 @@ def test_silu_inplace():
 @pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
 def test_silu_backward(shape):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
 
     out = torch.nn.functional.silu(x)
     grad_output = torch.randn_like(out)

@@ -9,8 +9,7 @@ from .hstack import hstack
 def test_hstack_1d(n_tensors, size):
     torch.manual_seed(0)
     tensors = [
-        torch.randn(size, dtype=torch.float32, device="cpu")
-        for _ in range(n_tensors)
+        torch.randn(size, dtype=torch.float32, device="cpu") for _ in range(n_tensors)
     ]
     ref = torch.hstack(tensors)
     tri = hstack(tensors)
@@ -22,8 +21,7 @@ def test_hstack_1d(n_tensors, size):
 def test_hstack_2d(n_tensors, shape):
     torch.manual_seed(0)
     tensors = [
-        torch.randn(shape, dtype=torch.float32, device="cpu")
-        for _ in range(n_tensors)
+        torch.randn(shape, dtype=torch.float32, device="cpu") for _ in range(n_tensors)
     ]
     ref = torch.hstack(tensors)
     tri = hstack(tensors)

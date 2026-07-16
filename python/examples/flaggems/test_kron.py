@@ -14,9 +14,7 @@ from .kron import kron
         ((2, 1023), (2, 1023)),
     ],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
 def test_kron(shape1, shape2, dtype):
     a = torch.randn(shape1, dtype=dtype)
     b = torch.randn(shape2, dtype=dtype)

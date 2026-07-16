@@ -44,9 +44,7 @@ def replicationpad3d_kernel(
     iz = tl.where(iz > D_in - 1, D_in - 1, iz)
 
     x_base_ptr = x_ptr + n_idx * stride_xn + c_idx * stride_xc + iz * stride_xd
-    out_base_ptr = (
-        out_ptr + n_idx * stride_on + c_idx * stride_oc + d_idx * stride_od
-    )
+    out_base_ptr = out_ptr + n_idx * stride_on + c_idx * stride_oc + d_idx * stride_od
 
     offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
     offs_w = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
@@ -83,9 +81,7 @@ def replication_pad3d(x, padding):
     H_out = H_in + pad_t + pad_b
     W_out = W_in + pad_l + pad_r
 
-    out = torch.empty(
-        (N, C, D_out, H_out, W_out), device=x.device, dtype=x.dtype
-    )
+    out = torch.empty((N, C, D_out, H_out, W_out), device=x.device, dtype=x.dtype)
 
     BLOCK_H = 8
     BLOCK_W = 32

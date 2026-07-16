@@ -21,9 +21,7 @@ MAX_TILED_VOXELS = 128 * 128 * 128  # ~2M voxels
 VOXEL_THRESHOLD_SMALL = 8192  # Threshold for small outputs (16³ - 20³)
 VOXEL_THRESHOLD_MEDIUM = 32768  # Threshold for medium outputs (20³ - 32³)
 VOXEL_THRESHOLD_LARGE = 131072  # Threshold for large outputs (32³ - 50³)
-VOXEL_THRESHOLD_VERY_LARGE = (
-    262144  # Threshold for very large outputs (50³ - 64³)
-)
+VOXEL_THRESHOLD_VERY_LARGE = 262144  # Threshold for very large outputs (50³ - 64³)
 
 # Block target configuration for different output sizes
 # Small outputs (16³ - 20³): Higher block count for better utilization
@@ -52,16 +50,10 @@ MIN_BLOCKS_NC_EXTRA_LARGE = 50
 MAX_BLOCKS_NC_EXTRA_LARGE = 1000
 
 # Channel scaling constants
-CHANNEL_COUNT_THRESHOLD = (
-    32  # Channel count above which to scale down block targets
-)
+CHANNEL_COUNT_THRESHOLD = 32  # Channel count above which to scale down block targets
 CHANNEL_SCALING_EXPONENT = 0.7  # Exponent for channel scaling factor
-MIN_TARGET_TOTAL_BLOCKS = (
-    128  # Minimum target total blocks when scaling for channels
-)
-MIN_BLOCKS_PER_NC = (
-    16  # Minimum blocks per (N, C) pair when scaling for channels
-)
+MIN_TARGET_TOTAL_BLOCKS = 128  # Minimum target total blocks when scaling for channels
+MIN_BLOCKS_PER_NC = 16  # Minimum blocks per (N, C) pair when scaling for channels
 
 # Tile size constants
 MIN_TILE_SIDE = 4  # Minimum tile side length for 3D outputs
@@ -220,15 +212,11 @@ def grid_sample_2d_nearest_zeros_kernel(
         x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
         y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
         x_idx = tl.cast(
-            tl.where(
-                x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-            ),
+            tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
             tl.int32,
         )
         y_idx = tl.cast(
-            tl.where(
-                y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-            ),
+            tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
             tl.int32,
         )
         # Check bounds (align_corners=True: valid range is [0, W_in) x [0, H_in))
@@ -259,15 +247,11 @@ def grid_sample_2d_nearest_zeros_kernel(
         x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
         y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
         x_idx = tl.cast(
-            tl.where(
-                x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-            ),
+            tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
             tl.int32,
         )
         y_idx = tl.cast(
-            tl.where(
-                y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-            ),
+            tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
             tl.int32,
         )
 
@@ -294,9 +278,7 @@ def grid_sample_2d_nearest_zeros_kernel(
 
     # Store output
     # Output shape: (N, C, H_out, W_out)
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -354,15 +336,11 @@ def grid_sample_2d_nearest_border_kernel(
         x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
         y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
         x_idx_unclamped = tl.cast(
-            tl.where(
-                x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-            ),
+            tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
             tl.int32,
         )
         y_idx_unclamped = tl.cast(
-            tl.where(
-                y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-            ),
+            tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
             tl.int32,
         )
         # For align_corners=True: clamp to [0, W_in-1]
@@ -385,15 +363,11 @@ def grid_sample_2d_nearest_border_kernel(
         x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
         y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
         x_idx_unclamped = tl.cast(
-            tl.where(
-                x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-            ),
+            tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
             tl.int32,
         )
         y_idx_unclamped = tl.cast(
-            tl.where(
-                y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-            ),
+            tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
             tl.int32,
         )
         # For align_corners=False: clamp to [0, W_in-1]
@@ -405,9 +379,7 @@ def grid_sample_2d_nearest_border_kernel(
     val = tl.load(ptr_input + input_offset).to(tl.float32)
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -491,15 +463,11 @@ def grid_sample_2d_nearest_reflection_kernel(
     x_round = tl.where(x_frac < 0.5, x_floor, x_floor + 1)
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
     x_idx_unclamped = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx_unclamped = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
 
@@ -512,9 +480,7 @@ def grid_sample_2d_nearest_reflection_kernel(
     val = tl.load(ptr_input + input_offset).to(tl.float32)
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -643,9 +609,7 @@ def grid_sample_2d_bilinear_zeros_kernel(
 
     # Store output
     # Output shape: (N, C, H_out, W_out)
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -735,14 +699,10 @@ def grid_sample_2d_bilinear_border_kernel(
     # Bilinear interpolation
     top = p00 * (1.0 - wx) + p01 * wx
     bottom = p10 * (1.0 - wx) + p11 * wx
-    val = tl.where(
-        grid_x_nan | grid_y_nan, 0.0, top * (1.0 - wy) + bottom * wy
-    )
+    val = tl.where(grid_x_nan | grid_y_nan, 0.0, top * (1.0 - wy) + bottom * wy)
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -844,14 +804,10 @@ def grid_sample_2d_bilinear_reflection_kernel(
     # Bilinear interpolation
     top = p00 * (1.0 - wx) + p01 * wx
     bottom = p10 * (1.0 - wx) + p11 * wx
-    val = tl.where(
-        grid_x_nan | grid_y_nan, 0.0, top * (1.0 - wy) + bottom * wy
-    )
+    val = tl.where(grid_x_nan | grid_y_nan, 0.0, top * (1.0 - wy) + bottom * wy)
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -1169,9 +1125,7 @@ def grid_sample_2d_bicubic_zeros_kernel(
     val += val33 * weight_x3 * weight_y3
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -1396,9 +1350,7 @@ def grid_sample_2d_bicubic_border_kernel(
     val = tl.where(grid_x_nan | grid_y_nan, 0.0, val)
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -1548,9 +1500,7 @@ def grid_sample_2d_bicubic_reflection_kernel(
         weight_y = tl.where(
             i == 0,
             weight_y0,
-            tl.where(
-                i == 1, weight_y1, tl.where(i == 2, weight_y2, weight_y3)
-            ),
+            tl.where(i == 1, weight_y1, tl.where(i == 2, weight_y2, weight_y3)),
         )
 
         for j in range(4):
@@ -1559,9 +1509,7 @@ def grid_sample_2d_bicubic_reflection_kernel(
             weight_x = tl.where(
                 j == 0,
                 weight_x0,
-                tl.where(
-                    j == 1, weight_x1, tl.where(j == 2, weight_x2, weight_x3)
-                ),
+                tl.where(j == 1, weight_x1, tl.where(j == 2, weight_x2, weight_x3)),
             )
 
             offset = input_base + y_idx_clamped * W_in + x_idx_clamped
@@ -1572,9 +1520,7 @@ def grid_sample_2d_bicubic_reflection_kernel(
     val = tl.where(grid_x_nan | grid_y_nan, 0.0, val)
 
     # Store output
-    output_offset = (
-        n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
-    )
+    output_offset = n * C * H_out * W_out + c * H_out * W_out + h_out * W_out + w_out
     tl.store(ptr_output + output_offset, val)
 
 
@@ -1662,21 +1608,15 @@ def grid_sample_3d_nearest_zeros_kernel(
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
     z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
     z_idx = tl.cast(
-        tl.where(
-            z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-        ),
+        tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
         tl.int32,
     )
 
@@ -1701,9 +1641,7 @@ def grid_sample_3d_nearest_zeros_kernel(
         + y_idx * W_in
         + x_idx
     )
-    val = tl.load(ptr_input + input_offset, mask=mask, other=0.0).to(
-        tl.float32
-    )
+    val = tl.load(ptr_input + input_offset, mask=mask, other=0.0).to(tl.float32)
 
     # Store output (5D tensor: N, C, D, H, W)
     output_offset = (
@@ -1793,21 +1731,15 @@ def grid_sample_3d_nearest_border_kernel(
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
     z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
     z_idx = tl.cast(
-        tl.where(
-            z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-        ),
+        tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
         tl.int32,
     )
 
@@ -1937,21 +1869,15 @@ def grid_sample_3d_nearest_reflection_kernel(
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
     z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
     z_idx = tl.cast(
-        tl.where(
-            z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-        ),
+        tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
         tl.int32,
     )
 
@@ -2521,9 +2447,7 @@ def grid_sample_3d_nearest_zeros_tiled_kernel(
     d_mask = d_offsets < D_out
     h_mask = h_offsets < H_out
     w_mask = w_offsets < W_out
-    tile_mask = (
-        d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
-    )
+    tile_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
 
     # Reshape for 3D broadcasting: (BLOCK_D, BLOCK_H, BLOCK_W)
     d_out_3d = d_offsets[:, None, None]
@@ -2536,26 +2460,21 @@ def grid_sample_3d_nearest_zeros_tiled_kernel(
 
     # Load x, y, z coordinates: (BLOCK_D, BLOCK_H, BLOCK_W)
     grid_x_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
     )
     grid_x = tl.load(ptr_grid + grid_x_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_y_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 1
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 1
     )
     grid_y = tl.load(ptr_grid + grid_y_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_z_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 2
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 2
     )
     grid_z = tl.load(ptr_grid + grid_z_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
@@ -2605,21 +2524,15 @@ def grid_sample_3d_nearest_zeros_tiled_kernel(
     z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
 
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
     z_idx = tl.cast(
-        tl.where(
-            z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-        ),
+        tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
         tl.int32,
     )
 
@@ -2704,9 +2617,7 @@ def grid_sample_3d_nearest_border_tiled_kernel(
     d_mask = d_offsets < D_out
     h_mask = h_offsets < H_out
     w_mask = w_offsets < W_out
-    tile_mask = (
-        d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
-    )
+    tile_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
 
     # Reshape for 3D broadcasting: (BLOCK_D, BLOCK_H, BLOCK_W)
     d_out_3d = d_offsets[:, None, None]
@@ -2717,26 +2628,21 @@ def grid_sample_3d_nearest_border_tiled_kernel(
     grid_base = n * D_out * H_out * W_out * 3
 
     grid_x_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
     )
     grid_x = tl.load(ptr_grid + grid_x_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_y_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 1
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 1
     )
     grid_y = tl.load(ptr_grid + grid_y_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_z_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 2
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 2
     )
     grid_z = tl.load(ptr_grid + grid_z_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
@@ -2784,21 +2690,15 @@ def grid_sample_3d_nearest_border_tiled_kernel(
     z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
 
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
     z_idx = tl.cast(
-        tl.where(
-            z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-        ),
+        tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
         tl.int32,
     )
 
@@ -2877,9 +2777,7 @@ def grid_sample_3d_nearest_reflection_tiled_kernel(
     d_mask = d_offsets < D_out
     h_mask = h_offsets < H_out
     w_mask = w_offsets < W_out
-    tile_mask = (
-        d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
-    )
+    tile_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
 
     # Reshape for 3D broadcasting: (BLOCK_D, BLOCK_H, BLOCK_W)
     d_out_3d = d_offsets[:, None, None]
@@ -2890,26 +2788,21 @@ def grid_sample_3d_nearest_reflection_tiled_kernel(
     grid_base = n * D_out * H_out * W_out * 3
 
     grid_x_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
     )
     grid_x = tl.load(ptr_grid + grid_x_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_y_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 1
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 1
     )
     grid_y = tl.load(ptr_grid + grid_y_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_z_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 2
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 2
     )
     grid_z = tl.load(ptr_grid + grid_z_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
@@ -2980,21 +2873,15 @@ def grid_sample_3d_nearest_reflection_tiled_kernel(
     z_round = tl.where(z_frac < 0.5, z_floor, z_floor + 1)
 
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
     z_idx = tl.cast(
-        tl.where(
-            z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round
-        ),
+        tl.where(z_is_half, tl.where(z_is_even, z_floor, z_floor + 1), z_round),
         tl.int32,
     )
 
@@ -3076,9 +2963,7 @@ def grid_sample_3d_trilinear_zeros_tiled_kernel(
     d_mask = d_offsets < D_out
     h_mask = h_offsets < H_out
     w_mask = w_offsets < W_out
-    tile_mask = (
-        d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
-    )
+    tile_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
 
     # Reshape for 3D broadcasting: (BLOCK_D, BLOCK_H, BLOCK_W)
     d_out_3d = d_offsets[:, None, None]
@@ -3089,26 +2974,21 @@ def grid_sample_3d_trilinear_zeros_tiled_kernel(
     grid_base = n * D_out * H_out * W_out * 3
 
     grid_x_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
     )
     grid_x = tl.load(ptr_grid + grid_x_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_y_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 1
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 1
     )
     grid_y = tl.load(ptr_grid + grid_y_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_z_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 2
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 2
     )
     grid_z = tl.load(ptr_grid + grid_z_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
@@ -3345,9 +3225,7 @@ def grid_sample_3d_trilinear_border_tiled_kernel(
     d_mask = d_offsets < D_out
     h_mask = h_offsets < H_out
     w_mask = w_offsets < W_out
-    tile_mask = (
-        d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
-    )
+    tile_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
 
     # Reshape for 3D broadcasting: (BLOCK_D, BLOCK_H, BLOCK_W)
     d_out_3d = d_offsets[:, None, None]
@@ -3358,26 +3236,21 @@ def grid_sample_3d_trilinear_border_tiled_kernel(
     grid_base = n * D_out * H_out * W_out * 3
 
     grid_x_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
     )
     grid_x = tl.load(ptr_grid + grid_x_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_y_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 1
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 1
     )
     grid_y = tl.load(ptr_grid + grid_y_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_z_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 2
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 2
     )
     grid_z = tl.load(ptr_grid + grid_z_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
@@ -3550,9 +3423,7 @@ def grid_sample_3d_trilinear_reflection_tiled_kernel(
     d_mask = d_offsets < D_out
     h_mask = h_offsets < H_out
     w_mask = w_offsets < W_out
-    tile_mask = (
-        d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
-    )
+    tile_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
 
     # Reshape for 3D broadcasting: (BLOCK_D, BLOCK_H, BLOCK_W)
     d_out_3d = d_offsets[:, None, None]
@@ -3563,26 +3434,21 @@ def grid_sample_3d_trilinear_reflection_tiled_kernel(
     grid_base = n * D_out * H_out * W_out * 3
 
     grid_x_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
     )
     grid_x = tl.load(ptr_grid + grid_x_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_y_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 1
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 1
     )
     grid_y = tl.load(ptr_grid + grid_y_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
     )
 
     grid_z_offsets = (
-        grid_base
-        + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3
-        + 2
+        grid_base + (d_out_3d * H_out * W_out + h_out_3d * W_out + w_out_3d) * 3 + 2
     )
     grid_z = tl.load(ptr_grid + grid_z_offsets, mask=tile_mask, other=0.0).to(
         tl.float32
@@ -3896,24 +3762,18 @@ def grid_sample_2d_nearest_zeros_tiled_kernel(
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
 
     x_idx = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
 
     # Check bounds (vectorized)
     x_in_bounds = (x_idx >= 0) & (x_idx < W_in)
     y_in_bounds = (y_idx >= 0) & (y_idx < H_in)
-    valid_mask = (
-        tile_mask & x_in_bounds & y_in_bounds & ~grid_x_nan & ~grid_y_nan
-    )
+    valid_mask = tile_mask & x_in_bounds & y_in_bounds & ~grid_x_nan & ~grid_y_nan
 
     # Load input pixels for entire tile
     # Input shape: (N, C, H_in, W_in)
@@ -4181,15 +4041,11 @@ def grid_sample_2d_nearest_border_tiled_kernel(
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
 
     x_idx_unclamped = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx_unclamped = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
 
@@ -4431,15 +4287,11 @@ def grid_sample_2d_nearest_reflection_tiled_kernel(
     y_round = tl.where(y_frac < 0.5, y_floor, y_floor + 1)
 
     x_idx_unclamped = tl.cast(
-        tl.where(
-            x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round
-        ),
+        tl.where(x_is_half, tl.where(x_is_even, x_floor, x_floor + 1), x_round),
         tl.int32,
     )
     y_idx_unclamped = tl.cast(
-        tl.where(
-            y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round
-        ),
+        tl.where(y_is_half, tl.where(y_is_even, y_floor, y_floor + 1), y_round),
         tl.int32,
     )
 
@@ -4698,9 +4550,7 @@ def grid_sample(
             else:  # reflection
                 kernel = grid_sample_2d_bicubic_reflection_kernel
         else:  # unsupported mode
-            raise NotImplementedError(
-                f"grid_sample mode '{mode}' not supported"
-            )
+            raise NotImplementedError(f"grid_sample mode '{mode}' not supported")
 
         # Launch kernel with appropriate grid size
         # For very large outputs (> 512x512), fall back to original kernels to avoid grid size issues
@@ -4726,17 +4576,13 @@ def grid_sample(
             # Target blocks per (N, C) pair
             target_blocks_per_nc = max(
                 min_blocks_per_nc,
-                min(
-                    max_blocks_per_nc, target_total_blocks // max(1, nc_pairs)
-                ),
+                min(max_blocks_per_nc, target_total_blocks // max(1, nc_pairs)),
             )
 
             # Calculate tile dimensions to achieve target block count
             # Start with square tiles
             target_tile_pixels = output_pixels // target_blocks_per_nc
-            target_tile_side = int(
-                max(4, min(128, int(target_tile_pixels**0.5)))
-            )
+            target_tile_side = int(max(4, min(128, int(target_tile_pixels**0.5))))
 
             # Snap to power-of-2 for better alignment
             if target_tile_side >= 64:
@@ -4783,9 +4629,7 @@ def grid_sample(
         _, D_out, H_out, W_out, _ = grid.shape
 
         # Allocate output tensor
-        output = torch.empty(
-            (N, C, D_out, H_out, W_out), dtype=dtype, device=device
-        )
+        output = torch.empty((N, C, D_out, H_out, W_out), dtype=dtype, device=device)
 
         # Adaptive kernel selection based on output size
         # Use tiled kernels for medium-to-large outputs (>= 16x16x16 = 4096 voxels)
@@ -4831,9 +4675,6 @@ def grid_sample(
                 else:  # reflection
                     kernel = grid_sample_3d_trilinear_reflection_kernel
         else:  # unsupported mode for 5D
-            logger.info(
-                f"grid_sample mode '{mode}' not supported for 5D input"
-            )
             raise NotImplementedError("Unsupported mode for 5D input")
 
         # Launch kernel with appropriate grid size
@@ -4891,9 +4732,7 @@ def grid_sample(
             # Target blocks per (N, C) pair
             target_blocks_per_nc = max(
                 min_blocks_per_nc,
-                min(
-                    max_blocks_per_nc, target_total_blocks // max(1, nc_pairs)
-                ),
+                min(max_blocks_per_nc, target_total_blocks // max(1, nc_pairs)),
             )
 
             # Calculate tile dimensions to achieve target block count

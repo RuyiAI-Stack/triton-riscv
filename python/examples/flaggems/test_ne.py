@@ -10,7 +10,7 @@ def test_ne(shape):
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     y = torch.randn(shape, dtype=torch.float32, device="cpu")
 
-    ref = x != y
+    ref = torch.ne(x, y)
     tri = ne(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
@@ -19,7 +19,7 @@ def test_ne(shape):
 def test_ne_scalar():
     x = torch.tensor([0.0, 1.0, 2.0, 0.0], dtype=torch.float32, device="cpu")
     tri = ne(x, 0.0)
-    ref = x != 0.0
+    ref = torch.ne(x, 0.0)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
 
 
@@ -28,6 +28,6 @@ def test_ne_scalar_func(shape):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     scalar_val = 0.5
-    ref = x != scalar_val
+    ref = torch.ne(x, scalar_val)
     tri = ne_scalar(x, scalar_val)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)

@@ -16,7 +16,7 @@ def test_bitwise_or_tensor(shape, dtype):
     torch.manual_seed(0)
     x = torch.randint(0, 255, shape, dtype=dtype, device="cpu")
     y = torch.randint(0, 255, shape, dtype=dtype, device="cpu")
-    ref = x | y
+    ref = torch.bitwise_or(x, y)
     tri = bitwise_or_tensor(x, y)
     torch.testing.assert_close(tri, ref)
 
@@ -27,7 +27,7 @@ def test_bitwise_or_tensor_(shape, dtype):
     torch.manual_seed(0)
     x = torch.randint(0, 255, shape, dtype=dtype, device="cpu")
     y = torch.randint(0, 255, shape, dtype=dtype, device="cpu")
-    ref = x.clone() | y
+    ref = torch.bitwise_or(x.clone(), y)
     x_copy = x.clone()
     bitwise_or_tensor_(x_copy, y)
     torch.testing.assert_close(x_copy, ref)
@@ -35,14 +35,14 @@ def test_bitwise_or_tensor_(shape, dtype):
 
 def test_bitwise_or_scalar():
     x = torch.tensor([1, 2, 3, 4], dtype=torch.int32, device="cpu")
-    ref = x | 0x3
+    ref = torch.bitwise_or(x, 0x3)
     tri = bitwise_or_scalar(x, 0x3)
     torch.testing.assert_close(tri, ref)
 
 
 def test_bitwise_or_scalar_():
     x = torch.tensor([1, 2, 3, 4], dtype=torch.int32, device="cpu")
-    ref = x.clone() | 0x3
+    ref = torch.bitwise_or(x.clone(), 0x3)
     x_copy = x.clone()
     bitwise_or_scalar_(x_copy, 0x3)
     torch.testing.assert_close(x_copy, ref)
@@ -53,6 +53,6 @@ def test_bitwise_or_scalar_tensor():
     dtype = torch.int32
     x = 0xF0
     y = torch.randint(0, 255, shape, dtype=dtype, device="cpu")
-    ref = x | y
+    ref = torch.bitwise_or(x, y)
     tri = bitwise_or_scalar_tensor(x, y)
     torch.testing.assert_close(tri, ref)

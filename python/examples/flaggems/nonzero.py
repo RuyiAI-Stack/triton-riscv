@@ -28,7 +28,8 @@ def nonzero_kernel(
         dim_size = tl.load(shape + dim)
         remainder = idx_flat % dim_size
         idx_flat //= dim_size
-        tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+        out_index = tl.where(nonzero_mask, out_offset * ndim + dim, 0)
+        tl.store(out + out_index, remainder, mask=nonzero_mask)
 
 
 def nonzero(inp, *, as_tuple=False):
@@ -47,9 +48,7 @@ def nonzero(inp, *, as_tuple=False):
     prefix_sum = inp_bool.cumsum(axis=0)
 
     num_nonzeros = n_elements
-    out = torch.empty(
-        num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device
-    )
+    out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
@@ -67,6 +66,6 @@ def nonzero(inp, *, as_tuple=False):
     out = out[0:num_nonzeros]
 
     if as_tuple:
-        return torch.unbind(out, dim=0)
+        return torch.unbind(out, dim=1)
     else:
         return out

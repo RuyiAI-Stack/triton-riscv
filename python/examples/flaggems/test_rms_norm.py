@@ -1,12 +1,8 @@
 import pytest
 import torch
+import torch.nn.functional as F
 
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
-
-
-def torch_rms_norm(x, weight, eps=1e-5):
-    variance = x.pow(2).mean(-1, keepdim=True)
-    return x * torch.rsqrt(variance + eps) * weight
 
 
 @pytest.mark.parametrize("M", [1, 16, 64])
@@ -19,7 +15,7 @@ def test_rms_norm_forward(M, N, dtype):
     eps = 1e-5
 
     out_triton = rms_norm(x, normalized_shape, weight, eps)
-    out_torch = torch_rms_norm(x, weight, eps)
+    out_torch = F.rms_norm(x, normalized_shape, weight, eps)
 
     torch.testing.assert_close(out_triton, out_torch, rtol=1e-4, atol=1e-4)
 
@@ -28,12 +24,8 @@ def test_rms_norm_forward(M, N, dtype):
 @pytest.mark.parametrize("N", [512, 1023, 1024, 4097])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_rms_norm_backward(M, N, dtype):
-    x_triton = torch.randn(
-        (M, N), dtype=dtype, device="cpu", requires_grad=True
-    )
-    weight_triton = torch.randn(
-        (N,), dtype=dtype, device="cpu", requires_grad=True
-    )
+    x_triton = torch.randn((M, N), dtype=dtype, device="cpu", requires_grad=True)
+    weight_triton = torch.randn((N,), dtype=dtype, device="cpu", requires_grad=True)
 
     x_torch = x_triton.clone().detach().requires_grad_(True)
     weight_torch = weight_triton.clone().detach().requires_grad_(True)
@@ -42,16 +34,14 @@ def test_rms_norm_backward(M, N, dtype):
     eps = 1e-5
 
     out_triton = rms_norm(x_triton, normalized_shape, weight_triton, eps)
-    out_torch = torch_rms_norm(x_torch, weight_torch, eps)
+    out_torch = F.rms_norm(x_torch, normalized_shape, weight_torch, eps)
 
     grad_output = torch.randn_like(out_triton)
 
     out_triton.backward(grad_output)
     out_torch.backward(grad_output)
 
-    torch.testing.assert_close(
-        x_triton.grad, x_torch.grad, rtol=1e-3, atol=1e-3
-    )
+    torch.testing.assert_close(x_triton.grad, x_torch.grad, rtol=1e-3, atol=1e-3)
     torch.testing.assert_close(
         weight_triton.grad, weight_torch.grad, rtol=1e-3, atol=1e-3
     )
@@ -67,7 +57,7 @@ def test_rms_norm_forward_direct(M, N, dtype):
     eps = 1e-5
 
     y, inv_rms = rms_norm_forward(x, normalized_shape, weight, eps)
-    out_torch = torch_rms_norm(x, weight, eps)
+    out_torch = F.rms_norm(x, normalized_shape, weight, eps)
 
     torch.testing.assert_close(y, out_torch, rtol=1e-4, atol=1e-4)
     assert inv_rms.shape == (M,)

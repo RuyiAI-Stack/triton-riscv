@@ -118,9 +118,7 @@ def t_copy_out(
     return out
 
 
-def t_copy(
-    input: torch.Tensor, memory_format: torch.memory_format | None = None
-):
+def t_copy(input: torch.Tensor, memory_format: torch.memory_format | None = None):
     dim = input.dim()
     if dim == 0:
         out = torch.empty((), dtype=input.dtype, device=input.device)

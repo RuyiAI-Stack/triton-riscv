@@ -103,13 +103,9 @@ def affine_grid_generator(
     theta: torch.Tensor, size: torch.Size, align_corners: bool
 ) -> torch.Tensor:
 
-    assert len(size) == 4, (
-        f"size must be 4D [N, C, H, W], got {len(size)} dims"
-    )
+    assert len(size) == 4, f"size must be 4D [N, C, H, W], got {len(size)} dims"
     N, C, H, W = size
-    assert theta.shape == (N, 2, 3), (
-        f"theta must be shape (N, 2, 3), got {theta.shape}"
-    )
+    assert theta.shape == (N, 2, 3), f"theta must be shape (N, 2, 3), got {theta.shape}"
 
     # Output shape is [N, H, W, 2]
     output = torch.empty((N, H, W, 2), dtype=theta.dtype, device=theta.device)

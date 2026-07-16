@@ -71,9 +71,7 @@ def floating_to_uint(x, descending: tl.constexpr = False):
 
 
 @triton.jit
-def convert_to_uint_preverse_order(
-    x: tl.tensor, descending: tl.constexpr = False
-):
+def convert_to_uint_preverse_order(x: tl.tensor, descending: tl.constexpr = False):
     if x.dtype.is_floating():
         out = floating_to_uint(x, descending)
     elif x.dtype.is_int_signed():
@@ -114,7 +112,7 @@ def compute_global_hist_kernel(
             for n_start in range(cta_n_start, cta_n_end, TILE_N):
                 n_offsets = n_start + tl.arange(0, TILE_N)
                 mask = n_offsets < cta_n_end
-                arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
+                arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask, other=0)
                 arr = convert_to_uint_preverse_order(arr, descending)
                 key = (arr >> bit_offset) & bfe_mask
                 matches = tl.where(mask, (bin_indices[:, None] == key), False)
@@ -162,12 +160,12 @@ def sweep(
 
     n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)
     mask = n_offsets < N
-    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
+    arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask, other=0)
     arr_u = convert_to_uint_preverse_order(arr, descending)
     key = (arr_u >> bit_offset) & bfe_mask
     if associate_arr_ptr is not None:
         associate_arr = tl.load(
-            associate_arr_ptr + pid_m * N + n_offsets, mask=mask
+            associate_arr_ptr + pid_m * N + n_offsets, mask=mask, other=0
         )
 
     for bin_index in range(cta_r_start, cta_r_end):
@@ -180,9 +178,7 @@ def sweep(
         exclusive_prefix = tl.zeros((), dtype=tl.uint32)
         i_lookback = pid_n - 1
         while i_lookback >= 0:
-            flag_offset_i = (
-                pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
-            )
+            flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
             pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
             while pack1 == 0:
                 pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
@@ -198,10 +194,7 @@ def sweep(
         ex_cumsum_in_bin = exclusive_prefix + local_ex_cumsum
 
         ex_cumsum_bins = tl.load(
-            excumsum_bins_ptr
-            + pid_m * (n_passes * r)
-            + pass_id * r
-            + bin_index
+            excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
         )
         pos = ex_cumsum_bins + ex_cumsum_in_bin
 
@@ -265,9 +258,7 @@ def radix_sort(arr, k_bits=8, descending=False):
     grid_n = triton.cdiv(n, TILE_N)
     grid_for_sweep = (m * grid_n, grid_r)
 
-    status = torch.empty(
-        (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
-    )
+    status = torch.empty((m, num_bins, grid_n), device=arr.device, dtype=torch.uint32)
 
     for i in range(0, n_passes):
         bit_offset = i * k_bits
@@ -314,14 +305,10 @@ def sort_kernel(
     out_index_ptr += offset
 
     if IS_FLOAT:
-        mask_val = _get_finfo_val(
-            in_ptr.dtype.element_ty, return_max=not DESCENDING
-        )
+        mask_val = _get_finfo_val(in_ptr.dtype.element_ty, return_max=not DESCENDING)
         in_val = tl.load(in_ptr, mask=mask, other=mask_val)
     else:
-        mask_val = _get_iinfo_val(
-            in_ptr.dtype.element_ty, return_max=not DESCENDING
-        )
+        mask_val = _get_iinfo_val(in_ptr.dtype.element_ty, return_max=not DESCENDING)
         in_val = tl.load(in_ptr, mask=mask, other=mask_val)
 
     index_val = tl.arange(0, BLOCK_SIZE)

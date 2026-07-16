@@ -4,9 +4,7 @@ import torch
 from .replication_pad2d import replication_pad2d, replication_pad2d_out
 
 
-@pytest.mark.parametrize(
-    "shape", [(1, 1, 16, 32), (1, 1, 31, 33), (1, 1, 32, 32)]
-)
+@pytest.mark.parametrize("shape", [(1, 1, 16, 32), (1, 1, 31, 33), (1, 1, 32, 32)])
 @pytest.mark.parametrize("padding", [(1, 1, 1, 1), (2, 0, 1, 2), (0, 0, 0, 0)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_replication_pad2d_forward(shape, padding, dtype):

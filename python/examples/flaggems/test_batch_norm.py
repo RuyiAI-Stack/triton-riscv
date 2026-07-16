@@ -46,17 +46,13 @@ def test_batch_norm_forward(shape, training):
 @pytest.mark.parametrize("training", [False, True])
 def test_batch_norm_backward(shape, training):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
     feat_dim = shape[1]
 
     weight = torch.randn(
         feat_dim, dtype=torch.float32, device="cpu", requires_grad=True
     )
-    bias = torch.randn(
-        feat_dim, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    bias = torch.randn(feat_dim, dtype=torch.float32, device="cpu", requires_grad=True)
     running_mean = torch.zeros(feat_dim, dtype=torch.float32, device="cpu")
     running_var = torch.ones(feat_dim, dtype=torch.float32, device="cpu")
 
@@ -117,8 +113,17 @@ def test_batch_norm_2d_input(shape):
     running_mean = torch.zeros(feat_dim, dtype=torch.float32, device="cpu")
     running_var = torch.ones(feat_dim, dtype=torch.float32, device="cpu")
 
-    ref_out = F.batch_norm(x_2d, running_mean, running_var, weight, bias, training=False)
-    tri_out, _, _ = batch_norm(x_2d, running_mean=running_mean, running_var=running_var, weight=weight, bias=bias, training=False)
+    ref_out = F.batch_norm(
+        x_2d, running_mean, running_var, weight, bias, training=False
+    )
+    tri_out, _, _ = batch_norm(
+        x_2d,
+        running_mean=running_mean,
+        running_var=running_var,
+        weight=weight,
+        bias=bias,
+        training=False,
+    )
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
@@ -132,6 +137,8 @@ def test_batch_norm_no_affine(shape):
     running_var = torch.ones(feat_dim, dtype=torch.float32, device="cpu")
 
     ref_out = F.batch_norm(x, running_mean, running_var, None, None, training=False)
-    tri_out, _, _ = batch_norm(x, running_mean=running_mean, running_var=running_var, training=False)
+    tri_out, _, _ = batch_norm(
+        x, running_mean=running_mean, running_var=running_var, training=False
+    )
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)

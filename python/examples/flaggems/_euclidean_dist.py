@@ -28,12 +28,8 @@ def _euclidean_dist_kernel(
     for d_start in range(0, D, BLOCK_D):
         d_offsets = d_start + tl.arange(0, BLOCK_D)
         d_mask = d_offsets < D
-        x1_vals = tl.load(x1_row_ptr + d_offsets, mask=d_mask, other=0.0).to(
-            tl.float32
-        )
-        x2_vals = tl.load(x2_row_ptr + d_offsets, mask=d_mask, other=0.0).to(
-            tl.float32
-        )
+        x1_vals = tl.load(x1_row_ptr + d_offsets, mask=d_mask, other=0.0).to(tl.float32)
+        x2_vals = tl.load(x2_row_ptr + d_offsets, mask=d_mask, other=0.0).to(tl.float32)
         diff = x1_vals - x2_vals
         acc += diff * diff
 
@@ -45,9 +41,7 @@ def _euclidean_dist_kernel(
 def _euclidean_dist(x1, x2):
     assert x1.ndim == 2, "x1 must be a 2D tensor"
     assert x2.ndim == 2, "x2 must be a 2D tensor"
-    assert x1.shape[1] == x2.shape[1], (
-        "x1 and x2 must have the same number of columns"
-    )
+    assert x1.shape[1] == x2.shape[1], "x1 and x2 must have the same number of columns"
 
     N, D = x1.shape
     M = x2.shape[0]

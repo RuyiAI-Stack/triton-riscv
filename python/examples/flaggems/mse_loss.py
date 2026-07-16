@@ -7,9 +7,7 @@ import triton.language as tl
 
 
 @triton.jit
-def kernel_1(
-    inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr
-):
+def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
@@ -77,9 +75,7 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
         n_elements = inp_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        mse_loss_kernel[grid](
-            inp_c, target_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        mse_loss_kernel[grid](inp_c, target_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return out
 
     inp = inp.contiguous()

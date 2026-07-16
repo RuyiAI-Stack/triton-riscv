@@ -18,8 +18,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -67,11 +66,9 @@ def _generate_index_copy_kernel(rank, kernel_name, code):
     code += f"    src_offset = {comp}\n\n"
     code += "    pre_cal = (inp_stride_dim * src_shape_dim)\n\n"
     code += "    pre_idx = (src_offset // pre_cal).to(tl.int64)\n"
-    code += (
-        "    dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)\n"
-    )
+    code += "    dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)\n"
     code += "    src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)\n"
-    code += '    assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"\n'
+    code += '    assert (src_dim_idx >= 0) & (src_dim_idx < inp_shape_dim), "0 <= index < self.size(dim)"\n'
     code += "    input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)\n"
     code += "    input_mask = (input_idx >= 0) & (input_idx < inp_numel)\n"
     code += "    store_mask = mask & input_mask\n"
@@ -174,9 +171,9 @@ def index_copy(inp, dim, index, src):
     assert inp.ndim == src.ndim, (
         "Self and source should have the same number of dimensions"
     )
-    assert all(
-        (inp.size(i) == src.size(i)) or i == dim for i in range(0, inp.ndim)
-    ), "src.size(d) == self.size(d) for all dimensions d != dim"
+    assert all((inp.size(i) == src.size(i)) or i == dim for i in range(0, inp.ndim)), (
+        "src.size(d) == self.size(d) for all dimensions d != dim"
+    )
 
     # Use native clone to avoid potential issues with FlagGems copy_ dispatch
     out = torch.ops.aten.clone.default.redispatch(_FALLBACK_KEYSET, inp)
@@ -214,9 +211,9 @@ def index_copy_(inp, dim, index, src):
     assert inp.ndim == src.ndim, (
         "Self and source should have the same number of dimensions"
     )
-    assert all(
-        (inp.size(i) == src.size(i)) or i == dim for i in range(0, inp.ndim)
-    ), "src.size(d) == self.size(d) for all dimensions d != dim"
+    assert all((inp.size(i) == src.size(i)) or i == dim for i in range(0, inp.ndim)), (
+        "src.size(d) == self.size(d) for all dimensions d != dim"
+    )
 
     dim %= inp.ndim
     inp_stride_dim = inp.stride(dim)

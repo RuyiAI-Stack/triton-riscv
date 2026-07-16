@@ -28,10 +28,8 @@ def group_norm_kernel(
     wb_offset = group * group_size + group_offset
     wb_mask = wb_offset < C
 
-    xy_offset = (
-        pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    )
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
+    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_mask = (wb_offset[:, None] < C) & (hw_offset[None, :] < HW)
 
     Mean_ptr = Mean + pid
     Rstd_ptr = Rstd + pid
@@ -91,25 +89,17 @@ def group_norm_backward_kernel(
     if W is None:
         weight = 1
     else:
-        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0).to(
-            tl.float32
-        )[:, None]
+        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
     dx_part2 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
     for off in range(0, HW, BLOCK_HW_SIZE):
         hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
         hw_mask = hw_offset < HW
-        xy_offset = (
-            pid * num_elements
-            + group_offset[:, None] * HW
-            + hw_offset[None, :]
-        )
+        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
         xy_mask = wb_mask[:, None] & hw_mask[None, :]
 
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(
-            tl.float32
-        )
+        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
         X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
 
         x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
@@ -123,16 +113,10 @@ def group_norm_backward_kernel(
     for off in range(0, HW, BLOCK_HW_SIZE):
         hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
         hw_mask = hw_offset < HW
-        xy_offset = (
-            pid * num_elements
-            + group_offset[:, None] * HW
-            + hw_offset[None, :]
-        )
+        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
         xy_mask = wb_mask[:, None] & hw_mask[None, :]
 
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(
-            tl.float32
-        )
+        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
         X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
 
         x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
@@ -162,7 +146,7 @@ def weight_bias_backward_kernel(
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)
-    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+    xy_mask = (n_offset[:, None] < N) & (hw_offset[None, :] < HW)
     mr_mask = n_offset < N
 
     mean_ptr = Mean + group + n_offset * num_groups

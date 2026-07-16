@@ -83,12 +83,8 @@ def max_pool2d_forward_kernel(
 
     for kh in tl.static_range(0, kernel_h):
         for kw in tl.static_range(0, kernel_w):
-            h_in = (
-                h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-            )
-            w_in = (
-                w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-            )
+            h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
+            w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
             input_offset = h_in * in_stride_h + w_in * in_stride_w
             current_val = tl.load(
@@ -98,9 +94,7 @@ def max_pool2d_forward_kernel(
 
             is_new_max = current_val > max_val_acc
             max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
-            max_idx_acc = tl.where(
-                is_new_max & in_mask, current_idx, max_idx_acc
-            )
+            max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
 
     out_base_ptr = output_ptr + pid_nc * out_h * out_w
     indices_base_ptr = indices_ptr + pid_nc * out_h * out_w
@@ -110,14 +104,10 @@ def max_pool2d_forward_kernel(
         out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
     )
     indices_block_ptr = (
-        indices_base_ptr
-        + out_h_offsets[:, None] * out_w
-        + out_w_offsets[None, :]
+        indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
     )
 
-    out_mask = (out_h_offsets[:, None] < out_h) & (
-        out_w_offsets[None, :] < out_w
-    )
+    out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
     tl.store(output_block_ptr, max_val_acc, mask=out_mask)
     tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
 
@@ -155,9 +145,7 @@ def max_pool2d_backward_kernel(
     h_in_offsets = h_block_idx * BLOCK_IN_H + tl.arange(0, BLOCK_IN_H)
     w_in_offsets = w_block_idx * BLOCK_IN_W + tl.arange(0, BLOCK_IN_W)
 
-    current_input_flat_idx = (
-        h_in_offsets[:, None] * in_w + w_in_offsets[None, :]
-    )
+    current_input_flat_idx = h_in_offsets[:, None] * in_w + w_in_offsets[None, :]
     grad_acc = tl.zeros((BLOCK_IN_H, BLOCK_IN_W), dtype=tl.float32)
 
     indices_base_ptr = indices_ptr + nc_idx * out_stride_nc
@@ -194,12 +182,8 @@ def max_pool2d_backward_kernel(
 
     grad_input_base_ptr = grad_input_ptr + nc_idx * in_h * in_w
     grad_input_offsets = h_in_offsets[:, None] * in_w + w_in_offsets[None, :]
-    store_mask = (h_in_offsets[:, None] < in_h) & (
-        w_in_offsets[None, :] < in_w
-    )
-    tl.store(
-        grad_input_base_ptr + grad_input_offsets, grad_acc, mask=store_mask
-    )
+    store_mask = (h_in_offsets[:, None] < in_h) & (w_in_offsets[None, :] < in_w)
+    tl.store(grad_input_base_ptr + grad_input_offsets, grad_acc, mask=store_mask)
 
 
 def _parse_pool_params(kernel_size, stride, padding, dilation):
@@ -213,9 +197,7 @@ def _parse_pool_params(kernel_size, stride, padding, dilation):
         raise ValueError(f"Invalid {name}: {param}")
 
     kernel_h, kernel_w = _parse_param(kernel_size, "kernel_size")
-    stride_h, stride_w = _parse_param(
-        stride, "stride", default=(kernel_h, kernel_w)
-    )
+    stride_h, stride_w = _parse_param(stride, "stride", default=(kernel_h, kernel_w))
     padding_h, padding_w = _parse_param(padding, "padding", default=(0, 0))
     dilation_h, dilation_w = _parse_param(dilation, "dilation", default=(1, 1))
 
@@ -224,13 +206,9 @@ def _parse_pool_params(kernel_size, stride, padding, dilation):
             f"stride must be positive, but got stride=({stride_h}, {stride_w})"
         )
     if padding_h < 0 or padding_w < 0:
-        raise ValueError(
-            f"padding must be non-negative: ({padding_h}, {padding_w})"
-        )
+        raise ValueError(f"padding must be non-negative: ({padding_h}, {padding_w})")
     if dilation_h <= 0 or dilation_w <= 0:
-        raise ValueError(
-            f"dilation must be positive: ({dilation_h}, {dilation_w})"
-        )
+        raise ValueError(f"dilation must be positive: ({dilation_h}, {dilation_w})")
 
     return (
         kernel_h,

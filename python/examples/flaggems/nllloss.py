@@ -20,18 +20,18 @@ def nll_loss_forward_kernel(
 
     mask_n = offsets_n < N
 
-    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=ignore_index)
     ignore_mask = (tgt != ignore_index) & mask_n
+    valid_tgt = ((tgt >= 0) & (tgt < C)) | (tgt == ignore_index) | ~mask_n
+    assert valid_tgt, "Invalid target value"
+    safe_tgt = tl.where(ignore_mask, tgt, 0)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + safe_tgt, mask=ignore_mask, other=0).to(tl.float32)
 
-    inp_tgt_ptrs = inp_ptr + offsets_n * C + tgt
+    inp_tgt_ptrs = inp_ptr + offsets_n * C + safe_tgt
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
     out = inp_tgt * wgt_tgt * -1
 
@@ -74,15 +74,16 @@ def nll_loss_backward_kernel(
 
     mask_n = offsets_n < N
 
-    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=ignore_index)
     ignore_mask = (tgt != ignore_index) & mask_n
+    valid_tgt = ((tgt >= 0) & (tgt < C)) | (tgt == ignore_index) | ~mask_n
+    assert valid_tgt, "Invalid target value"
+    safe_tgt = tl.where(ignore_mask, tgt, 0)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + safe_tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offsets_n
@@ -96,8 +97,8 @@ def nll_loss_backward_kernel(
         total_w = 1
 
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + tgt
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_n)
+    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + safe_tgt
+    tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -121,18 +122,18 @@ def nll_loss2d_forward_kernel(
     mask_block = offset_nd < N * D
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
+    tgt = tl.load(tgt_ptrs, mask=mask_block, other=ignore_index)
     ignore_mask = (tgt != ignore_index) & mask_block
+    valid_tgt = ((tgt >= 0) & (tgt < C)) | (tgt == ignore_index) | ~mask_block
+    assert valid_tgt, "Invalid target value"
+    safe_tgt = tl.where(ignore_mask, tgt, 0)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + safe_tgt, mask=ignore_mask, other=0).to(tl.float32)
 
-    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
+    inp_tgt_ptrs = inp_ptr + offset_n * C * D + safe_tgt * D + offset_d
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
     out = inp_tgt * wgt_tgt * -1
 
@@ -180,21 +181,20 @@ def nll_loss2d_backward_kernel(
     mask_block = offset_nd < N * D
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
+    tgt = tl.load(tgt_ptrs, mask=mask_block, other=ignore_index)
     ignore_mask = (tgt != ignore_index) & mask_block
+    valid_tgt = ((tgt >= 0) & (tgt < C)) | (tgt == ignore_index) | ~mask_block
+    assert valid_tgt, "Invalid target value"
+    safe_tgt = tl.where(ignore_mask, tgt, 0)
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(
-            tl.float32
-        )
+        wgt_tgt = tl.load(wgt_ptr + safe_tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offset_n * D + offset_d
-        out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(
-            tl.float32
-        )
+        out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
@@ -204,8 +204,8 @@ def nll_loss2d_backward_kernel(
         total_w = 1
 
     inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
+    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + safe_tgt * D + offset_d
+    tl.store(inp_grad_ptrs, inp_grad, mask=ignore_mask)
 
 
 def nll_loss_forward(
@@ -395,11 +395,7 @@ def nll_loss2d_backward(
 
 def nllloss(input, target, weight=None, reduction=1, ignore_index=-100):
     if input.ndim != 4:
-        out, _ = nll_loss_forward(
-            input, target, weight, reduction, ignore_index
-        )
+        out, _ = nll_loss_forward(input, target, weight, reduction, ignore_index)
     else:
-        out, _ = nll_loss2d_forward(
-            input, target, weight, reduction, ignore_index
-        )
+        out, _ = nll_loss2d_forward(input, target, weight, reduction, ignore_index)
     return out

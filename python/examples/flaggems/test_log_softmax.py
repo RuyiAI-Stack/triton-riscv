@@ -20,9 +20,7 @@ def test_log_softmax_1d(shape):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-3, atol=1e-3)
 
 
-@pytest.mark.parametrize(
-    "shape, dim", [((4, 128), 1), ((16, 64), 0), ((8, 32), 1)]
-)
+@pytest.mark.parametrize("shape, dim", [((4, 128), 1), ((16, 64), 0), ((8, 32), 1)])
 def test_log_softmax_2d(shape, dim):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
@@ -43,9 +41,7 @@ def test_log_softmax_half_to_float():
 @pytest.mark.parametrize("shape, dim", [((4, 128), 1), ((16, 64), 0)])
 def test_log_softmax_backward(shape, dim):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
     grad_output = torch.randn(shape, dtype=torch.float32, device="cpu")
 
     ref_out = torch.nn.functional.log_softmax(x, dim=dim)
@@ -70,9 +66,7 @@ def test_log_softmax_out():
 @pytest.mark.parametrize("shape, dim", [((4, 128), 1), ((16, 64), 0)])
 def test_log_softmax_backward_out(shape, dim):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
     grad_output = torch.randn(shape, dtype=torch.float32, device="cpu")
 
     ref_out = torch.nn.functional.log_softmax(x, dim=dim)

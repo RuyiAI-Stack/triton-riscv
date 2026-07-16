@@ -38,9 +38,7 @@ def slice_scatter_kernel(
 
     src_dim_idx = (dim_idx - start) // step
     src_idx = (
-        pre_idx * src_dim_size * dim_prod_post
-        + src_dim_idx * dim_prod_post
-        + post_idx
+        pre_idx * src_dim_size * dim_prod_post + src_dim_idx * dim_prod_post + post_idx
     )
     src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask)
     result = tl.where(slice_mask, src_data, inp_data)

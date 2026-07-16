@@ -49,7 +49,7 @@ def test_any_dims(shape, dims, keepdim):
     x = torch.zeros(shape, device="cpu", dtype=torch.float32)
     x[0, 0, 0] = 1.0  # introduce a one
 
-    ref_out = x != 0
+    ref_out = torch.ne(x, 0)
     for d in sorted([dim % x.ndim for dim in dims], reverse=True):
         ref_out = torch.any(ref_out, dim=d, keepdim=keepdim)
 

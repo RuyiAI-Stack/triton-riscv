@@ -3,11 +3,6 @@ import triton
 import triton.language as tl
 
 
-# NOTE: acos uses tl.math.acos which is NOT available in the triton-riscv MLIR backend.
-# This kernel will fail compilation with:
-#   AttributeError("module 'triton.language.math' has no attribute 'acos'")
-# Fix: Backend needs to add math.acos support, or use polynomial approximation.
-# Polynomial approximation attempted but insufficient accuracy (error > 1e-4).
 @triton.jit
 def acos_kernel(
     x_ptr,
@@ -20,7 +15,6 @@ def acos_kernel(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    # UNSUPPORTED: tl.math.acos not available in triton-riscv backend
     y = tl.math.acos(x.to(tl.float32))
     tl.store(y_ptr + offsets, y, mask=mask)
 

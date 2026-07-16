@@ -23,9 +23,7 @@ def test_layer_norm(shape, normalized_shape, dtype, eps):
     bias = torch.randn(normalized_shape, dtype=dtype, requires_grad=True)
 
     y, mean, rstd = layer_norm(a, normalized_shape, weight, bias, eps)
-    out_torch = torch.nn.functional.layer_norm(
-        a, normalized_shape, weight, bias, eps
-    )
+    out_torch = torch.nn.functional.layer_norm(a, normalized_shape, weight, bias, eps)
 
     torch.testing.assert_close(y, out_torch, rtol=1e-4, atol=1e-4)
 
@@ -40,17 +38,11 @@ def test_layer_norm(shape, normalized_shape, dtype, eps):
 def test_layer_norm_backward(shape, normalized_shape):
     torch.manual_seed(0)
     a = torch.randn(shape, dtype=torch.float32, requires_grad=True)
-    weight = torch.randn(
-        normalized_shape, dtype=torch.float32, requires_grad=True
-    )
-    bias = torch.randn(
-        normalized_shape, dtype=torch.float32, requires_grad=True
-    )
+    weight = torch.randn(normalized_shape, dtype=torch.float32, requires_grad=True)
+    bias = torch.randn(normalized_shape, dtype=torch.float32, requires_grad=True)
 
     # Reference backward via torch
-    ref_out = torch.nn.functional.layer_norm(
-        a, normalized_shape, weight, bias, 1e-5
-    )
+    ref_out = torch.nn.functional.layer_norm(a, normalized_shape, weight, bias, 1e-5)
     grad_out = torch.randn_like(ref_out)
     ref_out.backward(grad_out)
     ref_dx = a.grad.clone()

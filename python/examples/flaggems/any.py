@@ -12,7 +12,7 @@ import triton.language as tl
 
 @triton.jit
 def reduce_any(a, b):
-    return a or b
+    return a | b
 
 
 @triton.jit

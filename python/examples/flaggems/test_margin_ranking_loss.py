@@ -24,9 +24,7 @@ def test_margin_ranking_loss(shape, reduction, dtype):
     ref_out = torch.nn.functional.margin_ranking_loss(
         x1, x2, target, margin=1.0, reduction=reduction
     )
-    tri_out = margin_ranking_loss(
-        x1, x2, target, margin=1.0, reduction=reduction
-    )
+    tri_out = margin_ranking_loss(x1, x2, target, margin=1.0, reduction=reduction)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-2, atol=1e-2)
 

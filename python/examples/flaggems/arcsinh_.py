@@ -25,9 +25,7 @@ def arcsinh_(*args, **kwargs):
         raise TypeError("arcsinh_ expected at least 1 argument (a Tensor)")
     x = args[0]
     if not isinstance(x, torch.Tensor):
-        raise TypeError(
-            "arcsinh_ expected a torch.Tensor as the first argument"
-        )
+        raise TypeError("arcsinh_ expected a torch.Tensor as the first argument")
 
     if (not x.is_contiguous()) or (not x.dtype.is_floating_point):
         torch.ops.aten.arcsinh_(x)

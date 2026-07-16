@@ -36,9 +36,7 @@ def test_conv1d(
     torch.manual_seed(0)
     device = "cpu"
 
-    x = torch.randn(
-        (N, C, L), dtype=torch.float32, device=device, requires_grad=True
-    )
+    x = torch.randn((N, C, L), dtype=torch.float32, device=device, requires_grad=True)
     weight = torch.randn(
         (out_channels, C // groups, kernel_size),
         dtype=torch.float32,
@@ -90,11 +88,7 @@ def test_conv1d(
     ref_out.backward(grad_out)
 
     torch.testing.assert_close(x.grad, x_ref.grad, rtol=1e-3, atol=1e-3)
-    torch.testing.assert_close(
-        weight.grad, weight_ref.grad, rtol=1e-3, atol=1e-3
-    )
+    torch.testing.assert_close(weight.grad, weight_ref.grad, rtol=1e-3, atol=1e-3)
 
     if use_bias:
-        torch.testing.assert_close(
-            bias.grad, bias_ref.grad, rtol=1e-3, atol=1e-3
-        )
+        torch.testing.assert_close(bias.grad, bias_ref.grad, rtol=1e-3, atol=1e-3)

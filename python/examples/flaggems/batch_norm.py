@@ -32,6 +32,8 @@ def batch_norm_forward_kernel(
     momentum,
     eps,
     is_train: tl.constexpr,
+    has_weight: tl.constexpr,
+    has_bias: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -61,14 +63,12 @@ def batch_norm_forward_kernel(
                 )
 
                 mask = batch_mask[:, None] & spatial_mask[None, :]
-                curr_input = tl.load(curr_input_pointer, mask=mask).to(
+                curr_input = tl.load(curr_input_pointer, mask=mask, other=0.0).to(
                     tl.float32
                 )
 
                 step = m_step * n_num_steps + n_step + 1
-                new_mean = tl.where(
-                    mask, mean + (curr_input - mean) / step, mean
-                )
+                new_mean = tl.where(mask, mean + (curr_input - mean) / step, mean)
                 new_var = tl.where(
                     mask,
                     var + (curr_input - new_mean) * (curr_input - mean),
@@ -107,11 +107,11 @@ def batch_norm_forward_kernel(
         mean = tl.load(feat_pid + running_mean_pointer)
         inv_std = tl.math.rsqrt(tl.load(feat_pid + running_var_pointer) + eps)
 
-    if weight_pointer:
+    if has_weight:
         weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
     else:
         weight = 1.0
-    if bias_pointer:
+    if has_bias:
         bias = tl.load(feat_pid + bias_pointer).to(tl.float32)
     else:
         bias = 0.0
@@ -140,6 +140,7 @@ def batch_norm_forward_kernel(
             curr_input = tl.load(
                 curr_input_pointer,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
+                other=0.0,
             ).to(tl.float32)
             output = weight * (curr_input - mean) * inv_std + bias
 
@@ -171,16 +172,24 @@ def batch_norm_backward_kernel(
     input_grad_batch_stride,
     input_grad_feat_stride,
     input_grad_spatial_stride,
+    eps,
     input_grad_mask: tl.constexpr,
     weight_grad_mask: tl.constexpr,
     bias_grad_mask: tl.constexpr,
+    is_train: tl.constexpr,
+    has_weight: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     feat_pid = tl.program_id(axis=0)
 
     mean = tl.load(feat_pid + mean_pointer).to(tl.float32)
-    inv_std = tl.load(feat_pid + inv_std_pointer).to(tl.float32)
+    if is_train:
+        inv_std = tl.load(feat_pid + inv_std_pointer).to(tl.float32)
+    else:
+        inv_std = tl.math.rsqrt(
+            tl.load(feat_pid + inv_std_pointer).to(tl.float32) + eps
+        )
 
     term1 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
@@ -207,12 +216,14 @@ def batch_norm_backward_kernel(
             )
 
             mask = batch_mask[:, None] & spatial_mask[None, :]
-            curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
-
-            curr_pre_lin = (curr_input - mean) * inv_std
-            curr_output_grad = tl.load(curr_output_grad_pointer, mask=mask).to(
+            curr_input = tl.load(curr_input_pointer, mask=mask, other=0.0).to(
                 tl.float32
             )
+
+            curr_pre_lin = (curr_input - mean) * inv_std
+            curr_output_grad = tl.load(
+                curr_output_grad_pointer, mask=mask, other=0.0
+            ).to(tl.float32)
 
             term1 += curr_pre_lin * curr_output_grad
             term2 += curr_output_grad
@@ -228,7 +239,7 @@ def batch_norm_backward_kernel(
     if not input_grad_mask:
         return
 
-    if weight_pointer:
+    if has_weight:
         weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
     else:
         weight = 1.0
@@ -265,17 +276,22 @@ def batch_norm_backward_kernel(
             curr_input = tl.load(
                 curr_input_pointer,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
+                other=0.0,
             ).to(tl.float32)
             curr_pre_lin = (curr_input - mean) * inv_std
             curr_output_grad = tl.load(
                 curr_output_grad_pointer,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
+                other=0.0,
             ).to(tl.float32)
-            curr_input_grad = (
-                inv_std
-                * weight
-                * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
-            )
+            if is_train:
+                curr_input_grad = (
+                    inv_std
+                    * weight
+                    * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
+                )
+            else:
+                curr_input_grad = inv_std * weight * curr_output_grad
             tl.store(
                 curr_input_grad_pointer,
                 curr_input_grad,
@@ -303,6 +319,8 @@ def batch_norm(
 
     running_mean = input if running_mean is None else running_mean
     running_var = input if running_var is None else running_var
+    has_weight = weight is not None
+    has_bias = bias is not None
 
     BLOCK_M = 64
     BLOCK_N = 256
@@ -322,6 +340,8 @@ def batch_norm(
         momentum,
         eps,
         is_train=training,
+        has_weight=has_weight,
+        has_bias=has_bias,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
     )
@@ -351,25 +371,24 @@ def batch_norm_backward(
     else:
         input_grad = None
     if output_mask[1]:
-        weight_grad = torch.empty(
-            (feat_dim,), dtype=input.dtype, device=input.device
-        )
+        weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
     else:
         weight_grad = None
     if output_mask[2]:
-        bias_grad = torch.empty(
-            (feat_dim,), dtype=input.dtype, device=input.device
-        )
+        bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
     else:
         bias_grad = None
 
     BLOCK_M = 64
     BLOCK_N = 256
+    has_weight = weight is not None
+    stats_mean = save_mean if train else running_mean
+    stats_inv_std_or_var = save_invstd if train else running_var
     batch_norm_backward_kernel[(feat_dim,)](
         output_grad_3d,
         input_3d,
-        save_mean,
-        save_invstd,
+        stats_mean,
+        stats_inv_std_or_var,
         weight,
         input_grad,
         weight_grad,
@@ -379,7 +398,10 @@ def batch_norm_backward(
         *output_grad_3d.stride(),
         *input_3d.stride(),
         *input_grad.stride(),
+        eps,
         *output_mask,
+        is_train=train,
+        has_weight=has_weight,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
     )

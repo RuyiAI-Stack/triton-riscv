@@ -40,9 +40,7 @@ def test_atan2_st(shape):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize(
-    "shape_A, shape_B", [((16, 256), (256,)), ((4, 1), (4, 128))]
-)
+@pytest.mark.parametrize("shape_A, shape_B", [((16, 256), (256,)), ((4, 1), (4, 128))])
 def test_atan2_broadcast(shape_A, shape_B):
     torch.manual_seed(0)
     x = torch.randn(shape_A, dtype=torch.float32, device="cpu")

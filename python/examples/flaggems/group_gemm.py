@@ -92,9 +92,7 @@ def grouped_gemm_tma_kernel(
             a_ptr = tl.load(group_a_ptrs + g).to(tl.pointer_type(tl.bfloat16))
             b_ptr = tl.load(group_b_ptrs + g).to(tl.pointer_type(tl.bfloat16))
             c_ptr = tl.load(group_c_ptrs + g).to(tl.pointer_type(tl.bfloat16))
-            out_ptr = tl.load(group_out_ptrs + g).to(
-                tl.pointer_type(tl.bfloat16)
-            )
+            out_ptr = tl.load(group_out_ptrs + g).to(tl.pointer_type(tl.bfloat16))
 
             a_desc = make_tensor_descriptor_fn(
                 a_ptr,
@@ -123,9 +121,7 @@ def grouped_gemm_tma_kernel(
                 strides=[ldc, 1],
                 block_shape=[BLOCK_M, BLOCK_N],
             )
-            loop_count = (
-                current_problem_end - tile_idx + total_grid - 1
-            ) // total_grid
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
@@ -139,9 +135,7 @@ def grouped_gemm_tma_kernel(
                 for kk in range(0, tl.cdiv(gk, BLOCK_K)):
                     a = a_desc.load([offs_am, kk * BLOCK_K])
                     b = b_desc.load([kk * BLOCK_K, offs_bn])
-                    accumulator = tl.dot(
-                        a, b, acc=accumulator, allow_tf32=False
-                    )
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
 
                 offs_cm = tile_m_idx * BLOCK_M
                 offs_cn = tile_n_idx * BLOCK_N
@@ -195,13 +189,9 @@ def grouped_gemm_kernel(
             a_ptr = tl.load(group_a_ptrs + g).to(tl.pointer_type(tl.bfloat16))
             b_ptr = tl.load(group_b_ptrs + g).to(tl.pointer_type(tl.bfloat16))
             c_ptr = tl.load(group_c_ptrs + g).to(tl.pointer_type(tl.bfloat16))
-            out_ptr = tl.load(group_out_ptrs + g).to(
-                tl.pointer_type(tl.bfloat16)
-            )
+            out_ptr = tl.load(group_out_ptrs + g).to(tl.pointer_type(tl.bfloat16))
 
-            loop_count = (
-                current_problem_end - tile_idx + total_grid - 1
-            ) // total_grid
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
@@ -211,58 +201,46 @@ def grouped_gemm_kernel(
                 offs_am = tile_m_idx * BLOCK_M
                 offs_bn = tile_n_idx * BLOCK_N
 
-                a_ptrs = tl.make_block_ptr(
+                a_desc = tl.make_tensor_descriptor(
                     base=a_ptr,
-                    shape=(gm, gk),
-                    strides=(lda, 1),
-                    offsets=(offs_am, 0),
-                    block_shape=(BLOCK_M, BLOCK_K),
-                    order=(1, 0),
+                    shape=[gm, gk],
+                    strides=[lda, 1],
+                    block_shape=[BLOCK_M, BLOCK_K],
                 )
-                b_ptrs = tl.make_block_ptr(
+                b_desc = tl.make_tensor_descriptor(
                     base=b_ptr,
-                    shape=(gk, gn),
-                    strides=(ldb, 1),
-                    offsets=(0, offs_bn),
-                    block_shape=(BLOCK_K, BLOCK_N),
-                    order=(1, 0),
+                    shape=[gk, gn],
+                    strides=[ldb, 1],
+                    block_shape=[BLOCK_K, BLOCK_N],
                 )
 
                 accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
                 for kk in range(0, tl.cdiv(gk, BLOCK_K)):
-                    a = tl.load(a_ptrs, boundary_check=(0, 1))
-                    b = tl.load(b_ptrs, boundary_check=(0, 1))
-                    accumulator = tl.dot(
-                        a, b, acc=accumulator, allow_tf32=False
-                    )
-                    a_ptrs = tl.advance(a_ptrs, (0, BLOCK_K))
-                    b_ptrs = tl.advance(b_ptrs, (BLOCK_K, 0))
+                    a = a_desc.load([offs_am, kk * BLOCK_K])
+                    b = b_desc.load([kk * BLOCK_K, offs_bn])
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
 
                 offs_cm = tile_m_idx * BLOCK_M
                 offs_cn = tile_n_idx * BLOCK_N
 
-                c_ptrs = tl.make_block_ptr(
+                c_desc = tl.make_tensor_descriptor(
                     base=c_ptr,
-                    shape=(gm, gn),
-                    strides=(ldc, 1),
-                    offsets=(offs_cm, offs_cn),
-                    block_shape=(BLOCK_M, BLOCK_N),
-                    order=(1, 0),
+                    shape=[gm, gn],
+                    strides=[ldc, 1],
+                    block_shape=[BLOCK_M, BLOCK_N],
                 )
 
-                out_ptrs = tl.make_block_ptr(
+                out_desc = tl.make_tensor_descriptor(
                     base=out_ptr,
-                    shape=(gm, gn),
-                    strides=(ldc, 1),
-                    offsets=(offs_cm, offs_cn),
-                    block_shape=(BLOCK_M, BLOCK_N),
-                    order=(1, 0),
+                    shape=[gm, gn],
+                    strides=[ldc, 1],
+                    block_shape=[BLOCK_M, BLOCK_N],
                 )
-                ori_c = tl.load(c_ptrs, boundary_check=(0, 1))
+                ori_c = c_desc.load([offs_cm, offs_cn])
                 accumulator = ori_c * beta + accumulator * alpha
 
-                c = accumulator.to(out_ptrs.dtype.element_ty)
-                tl.store(out_ptrs, c, boundary_check=(0, 1))
+                c = accumulator.to(out_desc.dtype)
+                out_desc.store([offs_cm, offs_cn], c)
 
                 tile_idx += total_grid
 
@@ -302,9 +280,7 @@ def grouped_mm_tma_kernel(
 
         current_problem_end = last_problem_end + num_tiles
         if tile_idx >= last_problem_end and tile_idx < current_problem_end:
-            loop_count = (
-                current_problem_end - tile_idx + total_grid - 1
-            ) // total_grid
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
@@ -320,9 +296,7 @@ def grouped_mm_tma_kernel(
                 for k in tl.range(0, tl.cdiv(K, BLOCK_K)):
                     a = a_desc.load([offs_am, k * BLOCK_K])
                     b = b_desc.load([offs_bk + k * BLOCK_K, offs_bn])
-                    accumulator = tl.dot(
-                        a, b, acc=accumulator, allow_tf32=False
-                    )
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
 
                 c = accumulator.to(c_desc.dtype)
 
@@ -332,13 +306,9 @@ def grouped_mm_tma_kernel(
                     offs_cm = offs_am + tl.arange(0, BLOCK_M)
                     offs_cn = offs_bn + tl.arange(0, BLOCK_N)
                     c_ptrs = (
-                        C
-                        + stride_cm * offs_cm[:, None]
-                        + stride_cn * offs_cn[None, :]
+                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
                     )
-                    c_mask = (offs_cm[:, None] < group_end) & (
-                        offs_cn[None, :] < N
-                    )
+                    c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
                     tl.store(c_ptrs, c, mask=c_mask)
 
                 tile_idx += total_grid
@@ -383,9 +353,7 @@ def grouped_mm_kernel(
 
         current_problem_end = last_problem_end + num_tiles
         if tile_idx >= last_problem_end and tile_idx < current_problem_end:
-            loop_count = (
-                current_problem_end - tile_idx + total_grid - 1
-            ) // total_grid
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
             for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
@@ -396,60 +364,45 @@ def grouped_mm_kernel(
                 offs_bn = tile_n_idx * BLOCK_N
                 offs_bk = group_idx * K
 
-                a_block_ptr = tl.make_block_ptr(
+                a_desc = tl.make_tensor_descriptor(
                     base=A,
-                    shape=(M, K),
-                    strides=(stride_am, stride_ak),
-                    offsets=(offs_am, 0),
-                    block_shape=(BLOCK_M, BLOCK_K),
-                    order=(1, 0),
+                    shape=[M, K],
+                    strides=[stride_am, stride_ak],
+                    block_shape=[BLOCK_M, BLOCK_K],
                 )
 
-                b_block_ptr = tl.make_block_ptr(
+                b_desc = tl.make_tensor_descriptor(
                     base=B,
-                    shape=(num_groups * K, N),
-                    strides=(stride_bk, stride_bn),
-                    offsets=(offs_bk, offs_bn),
-                    block_shape=(BLOCK_K, BLOCK_N),
-                    order=(1, 0),
+                    shape=[num_groups * K, N],
+                    strides=[stride_bk, stride_bn],
+                    block_shape=[BLOCK_K, BLOCK_N],
                 )
 
                 accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
                 for k in tl.range(0, tl.cdiv(K, BLOCK_K)):
-                    a = tl.load(a_block_ptr, boundary_check=(0, 1))
-                    b = tl.load(b_block_ptr, boundary_check=(0, 1))
-                    accumulator = tl.dot(
-                        a, b, acc=accumulator, allow_tf32=False
-                    )
-
-                    a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
-                    b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
+                    a = a_desc.load([offs_am, k * BLOCK_K])
+                    b = b_desc.load([offs_bk + k * BLOCK_K, offs_bn])
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
 
                 c = accumulator.to(C.dtype.element_ty)
 
-                c_block_ptr = tl.make_block_ptr(
+                c_desc = tl.make_tensor_descriptor(
                     base=C,
-                    shape=(M, N),
-                    strides=(stride_cm, stride_cn),
-                    offsets=(offs_am, offs_bn),
-                    block_shape=(BLOCK_M, BLOCK_N),
-                    order=(1, 0),
+                    shape=[M, N],
+                    strides=[stride_cm, stride_cn],
+                    block_shape=[BLOCK_M, BLOCK_N],
                 )
 
                 if offs_am + BLOCK_M <= group_end:
-                    tl.store(c_block_ptr, c, boundary_check=(0, 1))
+                    c_desc.store([offs_am, offs_bn], c)
                 else:
                     offs_cm = offs_am + tl.arange(0, BLOCK_M)
                     offs_cn = offs_bn + tl.arange(0, BLOCK_N)
                     c_ptrs = (
-                        C
-                        + stride_cm * offs_cm[:, None]
-                        + stride_cn * offs_cn[None, :]
+                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
                     )
-                    c_mask = (offs_cm[:, None] < group_end) & (
-                        offs_cn[None, :] < N
-                    )
+                    c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
                     tl.store(c_ptrs, c, mask=c_mask)
 
                 tile_idx += total_grid
@@ -488,9 +441,7 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
     d_b_ptrs = torch.tensor(B_addrs, device=group_A.device)
     d_c_ptrs = torch.tensor(C_addrs, device=group_A.device)
     d_output_ptrs = torch.tensor(out_addrs, device=group_A.device)
-    d_g_sizes = torch.tensor(
-        group_sizes, dtype=torch.int32, device=group_A.device
-    )
+    d_g_sizes = torch.tensor(group_sizes, dtype=torch.int32, device=group_A.device)
     d_g_lds = torch.tensor(group_lds, dtype=torch.int32, device=group_A.device)
     NUM_SMS = _get_sm_count()
 

@@ -52,9 +52,7 @@ def _hypot_kernel(
 
 def _infer_hypot_out_dtype(a: torch.Tensor, b: torch.Tensor) -> torch.dtype:
     if a.is_complex() or b.is_complex():
-        raise NotImplementedError(
-            "Complex dtypes are not supported for hypot."
-        )
+        raise NotImplementedError("Complex dtypes are not supported for hypot.")
     if a.is_floating_point() or b.is_floating_point():
         return torch.result_type(a, b)
     return torch.get_default_dtype()

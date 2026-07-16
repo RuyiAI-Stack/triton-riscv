@@ -56,9 +56,7 @@ def replication_pad2d_kernel(
     tl.store(out_ptr + out_index, x, mask=mask)
 
 
-def _prepare_dims_and_out(
-    input: torch.Tensor, padding, out: torch.Tensor | None
-):
+def _prepare_dims_and_out(input: torch.Tensor, padding, out: torch.Tensor | None):
     if not isinstance(padding, (tuple, list)) or len(padding) != 4:
         raise ValueError(
             "padding must be a sequence of 4 integers: (pad_left, pad_right, pad_top, pad_bottom)"

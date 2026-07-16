@@ -7,7 +7,7 @@ import triton.language as tl
 def bmm_kernel(
     A,
     B,
-    O,
+    Out,
     M,
     N,
     K,
@@ -32,7 +32,7 @@ def bmm_kernel(
     pid_b = tl.program_id(2)
     A += pid_b * stride_ab
     B += pid_b * stride_bb
-    O += pid_b * stride_ob
+    Out += pid_b * stride_ob
 
     pidx = tl.program_id(0)
     pidy = tl.program_id(1)
@@ -63,7 +63,7 @@ def bmm_kernel(
 
     a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
     b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-    o_ptrs = O + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
+    o_ptrs = Out + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
 
     num_iters = tl.cdiv(K, TILE_K)
     if IS_FP64:
@@ -73,26 +73,31 @@ def bmm_kernel(
     for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
-                mask_a = None
+                a = tl.load(a_ptrs)
             else:
-                mask_a = mask_m[:, None]
+                a = tl.load(a_ptrs, mask=mask_m[:, None], other=0.0)
             if DIVISIBLE_N:
-                mask_b = None
+                b = tl.load(b_ptrs)
             else:
-                mask_b = mask_n[None, :]
+                b = tl.load(b_ptrs, mask=mask_n[None, :], other=0.0)
         else:
             mask_k = offs_k < K
             if DIVISIBLE_M:
-                mask_a = mask_k[None, :]
+                a = tl.load(a_ptrs, mask=mask_k[None, :], other=0.0)
             else:
-                mask_a = mask_m[:, None] & mask_k[None, :]
+                a = tl.load(
+                    a_ptrs,
+                    mask=mask_m[:, None] & mask_k[None, :],
+                    other=0.0,
+                )
             if DIVISIBLE_N:
-                mask_b = mask_k[:, None]
+                b = tl.load(b_ptrs, mask=mask_k[:, None], other=0.0)
             else:
-                mask_b = mask_k[:, None] & mask_n[None, :]
-
-        a = tl.load(a_ptrs, mask_a)
-        b = tl.load(b_ptrs, mask_b)
+                b = tl.load(
+                    b_ptrs,
+                    mask=mask_k[:, None] & mask_n[None, :],
+                    other=0.0,
+                )
 
         offs_k += TILE_K
         a_ptrs += TILE_K * stride_ak

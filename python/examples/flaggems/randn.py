@@ -22,8 +22,7 @@ def high_precision_fast_sin_cos(x):
     s_c5 = -2.505210838544172e-8
 
     sin_x = x * (
-        s_c0
-        + x2 * (s_c1 + x2 * (s_c2 + x2 * (s_c3 + x2 * (s_c4 + x2 * s_c5))))
+        s_c0 + x2 * (s_c1 + x2 * (s_c2 + x2 * (s_c3 + x2 * (s_c4 + x2 * s_c5))))
     )
 
     # --- COS: 6th-order minimax (Q(x²)) ---
@@ -34,9 +33,7 @@ def high_precision_fast_sin_cos(x):
     c_c4 = 2.4801587301587299e-5
     c_c5 = -2.755731922398581e-7
 
-    cos_x = c_c0 + x2 * (
-        c_c1 + x2 * (c_c2 + x2 * (c_c3 + x2 * (c_c4 + x2 * c_c5)))
-    )
+    cos_x = c_c0 + x2 * (c_c1 + x2 * (c_c2 + x2 * (c_c3 + x2 * (c_c4 + x2 * c_c5))))
 
     return sin_x, cos_x
 
@@ -77,18 +74,10 @@ def randn_kernel(
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
 
-    tl.store(
-        out_ptr + off_0, n0, mask=off_0 < N, eviction_policy="evict_first"
-    )
-    tl.store(
-        out_ptr + off_1, n1, mask=off_1 < N, eviction_policy="evict_first"
-    )
-    tl.store(
-        out_ptr + off_2, n2, mask=off_2 < N, eviction_policy="evict_first"
-    )
-    tl.store(
-        out_ptr + off_3, n3, mask=off_3 < N, eviction_policy="evict_first"
-    )
+    tl.store(out_ptr + off_0, n0, mask=off_0 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_1, n1, mask=off_1 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_2, n2, mask=off_2 < N, eviction_policy="evict_first")
+    tl.store(out_ptr + off_3, n3, mask=off_3 < N, eviction_policy="evict_first")
 
 
 UNROLL = 4

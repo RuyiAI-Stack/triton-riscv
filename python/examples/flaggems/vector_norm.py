@@ -30,10 +30,7 @@ def l2_norm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = (
-        tl.program_id(0).to(tl.int64) * BLOCK_M
-        + tl.arange(0, BLOCK_M)[:, None]
-    )
+    pid = tl.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -42,7 +39,7 @@ def l2_norm_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _sum += a * a
@@ -94,10 +91,7 @@ def max_norm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = (
-        tl.program_id(0).to(tl.int64) * BLOCK_M
-        + tl.arange(0, BLOCK_M)[:, None]
-    )
+    pid = tl.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -106,7 +100,7 @@ def max_norm_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _max = tl.maximum(tl.abs(a), _max)
@@ -158,10 +152,7 @@ def min_norm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = (
-        tl.program_id(0).to(tl.int64) * BLOCK_M
-        + tl.arange(0, BLOCK_M)[:, None]
-    )
+    pid = tl.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -170,7 +161,7 @@ def min_norm_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=float("inf")).to(tl.float32)
         _min = tl.minimum(tl.abs(a), _min)
@@ -231,7 +222,7 @@ def l0_norm_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0).to(tl.float32)
         _sum += tl.where(a != 0, 1, 0)
@@ -279,10 +270,7 @@ def v_norm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = (
-        tl.program_id(0).to(tl.int64) * BLOCK_M
-        + tl.arange(0, BLOCK_M)[:, None]
-    )
+    pid = tl.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -291,7 +279,7 @@ def v_norm_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _sum += _pow(tl.abs(a), ord)
@@ -386,25 +374,15 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         BLOCK_N = triton.next_power_of_2(N)
         grid = (triton.cdiv(M, BLOCK_M),)
         if ord == 2:
-            l2_norm_kernel[grid](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N
-            )
+            l2_norm_kernel[grid](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N)
         elif ord == float("inf"):
-            max_norm_kernel[grid](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N
-            )
+            max_norm_kernel[grid](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N)
         elif ord == -float("inf"):
-            min_norm_kernel[grid](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N
-            )
+            min_norm_kernel[grid](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N)
         elif ord == 0:
-            l0_norm_kernel[grid](
-                x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N
-            )
+            l0_norm_kernel[grid](x, out, M, N, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N)
         else:
-            v_norm_kernel[grid](
-                x, out, M, N, ord, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N
-            )
+            v_norm_kernel[grid](x, out, M, N, ord, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

@@ -5,9 +5,7 @@ from .flip import flip
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_flip_1d(size, dtype):
     torch.manual_seed(0)
     x = torch.randn(size, device="cpu", dtype=dtype)
@@ -22,9 +20,7 @@ def test_flip_1d(size, dtype):
     "shape",
     [(8, 16), (16, 8), (32, 32)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_flip_2d(shape, dtype):
     torch.manual_seed(0)
     x = torch.randn(shape, device="cpu", dtype=dtype)
@@ -39,9 +35,7 @@ def test_flip_2d(shape, dtype):
     "shape",
     [(4, 8, 16), (8, 4, 16)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_flip_3d(shape, dtype):
     torch.manual_seed(0)
     x = torch.randn(shape, device="cpu", dtype=dtype)
@@ -53,9 +47,7 @@ def test_flip_3d(shape, dtype):
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_flip_empty_dims(size, dtype):
     torch.manual_seed(0)
     x = torch.randn(size, device="cpu", dtype=dtype)

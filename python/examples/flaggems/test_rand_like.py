@@ -17,3 +17,13 @@ def test_rand_like(shape, dtype):
     assert out_triton.dtype == x.dtype
     assert torch.all(out_triton >= 0.0)
     assert torch.all(out_triton < 1.0)
+
+
+def test_rand_like_repeated_calls_advance_philox_offset():
+    torch.manual_seed(0)
+    x = torch.empty((1024,), dtype=torch.float32)
+
+    first = rand_like(x)
+    second = rand_like(x)
+
+    assert not torch.equal(first, second)

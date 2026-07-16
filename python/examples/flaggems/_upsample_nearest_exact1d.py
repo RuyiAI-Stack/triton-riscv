@@ -39,12 +39,13 @@ def _upsample_nearest_exact1d_kernel(
 
     # Compute source indices iw for each output index ow
     iw = tl.zeros([BLOCK_W], dtype=tl.int32)
+    ow_f = offs_w.to(tl.float32)
     if use_scales:
-        ow_f = offs_w.to(tl.float32)
-        iw_f = tl.floor(ow_f / scale_w)
+        iw_f = tl.floor((ow_f + 0.5) / scale_w)
         iw = iw_f.to(tl.int32)
     else:
-        iw = (offs_w * IW) // OW
+        iw_f = tl.floor((ow_f + 0.5) * IW / OW)
+        iw = iw_f.to(tl.int32)
     iw = tl.minimum(iw, IW - 1)
 
     in_ptrs = in_ptr + base_in + iw * sW_in
@@ -81,18 +82,18 @@ def _compute_out_w(iw, output_size, scale):
         return int(output_size)
     if scale is None:
         raise ValueError(
-            "Either output_size or scale must be provided for _upsample_nearest_exact1d."
+            "Either output_size or scale must be provided for "
+            "_upsample_nearest_exact1d."
         )
     # Follow common convention: OW = floor(IW * scale)
-    return int(math.floor(iw * scale))
+    return math.floor(iw * scale)
 
 
-def _launch_upsample_nearest_exact1d_kernel(
-    input, out, output_size=None, scale=None
-):
+def _launch_upsample_nearest_exact1d_kernel(input, out, output_size=None, scale=None):
     if input.ndim != 3:
         raise ValueError(
-            f"_upsample_nearest_exact1d expects a 3D tensor (N, C, W); got shape {tuple(input.shape)}"
+            "_upsample_nearest_exact1d expects a 3D tensor (N, C, W); "
+            f"got shape {tuple(input.shape)}"
         )
 
     N, C, IW = input.shape
@@ -136,9 +137,7 @@ def _extract_io_and_params(args, kwargs, expect_out=False):
         in_t = args[0]
         args = args[1:]
     if in_t is None or not isinstance(in_t, torch.Tensor):
-        raise ValueError(
-            "Input tensor not found for _upsample_nearest_exact1d."
-        )
+        raise ValueError("Input tensor not found for _upsample_nearest_exact1d.")
 
     # Extract output_size / scales from kwargs or remaining args
     output_size = kwargs.get(
@@ -146,9 +145,7 @@ def _extract_io_and_params(args, kwargs, expect_out=False):
     )
     scales = kwargs.get(
         "scale_factor",
-        kwargs.get(
-            "scales", kwargs.get("scale_factors", kwargs.get("scale", None))
-        ),
+        kwargs.get("scales", kwargs.get("scale_factors", kwargs.get("scale", None))),
     )
 
     # If positional arguments contain size and/or scales
@@ -161,11 +158,7 @@ def _extract_io_and_params(args, kwargs, expect_out=False):
     ):
         output_size = args[pos]
         pos += 1
-    if (
-        scales is None
-        and pos < len(args)
-        and not isinstance(args[pos], torch.Tensor)
-    ):
+    if scales is None and pos < len(args) and not isinstance(args[pos], torch.Tensor):
         scales = args[pos]
         pos += 1
 
@@ -203,9 +196,7 @@ def _prepare_out_tensor(in_t, out_w, scale_w, dtype=None, device=None):
 
 
 def _upsample_nearest_exact1d(*args, **kwargs):
-    in_t, _, out_w, scale_w = _extract_io_and_params(
-        args, kwargs, expect_out=False
-    )
+    in_t, _, out_w, scale_w = _extract_io_and_params(args, kwargs, expect_out=False)
     out_t = _prepare_out_tensor(in_t, out_w, scale_w)
     if out_t.numel() == 0:
         return out_t
@@ -215,9 +206,7 @@ def _upsample_nearest_exact1d(*args, **kwargs):
 
 
 def _upsample_nearest_exact1d_out(*args, **kwargs):
-    in_t, out_t, out_w, scale_w = _extract_io_and_params(
-        args, kwargs, expect_out=True
-    )
+    in_t, out_t, out_w, scale_w = _extract_io_and_params(args, kwargs, expect_out=True)
     if out_t.ndim != 3:
         raise ValueError(
             f"Out tensor must be 3D (N, C, W); got shape {tuple(out_t.shape)}"
@@ -238,9 +227,7 @@ def _upsample_nearest_exact1d_out(*args, **kwargs):
 
 def _upsample_nearest_exact1d_vec(*args, **kwargs):
     # Treat vec the same as base variant, allowing list-like output_size/scales
-    in_t, _, out_w, scale_w = _extract_io_and_params(
-        args, kwargs, expect_out=False
-    )
+    in_t, _, out_w, scale_w = _extract_io_and_params(args, kwargs, expect_out=False)
     out_t = _prepare_out_tensor(in_t, out_w, scale_w)
     if out_t.numel() == 0:
         return out_t

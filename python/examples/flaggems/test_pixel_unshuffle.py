@@ -38,9 +38,7 @@ def test_pixel_unshuffle_out(shape, factor):
     ref = F.pixel_unshuffle(x, factor)
     N, C, H, W = shape
     r = factor
-    out = torch.empty(
-        N, C * r * r, H // r, W // r, dtype=x.dtype, device=x.device
-    )
+    out = torch.empty(N, C * r * r, H // r, W // r, dtype=x.dtype, device=x.device)
     tri = pixel_unshuffle_out(x, factor, out)
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
     assert tri is out, "pixel_unshuffle_out must return the same tensor as out"

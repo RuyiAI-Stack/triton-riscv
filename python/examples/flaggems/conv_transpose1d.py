@@ -148,9 +148,7 @@ def conv_transpose1d_forward_kernel(
         weight_mask = (ic_offset < in_channels_per_group)[:, None] & (
             oc_offset < out_channels_per_group
         )[None, :]
-        weight_block = tl.load(
-            curr_weight_pointer, mask=weight_mask, other=0.0
-        )
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
 
         # Accumulate: input_block is [BLOCK_N_OW, BLOCK_IC], weight_block is [BLOCK_IC, BLOCK_OC]
         accum += tl.dot(
@@ -169,9 +167,7 @@ def conv_transpose1d_forward_kernel(
     output_ptr = (
         output_pointer
         + (output_n_stride * batch_idx)[:, None]
-        + (output_c_stride * (pid_group * out_channels_per_group + oc_offset))[
-            None, :
-        ]
+        + (output_c_stride * (pid_group * out_channels_per_group + oc_offset))[None, :]
         + (output_w_stride * out_w_idx)[:, None]
     )
     output_mask = (
@@ -208,9 +204,7 @@ def conv_transpose1d(
         Output tensor of shape (N, out_channels, L_out)
     """
     assert input.ndim == 3, f"Input must be 3D, received shape {input.shape}"
-    assert weight.ndim == 3, (
-        f"Weights must be 3D, received shape {weight.shape}"
-    )
+    assert weight.ndim == 3, f"Weights must be 3D, received shape {weight.shape}"
     assert bias is None or bias.ndim == 1, (
         f"Bias must be 1D, received shape {bias.shape}"
     )
