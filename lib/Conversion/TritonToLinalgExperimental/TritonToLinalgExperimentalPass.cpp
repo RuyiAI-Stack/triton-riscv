@@ -77,7 +77,11 @@ public:
     pm.addPass(createCanonicalizerPass());
 
     pm.addPass(createTritonToUnstructuredPass());
-    pm.addPass(createTritonArithToLinalgPass(/*tensorPtrToLinalg=*/true));
+    // Preserve the source reduction axis. Materializing a transpose merely to
+    // force dimension 0 creates large temporary buffers after bufferization
+    // and is particularly costly for CPU row reductions.
+    pm.addPass(createTritonArithToLinalgPass(
+        /*tensorPtrToLinalg=*/true, /*transposeReduceToRank0=*/false));
 
     pm.addPass(createStructuredToMemrefPass(enableTensorFirstVectorCpu));
     pm.addPass(createUnstructuredToMemrefPass());

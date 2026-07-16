@@ -1283,12 +1283,6 @@ private:
         source = getTransposedValue(source, op.getLoc(), rewriter, order);
         axis = 0;
       }
-    } else {
-      // preserving old behavior until we remove the transpose entirely.
-      if (axis == rank - 1 && !isVectorReduce) {
-        source = getTransposedValue(source, op.getLoc(), rewriter);
-        axis = rank - 2;
-      }
     }
 
     bool convertToF32Precision = requiresF32Conversion(resType, rop);

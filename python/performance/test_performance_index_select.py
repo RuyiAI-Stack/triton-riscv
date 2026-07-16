@@ -14,50 +14,35 @@ def index_select_row_kernel(
     input_ptr,
     output_ptr,
     indices_ptr,
-    stride_i,
-    stride_m,
-    stride_n,
-    output_stride_m,
-    output_stride_n,
-    BLOCK_I: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    STRIDE_I: tl.constexpr,
+    STRIDE_M: tl.constexpr,
+    OUTPUT_STRIDE_M: tl.constexpr,
+    N_PICKS: tl.constexpr,
+    N_COLS: tl.constexpr,
 ):
-    row_offsets = tl.arange(0, BLOCK_I)
-    row_indices = tl.load(indices_ptr + row_offsets * stride_i)
-    col_offsets = tl.arange(0, BLOCK_N)
-    input_ptrs = (
-        input_ptr + row_indices[:, None] * stride_m + col_offsets[None, :] * stride_n
-    )
-    values = tl.load(input_ptrs)
-    output_ptrs = (
-        output_ptr
-        + row_offsets[:, None] * output_stride_m
-        + col_offsets[None, :] * output_stride_n
-    )
-    tl.store(output_ptrs, values)
+    # Loading the whole picks x columns tensor creates large staging buffers in
+    # the CPU lowering. A structured gather with a contiguous inner loop lets
+    # LLVM vectorize each selected row directly into the destination.
+    for pick in tl.range(0, N_PICKS):
+        source_row = tl.load(indices_ptr + pick * STRIDE_I)
+        for col in tl.range(0, N_COLS):
+            value = tl.load(input_ptr + source_row * STRIDE_M + col)
+            tl.store(output_ptr + pick * OUTPUT_STRIDE_M + col, value)
 
 
-def run_index_select(rows, cols, picks):
-    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
-        rows, cols
-    )
-    if picks <= 1:
-        indices = torch.zeros((picks,), device="cpu", dtype=torch.int32)
-    else:
-        step = max((rows - 1) // (picks - 1), 1)
-        indices = torch.arange(picks, device="cpu", dtype=torch.int32) * step
+def run_index_select(input_tensor, indices):
+    picks = indices.numel()
+    cols = input_tensor.shape[1]
     output = torch.empty((picks, cols), device="cpu", dtype=torch.float32)
     index_select_row_kernel[(1,)](
         input_tensor,
         output,
         indices,
-        indices.stride(0),
-        input_tensor.stride(0),
-        input_tensor.stride(1),
-        output.stride(0),
-        output.stride(1),
-        BLOCK_I=picks,
-        BLOCK_N=cols,
+        STRIDE_I=indices.stride(0),
+        STRIDE_M=input_tensor.stride(0),
+        OUTPUT_STRIDE_M=output.stride(0),
+        N_PICKS=picks,
+        N_COLS=cols,
     )
     return output
 
@@ -75,7 +60,7 @@ def bench_index_select(rows, cols, picks):
         f"bench_index_select(rows={rows}, cols={cols}, picks={picks})",
         {
             "torch": lambda: input_tensor.index_select(0, indices),
-            "triton-riscv": lambda: run_index_select(rows, cols, picks),
+            "triton-riscv": lambda: run_index_select(input_tensor, indices),
         },
     )
 

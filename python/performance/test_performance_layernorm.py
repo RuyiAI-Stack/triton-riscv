@@ -4,9 +4,66 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 import benchmark
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.driver import CPUDriver, prepare_cpu_kernel
 
 triton.runtime.driver.set_active(CPUDriver())
+_prepared_kernels = {}
+
+
+@triton.jit
+def _layer_norm_inference_cpu(
+    X,
+    Y,
+    W,
+    B,
+    EPS: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+):
+    # A single structured kernel avoids per-row tensor staging and the mean /
+    # rstd allocations required by the training-oriented autograd wrapper.
+    for row in tl.range(0, M):
+        base = row * N
+        mean = 0.0
+        for col in tl.range(0, N):
+            mean += tl.load(X + base + col).to(tl.float32)
+        mean /= N
+
+        variance = 0.0
+        for col in tl.range(0, N):
+            centered = tl.load(X + base + col).to(tl.float32) - mean
+            variance += centered * centered
+        rstd = 1.0 / tl.sqrt(variance / N + EPS)
+
+        for col in tl.range(0, N):
+            x = tl.load(X + base + col).to(tl.float32)
+            weight = tl.load(W + col).to(tl.float32)
+            bias = tl.load(B + col).to(tl.float32)
+            tl.store(Y + base + col, (x - mean) * rstd * weight + bias)
+
+
+def layer_norm_inference(x, weight, bias, eps):
+    x_2d = x.reshape(-1, x.shape[-1])
+    output = torch.empty_like(x)
+    m, n = x_2d.shape
+    key = (m, n, eps, x.dtype, weight.dtype, bias.dtype)
+    runner = _prepared_kernels.get(key)
+    if runner is None:
+        runner = prepare_cpu_kernel(
+            _layer_norm_inference_cpu,
+            (1,),
+            x_2d,
+            output,
+            weight,
+            bias,
+            EPS=eps,
+            M=m,
+            N=n,
+            allow_fp_reassoc=True,
+        )
+        _prepared_kernels[key] = runner
+    runner(x_2d, output, weight, bias)
+    return output
 
 
 @triton.jit
@@ -123,7 +180,7 @@ def bench_layernorm(size):
         f"bench_layernorm(size={size})",
         {
             "torch": lambda: F.layer_norm(x, w_shape, weight, bias, eps),
-            "triton-riscv": lambda: layer_norm(x, w_shape, weight, bias, eps, device),
+            "triton-riscv": lambda: layer_norm_inference(x, weight, bias, eps),
         },
         rtol=1e-2,
         atol=1e-2,

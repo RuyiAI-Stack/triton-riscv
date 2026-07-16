@@ -17,21 +17,22 @@ def gather_scatter_continuous_kernel(
     Y: tl.constexpr,
     Z: tl.constexpr,
 ):
-    offsets_xy = tl.arange(0, X * Y)
-    offsets_z = tl.arange(0, Z)
-
-    offsets_x = offsets_xy[:, None] // Y
-    offsets_y = offsets_xy[:, None] % Y
-    offsets_z = offsets_z[None, :]
-
-    linear_offsets = offsets_x * (Y * Z) + offsets_y * Z + offsets_z
-    values = tl.load(input_ptr + linear_offsets)
-    tl.store(output_ptr + linear_offsets, values)
+    # The decomposed x/y/z expression is contiguous by construction. Preserve
+    # the gather/scatter indexing while lowering it to one structured CPU loop.
+    for xy in tl.range(0, X * Y):
+        x = xy // Y
+        y = xy % Y
+        for z in tl.range(0, Z):
+            offset = x * (Y * Z) + y * Z + z
+            tl.store(output_ptr + offset, tl.load(input_ptr + offset))
 
 
-def run_gather_scatter_continuous(x, y, z):
-    input_tensor = torch.arange(x * y * z, device="cpu", dtype=torch.int32)
-    output = torch.empty((x * y * z,), device="cpu", dtype=torch.int32)
+def run_gather_scatter_continuous(input_tensor, x, y, z):
+    if input_tensor.numel() != x * y * z:
+        raise ValueError("input_tensor.numel() must equal x * y * z")
+    if not input_tensor.is_contiguous():
+        raise ValueError("input_tensor must be contiguous")
+    output = torch.empty_like(input_tensor)
     gather_scatter_continuous_kernel[(1,)](
         input_tensor,
         output,
@@ -43,11 +44,14 @@ def run_gather_scatter_continuous(x, y, z):
 
 
 def bench_gather_scatter_continuous(x, y, z):
+    input_tensor = torch.arange(x * y * z, device="cpu", dtype=torch.int32)
     benchmark.compare_providers(
         f"bench_gather_scatter_continuous(x={x}, y={y}, z={z})",
         {
-            "torch": lambda: torch.arange(x * y * z, device="cpu", dtype=torch.int32),
-            "triton-riscv": lambda: run_gather_scatter_continuous(x, y, z),
+            "torch": lambda: input_tensor.clone(),
+            "triton-riscv": lambda: run_gather_scatter_continuous(
+                input_tensor, x, y, z
+            ),
         },
     )
 

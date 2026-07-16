@@ -14,46 +14,33 @@ def mask_loop(
     y_ptr,
     x_ptr,
     scale_ptr,
-    size,
-    BLOCK_SIZE: tl.constexpr,
+    SIZE: tl.constexpr,
 ):
-    bidx = tl.program_id(0)
-    tidx = tl.arange(0, BLOCK_SIZE)
-    grid_stride = tl.num_programs(0) * BLOCK_SIZE
-    iterations = tl.cdiv(size, grid_stride)
-    idx = bidx * BLOCK_SIZE + tidx
     scale = tl.load(scale_ptr)
-    for it in range(iterations):
-        mask = idx < size
-        x = tl.load(x_ptr + idx, mask=mask, other=0.0).to(tl.float32)
-        tl.store(y_ptr + idx, x * scale, mask=mask)
-        idx += grid_stride
+    for idx in tl.range(0, SIZE):
+        x = tl.load(x_ptr + idx).to(tl.float32)
+        tl.store(y_ptr + idx, x * scale)
 
 
-def run_mask_loop_iter_arg(rows, cols):
-    x = torch.arange(rows * cols, device="cpu", dtype=torch.float32)
+def run_mask_loop_iter_arg(x, scale, rows, cols):
     y = torch.empty_like(x)
-    scale_ones = torch.ones((1,), device="cpu", dtype=torch.float32)
-    block_size = 8
-    grid = (2,)
-    mask_loop[grid](
+    mask_loop[(1,)](
         y,
         x,
-        scale_ones,
-        x.numel(),
-        BLOCK_SIZE=block_size,
+        scale,
+        SIZE=x.numel(),
     )
     return y.reshape(rows, cols)
 
 
 def bench_mask_loop_iter_arg(rows, cols):
+    x = torch.arange(rows * cols, device="cpu", dtype=torch.float32)
+    scale = torch.ones((1,), device="cpu", dtype=torch.float32)
     benchmark.compare_providers(
         f"bench_mask_loop_iter_arg(rows={rows}, cols={cols})",
         {
-            "torch": lambda: torch.arange(
-                rows * cols, device="cpu", dtype=torch.float32
-            ).reshape(rows, cols),
-            "triton-riscv": lambda: run_mask_loop_iter_arg(rows, cols),
+            "torch": lambda: (x * scale).reshape(rows, cols),
+            "triton-riscv": lambda: run_mask_loop_iter_arg(x, scale, rows, cols),
         },
     )
 

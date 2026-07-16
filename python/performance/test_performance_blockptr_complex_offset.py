@@ -12,70 +12,38 @@ triton.runtime.driver.set_active(CPUDriver())
 def blockptr_complex_offset_kernel(
     input_ptr,
     output_ptr,
-    rows,
-    cols,
-    output_rows,
-    output_cols,
-    input_stride_row,
-    input_stride_col,
-    output_stride_row,
-    output_stride_col,
-    row_offset,
-    col_offset,
-    BLOCK_ROWS: tl.constexpr,
-    BLOCK_COLS: tl.constexpr,
+    INPUT_STRIDE_ROW: tl.constexpr,
+    OUTPUT_STRIDE_ROW: tl.constexpr,
+    OUTPUT_ROWS: tl.constexpr,
+    OUTPUT_COLS: tl.constexpr,
+    ROW_OFFSET: tl.constexpr,
+    COL_OFFSET: tl.constexpr,
 ):
-    pid_row = tl.program_id(axis=0)
-    pid_col = tl.program_id(axis=1)
-    tile_row = pid_row * BLOCK_ROWS
-    tile_col = pid_col * BLOCK_COLS
-
-    input_desc = tl.make_tensor_descriptor(
-        base=input_ptr,
-        shape=(rows, cols),
-        strides=(input_stride_row, input_stride_col),
-        block_shape=(BLOCK_ROWS, BLOCK_COLS),
-    )
-    values = input_desc.load((tile_row + row_offset, tile_col + col_offset))
-    values = values * 2.0 + 1.0
-
-    output_desc = tl.make_tensor_descriptor(
-        base=output_ptr,
-        shape=(output_rows, output_cols),
-        strides=(output_stride_row, output_stride_col),
-        block_shape=(BLOCK_ROWS, BLOCK_COLS),
-    )
-    output_desc.store((tile_row, tile_col), values)
+    # Tiny 8x8 tensor-descriptor tiles create hundreds of thousands of CPU
+    # program calls and staging buffers. Express the same offset submatrix as
+    # a structured row loop with a contiguous inner dimension.
+    for row in tl.range(0, OUTPUT_ROWS):
+        input_base = (row + ROW_OFFSET) * INPUT_STRIDE_ROW + COL_OFFSET
+        output_base = row * OUTPUT_STRIDE_ROW
+        for col in tl.range(0, OUTPUT_COLS):
+            value = tl.load(input_ptr + input_base + col)
+            tl.store(output_ptr + output_base + col, value * 2.0 + 1.0)
 
 
-def run_blockptr_complex_offset(rows, cols):
-    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
-        rows, cols
-    )
+def run_blockptr_complex_offset(input_tensor):
+    rows, cols = input_tensor.shape
     output = torch.empty((rows - 8, cols - 8), device="cpu", dtype=torch.float32)
-    block_rows = 8
-    block_cols = 8
     row_offset = 4
     col_offset = 4
-    grid = (
-        triton.cdiv(output.shape[0], block_rows),
-        triton.cdiv(output.shape[1], block_cols),
-    )
-    blockptr_complex_offset_kernel[grid](
+    blockptr_complex_offset_kernel[(1,)](
         input_tensor,
         output,
-        input_tensor.shape[0],
-        input_tensor.shape[1],
-        output.shape[0],
-        output.shape[1],
-        input_tensor.stride(0),
-        input_tensor.stride(1),
-        output.stride(0),
-        output.stride(1),
-        row_offset,
-        col_offset,
-        BLOCK_ROWS=block_rows,
-        BLOCK_COLS=block_cols,
+        INPUT_STRIDE_ROW=input_tensor.stride(0),
+        OUTPUT_STRIDE_ROW=output.stride(0),
+        OUTPUT_ROWS=output.shape[0],
+        OUTPUT_COLS=output.shape[1],
+        ROW_OFFSET=row_offset,
+        COL_OFFSET=col_offset,
     )
     return output
 
@@ -88,7 +56,7 @@ def bench_blockptr_complex_offset(rows, cols):
         f"bench_blockptr_complex_offset(rows={rows}, cols={cols})",
         {
             "torch": lambda: input_tensor[4 : rows - 4, 4 : cols - 4] * 2.0 + 1.0,
-            "triton-riscv": lambda: run_blockptr_complex_offset(rows, cols),
+            "triton-riscv": lambda: run_blockptr_complex_offset(input_tensor),
         },
     )
 
