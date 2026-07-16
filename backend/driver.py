@@ -37,6 +37,42 @@ def _sanitizer_available(sanitizer_type):
 
 
 # -------------------- Launcher ----------------------------
+_OMP_PARALLEL_FOR_PLACEHOLDER = "__TRITON_SHARED_OMP_PARALLEL_FOR__"
+_OMP_PARALLEL_FOR = "#pragma omp parallel for collapse(3)"
+_LAUNCHER_CACHE_VERSION = b"triton_shared_launcher_v3"
+
+
+def _get_ordinary_openmp_config(sanitizer_type):
+    if platform.system() == "Windows" or sanitizer_type != "":
+        return None, False
+
+    omp_num_threads = os.environ.get("OMP_NUM_THREADS")
+    enabled = omp_num_threads is not None and omp_num_threads != "1"
+    return omp_num_threads, enabled
+
+
+def _finalize_launcher_src(launcher_src, parallelize_grid):
+    pragma = _OMP_PARALLEL_FOR if parallelize_grid else ""
+    return launcher_src.replace(_OMP_PARALLEL_FOR_PLACEHOLDER, pragma)
+
+
+def _encode_omp_cache_state(omp_num_threads):
+    if omp_num_threads is None:
+        return b"\x00"
+    return b"\x01" + omp_num_threads.encode("utf-8")
+
+
+def _launcher_cache_key(src, kernel_obj, omp_num_threads):
+    cache_input = (
+        src.encode("utf-8")
+        + kernel_obj
+        + _LAUNCHER_CACHE_VERSION
+        + b"\x00OMP_NUM_THREADS\x00"
+        + _encode_omp_cache_state(omp_num_threads)
+    )
+    return hashlib.sha256(cache_input).hexdigest()
+
+
 def _ty_to_cpp(ty):
     if ty[0] == "*":
         return "void*"
@@ -146,9 +182,8 @@ extern "C" {{
 static void _launch(int gridX, int gridY, int gridZ, {arg_decls}) {{
   if (gridX*gridY*gridZ > 0) {{
     // Cast "function" to the real function type.
-    // apply parallelization to the triton grid when using ThreadSanitizer (TSan)
-    // to help detect potential data races across program instances during kernel execution
-    {"#pragma omp parallel for collapse(3)" if _get_sanitizer_type() == "tsan" else ""}
+    // Parallelize independent Triton grid programs when OpenMP is enabled.
+    {_OMP_PARALLEL_FOR_PLACEHOLDER}
     for(int x = 0; x < gridX; x++) {{
       for(int y = 0; y < gridY; y++) {{
         for(int z = 0; z < gridZ; z++) {{
@@ -316,12 +351,15 @@ def compile_module(launcher_src, kernel_placeholder_name):
         # See CPUUtils.load_binary method.
         kernel_obj = cu_function
         kernel_name = kernel_metadata[6]  # see pack_metadata in compiler.py
-        src = launcher_src.replace(kernel_placeholder_name, kernel_name)
+        sanitizer_type = _get_sanitizer_type()
+        omp_num_threads, ordinary_openmp_enabled = _get_ordinary_openmp_config(
+            sanitizer_type
+        )
+        parallelize_grid = sanitizer_type == "tsan" or ordinary_openmp_enabled
+        src = _finalize_launcher_src(launcher_src, parallelize_grid)
+        src = src.replace(kernel_placeholder_name, kernel_name)
 
-        launcher_cache_version = b"triton_shared_launcher_v2"
-        key = hashlib.sha256(
-            src.encode("utf-8") + kernel_obj + launcher_cache_version
-        ).hexdigest()
+        key = _launcher_cache_key(src, kernel_obj, omp_num_threads)
         cache = get_cache_manager(key)
         name = f"__triton_shared_ref_cpu_kernel_launcher_{key[:16]}"
         src = src.replace("__triton_shared_ref_cpu_kernel_launcher", name)
@@ -334,8 +372,6 @@ def compile_module(launcher_src, kernel_placeholder_name):
 
         if cache_path is None:
             with tempfile.TemporaryDirectory() as tmpdir:
-                sanitizer_type = _get_sanitizer_type()
-
                 if platform.system() == "Windows":
                     if sanitizer_type != "":
                         raise Exception(
@@ -443,6 +479,8 @@ def compile_module(launcher_src, kernel_placeholder_name):
                             "-o",
                             so_path,
                         ]
+                        if ordinary_openmp_enabled:
+                            subprocess_args.append("-fopenmp")
                         if platform.system() == "Linux":
                             subprocess_args.append("-Wl,-Bsymbolic")
                         subprocess.check_call(subprocess_args)
