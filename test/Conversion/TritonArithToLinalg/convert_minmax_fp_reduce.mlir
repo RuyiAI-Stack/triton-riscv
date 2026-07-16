@@ -37,9 +37,9 @@ module {
 // CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xf32>
 // CHECK-NOT: separator of consecutive DAGs
 // CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_0_]] : tensor<4096xf32>) -> tensor<4096xf32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xf32>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_2_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_init_:%.+]] = linalg.fill ins([[CST_0_]] : f32) outs([[VAR_2_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xf32>) outs([[VAR_init_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:%.+]]: f32, [[in_]]it: f32) {
 // CHECK:               [[VAR_3_:%.+]] = arith.maxnumf [[in_]], [[in_]]it : f32
 // CHECK:               linalg.yield [[VAR_3_]] : f32
@@ -55,9 +55,9 @@ module {
 // CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xf32>
 // CHECK-NOT: separator of consecutive DAGs
 // CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_0_]] : tensor<4096xf32>) -> tensor<4096xf32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xf32>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_2_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_init_:%.+]] = linalg.fill ins([[CST_0_]] : f32) outs([[VAR_2_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xf32>) outs([[VAR_init_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:%.+]]: f32, [[in_]]it: f32) {
 // CHECK:               [[VAR_3_:%.+]] = arith.minnumf [[in_]], [[in_]]it : f32
 // CHECK:               linalg.yield [[VAR_3_]] : f32

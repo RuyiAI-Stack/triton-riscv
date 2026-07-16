@@ -52,13 +52,20 @@ module {
 // CHECK:           memref.copy [[VAR_reinterpret_cast_]], [[RES_]] : memref<4096xf32, strided<[1], offset: ?>> to memref<4096xf32>
 // CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.to_tensor [[RES_]] restrict writable : memref<4096xf32>
 // CHECK-DAG:       [[VAR_3_:%.+]] = tensor.empty() : tensor<4096xf32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_4_:%.+]] = ttx.cumsum {axis = 0 : ui32, operandSegmentSizes = array<i32: 1, 1>} ins([[VAR_2_]] : tensor<4096xf32>) outs([[VAR_3_]] : tensor<4096xf32>) -> tensor<4096xf32>
+// CHECK:           [[EXTRACT_0:%.+]] = tensor.extract [[VAR_2_]][%c0] : tensor<4096xf32>
+// CHECK:           [[INSERT_0:%.+]] = tensor.insert [[EXTRACT_0]] into [[VAR_3_]][%c0] : tensor<4096xf32>
+// CHECK:           [[SCAN_RES:%.+]]:2 = scf.for
+// CHECK-SAME:        iter_args([[ACC:%.+]] = [[EXTRACT_0]], [[OUT:%.+]] = [[INSERT_0]]) -> (f32, tensor<4096xf32>) {
+// CHECK:             [[CUR:%.+]] = tensor.extract [[VAR_2_]]
+// CHECK:             [[NEXT:%.+]] = arith.addf [[ACC]], [[CUR]] : f32
+// CHECK:             [[INSERT:%.+]] = tensor.insert [[NEXT]] into [[OUT]]
+// CHECK:             scf.yield [[NEXT]], [[INSERT]] : f32, tensor<4096xf32>
+// CHECK:           }
 // CHECK-DAG:       [[VAR_5_:%.+]] = arith.index_cast [[VAR_0_]] : i32 to index
 // CHECK-NOT: separator of consecutive DAGs
 // CHECK-DAG:       [[VAR_reinterpret_cast_0_:%.+]] = memref.reinterpret_cast [[PARAM_1_]] to offset: {{.}}[[VAR_5_]]{{.}}, sizes: [4096], strides: [1] : memref<*xi32> to memref<4096xi32, strided<[1], offset: ?>>
 // CHECK-DAG:       [[VAR_6_:%.+]] = tensor.empty() : tensor<4096xi32>
-// CHECK:           [[VAR_7_:%.+]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins([[VAR_4_]] : tensor<4096xf32>) outs([[VAR_6_]] : tensor<4096xi32>) {
+// CHECK:           [[VAR_7_:%.+]] = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins([[SCAN_RES]]#1 : tensor<4096xf32>) outs([[VAR_6_]] : tensor<4096xi32>) {
 // CHECK:           ^bb0([[in_:.+]]: f32, [[out_:.+]]: i32):
 // CHECK:             [[VAR_8_:%.+]] = arith.fptosi [[in_]] : f32 to i32
 // CHECK:             linalg.yield [[VAR_8_]] : i32

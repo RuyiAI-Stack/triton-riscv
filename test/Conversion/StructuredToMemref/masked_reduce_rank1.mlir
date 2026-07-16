@@ -28,7 +28,6 @@
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_1]] : index
-// CHECK:           %[[ALLOC_TENSOR_0:.*]] = bufferization.alloc_tensor() : tensor<f32>
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [128], strides: [1] : memref<*xf32> to memref<128xf32, strided<[1]>>
 // CHECK:           %[[DIVUI_0:.*]] = arith.divui %[[MAXSI_0]], %[[CONSTANT_4]] : index
 // CHECK:           %[[MULI_0:.*]] = arith.muli %[[DIVUI_0]], %[[CONSTANT_4]] : index
@@ -91,7 +90,6 @@ module {
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[MINSI_0:.*]] = arith.minsi %[[INDEX_CAST_0]], %[[CONSTANT_0]] : index
 // CHECK:           %[[MAXSI_0:.*]] = arith.maxsi %[[MINSI_0]], %[[CONSTANT_1]] : index
-// CHECK:           %[[ALLOC_TENSOR_0:.*]] = bufferization.alloc_tensor() : tensor<f32>
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [128], strides: [1] : memref<*xf32> to memref<128xf32, strided<[1]>>
 // CHECK:           %[[DIVUI_0:.*]] = arith.divui %[[MAXSI_0]], %[[CONSTANT_4]] : index
 // CHECK:           %[[MULI_0:.*]] = arith.muli %[[DIVUI_0]], %[[CONSTANT_4]] : index
@@ -173,9 +171,9 @@ module {
 // CHECK:             memref.store %[[LOAD_1]], %[[SUBVIEW_1]]{{\[}}%[[VAL_1]]] : memref<?xf32, strided<[1]>>
 // CHECK:           }
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<128xf32> to tensor<128xf32>
-// CHECK:           %[[ALLOC_TENSOR_0:.*]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           %[[INSERT_0:.*]] = tensor.insert %[[CONSTANT_4]] into %[[ALLOC_TENSOR_0]][] : tensor<f32>
-// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<128xf32>) outs(%[[INSERT_0]] : tensor<f32>) dimensions = [0]
+// CHECK:           %[[REDUCE_EMPTY_0:.*]] = tensor.empty() : tensor<f32>
+// CHECK:           %[[REDUCE_INIT_0:.*]] = linalg.fill ins(%[[CONSTANT_4]] : f32) outs(%[[REDUCE_EMPTY_0]] : tensor<f32>) -> tensor<f32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<128xf32>) outs(%[[REDUCE_INIT_0]] : tensor<f32>) dimensions = [0]
 // CHECK:             (%[[VAL_2:.*]]: f32, %[[VAL_3:.*]]: f32) {
 // CHECK:               %[[MULF_0:.*]] = arith.mulf %[[VAL_2]], %[[VAL_3]] : f32
 // CHECK:               linalg.yield %[[MULF_0]] : f32

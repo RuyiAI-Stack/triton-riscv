@@ -16,8 +16,8 @@ module {
 // CHECK:  func.func @minmax_sgt(%[[VAL_0:.*]]: memref<*xi32>, %[[VAL_1:.*]]: i32, %[[VAL_2:.*]]: i32, %[[VAL_3:.*]]: i32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32) {
 // CHECK:    %[[VAL_7:.*]] = tensor.empty() : tensor<4096xi32>
 // CHECK:    %[[VAL_8:.*]] = linalg.fill ins(%c0{{.*}} : i32) outs(%[[VAL_7]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK:    %[[VAL_9:.*]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:    %[[VAL_10:.*]] = tensor.insert %c-2147483648{{.*}} into %[[VAL_9]][] : tensor<i32>
+// CHECK:    %[[VAL_9:.*]] = tensor.empty() : tensor<i32>
+// CHECK:    %[[VAL_10:.*]] = linalg.fill ins(%c-2147483648{{.*}} : i32) outs(%[[VAL_9]] : tensor<i32>) -> tensor<i32>
 // CHECK:    %[[VAL_11:.*]] = linalg.reduce ins(%[[VAL_8]] : tensor<4096xi32>) outs(%[[VAL_10]] : tensor<i32>) dimensions = [0]
 // CHECK:      (%in: i32, %init: i32) {
 // CHECK:        %[[VAL_12:.*]] = arith.maxsi %in, %init : i32
@@ -48,8 +48,8 @@ module {
 // CHECK:  func.func @minmax_ugt(%[[VAL_0:.*]]: memref<*xi32>, %[[VAL_1:.*]]: i32, %[[VAL_2:.*]]: i32, %[[VAL_3:.*]]: i32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32) {
 // CHECK:    %[[VAL_7:.*]] = tensor.empty() : tensor<4096xi32>
 // CHECK:    %[[VAL_8:.*]] = linalg.fill ins(%c0{{.*}} : i32) outs(%[[VAL_7]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK:    %[[VAL_9:.*]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:    %[[VAL_10:.*]] = tensor.insert %c0{{.*}} into %[[VAL_9]][] : tensor<i32>
+// CHECK:    %[[VAL_9:.*]] = tensor.empty() : tensor<i32>
+// CHECK:    %[[VAL_10:.*]] = linalg.fill ins(%c0{{.*}} : i32) outs(%[[VAL_9]] : tensor<i32>) -> tensor<i32>
 // CHECK:    %[[VAL_11:.*]] = linalg.reduce ins(%[[VAL_8]] : tensor<4096xi32>) outs(%[[VAL_10]] : tensor<i32>) dimensions = [0]
 // CHECK:      (%in: i32, %init: i32) {
 // CHECK:        %[[VAL_12:.*]] = arith.maxui %in, %init : i32
@@ -80,8 +80,8 @@ module {
 // CHECK:  func.func @minmax_slt(%[[VAL_0:.*]]: memref<*xi32>, %[[VAL_1:.*]]: i32, %[[VAL_2:.*]]: i32, %[[VAL_3:.*]]: i32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32) {
 // CHECK:    %[[VAL_7:.*]] = tensor.empty() : tensor<4096xi32>
 // CHECK:    %[[VAL_8:.*]] = linalg.fill ins(%c0{{.*}} : i32) outs(%[[VAL_7]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK:    %[[VAL_9:.*]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:    %[[VAL_10:.*]] = tensor.insert %c2147483647{{.*}} into %[[VAL_9]][] : tensor<i32>
+// CHECK:    %[[VAL_9:.*]] = tensor.empty() : tensor<i32>
+// CHECK:    %[[VAL_10:.*]] = linalg.fill ins(%c2147483647{{.*}} : i32) outs(%[[VAL_9]] : tensor<i32>) -> tensor<i32>
 // CHECK:    %[[VAL_11:.*]] = linalg.reduce ins(%[[VAL_8]] : tensor<4096xi32>) outs(%[[VAL_10]] : tensor<i32>) dimensions = [0]
 // CHECK:      (%in: i32, %init: i32) {
 // CHECK:        %[[VAL_12:.*]] = arith.minsi %in, %init : i32
@@ -112,8 +112,8 @@ module {
 // CHECK:  func.func @minmax_ult(%[[VAL_0:.*]]: memref<*xi32>, %[[VAL_1:.*]]: i32, %[[VAL_2:.*]]: i32, %[[VAL_3:.*]]: i32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32) {
 // CHECK:    %[[VAL_7:.*]] = tensor.empty() : tensor<4096xi32>
 // CHECK:    %[[VAL_8:.*]] = linalg.fill ins(%c0{{.*}} : i32) outs(%[[VAL_7]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK:    %[[VAL_9:.*]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:    %[[VAL_10:.*]] = tensor.insert %c-1{{.*}} into %[[VAL_9]][] : tensor<i32>
+// CHECK:    %[[VAL_9:.*]] = tensor.empty() : tensor<i32>
+// CHECK:    %[[VAL_10:.*]] = linalg.fill ins(%c-1{{.*}} : i32) outs(%[[VAL_9]] : tensor<i32>) -> tensor<i32>
 // CHECK:    %[[VAL_11:.*]] = linalg.reduce ins(%[[VAL_8]] : tensor<4096xi32>) outs(%[[VAL_10]] : tensor<i32>) dimensions = [0]
 // CHECK:      (%in: i32, %init: i32) {
 // CHECK:        %[[VAL_12:.*]] = arith.minui %in, %init : i32

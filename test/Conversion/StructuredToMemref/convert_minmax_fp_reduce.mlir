@@ -12,21 +12,30 @@ module {
     tt.return
   }
 }
-
-// CHECK-LABEL:  func.func @maxnumf
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xf32>, [[PARAM_1_:%.+]]: i32, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0xFF800000 : f32
-// CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xf32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_0_]] : tensor<4096xf32>) -> tensor<4096xf32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xf32>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: f32, [[init_:%.+]]: f32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.maxnumf [[in_]], [[init_]] : f32
-// CHECK:               linalg.yield [[VAR_3_]] : f32
+// CHECK-LABEL:   func.func @maxnumf(
+// CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
+// CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0xFF800000 : f32
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xf32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_0]] : tensor<4096xf32>) -> tensor<4096xf32>
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<f32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : f32) outs(%[[EMPTY_1]] : tensor<f32>) -> tensor<f32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xf32>) outs(%[[FILL_1]] : tensor<f32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: f32, %[[VAL_1:.*]]: f32) {
+// CHECK:               %[[MAXNUMF_0:.*]] = arith.maxnumf %[[VAL_0]], %[[VAL_1]] : f32
+// CHECK:               linalg.yield %[[MAXNUMF_0]] : f32
 // CHECK:             }
+// CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<f32>
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1], strides: [1] : memref<*xf32> to memref<1xf32, strided<[1]>>
+// CHECK:           affine.store %[[EXTRACT_0]], %[[REINTERPRET_CAST_0]][0] : memref<1xf32, strided<[1]>>
+// CHECK:           return
+// CHECK:         }
 
 
 // -----
@@ -44,18 +53,27 @@ module {
     tt.return
   }
 }
-
-// CHECK-LABEL:  func.func @minnumf
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xf32>, [[PARAM_1_:%.+]]: i32, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0x7F800000 : f32
-// CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xf32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_0_]] : tensor<4096xf32>) -> tensor<4096xf32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_]] into [[VAR_2_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xf32>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: f32, [[init_:%.+]]: f32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.minnumf [[in_]], [[init_]] : f32
-// CHECK:               linalg.yield [[VAR_3_]] : f32
+// CHECK-LABEL:   func.func @minnumf(
+// CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
+// CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0x7F800000 : f32
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xf32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : f32) outs(%[[EMPTY_0]] : tensor<4096xf32>) -> tensor<4096xf32>
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<f32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : f32) outs(%[[EMPTY_1]] : tensor<f32>) -> tensor<f32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xf32>) outs(%[[FILL_1]] : tensor<f32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: f32, %[[VAL_1:.*]]: f32) {
+// CHECK:               %[[MINNUMF_0:.*]] = arith.minnumf %[[VAL_0]], %[[VAL_1]] : f32
+// CHECK:               linalg.yield %[[MINNUMF_0]] : f32
 // CHECK:             }
+// CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<f32>
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1], strides: [1] : memref<*xf32> to memref<1xf32, strided<[1]>>
+// CHECK:           affine.store %[[EXTRACT_0]], %[[REINTERPRET_CAST_0]][0] : memref<1xf32, strided<[1]>>
+// CHECK:           return
+// CHECK:         }
