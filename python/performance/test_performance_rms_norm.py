@@ -20,9 +20,9 @@ def bench_rms_norm(rows, cols):
         f"bench_rms_norm(rows={rows}, cols={cols})",
         {
             "torch": lambda: F.rms_norm(x, normalized_shape, weight, eps),
-            "triton-riscv": lambda: rms_norm_forward(
-                x, normalized_shape, weight, eps
-            )[0],
+            "triton-riscv": lambda: rms_norm_forward(x, normalized_shape, weight, eps)[
+                0
+            ],
         },
         rtol=1e-3,
         atol=1e-3,

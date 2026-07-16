@@ -74,9 +74,7 @@ def sigmoid(x):
     key = (size, x.dtype, use_polynomial)
     runner = _prepared_kernels.get(key)
     if runner is None:
-        kernel = (
-            sigmoid_polynomial_kernel if use_polynomial else sigmoid_exp_kernel
-        )
+        kernel = sigmoid_polynomial_kernel if use_polynomial else sigmoid_exp_kernel
         runner = prepare_cpu_kernel(
             kernel,
             (triton.cdiv(size, 1024),),

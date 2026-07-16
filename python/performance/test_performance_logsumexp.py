@@ -26,9 +26,7 @@ def logsumexp_cpu_kernel(
         row_base = row * INPUT_ROW_STRIDE
         maximum = -float("inf")
         for col in tl.range(0, N_COLS):
-            maximum = tl.maximum(
-                maximum, tl.load(input_ptr + row_base + col)
-            )
+            maximum = tl.maximum(maximum, tl.load(input_ptr + row_base + col))
 
         exp_sum = 0.0
         for col in tl.range(0, N_COLS):
@@ -36,9 +34,7 @@ def logsumexp_cpu_kernel(
             exp_sum += tl.exp(value - maximum)
 
         result = maximum + tl.log(exp_sum)
-        is_infinite = (maximum == -float("inf")) | (
-            maximum == float("inf")
-        )
+        is_infinite = (maximum == -float("inf")) | (maximum == float("inf"))
         result = tl.where(is_infinite, maximum, result)
         tl.store(output_ptr + row, result)
 

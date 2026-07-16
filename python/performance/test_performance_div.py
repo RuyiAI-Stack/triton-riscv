@@ -34,7 +34,9 @@ def tensor_div(numerator, denominator):
         or numerator.dtype != torch.float32
         or denominator.dtype != torch.float32
     ):
-        raise ValueError("div CPU fast path expects equal contiguous 1D float32 tensors")
+        raise ValueError(
+            "div CPU fast path expects equal contiguous 1D float32 tensors"
+        )
     output = torch.empty_like(numerator)
     size = numerator.numel()
     key = (size, numerator.dtype, denominator.dtype)

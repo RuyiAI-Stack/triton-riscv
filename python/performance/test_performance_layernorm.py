@@ -156,7 +156,6 @@ class LayerNorm(torch.autograd.Function):
 
 
 def bench_layernorm(size):
-    layer_norm = LayerNorm.apply
     device = "cpu"
     eps = 1e-5
     dtype = torch.float16

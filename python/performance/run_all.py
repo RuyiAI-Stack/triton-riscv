@@ -121,6 +121,7 @@ def main():
     args = parser.parse_args()
 
     import torch
+
     benchmark_threads = (
         args.torch_threads
         if args.torch_threads is not None

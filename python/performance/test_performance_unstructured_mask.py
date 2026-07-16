@@ -50,9 +50,7 @@ def bench_unstructured_mask(rows, cols):
     ).reshape(rows, cols)
     mask_m = (torch.arange(rows, device="cpu") % 2 == 0).to(torch.int8)
     col_ids = torch.arange(cols, device="cpu")
-    mask_n = (((col_ids % 2 == 1) | (col_ids == 4)) & (col_ids != 5)).to(
-        torch.int8
-    )
+    mask_n = (((col_ids % 2 == 1) | (col_ids == 4)) & (col_ids != 5)).to(torch.int8)
 
     def torch_reference():
         values = torch.where(
@@ -68,9 +66,7 @@ def bench_unstructured_mask(rows, cols):
         f"bench_unstructured_mask(rows={rows}, cols={cols})",
         {
             "torch": torch_reference,
-            "triton-riscv": lambda: run_unstructured_mask(
-                input_tensor, mask_m, mask_n
-            ),
+            "triton-riscv": lambda: run_unstructured_mask(input_tensor, mask_m, mask_n),
         },
     )
 

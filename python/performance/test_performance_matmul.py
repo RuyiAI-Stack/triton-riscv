@@ -51,12 +51,8 @@ def matmul_kernel_aligned(
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + (
-        offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    )
-    b_ptrs = b_ptr + (
-        offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-    )
+    a_ptrs = a_ptr + (offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn)
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for _ in range(0, K, BLOCK_SIZE_K):
@@ -70,9 +66,7 @@ def matmul_kernel_aligned(
         accumulator = leaky_relu(accumulator)
     c = accumulator.to(tl.float32)
 
-    c_ptrs = c_ptr + (
-        offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
-    )
+    c_ptrs = c_ptr + (offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn)
     tl.store(c_ptrs, c)
 
 
@@ -131,9 +125,7 @@ def matmul(a, b, activation=""):
         # the throughput-oriented multi-thread configuration.
         block_size_m = next((block for block in (32, 16, 8) if M % block == 0), 8)
         block_size_n = next((block for block in (32, 16, 8) if N % block == 0), 8)
-        block_size_k = next(
-            (block for block in (64, 32, 16, 8) if K % block == 0), 8
-        )
+        block_size_k = next((block for block in (64, 32, 16, 8) if K % block == 0), 8)
     block_size_m = int(os.getenv("TRITON_RISCV_MATMUL_BLOCK_M", block_size_m))
     block_size_n = int(os.getenv("TRITON_RISCV_MATMUL_BLOCK_N", block_size_n))
     block_size_k = int(os.getenv("TRITON_RISCV_MATMUL_BLOCK_K", block_size_k))

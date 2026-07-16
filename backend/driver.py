@@ -525,13 +525,9 @@ def compile_module(launcher_src, kernel_placeholder_name):
                             )
 
                         if sanitizer_type != "tsan" and _openmp_enabled():
-                            subprocess_args = _append_openmp_link_args(
-                                subprocess_args
-                            )
+                            subprocess_args = _append_openmp_link_args(subprocess_args)
 
-                        subprocess_args = _append_vector_math_link_args(
-                            subprocess_args
-                        )
+                        subprocess_args = _append_vector_math_link_args(subprocess_args)
 
                         subprocess.check_call(subprocess_args)
                     else:
@@ -552,9 +548,7 @@ def compile_module(launcher_src, kernel_placeholder_name):
                             subprocess_args.append("-Wl,-Bsymbolic")
                         if _openmp_enabled():
                             subprocess_args.append("-fopenmp")
-                        subprocess_args = _append_vector_math_link_args(
-                            subprocess_args
-                        )
+                        subprocess_args = _append_vector_math_link_args(subprocess_args)
                         subprocess.check_call(subprocess_args)
 
                 with open(so_path, "rb") as f:
@@ -731,9 +725,10 @@ class PreparedCPUKernel:
 
         for value, guard in zip(runtime_args, self.runtime_specializations):
             backend, is_const, specialize, align, expected = guard
-            if native_specialize_impl(
-                backend, value, is_const, specialize, align
-            ) != expected:
+            if (
+                native_specialize_impl(backend, value, is_const, specialize, align)
+                != expected
+            ):
                 return self._standard_launch(args)
 
         not_present = object()

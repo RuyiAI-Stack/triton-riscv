@@ -74,9 +74,7 @@ def run_swap(x, y):
     if x.ndim != 1 or y.ndim != 1 or x.numel() != y.numel():
         raise ValueError("x and y must be one-dimensional tensors of equal length")
     n_elements = x.numel()
-    swap_kernel[(triton.cdiv(n_elements, 2048),)](
-        x, y, n_elements, BLOCK_SIZE=2048
-    )
+    swap_kernel[(triton.cdiv(n_elements, 2048),)](x, y, n_elements, BLOCK_SIZE=2048)
     return x, y
 
 

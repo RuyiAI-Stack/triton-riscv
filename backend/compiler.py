@@ -261,10 +261,7 @@ def _enable_fadd_reassociation(llir: str) -> str:
         if "fast" in flags or "reassoc" in flags:
             return match.group(0)
         flags.insert(0, "reassoc")
-        return (
-            f'{match.group("prefix")} {" ".join(flags)} '
-            f'{match.group("operands")}'
-        )
+        return f"{match.group('prefix')} {' '.join(flags)} {match.group('operands')}"
 
     return _FADD_INSTRUCTION.sub(add_flag, llir)
 
@@ -325,7 +322,9 @@ def _optimize_llir(llir: str, options=None):
             if match.group(2) in pointer_args:
                 descriptor_fields.add(match.group(1))
         if descriptor_fields:
-            metadata_ids = [int(value) for value in re.findall(r"^!(\d+) =", llir, re.MULTILINE)]
+            metadata_ids = [
+                int(value) for value in re.findall(r"^!(\d+) =", llir, re.MULTILINE)
+            ]
             invariant_id = max(metadata_ids, default=-1) + 1
             fields = "|".join(re.escape(value) for value in descriptor_fields)
             load_pattern = re.compile(
