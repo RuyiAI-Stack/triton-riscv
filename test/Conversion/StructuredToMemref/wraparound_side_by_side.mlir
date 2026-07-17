@@ -49,11 +49,20 @@
 // CHECK:           %[[INDEX_CAST_6:.*]] = arith.index_cast %[[MULI_4]] : i32 to index
 // CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_9]] to %[[CONSTANT_3]] step %[[CONSTANT_4]] iter_args(%[[VAL_1:.*]] = %[[MULI_0]], %[[VAL_2:.*]] = %[[CONSTANT_7]]) -> (index, index)  : i32 {
 // CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_1]], %[[MULI_1]] : index
-// CHECK:             %[[REMSI_0:.*]] = arith.remsi %[[ADDI_0]], %[[MULI_2]] : index
+// CHECK:             %[[MULI_5:.*]] = arith.muli %[[MULI_2]], %[[INDEX_CAST_2]] : index
+// CHECK:             %[[CMPI_0:.*]] = arith.cmpi eq, %[[INDEX_CAST_0]], %[[CONSTANT_7]] : index
+// CHECK:             %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[MULI_5]], %[[INDEX_CAST_0]] : index
+// CHECK:             %[[CMPI_1:.*]] = arith.cmpi eq, %[[SELECT_0]], %[[CONSTANT_7]] : index
+// CHECK:             %[[SELECT_1:.*]] = arith.select %[[CMPI_1]], %[[CONSTANT_0]], %[[SELECT_0]] : index
+// CHECK:             %[[REMSI_0:.*]] = arith.remsi %[[ADDI_0]], %[[SELECT_1]] : index
 // CHECK:             %[[SUBI_0:.*]] = arith.subi %[[ADDI_0]], %[[REMSI_0]] : index
-// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[REMSI_0]], %[[CONSTANT_1]] : index
+// CHECK:             %[[CMPI_2:.*]] = arith.cmpi eq, %[[INDEX_CAST_2]], %[[CONSTANT_7]] : index
+// CHECK:             %[[SELECT_2:.*]] = arith.select %[[CMPI_2]], %[[CONSTANT_0]], %[[INDEX_CAST_2]] : index
+// CHECK:             %[[DIVSI_0:.*]] = arith.divsi %[[REMSI_0]], %[[SELECT_2]] : index
+// CHECK:             %[[SELECT_3:.*]] = arith.select %[[CMPI_2]], %[[CONSTANT_7]], %[[DIVSI_0]] : index
+// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[SELECT_3]], %[[CONSTANT_1]] : index
 // CHECK:             %[[MINSI_0:.*]] = arith.minsi %[[ADDI_1]], %[[MULI_2]] : index
-// CHECK:             %[[SUBI_1:.*]] = arith.subi %[[MINSI_0]], %[[REMSI_0]] : index
+// CHECK:             %[[SUBI_1:.*]] = arith.subi %[[MINSI_0]], %[[SELECT_3]] : index
 // CHECK:             %[[SUBI_2:.*]] = arith.subi %[[CONSTANT_1]], %[[SUBI_1]] : index
 // CHECK:             %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[ADDI_0]]], sizes: [4, %[[SUBI_1]]], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<4x?xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[SUBI_0]]], sizes: [4, %[[SUBI_2]]], strides: {{\[}}%[[INDEX_CAST_0]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<4x?xf32, strided<[?, ?], offset: ?>>
