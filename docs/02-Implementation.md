@@ -1,100 +1,304 @@
-# Implementation details
+# Implementation Details
 
-Even though a valid triton program can perform load and store in arbitrary memory locations, the prototype only supports lowering programs that have structured memory access patterns.
+> **Audience: Compiler Contributors.** This is not a beginner tutorial and is
+> not required to write or run the first kernel.
+>
+> **Prerequisites:** complete the
+> [15-minute Quick Start](00-Getting-Started.md#15-minute-quick-start), read the
+> [project overview](01-Overview.md), and be comfortable reading MLIR.
+>
+> **Outcome:** follow one kernel from TTIR to a callable object, identify which
+> analysis or pass owns a transformation, and choose the right regression test.
 
-## Analyses
+This document explains the compiler's internal analyses, representations, pass
+pipeline, runtime calling convention, and current limitations. Kernel
+developers should normally read [Operator migration](05-Operator-Migration.md),
+[Inspecting IR](03-IR.md), and [Debugging](04-Debug.md) instead.
 
-As part of the conversion process, there are three important analyses:
+For a conceptual introduction first, read [Project overview](01-Overview.md).
 
-1. Pointer analysis:
-    + This analysis is responsible for extracting structured memory access patterns from a `triton` program during load and store; it walks the IR and visits relevant instructions to build strided memory accesses in the `memref` dialect. The analysis is still in its early stage and does not support all scenarios.
+## Active Backend Stages
 
-2. Use analysis:
-    + After "Pointer analysis", instructions that are part of memory address calculation will no longer be necessary in a triton program because their semantics have now been captured by `memref` operations representing strided memory accesses. To aid with removing these instructions safely, we perform `Use analysis` to mark which instructions are used *only* in address calculation (called `MetaUse`) or used in *both* address calculation and data manipulation (called `MixedUse`) operations. Those that are `MixedUse` are cloned and have their users adjusted accordingly with the goal of separating out the `MetaUse` ops so that they can be safely deleted.
+`CPUBackend.add_stages` in `backend/compiler.py` defines the source of truth for
+the normal compilation path:
 
-3. Mask analysis:
-    + This analysis is responsible for handling masked loads and stores.
+| Triton stage key | Representation | Main implementation |
+| --- | --- | --- |
+| `ttir` | Triton MLIR after common TTIR cleanup | `CPUBackend.make_ttir` |
+| `ttsharedir` | structured/Linalg/MemRef-oriented MLIR | `_ttir_to_ttsharedir` and `triton-shared-opt` |
+| `vectorir` | Buddy vector-oriented MLIR | `_ttsharedir_to_vectorir` |
+| `llir` | textual LLVM IR | `_vectorir_to_llir` |
+| `obj` | host or RISC-V object bytes | `_llir_to_bin` |
 
-## Conversion strategy
+The optional IME matrix-extension path skips the separate `vectorir` stage and
+uses a Buddy-specific pipeline. It is enabled with
+`TRITON_RISCV_USE_IME=1` and should be treated as an advanced target-specific
+mode, not the default beginner path.
 
-We introduce the `TritonToLinalg` pass that converts the `triton` dialect to the `linalg` dialect on *tensors*. This means the resulting IR is fully compatible with `linalg` tiling and fusion transformation passes. As mentioned in the `Pointer analysis`'s description, we do however have to deal with memref instructions at the load and store boundaries and have to convert them to tensors using `bufferization.to_tensor`. Here's a simple example of what the IR looks like:
+## TTIR Preparation
+
+Upstream Triton turns the Python AST into TTIR. Triton-RISCV then runs a short
+set of upstream TTIR passes before handing the module to its middle layer:
+
+- inline Triton functions;
+- rewrite current tensor descriptors to pointers;
+- canonicalize and combine operations;
+- reorder broadcasts and eliminate common subexpressions;
+- move loop-invariant operations and unroll eligible loops;
+- remove dead symbols.
+
+At this point the program still contains Triton operations such as `tt.load`,
+`tt.store`, `tt.addptr`, `tt.reduce`, and `tt.dot`. The difficult part is not
+the arithmetic; it is recovering the memory-access structure encoded by
+pointer expressions, shapes, masks, and control flow.
+
+## Memory Access Analysis
+
+Triton permits pointer tensors and arbitrary pointer arithmetic. Structured
+MLIR operations prefer explicit shapes, offsets, sizes, and strides. The
+middle layer therefore analyzes each memory access before lowering it.
+
+### Pointer analysis
+
+Pointer analysis tracks how a base pointer is transformed by operations such
+as splat, range creation, broadcast, expand-dims, and `tt.addptr`. For a regular
+access, it tries to recover a view like:
+
+```text
+base pointer + offset
+shape  = [rows, columns]
+stride = [row_stride, column_stride]
+```
+
+That information can become `memref.reinterpret_cast`, a subview, or another
+structured memory representation. If addresses are data-dependent or unrelated
+to one another, the access must stay on an unstructured gather/scatter path.
+
+### Use analysis
+
+Address calculations often share operations with ordinary data calculations.
+Use analysis classifies values so address-only operations can be removed after
+their meaning has been captured:
+
+- **MetaUse** — used only to calculate an address or memory shape;
+- **MixedUse** — used both by address calculation and by the kernel's data
+  computation.
+
+A mixed-use value may need to be cloned so the metadata path can be rewritten
+without changing the data path.
+
+### Mask analysis
+
+Mask analysis determines how a load/store mask relates to the access shape.
+Common boundary masks can often become sizes, bounds, or structured slices.
+Data-dependent masks may require an unstructured representation or explicit
+predication.
+
+These analyses are deliberately conservative. Rejecting an unsupported pattern
+is safer than silently losing an offset, stride, branch-local value, or mask.
+
+## The Experimental Structured Pipeline
+
+The active backend invokes:
+
+```sh
+triton-shared-opt input.mlir \
+  --triton-to-linalg-experimental=structured-ldst-mode=tensor-first-vector-cpu
+```
+
+The composite pass is implemented in
+`lib/Conversion/TritonToLinalgExperimental/`. At a high level it performs:
+
+1. **Triton to Triton Structured** — represent regular pointer/mask state with
+   project-specific structured operations.
+2. **Triton to Unstructured** — isolate accesses that cannot use the regular
+   structured path, including gather/scatter cases.
+3. **Triton arithmetic to Linalg** — express elementwise tensor computation as
+   Linalg where possible.
+4. **Structured and unstructured memory conversion** — materialize MemRef,
+   Tensor, affine, or indexed memory operations.
+5. **Pointer cleanup** — convert remaining Triton pointers, reconcile casts,
+   remove dead metadata values, and canonicalize the result.
+
+The output is called `ttsharedir` by the backend. It is not one dialect; it is
+a legal mix of standard MLIR dialects and, where needed, project-specific
+intermediate operations.
+
+## Common Operation Mappings
+
+The exact result depends on shape, mask, and aliasing information, but these are
+the intended mappings:
+
+| Triton operation or pattern | Typical structured result |
+| --- | --- |
+| `tt.load` with regular access | MemRef view plus tensor/vector load path |
+| `tt.store` with regular access | destination MemRef view and store/materialization |
+| elementwise `arith`/`math` | `linalg.generic` or equivalent vector/loop operations |
+| `tt.reduce` | `linalg.reduce` for supported reduction bodies |
+| `tt.dot` | `linalg.matmul` or a related structured contraction |
+| regular boundary mask | bounded size/slice or predicated access |
+| data-dependent addresses | gather/scatter or explicit indexed/loop path |
+
+A simple regular load may initially look like this after conversion:
 
 ```mlir
-tt.func @kernel(%afloat : !tt.ptr<bf16>, %res : !tt.ptr<bf16>) {
-  %0 = tt.make_range {end = 128 : i32, start = 0 : i32} : tensor<128xi32>
-  %1 = tt.splat %afloat : (!tt.ptr<bf16>) -> tensor<128x!tt.ptr<bf16>>
-  %2 = tt.addptr %1, %0 : tensor<128x!tt.ptr<bf16>>, tensor<128xi32>
-  %afm = tt.load %2 : tensor<128x!tt.ptr<bf16>>
-  %3 = "tt.reduce"(%afm) ({
-  ^bb0(%arg5: bf16, %arg6: bf16):
-    %21 = arith.addf %arg5, %arg6 : bf16
-    tt.reduce.return %21 : bf16
-  }) {axis = 0 : i32} : (tensor<128xbf16>) -> bf16
-  tt.store %res, %3 : !tt.ptr<bf16>
-  tt.return
-}
+%view = memref.reinterpret_cast %base
+  to offset: [%offset], sizes: [%size], strides: [1]
+%tmp = memref.alloc() : memref<...>
+memref.copy %view, %tmp
+%tensor = bufferization.to_tensor %tmp restrict writable
 ```
 
-after conversion:
+This is semantically useful because the shape and stride are explicit, but the
+temporary allocation and copy are expensive. Removing them safely is one of
+the main optimization goals described in
+[Optimization opportunities](07-Optimization.md).
 
-```mlir
-func.func @kernel(%arg0: memref<*xbf16>, %arg1: memref<*xbf16>, %arg2: i32, %arg3: i32, %arg4: i32) {
-    %cst = arith.constant 0.000000e+00 : f32
-    %reinterpret_cast = memref.reinterpret_cast %arg0 to offset: [0], sizes: [128], strides: [1] :
-        memref<*xbf16> to memref<128xbf16, strided<[1]>>
-    %alloc = memref.alloc() : memref<128xbf16>
-    memref.copy %reinterpret_cast, %alloc : memref<128xbf16, strided<[1]>> to memref<128xbf16>
-    %0 = bufferization.to_tensor %alloc restrict writable : memref<128xbf16>
-    %1 = bufferization.alloc_tensor() : tensor<f32>
-    %inserted = tensor.insert %cst into %1[] : tensor<f32>
-    %reduced = linalg.reduce ins(%0 : tensor<128xbf16>) outs(%inserted : tensor<f32>) dimensions = [0]
-      (%in: bf16, %init: f32) {
-        %3 = arith.extf %in : bf16 to f32
-        %4 = arith.addf %3, %init : f32
-        linalg.yield %4 : f32
-      }
-    %extracted = tensor.extract %reduced[] : tensor<f32>
-    %2 = arith.truncf %extracted : f32 to bf16
-    %reinterpret_cast_0 = memref.reinterpret_cast %arg1 to offset: [0], sizes: [1], strides: [1] :
-        memref<*xbf16> to memref<1xbf16, strided<[1]>>
-    affine.store %2, %reinterpret_cast_0[0] : memref<1xbf16, strided<[1]>>
-    return
+Stores similarly aim to connect a computed tensor to the real output view. If
+the result is built in a separate allocation first, bufferization may introduce
+an avoidable final copy. Destination-passing transformations try to compute
+directly into the output when aliasing, mask, and shape rules allow it.
 
-}
+## Bufferization, Vectorization, and LLVM
+
+**Bufferization** turns value-like tensor operations into operations over
+concrete memory buffers. **Vectorization** exposes groups of scalar operations
+as Vector Dialect operations that can later become target vector code.
+
+After the Triton-specific conversion, Buddy handles the generic lowering work.
+The default pipeline in `backend/compiler.py` includes these broad phases:
+
+1. convert empty tensors to allocation-backed tensors;
+2. one-shot bufferization and buffer deallocation;
+3. lower supported Linalg operations to Buddy's vector IR;
+4. canonicalize and eliminate common subexpressions;
+5. lower vector, affine, SCF, arithmetic, math, MemRef, and function operations
+   to LLVM-compatible forms;
+6. translate LLVM-dialect MLIR to textual LLVM IR.
+
+The final `llc` invocation emits position-independent object code. Normally it
+targets the current host. Cross-compilation supplies a RISC-V triple and feature
+set through `CPUOptions` and `RiscvToolchain`.
+
+## Kernel ABI and Runtime
+
+An **ABI** (application binary interface) is the exact calling agreement
+between separately generated pieces: argument types and order, return behavior,
+and the extra launch values passed to the kernel.
+
+The lowered kernel receives its original non-`constexpr` arguments plus six
+32-bit launch values:
+
+```text
+grid_x, grid_y, grid_z, program_id_x, program_id_y, program_id_z
 ```
 
-Important details to note:
+These values implement `tl.num_programs`/launch-grid context and
+`tl.program_id` without a GPU runtime.
 
-+ `tt.load` (together with all of its related address calculation instructions such as `tt.addptr` and `tt.splat`) are lowered to a combination of `memref.reinterpret_cast`, `memref.alloc`, and `memref.copy`. After the initialization of the local buffer, we convert the memref back to a tensor using `bufferization.to_tensor`; this op is automatically removed during bufferization.
+### Host launcher
 
-+ `tt.store` lowers to a combination of `memref.reinterpret_cast` and either `affine.store` or `memref.tensor_store`:
+`backend/driver.py` generates a C++ extension that:
 
+1. converts Python/Torch arguments to the kernel ABI;
+2. loads the object produced by the backend;
+3. invokes the kernel for the requested program IDs;
+4. exposes the result through Triton's normal launch interface.
+
+The driver is intentionally not selected automatically:
+
+```python
+triton.runtime.driver.set_active(CPUDriver())
 ```
-%reinterpret_cast = memref.reinterpret_cast %arg2 to offset: [...] memref<*xf32> to memref<1024xf32>
-%extracted_slice = tensor.extract_slice %15[0] [%21] [1] : tensor<1024xf32> to tensor<?xf32>
-%subview = memref.subview %reinterpret_cast[0] [%21] [1] : memref<1024xf32> to memref<?xf32>
-bufferization.materialize_in_destination %extracted_slice in writable %subview
+
+### Standalone RISC-V runner
+
+`backend/riscv.py` provides a separate ahead-of-time flow. It embeds Python
+lists or supported array values into generated C source, calls the kernel for
+every point in a one-, two-, or three-dimensional grid, optionally verifies
+outputs, links a static ELF, and launches QEMU.
+
+The host driver and standalone runner share compiler stages but solve different
+runtime problems. A kernel passing in host mode may still expose target or
+serialization issues in standalone RISC-V mode.
+
+## Current Limitations
+
+Support is test-driven and evolves with the pinned Triton and Buddy revisions.
+Important current boundaries include:
+
+- pointer analysis does not represent every arbitrary address calculation;
+- some pointer tensors crossing `scf.if` or loop yields remain unsupported;
+- several legacy/wraparound/block-pointer regression cases are still `XFAIL`;
+- the reference CPU backend does not enable float8 or TF32;
+- reductions and math operations are supported incrementally rather than as a
+  complete Triton language matrix;
+- automatic standalone-runner serialization supports common integer, `fp32`,
+  and `fp64` arguments, but not `fp16`, `bf16`, complex MemRef shapes, or
+  dynamic input files;
+- host CPU execution and QEMU correctness do not establish performance on real
+  RISC-V hardware.
+
+Use these files as the most precise compatibility evidence:
+
+- `python/examples/conftest.py` for upstream language cases enabled on CPU;
+- `python/examples/test_*.py` for end-to-end kernel behavior;
+- `test/**/*.mlir` for individual conversion rules and `XFAIL` cases;
+- `backend/riscv.py` for standalone argument types and target settings.
+
+## Testing a Compiler Change
+
+Use the smallest test that owns the behavior, then widen coverage:
+
+```sh
+# Focus the configured lit suite by test-name regex
+"$LLVM_BINARY_DIR/llvm-lit" -sv \
+  "$BUILD_DIR/third_party/triton_shared/test" \
+  --filter='masked_ldst'
+
+# Entire compiler regression suite
+cmake --build "$BUILD_DIR" --target check-triton-shared-lit-tests
+
+# One end-to-end Python kernel
+python -m pytest python/examples/test_vec_add.py -v
+
+# Common example suite
+python -m pytest python/examples/ \
+  --ignore=python/examples/test_core.py \
+  --ignore=python/examples/test_annotations.py \
+  --ignore=python/examples/flaggems \
+  -v
 ```
 
-+ element-wise `arith` and `math` operators are converted to their corresponding `linalg.generic` version.
-+ `tt.dot` becomes `linalg.matmul`.
-+ `tt.reduce` becomes `linalg.reduce`; known limitation: only support `addf` and `maxf` reduction in the reduction body for now.
+The configured lit directory is generated inside the Triton build tree. Change
+the `--filter` regular expression to part of the test filename or test name. If
+direct `llvm-lit` invocation is inconvenient, use the CMake target while
+iterating.
 
-## Testing
+Success criteria are explicit: lit prints no `FAIL`/`XPASS` result and exits
+with status 0; the CMake target finishes successfully; and pytest ends with
+`PASSED`. Here `test_vec_add.py` is a compilation/launch smoke test because its
+historical body only prints the numerical difference. Use the strict assertion
+from the [Quick Start](00-Getting-Started.md#step-7-run-and-strictly-check-host-cpu-vector-add)
+when numerical correctness is part of the change.
 
-The prototype was tested on the following triton kernel examples:
+For an optimization, test both positive and negative behavior: prove that the
+desired vector/store form appears, and prove that unsafe aliasing, mask, stride,
+or control-flow cases do not take the optimization.
 
-1. [vector addition](./python/examples/test_vec_add.py)
-2. [fused softmax](./python/examples/test_softmax.py)
-3. [matrix multiplication](./python/examples/test_matmul.py)
-4. layer normalization
-5. fused attention
+## Where to Make a Change
 
-The Python tests are setup to run with Pytest and you will need to set the following environment variables to run them:
-```
-export BUDDY_MLIR_BINARY_DIR=<path-to-buddy-mlir-build/bin>
-export LLVM_BINARY_DIR=<path-to-llvm-binaries>
+| Change | Start here |
+| --- | --- |
+| Add a pointer/mask fact | `include/triton-shared/Analysis/`, `lib/Analysis/` |
+| Change structured TTIR conversion | `lib/Conversion/TritonToStructured/` |
+| Change unstructured/gather-scatter conversion | `lib/Conversion/TritonToUnstructured/`, `lib/Conversion/UnstructuredToMemref/` |
+| Change elementwise Linalg conversion | `lib/Conversion/TritonArithToLinalg/` |
+| Change the composite pipeline | `lib/Conversion/TritonToLinalgExperimental/` |
+| Change downstream pass order | `backend/compiler.py` |
+| Change host launch semantics | `backend/driver.py` |
+| Change RISC-V target/link/QEMU behavior | `backend/riscv.py` |
+| Add a pass-level regression | `test/` |
+| Add end-to-end coverage | `python/examples/` |
 
-pytest <path-to-triton-shared>/python/examples
-```
-In addition to testing on the tutorial kernels, there are many lit tests covering various scenarios.
+[Previous: Project overview](01-Overview.md) · [Repository README](../README.md) · [Next: Inspecting IR](03-IR.md)

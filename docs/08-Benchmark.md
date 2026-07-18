@@ -1,11 +1,27 @@
 # Benchmarking Triton-RISCV
 
-This document explains how to run the Python performance benchmarks under
-`python/performance/`. These benchmarks compare Triton-RISCV CPU backend
-results against PyTorch for both correctness and execution time. When the
-Buddy Python frontend is available, they also add a `torch+buddy-mlir` column
-that measures the PyTorch reference function through `torch.compile` with the
-Buddy MLIR backend.
+> **Advanced developer material:** this page is not part of the beginner route.
+>
+> **Best for:** kernel developers and compiler contributors measuring a case
+> whose correctness has already been established.
+>
+> **Prerequisites:** the [Host CPU Quick Start](00-Getting-Started.md#15-minute-quick-start) and the
+> focused correctness test for the operator being measured.
+>
+> **After this guide:** you can run reproducible host comparisons, save CSV
+> results, and state clearly what the numbers do—and do not—measure.
+
+The benchmarks under `python/performance/` compare correctness and host CPU
+execution time across PyTorch, Triton-RISCV, and optionally Buddy's
+`torch.compile` backend. They are useful for detecting regressions and
+understanding compiler/runtime overhead on the current host.
+
+PyTorch is a correctness and timing reference in these tables. It is not a
+fallback executed by Triton-RISCV, and a PyTorch result does not establish that
+the same operation is supported by the Triton-RISCV compiler.
+
+They are **not** RISC-V hardware benchmarks. QEMU timing and `x86_64` host timing
+must not be presented as RVV hardware performance.
 
 ## 1. Environment Setup
 
@@ -18,12 +34,25 @@ cd /path/to/triton-riscv
 source scripts/triton-riscv-env.sh
 ```
 
+That command assumes the sibling source-build layout. For the fast prebuilt
+layout from [Getting started](00-Getting-Started.md), activate `.venv` and
+export its in-repository tool paths instead:
+
+```sh
+source .venv/bin/activate
+export TRITON_PLUGIN_DIRS="$PWD"
+export LLVM_SYSPATH="$PWD/.cache/llvm"
+export LLVM_BINARY_DIR="$LLVM_SYSPATH/bin"
+export BUDDY_MLIR_BINARY_DIR="$PWD/.cache/buddy/bin"
+```
+
 The helper sets paths for the Triton plugin, Buddy/LLVM tools, and Triton's
 runtime cache directories. If you changed backend Python code, lowering passes,
 or C++ sources, rebuild and clear stale kernel cache entries before measuring:
 
 ```sh
 scripts/rebuild-triton-riscv.sh
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$PWD/artifacts/cache/benchmark}"
 rm -rf "$TRITON_CACHE_DIR"
 ```
 
@@ -32,12 +61,22 @@ The Buddy column needs Buddy's Python packages. The benchmark helper first uses
 `$BUDDY_DIR/build/python_packages`, and finally the common sibling checkout
 path `../buddy-mlir/build/python_packages`.
 
+Before timing, run the corresponding correctness test under `python/examples/`
+with a fresh cache. Benchmark scripts check outputs too, but a focused pytest
+failure is usually easier to diagnose.
+
 ## 2. Run All Benchmarks
 
 Use the aggregate runner to execute every `test_performance_*.py` file:
 
 ```sh
 python python/performance/run_all.py
+```
+
+For a quick installation and output-format check, start with one small family:
+
+```sh
+python python/performance/run_all.py vec_add --torch-threads 1
 ```
 
 The runner discovers all benchmark scripts, adds `python/performance/` to
@@ -102,18 +141,20 @@ set `PYTHONPATH` explicitly.
 
 Each benchmark case first checks Triton-RISCV output against a PyTorch reference
 and then measures both providers.
-The fields mean:
 
-- `torch(baseline)`: Average PyTorch wall time.
-- `torch+buddy`: Average wall time for the PyTorch reference compiled with
-  Buddy MLIR through `torch.compile`.
-- `status`: Provider-specific correctness or availability. `PASS` means the
-  provider output matched the PyTorch reference, `SKIP` means the Buddy provider
-  was not available or was disabled, and `FAIL` means compilation, execution, or
-  correctness failed for that provider.
-- `speedup`: `torch / provider`. Values below `1.0x` mean that provider was
-  slower than PyTorch for that case.
-- `triton-riscv`: Average Triton-RISCV wall time.
+| Column | Meaning |
+| --- | --- |
+| `torch(baseline)` | average PyTorch wall time |
+| `torch+buddy` | average wall time for the PyTorch reference through Buddy MLIR and `torch.compile` |
+| Buddy `status` | `PASS`, `SKIP`, or `FAIL` for correctness/availability |
+| Buddy `speedup` | `torch / torch+buddy` |
+| `triton-riscv` | average Triton-RISCV wall time |
+| Triton-RISCV `status` | correctness/compilation status for the backend |
+| Triton-RISCV `speedup` | `torch / triton-riscv` |
+
+A speedup above `1.0x` means that provider was faster than the PyTorch baseline
+for that case; below `1.0x` means it was slower. Compare status before speedup.
+A fast result with failed correctness is not a valid measurement.
 
 The CSV stores raw second values for the table columns, plus `buddy_status`,
 `buddy_speedup`, `buddy_error`, `warmup`, and `repeats`. It also retains
@@ -152,6 +193,26 @@ path rather than a tuned CPU math library implementation.
 
 For ELF/QEMU execution, use the workflow in
 [`docs/06-RISCV-QEMU.md`](06-RISCV-QEMU.md).
+
+## Fair Comparison Checklist
+
+Before comparing two commits or publishing a number:
+
+- use the same machine, power mode, CPU affinity, and background-load policy;
+- record host architecture, CPU model, Python, PyTorch, Triton-RISCV, Buddy, and
+  LLVM versions;
+- use the same inputs and validate output before timing;
+- keep PyTorch thread settings identical, and report them;
+- warm both providers and exclude compilation unless compile latency is the
+  quantity being measured;
+- use enough repeats and report variation, not only one average;
+- clear or isolate Triton caches when measuring compilation changes;
+- inspect IR/assembly when attributing a speedup to a compiler optimization;
+- avoid extrapolating host or QEMU results to real RISC-V hardware.
+
+For compiler optimization work, pair runtime numbers with static evidence such
+as allocation count, copied bytes, vector loads/stores, scalar fallback loops,
+and final assembly size.
 
 ## 6. Benchmark Coverage
 
@@ -217,6 +278,7 @@ Rebuild the backend and remove cached kernels:
 
 ```sh
 scripts/rebuild-triton-riscv.sh
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$PWD/artifacts/cache/benchmark}"
 rm -rf "$TRITON_CACHE_DIR"
 ```
 
@@ -231,3 +293,5 @@ python python/performance/run_all.py vec_add matmul
 
 For local debugging, temporarily reduce the sizes in the target benchmark file
 or call its `bench_*` function from a short Python snippet with smaller inputs.
+
+[Previous: Optimization opportunities](07-Optimization.md) · [Repository README](../README.md)
