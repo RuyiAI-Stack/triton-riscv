@@ -289,4 +289,4 @@ Provide enough evidence for someone else to reproduce the same layer:
 - whether a fresh cache changes the result;
 - for RISC-V, ELF header/disassembly and target settings.
 
-[Previous: Inspecting IR](03-IR.md) · [Documentation index](README.md) · [Next: Operator migration](05-Operator-Migration.md)
+[Previous: Inspecting IR](03-IR.md) · [Repository README](../README.md) · [Next: Operator migration](05-Operator-Migration.md)

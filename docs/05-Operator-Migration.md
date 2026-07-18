@@ -337,4 +337,4 @@ Migrated FlagGems examples live under `python/examples/flaggems/`. Keep a small
 end-to-end correctness test beside each supported contract so Triton, Buddy,
 and MLIR updates cannot silently break it.
 
-[Previous: Debugging](04-Debug.md) · [Documentation routes](README.md) · [Next: RISC-V ELF and QEMU](06-RISCV-QEMU.md)
+[Previous: Debugging](04-Debug.md) · [Repository README](../README.md) · [Next: RISC-V ELF and QEMU](06-RISCV-QEMU.md)

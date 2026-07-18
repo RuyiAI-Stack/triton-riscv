@@ -301,4 +301,4 @@ or control-flow cases do not take the optimization.
 | Add a pass-level regression | `test/` |
 | Add end-to-end coverage | `python/examples/` |
 
-[Previous: Project overview](01-Overview.md) · [Documentation index](README.md) · [Next: Inspecting IR](03-IR.md)
+[Previous: Project overview](01-Overview.md) · [Repository README](../README.md) · [Next: Inspecting IR](03-IR.md)

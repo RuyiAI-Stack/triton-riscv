@@ -471,4 +471,4 @@ First confirm the ELF was compiled with vector features. Then inspect
 may be obscured by temporary buffers/non-contiguous access. See
 [Optimization opportunities](07-Optimization.md).
 
-[Previous: Operator migration](05-Operator-Migration.md) · [Documentation index](README.md) · [Next: Optimization opportunities](07-Optimization.md)
+[Previous: Operator migration](05-Operator-Migration.md) · [Repository README](../README.md) · [Next: Optimization opportunities](07-Optimization.md)

@@ -487,4 +487,4 @@ export TRITON_VENV=/custom/path/to/venv
 source scripts/triton-riscv-env.sh
 ```
 
-[Documentation routes](README.md) · [Next for beginners: Project overview](01-Overview.md)
+[Repository README](../README.md) · [Next for beginners: Project overview](01-Overview.md)

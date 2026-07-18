@@ -294,4 +294,4 @@ python python/performance/run_all.py vec_add matmul
 For local debugging, temporarily reduce the sizes in the target benchmark file
 or call its `bench_*` function from a short Python snippet with smaller inputs.
 
-[Previous: Optimization opportunities](07-Optimization.md) · [Documentation index](README.md) · [Back to repository README](../README.md)
+[Previous: Optimization opportunities](07-Optimization.md) · [Repository README](../README.md)

@@ -230,4 +230,4 @@ non-asserting output behavior.
 - To change compiler passes, continue with the advanced
   [Implementation details](02-Implementation.md).
 
-[Previous: Getting started](00-Getting-Started.md) · [Documentation routes](README.md)
+[Previous: Getting started](00-Getting-Started.md) · [Repository README](../README.md)

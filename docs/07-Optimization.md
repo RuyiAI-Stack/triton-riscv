@@ -276,4 +276,4 @@ The recommended implementation order is:
 7. Benchmark native allocation/copy overhead and validate final RVV assembly
    on real RISC-V hardware.
 
-[Previous: RISC-V ELF and QEMU](06-RISCV-QEMU.md) · [Documentation index](README.md) · [Next: Benchmarking](08-Benchmark.md)
+[Previous: RISC-V ELF and QEMU](06-RISCV-QEMU.md) · [Repository README](../README.md) · [Next: Benchmarking](08-Benchmark.md)
