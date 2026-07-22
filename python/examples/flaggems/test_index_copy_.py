@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .index_copy_ import index_copy
+from .index_copy_ import index_copy, index_copy_
 
 
 @pytest.mark.parametrize(
@@ -25,3 +25,17 @@ def test_index_copy(shape, dim):
     tri = index_copy(inp, dim, index, src)
 
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
+def test_index_copy_inplace():
+    torch.manual_seed(0)
+    inp = torch.randn(4, 8, dtype=torch.float32)
+    ref = inp.clone()
+    index = torch.tensor([0, 2], dtype=torch.long)
+    src = torch.randn(2, 8, dtype=torch.float32)
+
+    ref.index_copy_(0, index, src)
+    returned = index_copy_(inp, 0, index, src)
+
+    assert returned is inp
+    torch.testing.assert_close(inp, ref, rtol=1e-4, atol=1e-4)
