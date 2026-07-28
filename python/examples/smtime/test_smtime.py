@@ -8,6 +8,7 @@ from test_utils import get_llvm_bin_path
 
 
 ROOT = Path(__file__).resolve().parents[3]
+TRITON_DIR = Path(os.environ.get("TRITON_DIR", ROOT.parent / "triton"))
 
 
 USER_KERNEL = r"""
@@ -51,7 +52,7 @@ def test_user_kernel_warmup_emits_riscv_ime_object(tmp_path):
     env.update({"TRITON_RISCV_USE_IME": "1"})
     subprocess.check_call(
         [sys.executable, str(kernel_path), str(obj_path)],
-        cwd=ROOT / "triton",
+        cwd=TRITON_DIR,
         env=env,
     )
     assert obj_path.stat().st_size > 0
