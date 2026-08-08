@@ -1131,7 +1131,25 @@ LogicalResult PtrAnalysis::visitOperandForOp(scf::ForOp forOp, Value operand,
                                              OpBuilder &builder) {
 
   auto it = llvm::find(forOp->getResults(), operand);
+  if (it == forOp->getResults().end()) {
+    return failure();
+  }
   auto index = std::distance(forOp->getResults().begin(), it);
+
+  // The loop prepass decomposes a tensor iter-arg into its raw value and
+  // structured offset/stride state. If the value yielded by the loop is no
+  // longer structured, the auxiliary state contains neutral placeholders and
+  // must not be used to reconstruct the result. Keep the raw loop result as
+  // the gather/scatter offset instead.
+  Value yieldedValue = forOp.getBody()->getTerminator()->getOperand(index);
+  if (auto getStateOp = yieldedValue.getDefiningOp<tts::GetStructuredStateOp>();
+      getStateOp && yieldedValue == getStateOp.getStructured()) {
+    Value originalValue = getStateOp->getOperand(0);
+    auto knownState = knownPtrs.find(originalValue);
+    if (knownState != knownPtrs.end() && !knownState->second.isStructured()) {
+      return state.rebuildAsUnsupportedOp(operand);
+    }
+  }
 
   auto newState = getLoopResultPtrState(forOp, index);
   if (failed(newState)) {
