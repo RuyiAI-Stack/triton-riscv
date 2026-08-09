@@ -60,6 +60,25 @@ arguments. See `codex/README.md` for an example.
 After generation, Codex should complete the task file with the actual validation
 attempts and any workflow feedback discovered during testing.
 
+### Autonomous Development Flow
+
+The structured development agent connects task generation to Codex, RISC-V
+validation, failure classification, and bounded repair:
+
+```sh
+python -m codex_agent.develop_operator \
+  --spec codex_agent/specs/tanh_and_mul.json \
+  --remote-host "$RISCV_HOST" \
+  --remote-root "$RISCV_REPO" \
+  --allow-compiler-workaround
+```
+
+The semantic specification and PyTorch test form an immutable acceptance
+contract. After the test passes a structural audit, repair attempts may modify
+only the implementation file. Environment and target-capability failures stop
+with a diagnosis; backend compiler workarounds require the explicit flag above.
+See `codex_agent/README.md` for the complete policy and generated artifacts.
+
 ## Environment Prerequisite Check
 
 Before building or testing an operator, Codex should check that the local

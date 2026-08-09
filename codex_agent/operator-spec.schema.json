@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ruyiai-stack.example/schemas/triton-riscv-operator-spec.json",
+  "title": "Triton-RISCV operator development specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "name",
+    "semantics",
+    "pytorch_reference",
+    "inputs",
+    "output",
+    "shape_cases",
+    "dtypes",
+    "tolerances"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "semantics": {
+      "type": "string",
+      "minLength": 10
+    },
+    "pytorch_reference": {
+      "type": "string",
+      "pattern": "torch\\."
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "string",
+      "minLength": 1
+    },
+    "shape_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "input_shape_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "minProperties": 1
+      },
+      "default": []
+    },
+    "dtypes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^torch\\."
+      }
+    },
+    "tolerances": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rtol", "atol"],
+      "properties": {
+        "rtol": {
+          "type": "number",
+          "minimum": 0
+        },
+        "atol": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "backward": {
+      "type": "boolean",
+      "default": false
+    },
+    "implementation_file": {
+      "type": "string"
+    },
+    "test_file": {
+      "type": "string"
+    },
+    "reference_operators": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "notes": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}
