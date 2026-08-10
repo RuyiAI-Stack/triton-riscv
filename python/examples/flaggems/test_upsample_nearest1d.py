@@ -11,9 +11,7 @@ def test_upsample_nearest1d(size):
     x = torch.randn(N, C, size, device="cpu", dtype=torch.float32)
     output_size = (size * 2,)
 
-    ref_out = torch.nn.functional.interpolate(
-        x, size=output_size, mode="nearest"
-    )
+    ref_out = torch.nn.functional.interpolate(x, size=output_size, mode="nearest")
     tri_out = upsample_nearest1d(x, output_size=output_size)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=0, atol=0)
@@ -25,9 +23,7 @@ def test_upsample_nearest1d_with_scale(size):
     N, C = 2, 4
     x = torch.randn(N, C, size, device="cpu", dtype=torch.float32)
 
-    ref_out = torch.nn.functional.interpolate(
-        x, scale_factor=2.0, mode="nearest"
-    )
+    ref_out = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="nearest")
     tri_out = upsample_nearest1d(x, scales=2.0)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=0, atol=0)

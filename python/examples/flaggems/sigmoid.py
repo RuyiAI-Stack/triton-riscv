@@ -37,9 +37,7 @@ def sigmoid_backward_kernel(
     y = tl.load(y_ptr + offsets, mask=mask)
     dy = tl.load(dy_ptr + offsets, mask=mask)
     y_f32 = y.to(tl.float32)
-    tl.store(
-        dx_ptr + offsets, dy.to(tl.float32) * (1.0 - y_f32) * y_f32, mask=mask
-    )
+    tl.store(dx_ptr + offsets, dy.to(tl.float32) * (1.0 - y_f32) * y_f32, mask=mask)
 
 
 def sigmoid(x):

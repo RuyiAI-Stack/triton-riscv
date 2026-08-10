@@ -19,8 +19,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -93,9 +92,7 @@ def generate_functional_padding_wrapper(
     code += "    for i in range(ndim):\n"
     code += "        dst_shape[i] += pad_before[i] + pad_after[i]\n"
     code += "    out0 = torch.empty(dst_shape, device=in0.device, dtype=in0.dtype)\n"
-    code += (
-        f"    {destination_passing_func_name}({parameter_ref_for_wrapper()})\n"
-    )
+    code += f"    {destination_passing_func_name}({parameter_ref_for_wrapper()})\n"
     code += "    return out0\n\n"
     return code
 
@@ -119,9 +116,7 @@ def generate_destination_passing_padding_wrapper(
         code += f"    valid_dim{i}_end = dst_shape[{i}] - pad_after[{i}]\n"
 
     for i in range(rank):
-        code += (
-            f"    dim{i}_has_pad = pad_before[{i}] > 0 or pad_after[{i}] > 0\n"
-        )
+        code += f"    dim{i}_has_pad = pad_before[{i}] > 0 or pad_after[{i}] > 0\n"
 
     code += "    IS_CONSTANT = mode == 'constant'\n"
     code += "    IS_REFLECT = mode == 'reflect'\n"
@@ -209,9 +204,7 @@ def generate_pad_kernel(
         code += f"    remaining = remaining - idx * out_strides{i}\n\n"
 
     code += "    if_pad_false_mask = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)\n"
-    code += (
-        "    if_pad_true_mask = tl.full((BLOCK_SIZE,), 1, dtype=tl.int32)\n\n"
-    )
+    code += "    if_pad_true_mask = tl.full((BLOCK_SIZE,), 1, dtype=tl.int32)\n\n"
 
     code += "    cond = ((dst_index_0 >= valid_dim0_start) & (dst_index_0 < valid_dim0_end))\n"
     for i in range(1, rank):
@@ -254,9 +247,7 @@ def generate_pad_kernel(
     code += "        x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)\n"
     code += "    else:\n"
     code += "        x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)\n"
-    code += (
-        "    tl.store(out0_ptr + offset, x_val, mask=offset < out_elem_cnt)\n"
-    )
+    code += "    tl.store(out0_ptr + offset, x_val, mask=offset < out_elem_cnt)\n"
 
     return code
 

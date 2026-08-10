@@ -25,6 +25,7 @@ def upsample_nearest1d_kernel(
     nc_iter = tl.program_id(axis=1)
 
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < OL
     ol = idx % OL
 
     if SAME_L:
@@ -41,8 +42,8 @@ def upsample_nearest1d_kernel(
     dst_index_stride = nc_stride * OL
 
     while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
+        data = tl.load(ptr_i + offset_i, mask=mask, other=0.0)
+        tl.store(ptr_o + offset_o, data, mask=mask)
         ptr_i += src_index_stride
         ptr_o += dst_index_stride
         nc_iter += nc_stride
@@ -58,11 +59,7 @@ def upsample_nearest1d(
         "Either output_size or scales should be defined."
     )
 
-    OL = (
-        output_size[0]
-        if output_size is not None
-        else int(input.shape[2] * scales)
-    )
+    OL = output_size[0] if output_size is not None else int(input.shape[2] * scales)
     N, C, IL = input.shape
 
     if scales is not None:

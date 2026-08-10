@@ -65,15 +65,9 @@ def _fht_kernel_256_4row_native(
     row2 = row0 + 2
     row3 = row0 + 3
     x0 = tl.load(X_ptr + row0 * stride_x_row + col_offs)
-    x1 = tl.load(
-        X_ptr + row1 * stride_x_row + col_offs, mask=row1 < N_ROWS, other=0.0
-    )
-    x2 = tl.load(
-        X_ptr + row2 * stride_x_row + col_offs, mask=row2 < N_ROWS, other=0.0
-    )
-    x3 = tl.load(
-        X_ptr + row3 * stride_x_row + col_offs, mask=row3 < N_ROWS, other=0.0
-    )
+    x1 = tl.load(X_ptr + row1 * stride_x_row + col_offs, mask=row1 < N_ROWS, other=0.0)
+    x2 = tl.load(X_ptr + row2 * stride_x_row + col_offs, mask=row2 < N_ROWS, other=0.0)
+    x3 = tl.load(X_ptr + row3 * stride_x_row + col_offs, mask=row3 < N_ROWS, other=0.0)
     x0 = _butterfly_stage_1d(x0, 256, 128)
     x1 = _butterfly_stage_1d(x1, 256, 128)
     x2 = _butterfly_stage_1d(x2, 256, 128)
@@ -342,9 +336,7 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     if dim_og in _POW2_DIMS:
         n = dim_og
         log_n = n.bit_length() - 1
-        out = torch.empty(
-            batch_size, n, dtype=input_dtype, device=x_flat.device
-        )
+        out = torch.empty(batch_size, n, dtype=input_dtype, device=x_flat.device)
         stride_x = x_flat.stride(0)
         stride_out = n
         _launch_kernel(
@@ -462,9 +454,7 @@ def _launch_kernel(
             )
         else:
             rows_per_program = 2
-            n_programs = (
-                batch_size + rows_per_program - 1
-            ) // rows_per_program
+            n_programs = (batch_size + rows_per_program - 1) // rows_per_program
             _fht_kernel_2d_native[(n_programs,)](
                 x,
                 out,
@@ -543,9 +533,7 @@ class HadamardTransformFn(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dout):
-        return _hadamard_transform_fwd(
-            dout, ctx._hadamard_transform_scale
-        ), None
+        return _hadamard_transform_fwd(dout, ctx._hadamard_transform_scale), None
 
 
 def hadamard_transform(x, scale=1.0):

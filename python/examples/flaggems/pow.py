@@ -70,9 +70,7 @@ def pow_tensor_tensor(A, exponent):
     n_elements = A_c.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    pow_kernel_tt[grid](
-        A_c, exponent_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    pow_kernel_tt[grid](A_c, exponent_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out.view_as(A).to(torch.result_type(A, exponent))
 
 

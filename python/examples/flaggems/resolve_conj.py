@@ -84,9 +84,7 @@ def resolve_conj_kernel_large_2d(
     col_offsets = pid_col * BLOCK_SIZE_COLS + tl.arange(0, BLOCK_SIZE_COLS)
     row_mask = row_offsets < n_rows
     col_mask = col_offsets < n_cols
-    base_offsets = (
-        row_offsets[:, None] * stride_row + col_offsets[None, :] * stride_col
-    )
+    base_offsets = row_offsets[:, None] * stride_row + col_offsets[None, :] * stride_col
     mask = row_mask[:, None] & col_mask[None, :]
 
     real = tl.load(x_real_ptr + 2 * base_offsets, mask=mask)

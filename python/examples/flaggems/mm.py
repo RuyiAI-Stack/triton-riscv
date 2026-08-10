@@ -42,12 +42,8 @@ def mm_kernel_general(
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(
-        tl.int64
-    )
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(
-        tl.int64
-    )
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
     rm = rm.to(tl.int64)
     rn = rn.to(tl.int64)
     prev_mul = prev_multiple_of(K, BLOCK_K)
@@ -125,9 +121,7 @@ def general_mm(a, b, c, M, N, K):
     BLOCK_K = 32
 
     def grid(META):
-        return (
-            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        )
+        return (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
 
     mm_kernel_general[grid](
         a,
@@ -178,12 +172,8 @@ def mm_kernel_syrk(
 
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_M + tl.arange(0, BLOCK_M)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(
-        tl.int64
-    )
-    ran = tl.max_contiguous(tl.multiple_of(rn % M, BLOCK_M), BLOCK_M).to(
-        tl.int64
-    )
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    ran = tl.max_contiguous(tl.multiple_of(rn % M, BLOCK_M), BLOCK_M).to(tl.int64)
     rm = rm.to(tl.int64)
     rn = rn.to(tl.int64)
     acc = tl.zeros((BLOCK_M, BLOCK_M), dtype=tl.float32)

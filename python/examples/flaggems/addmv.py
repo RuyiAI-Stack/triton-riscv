@@ -46,9 +46,9 @@ def addmv_kernel(
 
 def addmv(self, mat, vec, *, beta=1, alpha=1):
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
-    assert (
-        self.shape == () or self.numel() == 1 or self.shape == (mat.shape[0],)
-    ), "Incompatible self shape"
+    assert self.shape == () or self.numel() == 1 or self.shape == (mat.shape[0],), (
+        "Incompatible self shape"
+    )
     N, M = mat.shape
     out = torch.empty((N,), device=mat.device, dtype=mat.dtype)
     self = self.broadcast_to(out.shape)
@@ -79,9 +79,9 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
 
 def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
-    assert (
-        self.shape == () or self.numel() == 1 or self.shape == (mat.shape[0],)
-    ), "Incompatible self shape"
+    assert self.shape == () or self.numel() == 1 or self.shape == (mat.shape[0],), (
+        "Incompatible self shape"
+    )
     N, M = mat.shape
     if out is None:
         out = torch.empty((N,), device=mat.device, dtype=mat.dtype)

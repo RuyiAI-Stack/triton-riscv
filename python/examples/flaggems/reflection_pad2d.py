@@ -69,9 +69,7 @@ def copy_tensor_kernel(
     tl.store(out_ptr + base + offs_n, vals, mask=mask)
 
 
-def launch_reflection_pad2d(
-    input: torch.Tensor, padding, out: torch.Tensor = None
-):
+def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = None):
     if not isinstance(padding, (list, tuple)):
         raise ValueError("padding must be a sequence")
     if len(padding) != 4:
@@ -96,12 +94,7 @@ def launch_reflection_pad2d(
         )
     if H_in <= 0 or W_in <= 0:
         raise ValueError("spatial dimensions must be > 0")
-    if (
-        pad_left >= W_in
-        or pad_right >= W_in
-        or pad_top >= H_in
-        or pad_bottom >= H_in
-    ):
+    if pad_left >= W_in or pad_right >= W_in or pad_top >= H_in or pad_bottom >= H_in:
         raise ValueError(
             "padding values must be less than the input spatial dimensions for reflection padding"
         )

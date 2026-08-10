@@ -53,9 +53,7 @@ def calculate_indices(batch_idx, shape_a, shape_b):
         remaining //= dim_size
 
     a_idx = b_idx = 0
-    for out_idx, (a_dim, b_dim) in zip(
-        out_indices, zip(a_batch_dims, b_batch_dims)
-    ):
+    for out_idx, (a_dim, b_dim) in zip(out_indices, zip(a_batch_dims, b_batch_dims)):
         a_idx = a_idx * a_dim + (out_idx // b_dim)
         b_idx = b_idx * b_dim + (out_idx % b_dim)
 
@@ -105,8 +103,8 @@ def kron_kernel_for_batch_size_1(
     a_idx = a_row * a_stride_0 + a_col * a_stride_1
     b_idx = b_row * b_stride_0 + b_col * b_stride_1
 
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
+    a = tl.load(a_ptr + a_idx, mask=mask, other=0.0)
+    b = tl.load(b_ptr + b_idx, mask=mask, other=0.0)
     c = a * b
 
     c_idx = offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
@@ -151,29 +149,23 @@ def kron_kernel(
     offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    mask = (
-        (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
-    )
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
 
     offset = batch_id * 2
     is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
+    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid, other=0)
+    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid, other=0)
 
     a_row = offs_m[:, None] // M2
     a_col = offs_n[None, :] // N2
     b_row = offs_m[:, None] % M2
     b_col = offs_n[None, :] % N2
 
-    a_idx = (
-        a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    )
-    b_idx = (
-        b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
-    )
+    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
+    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
 
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
+    a = tl.load(a_ptr + a_idx, mask=mask, other=0.0)
+    b = tl.load(b_ptr + b_idx, mask=mask, other=0.0)
     c = a * b
 
     c_idx = (
@@ -198,6 +190,7 @@ def calculate_batch_indices_kernel(
     pid = tl.program_id(axis=0)
 
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    valid = offset < out_batch0 * out_batch1
 
     out_indice1 = offset % out_batch1
     remaining = offset // out_batch1
@@ -209,8 +202,8 @@ def calculate_batch_indices_kernel(
 
     a_store_offset = 2 * offset
     b_store_offset = 2 * offset + 1
-    tl.store(batch_indices_ptr + a_store_offset, a_idx)
-    tl.store(batch_indices_ptr + b_store_offset, b_idx)
+    tl.store(batch_indices_ptr + a_store_offset, a_idx, mask=valid)
+    tl.store(batch_indices_ptr + b_store_offset, b_idx, mask=valid)
 
 
 def kron(A, B):
@@ -247,12 +240,10 @@ def kron(A, B):
     a_batch_stride = M1 * N1
     b_batch_stride = M2 * N2
     c_batch_stride = M * N
-    BLOCK_M = 16
-    BLOCK_N = 16
+    BLOCK_M = 8
+    BLOCK_N = 256
     if A_prepared.dim() == 4 and B_prepared.dim() == 4:
-        batch_indices = torch.empty(
-            batch_size * 2, device=A.device, dtype=torch.int64
-        )
+        batch_indices = torch.empty(batch_size * 2, device=A.device, dtype=torch.int64)
         a_batch0, a_batch1 = A_prepared.shape[:-2]
         b_batch0, b_batch1 = B_prepared.shape[:-2]
         out_batch0 = a_batch0 * b_batch0
@@ -309,9 +300,7 @@ def kron(A, B):
                 batch_size * 2, device=A.device, dtype=torch.int64
             )
             for i in range(batch_size):
-                a_idx, b_idx = calculate_indices(
-                    i, A_prepared.shape, B_prepared.shape
-                )
+                a_idx, b_idx = calculate_indices(i, A_prepared.shape, B_prepared.shape)
                 batch_indices[i * 2] = a_idx
                 batch_indices[i * 2 + 1] = b_idx
 

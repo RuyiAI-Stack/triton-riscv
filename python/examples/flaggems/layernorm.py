@@ -45,11 +45,11 @@ def layer_norm_persistent_kernel(
     if weight_ptr is None:
         w = 1
     else:
-        w = tl.load(weight_ptr + n_offsets, mask=mask)
+        w = tl.load(weight_ptr + n_offsets, mask=mask, other=0.0)
     if bias_ptr is None:
         b = 0
     else:
-        b = tl.load(bias_ptr + n_offsets, mask=mask)
+        b = tl.load(bias_ptr + n_offsets, mask=mask, other=0.0)
     out = (x - m) * rstd * w + b
 
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
@@ -78,9 +78,9 @@ def layer_norm_persistent_kernel_multiline(
     n_mask = n_offsets < N
     mask = m_mask[:, None] & n_mask
 
-    x = tl.load(
-        in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0
-    ).to(tl.float32)
+    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
+        tl.float32
+    )
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -94,11 +94,11 @@ def layer_norm_persistent_kernel_multiline(
     if weight_ptr is None:
         w = 1
     else:
-        w = tl.load(weight_ptr + n_offsets, mask=n_mask)
+        w = tl.load(weight_ptr + n_offsets, mask=n_mask, other=0.0)
     if bias_ptr is None:
         b = 0
     else:
-        b = tl.load(bias_ptr + n_offsets, mask=n_mask)
+        b = tl.load(bias_ptr + n_offsets, mask=n_mask, other=0.0)
     out = (x - m[:, None]) * rstd[:, None] * w + b
 
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
@@ -140,7 +140,7 @@ def layer_norm_loop_kernel(
         start_n = step * TILE_N
         n_offsets = start_n + tl.arange(0, TILE_N)
         mask = n_offsets < N
-        x = tl.load(in_ptr + pid * N + n_offsets, mask=mask).to(tl.float32)
+        x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
         new_m = tl.where(mask, m + (x - m) / (step + 1), m)
         new_s = tl.where(mask, s + (x - new_m) * (x - m), s)
         cnt += mask.to(tl.int32)
@@ -171,19 +171,19 @@ def layer_norm_loop_kernel(
         if weight_ptr is None:
             w = 1
         else:
-            w = tl.load(weight_ptr + n_offsets, mask=mask)
+            w = tl.load(weight_ptr + n_offsets, mask=mask, other=0.0)
         if bias_ptr is None:
             b = 0
         else:
-            b = tl.load(bias_ptr + n_offsets, mask=mask)
+            b = tl.load(bias_ptr + n_offsets, mask=mask, other=0.0)
         out = w * (x - m) * rstd + b
         tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
     for start_n in range(TILE_N, N, TILE_N):
         n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        x = tl.load(
-            in_ptr + pid * N + n_offsets, eviction_policy="evict_first"
-        ).to(tl.float32)
+        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
+            tl.float32
+        )
         if weight_ptr is None:
             w = 1
         else:
@@ -209,10 +209,7 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = (
-        tl.program_id(0) * BLOCK_ROW_SIZE
-        + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    )
+    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -220,8 +217,8 @@ def layer_norm_backward_kernel(
     Mean += pid
     Rstd += pid
 
-    mean = tl.load(Mean, mask=row_mask).to(tl.float32)
-    rstd = tl.load(Rstd, mask=row_mask).to(tl.float32)
+    mean = tl.load(Mean, mask=row_mask, other=0.0).to(tl.float32)
+    rstd = tl.load(Rstd, mask=row_mask, other=0.0).to(tl.float32)
 
     dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -229,15 +226,15 @@ def layer_norm_backward_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
-        x = tl.load(X + cols[None, :], mask).to(tl.float32)
+        mask = row_mask & col_mask
+        dy = tl.load(dY + cols[None, :], mask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols[None, :], mask, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         if W is None:
             w = 1
         else:
-            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+            w = tl.load(W + cols, mask=cols < N, other=0.0).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
@@ -248,13 +245,13 @@ def layer_norm_backward_kernel(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
-        x = tl.load(X + cols[None, :], mask).to(tl.float32)
+        mask = row_mask & col_mask
+        dy = tl.load(dY + cols[None, :], mask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols[None, :], mask, other=0.0).to(tl.float32)
         if W is None:
             w = 1
         else:
-            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+            w = tl.load(W + cols, mask=cols < N, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
@@ -274,6 +271,8 @@ def weight_bias_backward_kernel(
     N,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    HAS_DW: tl.constexpr,
+    HAS_DB: tl.constexpr,
 ):
     pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
     col_mask = pid < N
@@ -284,18 +283,18 @@ def weight_bias_backward_kernel(
     for off in range(0, M, BLOCK_ROW_SIZE):
         rows = off + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
         row_mask = rows < M
-        mask = row_mask and col_mask[None, :]
-        dy = tl.load(dY + rows * N, mask).to(tl.float32)
-        x = tl.load(X + rows * N, mask).to(tl.float32)
-        mean = tl.load(Mean + rows, mask=rows < M).to(tl.float32)
-        rstd = tl.load(Rstd + rows, mask=rows < M).to(tl.float32)
+        mask = row_mask & col_mask[None, :]
+        dy = tl.load(dY + rows * N, mask, other=0.0).to(tl.float32)
+        x = tl.load(X + rows * N, mask, other=0.0).to(tl.float32)
+        mean = tl.load(Mean + rows, mask=rows < M, other=0.0).to(tl.float32)
+        rstd = tl.load(Rstd + rows, mask=rows < M, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         accW += dy * x * rstd
         accB += dy
-    if dW:
+    if HAS_DW:
         dw = tl.sum(accW, axis=0)
         tl.store(dW + pid, dw, mask=col_mask)
-    if dB:
+    if HAS_DB:
         db = tl.sum(accB, axis=0)
         tl.store(dB + pid, db, mask=col_mask)
 
@@ -424,5 +423,7 @@ def layer_norm_backward(
         N,
         BLOCK_ROW_SIZE=BLOCK_ROW_SIZE,
         BLOCK_COL_SIZE=BLOCK_COL_SIZE,
+        HAS_DW=output_mask[1],
+        HAS_DB=output_mask[2],
     )
     return in_grad, weight_grad, bias_grad

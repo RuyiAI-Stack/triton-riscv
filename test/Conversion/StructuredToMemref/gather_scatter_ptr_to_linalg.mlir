@@ -13,25 +13,7 @@
 // CHECK: #[[$ATTR_1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL:   func.func @row_gather2(
-// CHECK-SAME:                           %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
-// CHECK-SAME:                           %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xf32>,
-// CHECK-SAME:                           %[[VAL_2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_10:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_11:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_12:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i64,
-// CHECK-SAME:                           %[[VAL_13:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_14:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_15:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_16:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_17:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
-// CHECK-SAME:                           %[[VAL_18:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK-SAME:  %[[VAL_0:.*]]: memref<*xf32>, %[[VAL_1:.*]]: memref<*xf32>, %[[VAL_2:.*]]: i32, %[[VAL_3:.*]]: i32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i64, %[[VAL_7:.*]]: i64, %[[VAL_8:.*]]: i64, %[[VAL_9:.*]]: i64, %[[VAL_10:.*]]: i64, %[[VAL_11:.*]]: i64, %[[VAL_12:.*]]: i64, %[[VAL_13:.*]]: i32, %[[VAL_14:.*]]: i32, %[[VAL_15:.*]]: i32, %[[VAL_16:.*]]: i32, %[[VAL_17:.*]]: i32, %[[VAL_18:.*]]: i32) {
 // CHECK:           %[[VAL_19:.*]] = arith.constant 1 : index
 // CHECK:           %[[VAL_20:.*]] = arith.constant 8 : i32
 // CHECK:           %[[VAL_21:.*]] = arith.constant 16 : index
@@ -106,17 +88,17 @@
 // CHECK:           %[[VAL_88:.*]] = arith.minsi %[[VAL_87]], %[[VAL_21]] : index
 // CHECK:           %[[VAL_89:.*]] = arith.maxsi %[[VAL_88]], %[[VAL_22]] : index
 // CHECK:           %[[VAL_90:.*]] = arith.minsi %[[VAL_89]], %[[VAL_21]] : index
-// CHECK:           %[[VAL_91:.*]] = memref.alloc() : memref<16x16xf32>
-// CHECK:           %[[VAL_92:.*]] = arith.minsi %[[VAL_90]], %[[VAL_21]] : index
-// CHECK:           scf.for %[[VAL_93:.*]] = %[[VAL_22]] to %[[VAL_92]] step %[[VAL_19]] {
+// CHECK:           %[[VAL_91:.*]] = arith.minsi %[[VAL_90]], %[[VAL_21]] : index
+// CHECK:           %[[VAL_92:.*]] = memref.alloc() : memref<16x16xf32>
+// CHECK:           scf.for %[[VAL_93:.*]] = %[[VAL_22]] to %[[VAL_91]] step %[[VAL_19]] {
 // CHECK:             %[[VAL_94:.*]] = tensor.extract %[[VAL_86]]{{\[}}%[[VAL_93]]] : tensor<16xi32>
 // CHECK:             %[[VAL_95:.*]] = arith.index_cast %[[VAL_94]] : i32 to index
 // CHECK:             %[[VAL_96:.*]] = memref.reinterpret_cast %[[VAL_0]] to offset: {{\[}}%[[VAL_95]]], sizes: [1, 16], strides: [1, 1] : memref<*xf32> to memref<1x16xf32, strided<[1, 1], offset: ?>>
 // CHECK:             %[[VAL_97:.*]] = memref.subview %[[VAL_96]][0, 0] [1, 8] [1, 1] : memref<1x16xf32, strided<[1, 1], offset: ?>> to memref<1x8xf32, strided<[1, 1], offset: ?>>
-// CHECK:             %[[VAL_98:.*]] = memref.subview %[[VAL_91]]{{\[}}%[[VAL_93]], 0] [1, 8] [1, 1] : memref<16x16xf32> to memref<1x8xf32, strided<[16, 1], offset: ?>>
+// CHECK:             %[[VAL_98:.*]] = memref.subview %[[VAL_92]]{{\[}}%[[VAL_93]], 0] [1, 8] [1, 1] : memref<16x16xf32> to memref<1x8xf32, strided<[16, 1], offset: ?>>
 // CHECK:             memref.copy %[[VAL_97]], %[[VAL_98]] : memref<1x8xf32, strided<[1, 1], offset: ?>> to memref<1x8xf32, strided<[16, 1], offset: ?>>
 // CHECK:           }
-// CHECK:           %[[VAL_99:.*]] = bufferization.to_tensor %[[VAL_91]] restrict writable : memref<16x16xf32> to tensor<16x16xf32>
+// CHECK:           %[[VAL_99:.*]] = bufferization.to_tensor %[[VAL_92]] restrict writable : memref<16x16xf32> to tensor<16x16xf32>
 // CHECK:           %[[VAL_100:.*]] = arith.muli %[[VAL_43]], %[[VAL_10]] : i64
 // CHECK:           %[[VAL_101:.*]] = arith.extsi %[[VAL_18]] : i32 to i64
 // CHECK:           %[[VAL_102:.*]] = arith.muli %[[VAL_101]], %[[VAL_12]] : i64
@@ -151,7 +133,7 @@
 // CHECK:             linalg.yield %[[VAL_132]] : i32
 // CHECK:           } -> tensor<16x1xi32>
 // CHECK:           %[[VAL_133:.*]] = tensor.collapse_shape %[[VAL_128]] {{\[\[}}0, 1]] : tensor<16x1xi32> into tensor<16xi32>
-// CHECK:           scf.for %[[VAL_134:.*]] = %[[VAL_22]] to %[[VAL_92]] step %[[VAL_19]] {
+// CHECK:           scf.for %[[VAL_134:.*]] = %[[VAL_22]] to %[[VAL_91]] step %[[VAL_19]] {
 // CHECK:             %[[VAL_135:.*]] = tensor.extract %[[VAL_133]]{{\[}}%[[VAL_134]]] : tensor<16xi32>
 // CHECK:             %[[VAL_136:.*]] = arith.index_cast %[[VAL_135]] : i32 to index
 // CHECK:             %[[VAL_137:.*]] = tensor.extract_slice %[[VAL_99]]{{\[}}%[[VAL_134]], 0] [1, 8] [1, 1] : tensor<16x16xf32> to tensor<1x8xf32>
@@ -161,6 +143,7 @@
 // CHECK:             bufferization.materialize_in_destination %[[VAL_137]] in writable %[[VAL_140]] : (tensor<1x8xf32>, memref<1x8xf32, strided<[?, ?], offset: ?>>) -> ()
 // CHECK:           }
 // CHECK:           return
+// CHECK:         }
 
 module {
   tt.func public @row_gather2(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i64, %arg7: i64, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: i64, %arg12: i64) attributes {noinline = false} {

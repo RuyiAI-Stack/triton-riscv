@@ -14,9 +14,7 @@ def _ref_metadata(context_lens, block_size, num_sms):
 
     batch_size = effective.shape[0]
     if batch_size == 0:
-        return torch.zeros(
-            (num_sms + 1, 2), dtype=torch.int32, device=effective.device
-        )
+        return torch.zeros((num_sms + 1, 2), dtype=torch.int32, device=effective.device)
 
     num_segs = (effective + SPLIT_KV - 1) // SPLIT_KV
     prefix_sum = num_segs.cumsum(0)
@@ -25,9 +23,7 @@ def _ref_metadata(context_lens, block_size, num_sms):
     q = total_segs // num_sms
     r = total_segs % num_sms
 
-    metadata = torch.zeros(
-        (num_sms + 1, 2), dtype=torch.int32, device=effective.device
-    )
+    metadata = torch.zeros((num_sms + 1, 2), dtype=torch.int32, device=effective.device)
     for sm_idx in range(num_sms + 1):
         min_r = sm_idx if sm_idx < r else r
         seg_starts = sm_idx * q + min_r
@@ -36,9 +32,7 @@ def _ref_metadata(context_lens, block_size, num_sms):
         q_idx = is_le.sum().item()
 
         prev_mask = torch.arange(batch_size) < q_idx
-        prev_prefix = (
-            prefix_sum[prev_mask].max().item() if prev_mask.any() else 0
-        )
+        prev_prefix = prefix_sum[prev_mask].max().item() if prev_mask.any() else 0
         kv_split_idx = seg_starts - prev_prefix
 
         metadata[sm_idx, 0] = q_idx

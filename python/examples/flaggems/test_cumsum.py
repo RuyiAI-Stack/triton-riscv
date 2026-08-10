@@ -60,9 +60,7 @@ def test_cumsum_out():
     ref_out = torch.cumsum(x, dim=0)
     tri_out = cumsum_out(x, dim=0, out=out)
 
-    assert tri_out.data_ptr() == out.data_ptr(), (
-        "cumsum_out should write to out"
-    )
+    assert tri_out.data_ptr() == out.data_ptr(), "cumsum_out should write to out"
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
 
 
@@ -103,7 +101,7 @@ def test_normed_cumsum(shape):
     torch.manual_seed(0)
     x = torch.randn(shape, device="cpu", dtype=torch.float32)
 
-    ref = torch.cumsum(x, dim=-1) / torch.sum(x, dim=-1, keepdim=True)
+    ref = torch.div(torch.cumsum(x, dim=-1), torch.sum(x, dim=-1, keepdim=True))
     tri = normed_cumsum(x)
 
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)

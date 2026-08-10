@@ -16,10 +16,6 @@ def atan_kernel(
     mask = offsets < n_elements
 
     x = tl.load(x_ptr + offsets, mask=mask)
-    # NOTE: tl.math.atan is NOT available in the triton-riscv MLIR backend.
-    # The triton-riscv MLIR backend does not support tl.math.atan (it only supports
-    # basic arithmetic ops). When the backend gains support, this kernel should work
-    # as-is. Polynomial approximation was attempted but insufficient accuracy.
     y = tl.math.atan(x.to(tl.float32))
 
     tl.store(out_ptr + offsets, y, mask=mask)

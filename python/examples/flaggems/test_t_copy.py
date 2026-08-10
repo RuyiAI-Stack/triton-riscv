@@ -8,7 +8,7 @@ from .t_copy import t_copy, t_copy_out
 def test_t_copy_1d(shape):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
-    ref = x.t().contiguous() if x.dim() == 2 else x.clone()
+    ref = torch.t(x).contiguous()
     tri = t_copy(x)
     if x.dim() == 1:
         torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
@@ -20,7 +20,7 @@ def test_t_copy_1d(shape):
 def test_t_copy_2d(shape):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
-    ref = x.t().contiguous()
+    ref = torch.t(x).contiguous()
     tri = t_copy(x)
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
@@ -30,7 +30,7 @@ def test_t_copy_out_1d(shape):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     out = torch.empty_like(x)
-    ref = x.clone()
+    ref = torch.t(x).contiguous()
     t_copy_out(x, out)
     torch.testing.assert_close(out, ref, rtol=1e-4, atol=1e-4)
 
@@ -41,6 +41,6 @@ def test_t_copy_out_2d(shape):
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     M, N = shape
     out = torch.empty((N, M), dtype=torch.float32, device="cpu")
-    ref = x.t().contiguous()
+    ref = torch.t(x).contiguous()
     t_copy_out(x, out)
     torch.testing.assert_close(out, ref, rtol=1e-4, atol=1e-4)

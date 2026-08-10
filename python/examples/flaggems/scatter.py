@@ -20,8 +20,7 @@ def write_atomic(
     if make_dirs:
         path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = (
-        path.parent
-        / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
     )
     with tmp_path.open("wt", encoding=encoding) as f:
         f.write(content)
@@ -119,9 +118,7 @@ def generate_scatter_kernel(rank: int, kernel_name: str, code: str) -> str:
         code += "        if INT32_OFFSET:\n"
         code += f"            shape_{i} = shape_{i}.to(tl.int32)\n"
         code += f"            inp_stride_{i} = inp_stride_{i}.to(tl.int32)\n"
-        code += (
-            f"            index_stride_{i} = index_stride_{i}.to(tl.int32)\n"
-        )
+        code += f"            index_stride_{i} = index_stride_{i}.to(tl.int32)\n"
         code += f"            src_stride_{i} = src_stride_{i}.to(tl.int32)\n"
         code += f"        mod = cur_idx % shape_{i}\n"
         code += f"        inp_offsets += mod * inp_stride_{i}\n"
@@ -143,9 +140,7 @@ def generate_scatter_kernel(rank: int, kernel_name: str, code: str) -> str:
     code += "            block_stop = False\n"
     code += "            while not block_stop:\n"
     code += "                cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)\n"
-    code += (
-        "                res = tl.where(stop, cur_inp, cur_inp * cur_src)\n"
-    )
+    code += "                res = tl.where(stop, cur_inp, cur_inp * cur_src)\n"
     code += "                cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')\n"
     code += "                stop |= cur_inp == cas_res\n"
     code += "                block_stop = tl.sum(stop.to(tl.int32)) == BLOCK\n"
@@ -209,9 +204,7 @@ def generate_code(
     rank = len(shape)
     code = generate_imports(code)
     code = generate_scatter_kernel(rank, kernel_name, code)
-    code = generate_destination_passing_wrapper(
-        rank, wrapper_name, kernel_name, code
-    )
+    code = generate_destination_passing_wrapper(rank, wrapper_name, kernel_name, code)
     return code
 
 
@@ -225,9 +218,7 @@ class ScatterFunction:
         if key in self.overloads:
             overload = self.overloads[key]
         else:
-            code = generate_code(
-                args, "_scatter_wrapper", "_scatter_jit_function", ""
-            )
+            code = generate_code(args, "_scatter_wrapper", "_scatter_jit_function", "")
 
             file_name = f"scatter_rank_{key}.py"
             cache_dir = Path.home() / ".flaggems" / "code_cache"

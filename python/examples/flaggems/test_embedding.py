@@ -31,9 +31,7 @@ def test_embedding(
         device=device,
         requires_grad=True,
     )
-    indices = torch.randint(
-        0, num_embeddings, shape, dtype=torch.int64, device=device
-    )
+    indices = torch.randint(0, num_embeddings, shape, dtype=torch.int64, device=device)
 
     weight_ref = weight.clone().detach().requires_grad_(True)
 

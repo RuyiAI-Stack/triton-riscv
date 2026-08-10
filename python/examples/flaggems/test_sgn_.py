@@ -5,9 +5,7 @@ from .sgn_ import sgn_
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
 def test_sgn_(size, dtype):
     torch.manual_seed(0)
     x = torch.randn(size, device="cpu", dtype=dtype)
@@ -20,9 +18,7 @@ def test_sgn_(size, dtype):
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
 def test_sgn_with_zero(size, dtype):
     torch.manual_seed(0)
     x = torch.randn(size, device="cpu", dtype=dtype)

@@ -290,9 +290,7 @@ def _tril_strided_out_tile_kernel(
     b = b // B2
     i1 = b % B1
     i0 = b // B1
-    out_batch_offset = (
-        i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
-    )
+    out_batch_offset = i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
@@ -321,9 +319,7 @@ def _tril_strided_out_tile_kernel(
 
 def _check_input(input: torch.Tensor):
     if input.dim() < 2:
-        raise RuntimeError(
-            "tril: input tensor must have at least 2 dimensions"
-        )
+        raise RuntimeError("tril: input tensor must have at least 2 dimensions")
 
 
 def _empty_contiguous_like(input: torch.Tensor):
@@ -388,11 +384,7 @@ def _use_wide_exact_row(M: int, N: int, batch: int):
     # One exact-row program covers one matrix row with BLOCK_N == N.  Use it for
     # wide power-of-two rows where it avoids the flat kernel's div/mod indexing,
     # but require enough row programs to keep occupancy reasonable.
-    if (
-        N < _WIDE_EXACT_ROW_MIN_N
-        or N > _WIDE_EXACT_ROW_MAX_N
-        or not _is_power_of_2(N)
-    ):
+    if N < _WIDE_EXACT_ROW_MIN_N or N > _WIDE_EXACT_ROW_MAX_N or not _is_power_of_2(N):
         return False
 
     rows = M * batch
@@ -832,9 +824,7 @@ def tril_(input: torch.Tensor, diagonal: int = 0):
     return _launch_tril_inplace_strided(input, diagonal)
 
 
-def tril_out(
-    input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None
-):
+def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
 
     if out is None:
         return tril(input, diagonal)

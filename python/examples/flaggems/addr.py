@@ -38,9 +38,7 @@ def addr_kernel(
     vec2 = tl.load(vec2_ptrs, mask=mask_n, other=0.0).to(tl.float32)
 
     input_ptrs = (
-        input_ptr
-        + offs_m[:, None] * stride_input_m
-        + offs_n[None, :] * stride_input_n
+        input_ptr + offs_m[:, None] * stride_input_m + offs_n[None, :] * stride_input_n
     )
 
     mask_2d = mask_m[:, None] & mask_n[None, :]

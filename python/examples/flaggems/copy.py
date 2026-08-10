@@ -3,6 +3,11 @@ import triton
 import triton.language as tl
 
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
+
 @triton.jit
 def copy_kernel(
     in_ptr,
@@ -46,9 +51,7 @@ def copy_(
         raise TypeError("unsupport src type for copy_: ", type(src))
 
     if dst._is_zerotensor():
-        raise RuntimeError(
-            "ZeroTensors are immutable. Call clone() before copy_."
-        )
+        raise RuntimeError("ZeroTensors are immutable. Call clone() before copy_.")
     if src._is_zerotensor():
         return dst.zero_()
 
@@ -103,9 +106,7 @@ def copy_(
     n_elements = dst_contig.numel()
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    copy_kernel[grid](
-        expanded_src, dst_contig, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    copy_kernel[grid](expanded_src, dst_contig, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
     if dst_contig.data_ptr() != dst.data_ptr():
         dst.copy_(dst_contig)

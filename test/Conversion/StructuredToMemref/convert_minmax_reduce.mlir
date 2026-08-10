@@ -12,21 +12,30 @@ module {
     tt.return
   }
 }
-
-// CHECK-LABEL:  func.func @minmax_sgt
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xi32>, [[PARAM_1_:%.+]]: i32, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_minus_2147483648_:%.+]] = arith.constant -2147483648 : i32
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0 : i32
-// CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xi32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_]] : i32) outs([[VAR_0_]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_minus_2147483648_]] into [[VAR_2_]][] : tensor<i32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xi32>) outs([[VAR_inserted_]] : tensor<i32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: i32, [[init_:%.+]]: i32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.maxsi [[in_]], [[init_]] : i32
-// CHECK:               linalg.yield [[VAR_3_]] : i32
+// CHECK-LABEL:   func.func @minmax_sgt(
+// CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xi32>,
+// CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant -2147483648 : i32
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4096xi32>) -> tensor<4096xi32>
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<i32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : i32) outs(%[[EMPTY_1]] : tensor<i32>) -> tensor<i32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xi32>) outs(%[[FILL_1]] : tensor<i32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:               %[[MAXSI_0:.*]] = arith.maxsi %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:               linalg.yield %[[MAXSI_0]] : i32
 // CHECK:             }
+// CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<i32>
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1], strides: [1] : memref<*xi32> to memref<1xi32, strided<[1]>>
+// CHECK:           affine.store %[[EXTRACT_0]], %[[REINTERPRET_CAST_0]][0] : memref<1xi32, strided<[1]>>
+// CHECK:           return
+// CHECK:         }
 
 
 // -----
@@ -46,19 +55,29 @@ module {
 }
 
 
-// CHECK-LABEL:  func.func @minmax_ugt
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xi32>, [[PARAM_1_:%.+]]: i32, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0 : i32
-// CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xi32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_]] : i32) outs([[VAR_0_]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_]] into [[VAR_2_]][] : tensor<i32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xi32>) outs([[VAR_inserted_]] : tensor<i32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: i32, [[init_:%.+]]: i32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.maxui [[in_]], [[init_]] : i32
-// CHECK:               linalg.yield [[VAR_3_]] : i32
+// CHECK-LABEL:   func.func @minmax_ugt(
+// CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xi32>,
+// CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4096xi32>) -> tensor<4096xi32>
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<i32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_1]] : tensor<i32>) -> tensor<i32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xi32>) outs(%[[FILL_1]] : tensor<i32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:               %[[MAXUI_0:.*]] = arith.maxui %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:               linalg.yield %[[MAXUI_0]] : i32
 // CHECK:             }
+// CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<i32>
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1], strides: [1] : memref<*xi32> to memref<1xi32, strided<[1]>>
+// CHECK:           affine.store %[[EXTRACT_0]], %[[REINTERPRET_CAST_0]][0] : memref<1xi32, strided<[1]>>
+// CHECK:           return
+// CHECK:         }
 
 // -----
 
@@ -76,20 +95,30 @@ module {
   }
 }
 
-// CHECK-LABEL:  func.func @minmax_slt
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xi32>, [[PARAM_1_:%.+]]: i32, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_2147483647_:%.+]] = arith.constant 2147483647 : i32
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0 : i32
-// CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xi32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_]] : i32) outs([[VAR_0_]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_2147483647_]] into [[VAR_2_]][] : tensor<i32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xi32>) outs([[VAR_inserted_]] : tensor<i32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: i32, [[init_:%.+]]: i32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.minsi [[in_]], [[init_]] : i32
-// CHECK:               linalg.yield [[VAR_3_]] : i32
+// CHECK-LABEL:   func.func @minmax_slt(
+// CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xi32>,
+// CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 2147483647 : i32
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4096xi32>) -> tensor<4096xi32>
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<i32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : i32) outs(%[[EMPTY_1]] : tensor<i32>) -> tensor<i32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xi32>) outs(%[[FILL_1]] : tensor<i32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:               %[[MINSI_0:.*]] = arith.minsi %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:               linalg.yield %[[MINSI_0]] : i32
 // CHECK:             }
+// CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<i32>
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1], strides: [1] : memref<*xi32> to memref<1xi32, strided<[1]>>
+// CHECK:           affine.store %[[EXTRACT_0]], %[[REINTERPRET_CAST_0]][0] : memref<1xi32, strided<[1]>>
+// CHECK:           return
+// CHECK:         }
 
 
 // -----
@@ -108,17 +137,27 @@ module {
   }
 }
 
-// CHECK-LABEL:  func.func @minmax_ult
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xi32>, [[PARAM_1_:%.+]]: i32, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_minus_1_:%.+]] = arith.constant -1 : i32
-// CHECK-DAG:       [[CST_0_:%.+]] = arith.constant 0 : i32
-// CHECK-DAG:       [[VAR_0_:%.+]] = tensor.empty() : tensor<4096xi32>
-// CHECK-NOT: separator of consecutive DAGs
-// CHECK-DAG:       [[VAR_1_:%.+]] = linalg.fill ins([[CST_0_]] : i32) outs([[VAR_0_]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK-DAG:       [[VAR_2_:%.+]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_minus_1_]] into [[VAR_2_]][] : tensor<i32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_1_]] : tensor<4096xi32>) outs([[VAR_inserted_]] : tensor<i32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: i32, [[init_:%.+]]: i32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.minui [[in_]], [[init_]] : i32
-// CHECK:               linalg.yield [[VAR_3_]] : i32
+// CHECK-LABEL:   func.func @minmax_ult(
+// CHECK-SAME:      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xi32>,
+// CHECK-SAME:      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG2:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG3:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG4:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG5:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
+// CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant -1 : i32
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xi32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4096xi32>) -> tensor<4096xi32>
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<i32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_1]] : i32) outs(%[[EMPTY_1]] : tensor<i32>) -> tensor<i32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xi32>) outs(%[[FILL_1]] : tensor<i32>) dimensions = [0]
+// CHECK:             (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:               %[[MINUI_0:.*]] = arith.minui %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:               linalg.yield %[[MINUI_0]] : i32
 // CHECK:             }
+// CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<i32>
+// CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [1], strides: [1] : memref<*xi32> to memref<1xi32, strided<[1]>>
+// CHECK:           affine.store %[[EXTRACT_0]], %[[REINTERPRET_CAST_0]][0] : memref<1xi32, strided<[1]>>
+// CHECK:           return
+// CHECK:         }

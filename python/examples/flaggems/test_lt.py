@@ -10,7 +10,7 @@ def test_lt(shape):
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     y = torch.randn(shape, dtype=torch.float32, device="cpu")
 
-    ref = x < y
+    ref = torch.lt(x, y)
     tri = lt(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
@@ -19,5 +19,5 @@ def test_lt(shape):
 def test_lt_scalar():
     x = torch.tensor([0.0, 1.0, 2.0, 0.0], dtype=torch.float32, device="cpu")
     tri = lt_scalar(x, 1.0)
-    ref = x < 1.0
+    ref = torch.lt(x, 1.0)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)

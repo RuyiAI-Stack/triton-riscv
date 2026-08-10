@@ -10,9 +10,13 @@ def test_weight_norm_interface_last_dim():
     g = torch.randn(8, dtype=torch.float32, device="cpu")
 
     output, norm = weight_norm_interface(v, g, dim=1)
+    ref_output = torch._weight_norm(v, g, 1)
+    ref_norm = torch.norm_except_dim(v, 2, 1)
 
     assert output.shape == v.shape
     assert norm.shape == g.shape
+    torch.testing.assert_close(output, ref_output, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(norm, ref_norm.reshape_as(norm))
 
 
 def test_weight_norm_interface_first_dim():
@@ -21,9 +25,13 @@ def test_weight_norm_interface_first_dim():
     g = torch.randn(4, dtype=torch.float32, device="cpu")
 
     output, norm = weight_norm_interface(v, g, dim=0)
+    ref_output = torch._weight_norm(v, g, 0)
+    ref_norm = torch.norm_except_dim(v, 2, 0)
 
     assert output.shape == v.shape
     assert norm.shape == g.shape
+    torch.testing.assert_close(output, ref_output, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(norm, ref_norm.reshape_as(norm))
 
 
 def test_weight_norm_interface_1d():
@@ -32,9 +40,13 @@ def test_weight_norm_interface_1d():
     g = torch.randn(16, dtype=torch.float32, device="cpu")
 
     output, norm = weight_norm_interface(v, g, dim=0)
+    ref_output = torch._weight_norm(v, g, 0)
+    ref_norm = torch.norm_except_dim(v, 2, 0)
 
     assert output.shape == v.shape
     assert norm.shape == g.shape
+    torch.testing.assert_close(output, ref_output, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(norm, ref_norm.reshape_as(norm))
 
 
 @pytest.mark.parametrize(
@@ -46,17 +58,10 @@ def test_weight_norm_interface_1d():
 )
 def test_weight_norm_interface_backward(v_shape, g_shape, dim):
     torch.manual_seed(0)
-    v = torch.randn(
-        v_shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
-    g = torch.randn(
-        g_shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    v = torch.randn(v_shape, dtype=torch.float32, device="cpu", requires_grad=True)
+    g = torch.randn(g_shape, dtype=torch.float32, device="cpu", requires_grad=True)
 
-    # Reference backward via manual formula to avoid private API changes in PyTorch
-    v_norm = torch.norm_except_dim(v, 2, dim)
-    g_expand = g.view(-1, 1) if dim == 0 else g
-    ref_out = v * (g_expand / v_norm)
+    ref_out = torch._weight_norm(v, g, dim)
     grad_out = torch.randn_like(ref_out)
     ref_out.backward(grad_out)
     ref_dv = v.grad.clone()

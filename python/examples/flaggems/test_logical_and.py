@@ -11,7 +11,7 @@ def test_logical_and(shape, dtype):
     x = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
     y = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
 
-    ref = x & y
+    ref = torch.logical_and(x, y)
     tri = logical_and(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
@@ -25,7 +25,7 @@ def test_logical_and_inplace(shape, dtype):
     y = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
     x_clone = x.clone()
 
-    ref = x_clone & y
+    ref = torch.logical_and(x_clone, y, out=x_clone)
     tri = logical_and_(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)

@@ -66,9 +66,7 @@ def quantile_kernel(
 
     if interpolation == "linear":
         q_frac = q_block - q_lower
-        tl.store(
-            out_ptrs, inp_lower + (inp_upper - inp_lower) * q_frac, mask_out
-        )
+        tl.store(out_ptrs, inp_lower + (inp_upper - inp_lower) * q_frac, mask_out)
 
     elif interpolation == "lower":
         tl.store(out_ptrs, inp_lower, mask_out)
@@ -85,7 +83,7 @@ def quantile_kernel(
         q_round = tl.where(
             diff == 0.5,
             tl.where(is_even, q_floor, q_ceil),
-            tl.math.floor(q_block + 0.5)
+            tl.math.floor(q_block + 0.5),
         ).to(tl.int32)
         out_block = tl.where(q_round == q_upper, inp_upper, inp_lower)
         tl.store(out_ptrs, out_block, mask_out)
@@ -148,7 +146,7 @@ def quantile_bitonic_kernel(
         q_round = tl.where(
             diff == 0.5,
             tl.where(is_even, q_floor, q_ceil),
-            tl.math.floor(q_scaled + 0.5)
+            tl.math.floor(q_scaled + 0.5),
         ).to(tl.int32)
         out_vals = tl.where(q_round == q_upper, upper_vals, lower_vals)
     elif interpolation == "midpoint":
@@ -210,9 +208,7 @@ def quantile(
     M = inp.size(-1)
     N = inp.numel() // M
 
-    output = torch.empty(
-        (*inp.shape[:-1], Q), dtype=inp.dtype, device=inp.device
-    )
+    output = torch.empty((*inp.shape[:-1], Q), dtype=inp.dtype, device=inp.device)
     if M <= MAX_BITONIC_M:
         BLOCK_M = triton.next_power_of_2(M)
         BLOCK_Q = triton.next_power_of_2(min(Q, 16))
@@ -241,7 +237,15 @@ def quantile(
             )
 
         quantile_kernel[grid](
-            sorted_vals, q, output, N, M, Q, BLOCK_Q=BLOCK_Q, BLOCK_N=BLOCK_N, interpolation=interpolation
+            sorted_vals,
+            q,
+            output,
+            N,
+            M,
+            Q,
+            BLOCK_Q=BLOCK_Q,
+            BLOCK_N=BLOCK_N,
+            interpolation=interpolation,
         )
 
     if Q == 1:

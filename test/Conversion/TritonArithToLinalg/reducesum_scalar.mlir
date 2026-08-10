@@ -34,9 +34,9 @@ module {
 // CHECK:             linalg.yield [[VAR_8_1_]] : !tt.ptr<bf16>
 // CHECK:           } -> tensor<128x!tt.ptr<bf16>>
 // CHECK-DAG:       [[LOAD_VAR_4_MEM_:%.+]] = tt.load [[VAR_4_]] : tensor<128x!tt.ptr<bf16>>
-// CHECK-DAG:       [[VAR_6_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_dot_000000_]] into [[VAR_6_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[LOAD_VAR_4_MEM_]] : tensor<128xbf16>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
+// CHECK-DAG:       [[VAR_6_:%.+]] = tensor.empty() : tensor<f32>
+// CHECK:           [[VAR_filled_:%.+]] = linalg.fill ins([[CST_0_dot_000000_]] : f32) outs([[VAR_6_]] : tensor<f32>) -> tensor<f32>
+// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[LOAD_VAR_4_MEM_]] : tensor<128xbf16>) outs([[VAR_filled_]] : tensor<f32>) dimensions = [0]
 // CHECK:             ([[in_:%.*]]: bf16, [[init_:%.*]]: f32) {
 // CHECK:               [[VAR_8_2_:%.+]] = arith.extf [[in_]] : bf16 to f32
 // CHECK:               [[VAR_9_1_:%.+]] = arith.addf [[VAR_8_2_]], [[init_]] : f32

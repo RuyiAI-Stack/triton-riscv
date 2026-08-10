@@ -48,9 +48,7 @@ def test_pow_st(shape):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-3, atol=1e-3)
 
 
-@pytest.mark.parametrize(
-    "x_shape, exp_shape", [((256,), (1,)), ((1,), (512,))]
-)
+@pytest.mark.parametrize("x_shape, exp_shape", [((256,), (1,)), ((1,), (512,))])
 def test_pow_broadcast(x_shape, exp_shape):
     torch.manual_seed(0)
     x = torch.randn(x_shape, dtype=torch.float32, device="cpu").abs()

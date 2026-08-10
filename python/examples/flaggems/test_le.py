@@ -17,7 +17,7 @@ def test_le(shape, dtype):
         x = torch.randint(-100, 100, shape, dtype=dtype, device="cpu")
         y = torch.randint(-100, 100, shape, dtype=dtype, device="cpu")
 
-    ref = x <= y
+    ref = torch.le(x, y)
     tri = le(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
@@ -34,5 +34,5 @@ def test_le_scalar(dtype):
         x = torch.tensor([0, 1, 2, 0], dtype=dtype, device="cpu")
         scalar = 1
     tri = le_scalar(x, scalar)
-    ref = x <= scalar
+    ref = torch.le(x, scalar)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)

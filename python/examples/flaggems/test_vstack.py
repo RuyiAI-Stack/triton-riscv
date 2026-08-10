@@ -31,8 +31,7 @@ def test_vstack_single(size):
 def test_vstack_many(size):
     torch.manual_seed(0)
     tensors = [
-        torch.randn(1, size, device="cpu", dtype=torch.float32)
-        for _ in range(6)
+        torch.randn(1, size, device="cpu", dtype=torch.float32) for _ in range(6)
     ]
 
     ref_out = torch.vstack(tensors)

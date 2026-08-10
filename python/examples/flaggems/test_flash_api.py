@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.nn.functional as F
 
 from .flash_api import mha_fwd
 
@@ -55,9 +56,7 @@ def test_mha_fwd_small(batch_size, seqlen_q, num_heads, head_dim):
         return_softmax=False,
     )
 
-    assert out.shape == q.shape, (
-        f"Expected output shape {q.shape}, got {out.shape}"
-    )
+    assert out.shape == q.shape, f"Expected output shape {q.shape}, got {out.shape}"
     assert not torch.isnan(out).any(), "Output contains NaN values"
     assert not torch.isinf(out).any(), "Output contains Inf values"
 
@@ -116,6 +115,15 @@ def test_mha_fwd_medium(total_q):
     )
     assert not torch.isnan(out).any(), "Output contains NaN"
     assert out.dtype == torch.float16, f"Expected float16, got {out.dtype}"
+    ref = F.scaled_dot_product_attention(
+        q.transpose(1, 2).to(torch.float32),
+        k.transpose(1, 2).to(torch.float32),
+        v.transpose(1, 2).to(torch.float32),
+        scale=softmax_scale,
+    )
+    torch.testing.assert_close(
+        out.transpose(1, 2), ref.to(out.dtype), rtol=1e-3, atol=1e-3
+    )
 
 
 def test_mha_fwd_compile():
@@ -150,3 +158,36 @@ def test_mha_fwd_compile():
     assert out is not None
     assert out.shape == q.shape
     assert out.dtype == torch.float16
+
+
+def test_mha_fwd_splitkv_masks_tail_blocks():
+    torch.manual_seed(0)
+    q = torch.randn(1, 1, 1, 32, dtype=torch.float16)
+    k = torch.randn(1, 129, 1, 32, dtype=torch.float16)
+    v = torch.randn(1, 129, 1, 32, dtype=torch.float16)
+    scale = 1.0 / (32**0.5)
+
+    out, *_ = mha_fwd(
+        q,
+        k,
+        v,
+        out=None,
+        alibi_slopes=None,
+        p_dropout=0.0,
+        softmax_scale=scale,
+        is_causal=False,
+        window_size_left=-1,
+        window_size_right=-1,
+        softcap=0.0,
+        return_softmax=False,
+    )
+    ref = F.scaled_dot_product_attention(
+        q.transpose(1, 2).to(torch.float32),
+        k.transpose(1, 2).to(torch.float32),
+        v.transpose(1, 2).to(torch.float32),
+        scale=scale,
+    )
+
+    torch.testing.assert_close(
+        out.transpose(1, 2), ref.to(out.dtype), rtol=1e-3, atol=1e-3
+    )

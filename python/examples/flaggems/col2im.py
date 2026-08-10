@@ -77,13 +77,10 @@ def col2im_kernel(
 
     out_base_ptr = output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
     out_offset = (
-        h_out_offsets[:, None] * out_stride_h
-        + w_out_offsets[None, :] * out_stride_w
+        h_out_offsets[:, None] * out_stride_h + w_out_offsets[None, :] * out_stride_w
     )
 
-    out_mask = (h_out_offsets[:, None] < out_h) & (
-        w_out_offsets[None, :] < out_w
-    )
+    out_mask = (h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w)
     tl.store(
         out_base_ptr + out_offset,
         sum_acc.to(output_ptr.type.element_ty),
@@ -106,17 +103,13 @@ def parse_col2im_params(output_size, kernel_size, dilation, padding, stride):
     stride_h, stride_w = to_pair(stride, "stride")
 
     if stride_h <= 0 or stride_w <= 0:
-        raise ValueError(
-            f"stride must be positive, got ({stride_h}, {stride_w})"
-        )
+        raise ValueError(f"stride must be positive, got ({stride_h}, {stride_w})")
     if padding_h < 0 or padding_w < 0:
         raise ValueError(
             f"padding must be non-negative, got ({padding_h}, {padding_w})"
         )
     if dilation_h <= 0 or dilation_w <= 0:
-        raise ValueError(
-            f"dilation must be positive, got ({dilation_h}, {dilation_w})"
-        )
+        raise ValueError(f"dilation must be positive, got ({dilation_h}, {dilation_w})")
 
     return (
         out_h,
@@ -144,21 +137,15 @@ def col2im(input, output_size, kernel_size, dilation, padding, stride):
         padding_w,
         stride_h,
         stride_w,
-    ) = parse_col2im_params(
-        output_size, kernel_size, dilation, padding, stride
-    )
+    ) = parse_col2im_params(output_size, kernel_size, dilation, padding, stride)
 
     if input.dim() != 3:
         raise ValueError(f"Expected 3D input, got {input.dim()}D")
 
     batch_size, ck, L = input.shape
 
-    L_h = (
-        out_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1
-    ) // stride_h + 1
-    L_w = (
-        out_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1
-    ) // stride_w + 1
+    L_h = (out_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+    L_w = (out_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
     expected_L = L_h * L_w
 
     if L != expected_L:

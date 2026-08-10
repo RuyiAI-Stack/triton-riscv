@@ -108,16 +108,12 @@ def poisson_kernel(
     # Each thread needs its own random state offset based on position and iteration count
     c0_small = c0_base + offs.to(tl.uint32) * MAX_ITERS
     z = c0_small * 0
-    small_result = poisson_small_lambda(
-        lam, philox_seed, c0_small, c1, z, MAX_ITERS
-    )
+    small_result = poisson_small_lambda(lam, philox_seed, c0_small, c1, z, MAX_ITERS)
 
     # For large lambda: normal approximation
     c0_large = c0_base + offs.to(tl.uint32)
     z_large = c0_large * 0
-    large_result = poisson_large_lambda(
-        lam, philox_seed, c0_large, c1, z_large
-    )
+    large_result = poisson_large_lambda(lam, philox_seed, c0_large, c1, z_large)
 
     # Select result based on lambda size
     result = tl.where(use_small, small_result, large_result)

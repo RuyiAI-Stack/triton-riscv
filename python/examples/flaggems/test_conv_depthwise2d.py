@@ -101,11 +101,7 @@ def test_conv_depthwise2d(
     ref_out.backward(grad_out)
 
     torch.testing.assert_close(x.grad, x_ref.grad, rtol=1e-3, atol=1e-3)
-    torch.testing.assert_close(
-        weight.grad, weight_ref.grad, rtol=1e-3, atol=1e-3
-    )
+    torch.testing.assert_close(weight.grad, weight_ref.grad, rtol=1e-3, atol=1e-3)
 
     if use_bias:
-        torch.testing.assert_close(
-            bias.grad, bias_ref.grad, rtol=1e-3, atol=1e-3
-        )
+        torch.testing.assert_close(bias.grad, bias_ref.grad, rtol=1e-3, atol=1e-3)

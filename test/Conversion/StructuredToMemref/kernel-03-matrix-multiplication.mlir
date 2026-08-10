@@ -84,20 +84,37 @@
 // CHECK:             %[[ALLOC_1:.*]] = memref.alloc() : memref<64x256xbf16>
 // CHECK:             memref.copy %[[REINTERPRET_CAST_1]], %[[ALLOC_1]] : memref<64x256xbf16, strided<[?, ?], offset: ?>> to memref<64x256xbf16>
 // CHECK:             %[[TO_TENSOR_1:.*]] = bufferization.to_tensor %[[ALLOC_1]] restrict writable : memref<64x256xbf16> to tensor<64x256xbf16>
-// CHECK:             %[[MATMUL_0:.*]] = linalg.matmul ins(%[[TO_TENSOR_0]], %[[TO_TENSOR_1]] : tensor<128x64xbf16>, tensor<64x256xbf16>) outs(%[[FILL_0]] : tensor<128x256xf32>) -> tensor<128x256xf32>
-// CHECK:             %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[VAL_1]], %[[MATMUL_0]] : tensor<128x256xf32>, tensor<128x256xf32>) outs(%[[VAL_1]] : tensor<128x256xf32>) {
-// CHECK:             ^bb0(%[[VAL_4:.*]]: f32, %[[VAL_5:.*]]: f32, %[[VAL_6:.*]]: f32):
-// CHECK:               %[[ADDF_0:.*]] = arith.addf %[[VAL_4]], %[[VAL_5]] : f32
+// CHECK:             %[[EMPTY_1:.*]] = tensor.empty() : tensor<128x64xf32>
+// CHECK:             %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[TO_TENSOR_0]] : tensor<128x64xbf16>) outs(%[[EMPTY_1]] : tensor<128x64xf32>) {
+// CHECK:             ^bb0(%[[VAL_4:.*]]: bf16, %[[VAL_5:.*]]: f32):
+// CHECK:               %[[EXTF_0:.*]] = arith.extf %[[VAL_4]] : bf16 to f32
+// CHECK:               linalg.yield %[[EXTF_0]] : f32
+// CHECK:             } -> tensor<128x64xf32>
+// CHECK:             %[[EMPTY_2:.*]] = tensor.empty() : tensor<64x256xf32>
+// CHECK:             %[[GENERIC_1:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[TO_TENSOR_1]] : tensor<64x256xbf16>) outs(%[[EMPTY_2]] : tensor<64x256xf32>) {
+// CHECK:             ^bb0(%[[VAL_6:.*]]: bf16, %[[VAL_7:.*]]: f32):
+// CHECK:               %[[EXTF_1:.*]] = arith.extf %[[VAL_6]] : bf16 to f32
+// CHECK:               linalg.yield %[[EXTF_1]] : f32
+// CHECK:             } -> tensor<64x256xf32>
+// CHECK:             %[[MATMUL_0:.*]] = linalg.matmul ins(%[[GENERIC_0]], %[[GENERIC_1]] : tensor<128x64xf32>, tensor<64x256xf32>) outs(%[[FILL_0]] : tensor<128x256xf32>) -> tensor<128x256xf32>
+// CHECK:             %[[GENERIC_2:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[FILL_0]], %[[MATMUL_0]] : tensor<128x256xf32>, tensor<128x256xf32>) outs(%[[FILL_0]] : tensor<128x256xf32>) {
+// CHECK:             ^bb0(%[[VAL_8:.*]]: f32, %[[VAL_9:.*]]: f32, %[[VAL_10:.*]]: f32):
+// CHECK:               %[[ADDF_0:.*]] = arith.addf %[[VAL_8]], %[[VAL_9]] : f32
 // CHECK:               linalg.yield %[[ADDF_0]] : f32
+// CHECK:             } -> tensor<128x256xf32>
+// CHECK:             %[[GENERIC_3:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[VAL_1]], %[[GENERIC_2]] : tensor<128x256xf32>, tensor<128x256xf32>) outs(%[[VAL_1]] : tensor<128x256xf32>) {
+// CHECK:             ^bb0(%[[VAL_11:.*]]: f32, %[[VAL_12:.*]]: f32, %[[VAL_13:.*]]: f32):
+// CHECK:               %[[ADDF_1:.*]] = arith.addf %[[VAL_11]], %[[VAL_12]] : f32
+// CHECK:               linalg.yield %[[ADDF_1]] : f32
 // CHECK:             } -> tensor<128x256xf32>
 // CHECK:             %[[ADDI_5:.*]] = arith.addi %[[VAL_2]], %[[INDEX_CAST_6]] : index
 // CHECK:             %[[ADDI_6:.*]] = arith.addi %[[VAL_3]], %[[INDEX_CAST_7]] : index
-// CHECK:             scf.yield %[[GENERIC_0]], %[[ADDI_5]], %[[ADDI_6]] : tensor<128x256xf32>, index, index
+// CHECK:             scf.yield %[[GENERIC_3]], %[[ADDI_5]], %[[ADDI_6]] : tensor<128x256xf32>, index, index
 // CHECK:           }
-// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<128x256xbf16>
-// CHECK:           %[[GENERIC_1:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[VAL_7:.*]]#0 : tensor<128x256xf32>) outs(%[[EMPTY_1]] : tensor<128x256xbf16>) {
-// CHECK:           ^bb0(%[[VAL_8:.*]]: f32, %[[VAL_9:.*]]: bf16):
-// CHECK:             %[[TRUNCF_0:.*]] = arith.truncf %[[VAL_8]] : f32 to bf16
+// CHECK:           %[[EMPTY_3:.*]] = tensor.empty() : tensor<128x256xbf16>
+// CHECK:           %[[GENERIC_4:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[VAL_14:.*]]#0 : tensor<128x256xf32>) outs(%[[EMPTY_3]] : tensor<128x256xbf16>) {
+// CHECK:           ^bb0(%[[VAL_15:.*]]: f32, %[[VAL_16:.*]]: bf16):
+// CHECK:             %[[TRUNCF_0:.*]] = arith.truncf %[[VAL_15]] : f32 to bf16
 // CHECK:             linalg.yield %[[TRUNCF_0]] : bf16
 // CHECK:           } -> tensor<128x256xbf16>
 // CHECK:           %[[INDEX_CAST_8:.*]] = arith.index_cast %[[ARG10]] : i32 to index
@@ -118,7 +135,7 @@
 // CHECK:           %[[MINSI_4:.*]] = arith.minsi %[[SUBI_2]], %[[CONSTANT_3]] : index
 // CHECK:           %[[ADDI_9:.*]] = arith.addi %[[MULI_8]], %[[MULI_9]] : index
 // CHECK:           %[[REINTERPRET_CAST_2:.*]] = memref.reinterpret_cast %[[ARG2]] to offset: {{\[}}%[[ADDI_9]]], sizes: [128, 256], strides: {{\[}}%[[INDEX_CAST_8]], %[[INDEX_CAST_9]]] : memref<*xbf16> to memref<128x256xbf16, strided<[?, ?], offset: ?>>
-// CHECK:           %[[EXTRACT_SLICE_0:.*]] = tensor.extract_slice %[[GENERIC_1]][0, 0] {{\[}}%[[MINSI_3]], %[[MINSI_4]]] [1, 1] : tensor<128x256xbf16> to tensor<?x?xbf16>
+// CHECK:           %[[EXTRACT_SLICE_0:.*]] = tensor.extract_slice %[[GENERIC_4]][0, 0] {{\[}}%[[MINSI_3]], %[[MINSI_4]]] [1, 1] : tensor<128x256xbf16> to tensor<?x?xbf16>
 // CHECK:           %[[SUBVIEW_0:.*]] = memref.subview %[[REINTERPRET_CAST_2]][0, 0] {{\[}}%[[MINSI_3]], %[[MINSI_4]]] [1, 1] : memref<128x256xbf16, strided<[?, ?], offset: ?>> to memref<?x?xbf16, strided<[?, ?], offset: ?>>
 // CHECK:           bufferization.materialize_in_destination %[[EXTRACT_SLICE_0]] in writable %[[SUBVIEW_0]] : (tensor<?x?xbf16>, memref<?x?xbf16, strided<[?, ?], offset: ?>>) -> ()
 // CHECK:           return

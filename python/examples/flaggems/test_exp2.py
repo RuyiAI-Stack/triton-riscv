@@ -12,9 +12,7 @@ def _get_tolerance(dtype):
 
 
 @pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_exp2(shape, dtype):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device="cpu")
@@ -27,9 +25,7 @@ def test_exp2(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_exp2_inplace(shape, dtype):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device="cpu")

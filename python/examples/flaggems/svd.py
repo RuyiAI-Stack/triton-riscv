@@ -47,10 +47,7 @@ def _svd_shape(input):
 
 
 def _should_guard_gram_spectrum(batch, k):
-    return (
-        batch <= _GRAM_CONDITION_GUARD_MAX_BATCH
-        and k <= _GRAM_CONDITION_GUARD_MAX_K
-    )
+    return batch <= _GRAM_CONDITION_GUARD_MAX_BATCH and k <= _GRAM_CONDITION_GUARD_MAX_K
 
 
 def _is_float32_cuda_matrix(input):
@@ -63,12 +60,7 @@ def _is_low_precision_cuda_matrix(input):
 
 def _can_use_rank1_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
-    return (
-        _is_float32_cuda_matrix(input)
-        and some
-        and compute_uv
-        and min(m, n) == 1
-    )
+    return _is_float32_cuda_matrix(input) and some and compute_uv and min(m, n) == 1
 
 
 def _can_use_rank2_kernel(input, some=True, compute_uv=True):
@@ -89,13 +81,7 @@ def _can_use_2x2_kernel(input):
 
 def _can_use_4x4_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
-    return (
-        _is_float32_cuda_matrix(input)
-        and some
-        and compute_uv
-        and m == 4
-        and n == 4
-    )
+    return _is_float32_cuda_matrix(input) and some and compute_uv and m == 4 and n == 4
 
 
 def _can_use_small_jacobi_kernel(input, some=True, compute_uv=True):
@@ -179,9 +165,7 @@ def _can_use_blocked_square_project_kernel(input, some=True, compute_uv=True):
     )
 
 
-def _can_use_hier_block_square_project_kernel(
-    input, some=True, compute_uv=True
-):
+def _can_use_hier_block_square_project_kernel(input, some=True, compute_uv=True):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     return (
@@ -262,12 +246,8 @@ def _small_jacobi_svd_kernel(
     for _ in tl.static_range(0, SWEEPS):
         for p in tl.static_range(0, K):
             for q in tl.static_range(p + 1, K):
-                ap = tl.load(
-                    aw_base + p * ROWS + rows, mask=row_mask, other=0.0
-                )
-                aq = tl.load(
-                    aw_base + q * ROWS + rows, mask=row_mask, other=0.0
-                )
+                ap = tl.load(aw_base + p * ROWS + rows, mask=row_mask, other=0.0)
+                aq = tl.load(aw_base + q * ROWS + rows, mask=row_mask, other=0.0)
                 alpha = tl.sum(ap * ap)
                 beta = tl.sum(aq * aq)
                 gamma = tl.sum(ap * aq)
@@ -370,12 +350,8 @@ def _small_jacobi_svals_kernel(
     for _ in tl.static_range(0, SWEEPS):
         for p in tl.static_range(0, K):
             for q in tl.static_range(p + 1, K):
-                ap = tl.load(
-                    aw_base + p * ROWS + rows, mask=row_mask, other=0.0
-                )
-                aq = tl.load(
-                    aw_base + q * ROWS + rows, mask=row_mask, other=0.0
-                )
+                ap = tl.load(aw_base + p * ROWS + rows, mask=row_mask, other=0.0)
+                aq = tl.load(aw_base + q * ROWS + rows, mask=row_mask, other=0.0)
                 alpha = tl.sum(ap * ap)
                 beta = tl.sum(aq * aq)
                 gamma = tl.sum(ap * aq)
@@ -428,12 +404,7 @@ def _can_use_streaming_jacobi_kernel(input, some=True, compute_uv=True):
 
 def _can_use_gram_kernel(input, some=True, compute_uv=True):
     _, m, n = _svd_shape(input)
-    return (
-        _is_float32_cuda_matrix(input)
-        and some
-        and compute_uv
-        and min(m, n) <= 1024
-    )
+    return _is_float32_cuda_matrix(input) and some and compute_uv and min(m, n) <= 1024
 
 
 @triton.jit
@@ -623,18 +594,15 @@ def _cholesky_upper_kernel(
             diag -= r_pj * r_pj
             p += 1
 
-        good_diag = (
-            (diag == diag) & (tl.abs(diag) < finite_limit) & (diag > tol)
-        )
+        good_diag = (diag == diag) & (tl.abs(diag) < finite_limit) & (diag > tol)
         pivot = tl.sqrt(tl.maximum(diag, tol))
         r_vals = gram_row / pivot
         r_vals = tl.where(cols == j, pivot, r_vals)
         r_vals = tl.where(row_mask, r_vals, 0.0)
         bad_vals = tl.sum(
-            (
-                ((r_vals != r_vals) | (tl.abs(r_vals) >= finite_limit))
-                & row_mask
-            ).to(tl.int32),
+            (((r_vals != r_vals) | (tl.abs(r_vals) >= finite_limit)) & row_mask).to(
+                tl.int32
+            ),
             axis=0,
         )
         status = tl.where(good_diag & (bad_vals == 0), status, 1)
@@ -855,9 +823,7 @@ def _gram_jacobi_sym_kernel(
                 )
                 g = tl.where((rr == p) & (cc == p), new_pp, g)
                 g = tl.where((rr == q) & (cc == q), new_qq, g)
-                g = tl.where(
-                    ((rr == p) & (cc == q)) | ((rr == q) & (cc == p)), 0.0, g
-                )
+                g = tl.where(((rr == p) & (cc == q)) | ((rr == q) & (cc == p)), 0.0, g)
 
                 vec_p = tl.sum(tl.where(cc == p, v, 0.0), axis=1)
                 vec_q = tl.sum(tl.where(cc == q, v, 0.0), axis=1)
@@ -892,8 +858,7 @@ def _gram_sort_basis_kernel(
     for other in tl.static_range(0, K):
         eval_other = tl.maximum(tl.load(EVALS + batch * K + other), 0.0)
         rank += (
-            (eval_other > eval_col)
-            | ((eval_other == eval_col) & (other < col))
+            (eval_other > eval_col) | ((eval_other == eval_col) & (other < col))
         ).to(tl.int32)
 
     vec = tl.load(
@@ -977,13 +942,9 @@ def _gram_jacobi_svd(input):
     tall = m >= n
     a = input.contiguous().reshape(batch, m, n)
     gram = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
-    eigvecs = torch.empty(
-        (batch, k, k), dtype=torch.float32, device=input.device
-    )
+    eigvecs = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
     evals = torch.empty((batch, k), dtype=torch.float32, device=input.device)
-    basis = torch.empty(
-        (batch, k, k), dtype=torch.float32, device=input.device
-    )
+    basis = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
     block_k = triton.next_power_of_2(k)
     block_r = min(triton.next_power_of_2(rows), 64 if k > 32 else 128)
@@ -1127,21 +1088,9 @@ def _small4_square_svd_kernel(
     s1 = tl.sqrt(tl.sum(c1 * c1, axis=1))
     s2 = tl.sqrt(tl.sum(c2 * c2, axis=1))
     s3 = tl.sqrt(tl.sum(c3 * c3, axis=1))
-    r0 = (
-        (s1 > s0).to(tl.int32)
-        + (s2 > s0).to(tl.int32)
-        + (s3 > s0).to(tl.int32)
-    )
-    r1 = (
-        ((s0 >= s1).to(tl.int32))
-        + (s2 > s1).to(tl.int32)
-        + (s3 > s1).to(tl.int32)
-    )
-    r2 = (
-        ((s0 >= s2).to(tl.int32))
-        + ((s1 >= s2).to(tl.int32))
-        + (s3 > s2).to(tl.int32)
-    )
+    r0 = (s1 > s0).to(tl.int32) + (s2 > s0).to(tl.int32) + (s3 > s0).to(tl.int32)
+    r1 = ((s0 >= s1).to(tl.int32)) + (s2 > s1).to(tl.int32) + (s3 > s1).to(tl.int32)
+    r2 = ((s0 >= s2).to(tl.int32)) + ((s1 >= s2).to(tl.int32)) + (s3 > s2).to(tl.int32)
     r3 = (
         ((s0 >= s3).to(tl.int32))
         + ((s1 >= s3).to(tl.int32))
@@ -1532,9 +1481,7 @@ def _small_jacobi_singular_values(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
@@ -1561,12 +1508,8 @@ def _small_jacobi_svd(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
-    v_work = torch.empty(
-        (batch, k, k), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
+    v_work = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
     u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
     v = torch.empty((batch, n, k), dtype=input.dtype, device=input.device)
@@ -1616,13 +1559,9 @@ def _cyclic_jacobi_init_a_kernel(
     aw_base = A_WORK + batch * K * ROWS
 
     if TALL:
-        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(tl.float32)
     else:
-        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(tl.float32)
     tl.store(aw_base + col * ROWS + rows, vals, mask=row_mask)
 
 
@@ -1650,13 +1589,9 @@ def _cyclic_jacobi_init_kernel(
     vw_base = V_WORK + batch * K * K
 
     if TALL:
-        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + rows * N + col, mask=row_mask, other=0.0).to(tl.float32)
     else:
-        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vals = tl.load(a_base + col * N + rows, mask=row_mask, other=0.0).to(tl.float32)
     tl.store(aw_base + col * ROWS + rows, vals, mask=row_mask)
 
     ident = tl.where(basis_cols == col, 1.0, 0.0)
@@ -1755,12 +1690,8 @@ def _serial_cyclic_jacobi_kernel(
             while pair < half_round:
                 pos_p = pair
                 pos_q = ROUND - 1 - pair
-                p = tl.where(
-                    pos_p == 0, 0, ((pos_p + ring - step - 1) % ring) + 1
-                )
-                q = tl.where(
-                    pos_q == 0, 0, ((pos_q + ring - step - 1) % ring) + 1
-                )
+                p = tl.where(pos_p == 0, 0, ((pos_p + ring - step - 1) % ring) + 1)
+                q = tl.where(pos_q == 0, 0, ((pos_q + ring - step - 1) % ring) + 1)
                 valid_pair = (p < K) & (q < K)
                 swap = p > q
                 p2 = tl.where(swap, q, p)
@@ -1768,12 +1699,8 @@ def _serial_cyclic_jacobi_kernel(
                 row_mask = row_base_mask & valid_pair
                 col_mask = col_base_mask & valid_pair
 
-                ap = tl.load(
-                    aw_base + p2 * ROWS + rows, mask=row_mask, other=0.0
-                )
-                aq = tl.load(
-                    aw_base + q2 * ROWS + rows, mask=row_mask, other=0.0
-                )
+                ap = tl.load(aw_base + p2 * ROWS + rows, mask=row_mask, other=0.0)
+                aq = tl.load(aw_base + q2 * ROWS + rows, mask=row_mask, other=0.0)
                 alpha = tl.sum(ap * ap)
                 beta = tl.sum(aq * aq)
                 gamma = tl.sum(ap * aq)
@@ -1897,9 +1824,7 @@ def _cyclic_jacobi_finalize_kernel(
     rank = tl.full((), 0, dtype=tl.int32)
     for other in tl.static_range(0, K):
         s_other = tl.load(S_WORK + batch * K + other)
-        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(
-            tl.int32
-        )
+        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(tl.int32)
 
     aw_base = A_WORK + batch * K * ROWS
     vw_base = V_WORK + batch * K * K
@@ -2163,9 +2088,7 @@ def _blocked_jacobi_rank_kernel(
     other = 0
     while other < K:
         s_other = tl.load(S_WORK + batch * K + other)
-        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(
-            tl.int32
-        )
+        rank += ((s_other > s_col) | ((s_other == s_col) & (other < col))).to(tl.int32)
         other += 1
     tl.store(RANKS + batch * K + col, rank)
     tl.store(S + batch * K + rank, s_col)
@@ -2245,23 +2168,21 @@ def _thin_reorthogonalize_kernel(
     eps = 1.0e-20
 
     for j in tl.static_range(0, K):
-        vec = tl.load(base + rows * K + j, mask=row_mask, other=0.0).to(
-            tl.float32
-        )
+        vec = tl.load(base + rows * K + j, mask=row_mask, other=0.0).to(tl.float32)
 
         for prev in tl.static_range(0, K):
             if prev < j:
-                q_prev = tl.load(
-                    base + rows * K + prev, mask=row_mask, other=0.0
-                ).to(tl.float32)
+                q_prev = tl.load(base + rows * K + prev, mask=row_mask, other=0.0).to(
+                    tl.float32
+                )
                 coeff = tl.sum(vec * q_prev)
                 vec = vec - coeff * q_prev
 
         for prev in tl.static_range(0, K):
             if prev < j:
-                q_prev = tl.load(
-                    base + rows * K + prev, mask=row_mask, other=0.0
-                ).to(tl.float32)
+                q_prev = tl.load(base + rows * K + prev, mask=row_mask, other=0.0).to(
+                    tl.float32
+                )
                 coeff = tl.sum(vec * q_prev)
                 vec = vec - coeff * q_prev
 
@@ -2271,9 +2192,9 @@ def _thin_reorthogonalize_kernel(
 
         for prev in tl.static_range(0, K):
             if prev < j:
-                q_prev = tl.load(
-                    base + rows * K + prev, mask=row_mask, other=0.0
-                ).to(tl.float32)
+                q_prev = tl.load(base + rows * K + prev, mask=row_mask, other=0.0).to(
+                    tl.float32
+                )
                 coeff = tl.sum(vec * q_prev)
                 vec = vec - coeff * q_prev
 
@@ -2287,12 +2208,8 @@ def _cyclic_jacobi_svd(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
-    v_work = torch.empty(
-        (batch, k, k), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
+    v_work = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
     s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
     u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
@@ -2431,9 +2348,7 @@ def _projected_jacobi_svd(input):
     rows = max(m, n)
     tall = m >= n
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
     s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
     ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
@@ -2446,12 +2361,8 @@ def _projected_jacobi_svd(input):
     sweeps = 10 if k >= 128 else 8
     round_size = k if k % 2 == 0 else k + 1
     half_round = round_size // 2
-    rot_c = torch.empty(
-        (batch, half_round), dtype=torch.float32, device=input.device
-    )
-    rot_s = torch.empty(
-        (batch, half_round), dtype=torch.float32, device=input.device
-    )
+    rot_c = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
+    rot_s = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
 
     _cyclic_jacobi_init_a_kernel[(batch, k)](
         a,
@@ -2538,12 +2449,8 @@ def _blocked_jacobi_svd(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
-    v_work = torch.empty(
-        (batch, k, k), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
+    v_work = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
     s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
     ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
     u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
@@ -2556,12 +2463,8 @@ def _blocked_jacobi_svd(input):
     sweeps = 14 if k > 256 else 10
     round_size = k if k % 2 == 0 else k + 1
     half_round = round_size // 2
-    rot_c = torch.empty(
-        (batch, half_round), dtype=torch.float32, device=input.device
-    )
-    rot_s = torch.empty(
-        (batch, half_round), dtype=torch.float32, device=input.device
-    )
+    rot_c = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
+    rot_s = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
     _cyclic_jacobi_init_kernel[(batch, k)](
         a,
         a_work,
@@ -2616,9 +2519,7 @@ def _blocked_jacobi_svd(input):
         num_warps=1,
     )
     if m >= n:
-        _blocked_jacobi_store_projected_kernel[
-            (batch, k, triton.cdiv(m, block_r))
-        ](
+        _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(m, block_r))](
             a_work,
             s_work,
             ranks,
@@ -2629,9 +2530,7 @@ def _blocked_jacobi_svd(input):
             BLOCK_R=block_r,
             num_warps=1 if block_r <= 64 else 4,
         )
-        _blocked_jacobi_store_basis_kernel[
-            (batch, k, triton.cdiv(n, block_v))
-        ](
+        _blocked_jacobi_store_basis_kernel[(batch, k, triton.cdiv(n, block_v))](
             v_work,
             ranks,
             v,
@@ -2640,9 +2539,7 @@ def _blocked_jacobi_svd(input):
             num_warps=1,
         )
     else:
-        _blocked_jacobi_store_basis_kernel[
-            (batch, k, triton.cdiv(m, block_v))
-        ](
+        _blocked_jacobi_store_basis_kernel[(batch, k, triton.cdiv(m, block_v))](
             v_work,
             ranks,
             u,
@@ -2650,9 +2547,7 @@ def _blocked_jacobi_svd(input):
             BLOCK_V=block_v,
             num_warps=1,
         )
-        _blocked_jacobi_store_projected_kernel[
-            (batch, k, triton.cdiv(n, block_r))
-        ](
+        _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(n, block_r))](
             a_work,
             s_work,
             ranks,
@@ -2676,9 +2571,7 @@ def _blocked_jacobi_square_project_svd(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
     s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
     ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
     u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
@@ -2688,12 +2581,8 @@ def _blocked_jacobi_square_project_svd(input):
     sweeps = 12 if k <= 256 else 16
     round_size = k if k % 2 == 0 else k + 1
     half_round = round_size // 2
-    rot_c = torch.empty(
-        (batch, half_round), dtype=torch.float32, device=input.device
-    )
-    rot_s = torch.empty(
-        (batch, half_round), dtype=torch.float32, device=input.device
-    )
+    rot_c = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
+    rot_s = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
     _cyclic_jacobi_init_a_kernel[(batch, k)](
         a,
         a_work,
@@ -2733,9 +2622,7 @@ def _blocked_jacobi_square_project_svd(input):
         k,
         num_warps=1,
     )
-    _blocked_jacobi_store_projected_kernel[
-        (batch, k, triton.cdiv(m, block_r))
-    ](
+    _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(m, block_r))](
         a_work,
         s_work,
         ranks,
@@ -2770,9 +2657,7 @@ def _hier_block_jacobi_square_project_svd(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
     s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
     ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
     u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
@@ -2835,9 +2720,7 @@ def _hier_block_jacobi_square_project_svd(input):
         k,
         num_warps=1,
     )
-    _blocked_jacobi_store_projected_kernel[
-        (batch, k, triton.cdiv(m, block_r))
-    ](
+    _blocked_jacobi_store_projected_kernel[(batch, k, triton.cdiv(m, block_r))](
         a_work,
         s_work,
         ranks,
@@ -2872,9 +2755,7 @@ def _blocked_jacobi_singular_values(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    a_work = torch.empty(
-        (batch, k, rows), dtype=torch.float32, device=input.device
-    )
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
     s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
     ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
@@ -2962,9 +2843,7 @@ def _rank1_svd_kernel(
         for base in range(0, M, BLOCK_R):
             rows = base + offsets
             mask = rows < M
-            vals = tl.load(a_base + rows * N, mask=mask, other=0.0).to(
-                tl.float32
-            )
+            vals = tl.load(a_base + rows * N, mask=mask, other=0.0).to(tl.float32)
             norm_sq += tl.sum(vals * vals)
 
         norm = tl.sqrt(norm_sq)
@@ -2976,9 +2855,7 @@ def _rank1_svd_kernel(
         for base in range(0, M, BLOCK_R):
             rows = base + offsets
             mask = rows < M
-            vals = tl.load(a_base + rows * N, mask=mask, other=0.0).to(
-                tl.float32
-            )
+            vals = tl.load(a_base + rows * N, mask=mask, other=0.0).to(tl.float32)
             tl.store(u_base + rows, vals / denom, mask=mask)
     else:
         for base in range(0, N, BLOCK_R):
@@ -3077,10 +2954,7 @@ def _complex_svd_pick_factor_kernel(
         other=0.0,
     )
     imag = tl.load(
-        REAL_FACTOR
-        + batch * (2 * ROWS) * REAL_K
-        + (ROWS + row) * REAL_K
-        + src_col,
+        REAL_FACTOR + batch * (2 * ROWS) * REAL_K + (ROWS + row) * REAL_K + src_col,
         mask=mask,
         other=0.0,
     )
@@ -3151,9 +3025,7 @@ def _complex_svd_pick_orthonormal_v_kernel(
             )
             cur_r -= prev_r * coeff_r - prev_i * coeff_i
             cur_i -= prev_r * coeff_i + prev_i * coeff_r
-        norm_sq = tl.sum(
-            tl.where(row_mask, cur_r * cur_r + cur_i * cur_i, 0.0), axis=0
-        )
+        norm_sq = tl.sum(tl.where(row_mask, cur_r * cur_r + cur_i * cur_i, 0.0), axis=0)
         inv_norm = tl.rsqrt(tl.maximum(norm_sq, 1.0e-20))
         cur_r *= inv_norm
         cur_i *= inv_norm
@@ -3221,12 +3093,8 @@ def _complex_svd_via_real_embedding(input):
     )
     _, s_real, v_real = svd(real_matrix, some=True, compute_uv=True)
     s = torch.empty((batch, k), dtype=torch.float32, device=input.device)
-    u = torch.empty(
-        (*input.shape[:-2], m, k), dtype=input.dtype, device=input.device
-    )
-    v = torch.empty(
-        (*input.shape[:-2], n, k), dtype=input.dtype, device=input.device
-    )
+    u = torch.empty((*input.shape[:-2], m, k), dtype=input.dtype, device=input.device)
+    v = torch.empty((*input.shape[:-2], n, k), dtype=input.dtype, device=input.device)
     u_ri = torch.view_as_real(u).reshape(batch, m, k, 2)
     v_ri = torch.view_as_real(v).reshape(batch, n, k, 2)
     _complex_svd_pick_s_kernel[(batch,)](
@@ -3302,9 +3170,7 @@ def _gram16_finalize_kernel(
     a_base = A + batch * M * N
     e_base = EVECS + batch * EVECS_BATCH_STRIDE
     for k in tl.static_range(0, 16):
-        eig = tl.load(
-            e_base + k * EVECS_ROW_STRIDE + src_cols * EVECS_COL_STRIDE
-        )
+        eig = tl.load(e_base + k * EVECS_ROW_STRIDE + src_cols * EVECS_COL_STRIDE)
         if TALL:
             a_vals = tl.load(
                 a_base + rows * N + k,
@@ -3346,19 +3212,13 @@ def _gram16_finalize_kernel(
     )
     if TALL:
         tl.store(
-            V
-            + batch * N * 16
-            + basis_rows[:, None] * 16
-            + basis_cols[None, :],
+            V + batch * N * 16 + basis_rows[:, None] * 16 + basis_cols[None, :],
             basis,
             mask=head_mask,
         )
     else:
         tl.store(
-            U
-            + batch * M * 16
-            + basis_rows[:, None] * 16
-            + basis_cols[None, :],
+            U + batch * M * 16 + basis_rows[:, None] * 16 + basis_cols[None, :],
             basis,
             mask=head_mask,
         )
@@ -3396,9 +3256,7 @@ def _empty_svd_result(input, some=True, compute_uv=True):
     u = torch.empty(
         (*input.shape[:-2], m, u_cols), dtype=input.dtype, device=input.device
     )
-    s = torch.empty(
-        (*input.shape[:-2], k), dtype=input.dtype, device=input.device
-    )
+    s = torch.empty((*input.shape[:-2], k), dtype=input.dtype, device=input.device)
     v = torch.empty(
         (*input.shape[:-2], n, v_cols), dtype=input.dtype, device=input.device
     )
@@ -3421,10 +3279,7 @@ def _complete_svd_factor_kernel(
     row_mask = rows < ROWS
     col_mask = cols < FULL_COLS
     vals = tl.load(
-        THIN
-        + batch * ROWS * THIN_COLS
-        + rows[:, None] * THIN_COLS
-        + cols[None, :],
+        THIN + batch * ROWS * THIN_COLS + rows[:, None] * THIN_COLS + cols[None, :],
         mask=row_mask[:, None] & (cols[None, :] < THIN_COLS),
         other=0.0,
     )
@@ -3458,12 +3313,8 @@ def _some_false_svd_via_thin(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     thin_u, s, thin_v = svd(input, some=True, compute_uv=True)
-    u = torch.empty(
-        (*input.shape[:-2], m, m), dtype=input.dtype, device=input.device
-    )
-    v = torch.empty(
-        (*input.shape[:-2], n, n), dtype=input.dtype, device=input.device
-    )
+    u = torch.empty((*input.shape[:-2], m, m), dtype=input.dtype, device=input.device)
+    v = torch.empty((*input.shape[:-2], n, n), dtype=input.dtype, device=input.device)
     _complete_svd_factor_kernel[(batch,)](
         thin_u,
         u,
@@ -3489,12 +3340,8 @@ def _some_false_svd_via_thin(input):
 
 def _compute_uv_false_result(input, s):
     _, m, n = _svd_shape(input)
-    u = torch.empty(
-        (*input.shape[:-2], m, m), dtype=input.dtype, device=input.device
-    )
-    v = torch.empty(
-        (*input.shape[:-2], n, n), dtype=input.dtype, device=input.device
-    )
+    u = torch.empty((*input.shape[:-2], m, m), dtype=input.dtype, device=input.device)
+    v = torch.empty((*input.shape[:-2], n, n), dtype=input.dtype, device=input.device)
     return u, s, v
 
 
@@ -3541,15 +3388,11 @@ def svd(input, some=True, compute_uv=True):
     ):
         return SVDResult(*_complex_svd_via_real_embedding(input))
     if _is_low_precision_cuda_matrix(input):
-        return SVDResult(
-            *_low_precision_svd_via_float32(input, some, compute_uv)
-        )
+        return SVDResult(*_low_precision_svd_via_float32(input, some, compute_uv))
     if _is_float32_cuda_matrix(input) and 0 in input.shape[-2:]:
         return SVDResult(*_empty_svd_result(input, some, compute_uv))
     if _can_use_singular_values_only(input, some, compute_uv):
-        return SVDResult(
-            *_compute_uv_false_result(input, _singular_values_only(input))
-        )
+        return SVDResult(*_compute_uv_false_result(input, _singular_values_only(input)))
     if (
         _is_float32_cuda_matrix(input)
         and not some

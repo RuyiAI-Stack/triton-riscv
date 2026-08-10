@@ -9,6 +9,7 @@
 
 
 // RUN: triton-shared-opt --split-input-file --triton-to-linalg-experimental %s | FileCheck %s
+// CHECK: #[[$ATTR_0:.+]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL:   func.func @kernel(
 // CHECK-SAME:                      %[[ARG0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
 // CHECK-SAME:                      %[[ARG1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: memref<*xbf16>,
@@ -31,8 +32,13 @@
 // CHECK:           memref.copy %[[REINTERPRET_CAST_1]], %[[ALLOC_1]] : memref<64x256xbf16, strided<[256, 1]>> to memref<64x256xbf16>
 // CHECK:           %[[TO_TENSOR_1:.*]] = bufferization.to_tensor %[[ALLOC_1]] restrict writable : memref<64x256xbf16> to tensor<64x256xbf16>
 // CHECK:           %[[MATMUL_0:.*]] = linalg.matmul ins(%[[TO_TENSOR_0]], %[[TO_TENSOR_1]] : tensor<128x64xbf16>, tensor<64x256xbf16>) outs(%[[FILL_0]] : tensor<128x256xbf16>) -> tensor<128x256xbf16>
+// CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[FILL_0]], %[[MATMUL_0]] : tensor<128x256xbf16>, tensor<128x256xbf16>) outs(%[[FILL_0]] : tensor<128x256xbf16>) {
+// CHECK:           ^bb0(%[[VAL_0:.*]]: bf16, %[[VAL_1:.*]]: bf16, %[[VAL_2:.*]]: bf16):
+// CHECK:             %[[ADDF_0:.*]] = arith.addf %[[VAL_0]], %[[VAL_1]] : bf16
+// CHECK:             linalg.yield %[[ADDF_0]] : bf16
+// CHECK:           } -> tensor<128x256xbf16>
 // CHECK:           %[[REINTERPRET_CAST_2:.*]] = memref.reinterpret_cast %[[ARG2]] to offset: [0], sizes: [128, 256], strides: [256, 1] : memref<*xbf16> to memref<128x256xbf16, strided<[256, 1]>>
-// CHECK:           bufferization.materialize_in_destination %[[MATMUL_0]] in writable %[[REINTERPRET_CAST_2]] : (tensor<128x256xbf16>, memref<128x256xbf16, strided<[256, 1]>>) -> ()
+// CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[REINTERPRET_CAST_2]] : (tensor<128x256xbf16>, memref<128x256xbf16, strided<[256, 1]>>) -> ()
 // CHECK:           bufferization.materialize_in_destination %[[FILL_0]] in writable %[[REINTERPRET_CAST_2]] : (tensor<128x256xbf16>, memref<128x256xbf16, strided<[256, 1]>>) -> ()
 // CHECK:           return
 // CHECK:         }

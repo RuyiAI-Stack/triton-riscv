@@ -15,7 +15,8 @@ def test_square(shape):
 
 def test_square_inplace():
     x = torch.tensor([0.0, 1.0, -1.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().square_()
+    x_ref = x.clone()
+    torch.square(x_ref, out=x_ref)
     square_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
 

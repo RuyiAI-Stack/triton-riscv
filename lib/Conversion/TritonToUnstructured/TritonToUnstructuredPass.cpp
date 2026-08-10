@@ -143,6 +143,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -218,6 +219,43 @@ static unsigned int getBitWidth(Type type) {
   return 0;
 }
 
+static bool isPointerPreservingDerivedOp(Operation *op) {
+  return isa<triton::AddPtrOp, triton::SplatOp, triton::BroadcastOp,
+             triton::ExpandDimsOp, triton::BitcastOp>(op);
+}
+
+static bool reachesScfIfYieldThroughDerivedPtrs(Value value) {
+  llvm::SmallDenseSet<Value> visited;
+  SmallVector<Value> workList{value};
+
+  while (!workList.empty()) {
+    Value curr = workList.pop_back_val();
+    if (!visited.insert(curr).second) {
+      continue;
+    }
+
+    for (Operation *user : curr.getUsers()) {
+      if (auto yield = dyn_cast<scf::YieldOp>(user)) {
+        if (isa<scf::IfOp>(yield->getParentOp())) {
+          return true;
+        }
+        continue;
+      }
+
+      if (!isPointerPreservingDerivedOp(user) || user->getNumResults() != 1) {
+        continue;
+      }
+
+      Value result = user->getResult(0);
+      if (triton::isPtrTypeLike(result.getType())) {
+        workList.push_back(result);
+      }
+    }
+  }
+
+  return false;
+}
+
 class TritonToUnstructuredPass
     : public ::impl::TritonToUnstructuredBase<TritonToUnstructuredPass> {
 
@@ -242,12 +280,100 @@ public:
     Value offset;
   };
 
-  LogicalResult processUnstructuredPtrs(unsigned int defaultBitWidth = 32) {
+  struct OperandReplacement {
+    Operation *op;
+    unsigned operandIndex;
+    Value replacement;
+  };
+
+  static Type getScalarPtrType(Type ptrLikeType) {
+    if (auto tensorType = dyn_cast<RankedTensorType>(ptrLikeType)) {
+      return tensorType.getElementType();
+    }
+    return ptrLikeType;
+  }
+
+  static unsigned getPointeeByteWidth(Type ptrLikeType) {
+    auto ptrType = cast<triton::PointerType>(getScalarPtrType(ptrLikeType));
+    // Pointer offsets use addressable storage units; i1 and i8 both use a byte.
+    unsigned bitWidth = ptrType.getPointeeType().getIntOrFloatBitWidth();
+    return std::max(1u, (bitWidth + 7) / 8);
+  }
+
+  static Value materializeBasePtr(PtrOffset offsetInfo, Location loc,
+                                  OpBuilder &builder) {
+    Type scalarPtrType = getScalarPtrType(offsetInfo.ptrType);
+    if (offsetInfo.ptr.getType() == scalarPtrType) {
+      return offsetInfo.ptr;
+    }
+    return builder.create<triton::BitcastOp>(loc, scalarPtrType,
+                                             offsetInfo.ptr);
+  }
+
+  static Type getOffsetElementType(Type type) {
+    if (auto shapedType = dyn_cast<ShapedType>(type)) {
+      return shapedType.getElementType();
+    }
+    return type;
+  }
+
+  static Value castOffset(Value offset, Type targetType, Location loc,
+                          OpBuilder &builder) {
+    if (offset.getType() == targetType) {
+      return offset;
+    }
+
+    Type sourceElementType = getOffsetElementType(offset.getType());
+    Type targetElementType = getOffsetElementType(targetType);
+    if (targetElementType.isIndex()) {
+      return builder.create<arith::IndexCastOp>(loc, targetType, offset);
+    }
+
+    if (sourceElementType.isIndex()) {
+      return builder.create<arith::IndexCastOp>(loc, targetType, offset);
+    }
+
+    auto srcInt = dyn_cast<IntegerType>(sourceElementType);
+    auto dstInt = dyn_cast<IntegerType>(targetElementType);
+    if (srcInt && dstInt) {
+      if (srcInt.getWidth() < dstInt.getWidth()) {
+        return builder.create<arith::ExtSIOp>(loc, targetType, offset);
+      }
+      if (srcInt.getWidth() > dstInt.getWidth()) {
+        return builder.create<arith::TruncIOp>(loc, targetType, offset);
+      }
+    }
+
+    llvm_unreachable("unexpected offset type conversion");
+    return nullptr;
+  }
+
+  static Value castOrSplatOffset(Value offset, Type targetType, Location loc,
+                                 OpBuilder &builder) {
+    if (offset.getType() == targetType) {
+      return offset;
+    }
+
+    if (auto targetTensorType = dyn_cast<RankedTensorType>(targetType)) {
+      if (isa<RankedTensorType>(offset.getType())) {
+        return castOffset(offset, targetType, loc, builder);
+      }
+      auto elementType = targetTensorType.getElementType();
+      Value scalarOffset = castOffset(offset, elementType, loc, builder);
+      return builder.create<triton::SplatOp>(loc, targetTensorType,
+                                             scalarOffset);
+    }
+
+    return castOffset(offset, targetType, loc, builder);
+  }
+
+  LogicalResult processUnstructuredPtrs(ModuleOp root,
+                                        unsigned int defaultBitWidth = 32) {
     llvm::SmallDenseSet<Value> ptrArgs;
     llvm::DenseMap<Value, PtrOffset> offsetMap;
     std::queue<Value> workList;
 
-    getOperation().walk([&](FunctionOpInterface func) {
+    root.walk([&](FunctionOpInterface func) {
       for (auto arg : func.getArguments()) {
         if (!triton::isPtrTypeLike(arg.getType())) {
           continue;
@@ -265,7 +391,7 @@ public:
       }
     });
 
-    getOperation().walk([&](triton::IntToPtrOp op) {
+    root.walk([&](triton::IntToPtrOp op) {
       // We only want to handle single source pointer,
       // skip if this op produces tensor of pointers
       if (isa<RankedTensorType>(op.getType())) {
@@ -284,12 +410,13 @@ public:
 
     llvm::SmallVector<Operation *> toDelete;
     llvm::SmallVector<Operation *> ptrUsers;
+    llvm::SmallVector<OperandReplacement> operandReplacements;
 
     while (!workList.empty()) {
       auto val = workList.front();
       workList.pop();
 
-      for (auto &use : val.getUses()) {
+      for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
         auto user = use.getOwner();
 
         auto res =
@@ -306,8 +433,10 @@ public:
                   // We are converting a pointer to an integer here,
                   // materialized the pointer using the accumulated offset
                   // that we have stored so far.
+                  Value basePtr =
+                      materializeBasePtr(offsetInfo, op->getLoc(), b);
                   auto materializedAddPtr = b.create<triton::AddPtrOp>(
-                      op->getLoc(), offsetInfo.ptrType, offsetInfo.ptr,
+                      op->getLoc(), offsetInfo.ptrType, basePtr,
                       offsetInfo.offset);
 
                   // Change the op to use the "simplified" pointer above.
@@ -319,20 +448,20 @@ public:
                   return success();
                 })
                 .Case<triton::AddPtrOp>([&](triton::AddPtrOp addptr) {
-                  // Bail when we have an addptr in an scf.if as we  do not know
-                  // if the pointer returning from both branches will have the
-                  // same source
-                  if (addptr->getParentOfType<scf::IfOp>()) {
+                  // Bail only when a pointer escapes an scf.if branch. Pointers
+                  // created and consumed inside the branch can still be lowered
+                  // to the same base+offset form as straight-line code.
+                  if (reachesScfIfYieldThroughDerivedPtrs(addptr.getResult())) {
                     return failure();
                   }
 
                   OpBuilder b{addptr};
                   auto loc = addptr->getLoc();
 
-                  auto offsetInfo = offsetMap.at(addptr.getPtr());
+                  auto offsetInfo = offsetMap.at(addptr->getOperand(0));
 
                   auto prevOff = offsetInfo.offset;
-                  auto off = addptr.getOffset();
+                  auto off = addptr->getOperand(1);
 
                   auto lhsWidth = offsetInfo.bitWidth;
                   auto rhsWidth = getBitWidth(off.getType());
@@ -351,10 +480,12 @@ public:
                   }
 
                   auto accumulatedOff = b.create<arith::AddIOp>(
-                      loc, getPtrOffsetType(addptr.getType(), resWidth),
+                      loc,
+                      getPtrOffsetType(addptr.getResult().getType(), resWidth),
                       prevOff, off);
 
-                  PtrOffset newOffsetInfo{offsetInfo.ptr, addptr.getType(),
+                  PtrOffset newOffsetInfo{offsetInfo.ptr,
+                                          addptr.getResult().getType(),
                                           resWidth, accumulatedOff};
 
                   offsetMap.insert({addptr, newOffsetInfo});
@@ -370,6 +501,9 @@ public:
 
                   if (!triton::isPtrTypeLike(resType)) {
                     return success();
+                  }
+                  if (reachesScfIfYieldThroughDerivedPtrs(res)) {
+                    return failure();
                   }
 
                   auto ptr = op->getOperand(0);
@@ -395,9 +529,61 @@ public:
 
                   return success();
                 })
+                .Case<triton::BitcastOp>([&](triton::BitcastOp bitcast) {
+                  auto res = bitcast.getResult();
+                  auto resType = res.getType();
+                  if (!triton::isPtrTypeLike(resType)) {
+                    return success();
+                  }
+                  if (reachesScfIfYieldThroughDerivedPtrs(res)) {
+                    return failure();
+                  }
+
+                  auto offsetInfo = offsetMap.at(bitcast->getOperand(0));
+                  bool changesPointeeWidth =
+                      getPointeeByteWidth(bitcast.getSrc().getType()) !=
+                      getPointeeByteWidth(resType);
+                  if (changesPointeeWidth &&
+                      !isa<RankedTensorType>(bitcast.getSrc().getType())) {
+                    // Apply a scalar offset before changing its element scale.
+                    OpBuilder b{bitcast};
+                    Location loc = bitcast.getLoc();
+                    Value sourceBase = materializeBasePtr(offsetInfo, loc, b);
+                    Value sourceAddress = b.create<triton::AddPtrOp>(
+                        loc, offsetInfo.ptrType, sourceBase, offsetInfo.offset);
+                    bitcast->setOperand(0, sourceAddress);
+                    Type zeroType =
+                        getPtrOffsetType(resType, offsetInfo.bitWidth);
+                    Value zero = b.create<arith::ConstantOp>(
+                        loc, b.getIntegerAttr(zeroType, 0));
+                    offsetMap.insert(
+                        {res, {res, resType, offsetInfo.bitWidth, zero}});
+                    workList.push(res);
+                    return success();
+                  }
+
+                  if (changesPointeeWidth) {
+                    return failure();
+                  }
+
+                  offsetMap.insert({res,
+                                    {offsetInfo.ptr, resType,
+                                     offsetInfo.bitWidth, offsetInfo.offset}});
+                  workList.push(res);
+                  toDelete.push_back(bitcast);
+
+                  return success();
+                })
                 .Case<tts::MakeGatherScatterTensorPtrOp>(
-                    [&](Operation *op) { return success(); })
-                .Case<triton::LoadOp, triton::StoreOp, tts::MakeTensorPtrOp>(
+                    [&](tts::MakeGatherScatterTensorPtrOp makeGatherScatter) {
+                      Value base = makeGatherScatter->getOperand(0);
+                      if (!ptrArgs.contains(base) && offsetMap.contains(base)) {
+                        ptrUsers.push_back(makeGatherScatter);
+                      }
+                      return success();
+                    })
+                .Case<triton::LoadOp, triton::StoreOp, triton::AtomicRMWOp,
+                      triton::AtomicCASOp, tts::MakeTensorPtrOp>(
                     [&](Operation *op) {
                       // Special case:
                       // We do not want to create "unstructured tensor pointer"
@@ -405,7 +591,7 @@ public:
                       // the kernel arguments.
                       if (auto makeTensorPtr =
                               dyn_cast<tts::MakeTensorPtrOp>(op)) {
-                        if (ptrArgs.contains(makeTensorPtr.getBase())) {
+                        if (ptrArgs.contains(makeTensorPtr->getOperand(0))) {
                           return success();
                         }
                       }
@@ -425,6 +611,10 @@ public:
 
                   auto offsetType =
                       getPtrOffsetType(offsetInfo.ptrType, offsetInfo.bitWidth);
+
+                  operandReplacements.push_back({forOp.getOperation(),
+                                                 use.getOperandNumber(),
+                                                 offsetInfo.offset});
 
                   // We're setting both the types of the iter-arg and the
                   // corresponding result directly to the offset type.
@@ -459,7 +649,83 @@ public:
 
                   return success();
                 })
-                .Case<scf::YieldOp>([](auto) { return success(); })
+                .Case<scf::WhileOp>([&](scf::WhileOp whileOp) {
+                  // scf.while carries loop values through before-region args,
+                  // after-region args, and operation results. Pointer values
+                  // are represented by the original base pointer plus a carried
+                  // integer offset, matching the scf.for handling above.
+                  auto argIndex = use.getOperandNumber();
+                  auto init = whileOp.getInits()[argIndex];
+                  auto offsetInfo = offsetMap.at(init);
+                  auto offsetType =
+                      getPtrOffsetType(offsetInfo.ptrType, offsetInfo.bitWidth);
+
+                  operandReplacements.push_back(
+                      {whileOp.getOperation(), argIndex, offsetInfo.offset});
+
+                  auto beforeArg = whileOp.getBeforeArguments()[argIndex];
+                  beforeArg.setType(offsetType);
+                  PtrOffset beforeArgOffset{offsetInfo.ptr, offsetInfo.ptrType,
+                                            offsetInfo.bitWidth, beforeArg};
+                  offsetMap.insert({beforeArg, beforeArgOffset});
+                  workList.push(beforeArg);
+
+                  auto afterArg = whileOp.getAfterArguments()[argIndex];
+                  afterArg.setType(offsetType);
+                  PtrOffset afterArgOffset{offsetInfo.ptr, offsetInfo.ptrType,
+                                           offsetInfo.bitWidth, afterArg};
+                  offsetMap.insert({afterArg, afterArgOffset});
+                  workList.push(afterArg);
+
+                  auto res = whileOp.getResult(argIndex);
+                  res.setType(offsetType);
+                  PtrOffset resOffset{offsetInfo.ptr, offsetInfo.ptrType,
+                                      offsetInfo.bitWidth, res};
+                  offsetMap.insert({res, resOffset});
+                  workList.push(res);
+
+                  return success();
+                })
+                .Case<scf::ConditionOp>([&](scf::ConditionOp condition) {
+                  unsigned operandIndex = use.getOperandNumber();
+                  if (operandIndex == 0) {
+                    return success();
+                  }
+                  auto whileOp = cast<scf::WhileOp>(condition->getParentOp());
+                  Value init = whileOp.getInits()[operandIndex - 1];
+                  const PtrOffset &valueInfo = offsetMap.at(val);
+                  const PtrOffset &initInfo = offsetMap.at(init);
+                  if (valueInfo.ptr != initInfo.ptr ||
+                      valueInfo.offset.getType() != initInfo.offset.getType()) {
+                    return failure();
+                  }
+                  operandReplacements.push_back({condition.getOperation(),
+                                                 operandIndex,
+                                                 valueInfo.offset});
+                  return success();
+                })
+                .Case<scf::YieldOp>([&](scf::YieldOp yield) {
+                  Operation *parent = yield->getParentOp();
+                  Value init;
+                  if (auto forOp = dyn_cast<scf::ForOp>(parent)) {
+                    init = forOp.getInitArgs()[use.getOperandNumber()];
+                  } else if (auto whileOp = dyn_cast<scf::WhileOp>(parent)) {
+                    init = whileOp.getInits()[use.getOperandNumber()];
+                  } else {
+                    return success();
+                  }
+
+                  const PtrOffset &valueInfo = offsetMap.at(val);
+                  const PtrOffset &initInfo = offsetMap.at(init);
+                  if (valueInfo.ptr != initInfo.ptr ||
+                      valueInfo.offset.getType() != initInfo.offset.getType()) {
+                    return failure();
+                  }
+                  operandReplacements.push_back({yield.getOperation(),
+                                                 use.getOperandNumber(),
+                                                 valueInfo.offset});
+                  return success();
+                })
                 .Case<triton::CatOp>([](triton::CatOp op) {
                   op->emitError("Do not support gather / scatter with multiple "
                                 "bases yet");
@@ -476,6 +742,11 @@ public:
       }
     }
 
+    for (const auto &replacement : operandReplacements) {
+      replacement.op->setOperand(replacement.operandIndex,
+                                 replacement.replacement);
+    }
+
     for (auto op : ptrUsers) {
       OpBuilder b{op};
       auto loc = op->getLoc();
@@ -483,6 +754,7 @@ public:
           llvm::TypeSwitch<Operation *, LogicalResult>(op)
               .Case<triton::LoadOp>([&](triton::LoadOp load) {
                 auto offsetInfo = offsetMap.at(load.getPtr());
+                Value ptr = materializeBasePtr(offsetInfo, loc, b);
 
                 auto other = load.getOther();
 
@@ -494,9 +766,9 @@ public:
                   }
                 }
 
-                auto gather = b.create<tts::GatherOp>(
-                    loc, load.getType(), offsetInfo.ptr, offsetInfo.offset,
-                    load.getMask(), other);
+                auto gather = b.create<tts::GatherOp>(loc, load.getType(), ptr,
+                                                      offsetInfo.offset,
+                                                      load.getMask(), other);
 
                 load->replaceAllUsesWith(gather->getResults());
                 load->erase();
@@ -504,19 +776,73 @@ public:
               })
               .Case<triton::StoreOp>([&](triton::StoreOp store) {
                 auto offsetInfo = offsetMap.at(store.getPtr());
-                b.create<tts::ScatterOp>(loc, offsetInfo.ptr, offsetInfo.offset,
+                Value ptr = materializeBasePtr(offsetInfo, loc, b);
+                b.create<tts::ScatterOp>(loc, ptr, offsetInfo.offset,
                                          store.getValue(), store.getMask());
                 store->erase();
                 return success();
               })
+              .Case<triton::AtomicRMWOp>([&](triton::AtomicRMWOp atomic) {
+                auto offsetInfo = offsetMap.at(atomic.getPtr());
+                Value ptr = materializeBasePtr(offsetInfo, loc, b);
+                auto rmw = b.create<tts::AtomicRMWOp>(
+                    loc, atomic.getResult().getType(),
+                    atomic.getAtomicRmwOpAttr(), ptr, offsetInfo.offset,
+                    atomic.getVal(), atomic.getMask(), atomic.getSemAttr(),
+                    atomic.getScopeAttr());
+                atomic->replaceAllUsesWith(rmw->getResults());
+                atomic->erase();
+                return success();
+              })
+              .Case<triton::AtomicCASOp>([&](triton::AtomicCASOp atomic) {
+                auto offsetInfo = offsetMap.at(atomic.getPtr());
+                Value ptr = materializeBasePtr(offsetInfo, loc, b);
+                auto cas = b.create<tts::AtomicCASOp>(
+                    loc, atomic.getResult().getType(), ptr, offsetInfo.offset,
+                    atomic.getCmp(), atomic.getVal(), atomic.getSemAttr(),
+                    atomic.getScopeAttr());
+                atomic->replaceAllUsesWith(cas->getResults());
+                atomic->erase();
+                return success();
+              })
+              .Case<tts::MakeGatherScatterTensorPtrOp>(
+                  [&](tts::MakeGatherScatterTensorPtrOp makeGatherScatter) {
+                    auto offsetInfo =
+                        offsetMap.at(makeGatherScatter->getOperand(0));
+                    Value ptr = materializeBasePtr(offsetInfo, loc, b);
+                    Value gatherOffset =
+                        makeGatherScatter.getGatherScatterOffset();
+                    auto gatherOffsetType =
+                        cast<RankedTensorType>(gatherOffset.getType());
+                    unsigned targetWidth = std::max(
+                        offsetInfo.bitWidth,
+                        cast<IntegerType>(gatherOffsetType.getElementType())
+                            .getWidth());
+                    Type targetOffsetType = RankedTensorType::get(
+                        gatherOffsetType.getShape(),
+                        IntegerType::get(&getContext(), targetWidth),
+                        gatherOffsetType.getEncoding());
+
+                    gatherOffset =
+                        castOffset(gatherOffset, targetOffsetType, loc, b);
+                    Value baseOffset = castOrSplatOffset(
+                        offsetInfo.offset, targetOffsetType, loc, b);
+                    Value accumulatedOffset = b.create<arith::AddIOp>(
+                        loc, targetOffsetType, baseOffset, gatherOffset);
+
+                    makeGatherScatter->setOperand(0, ptr);
+                    makeGatherScatter->setOperand(1, accumulatedOffset);
+                    return success();
+                  })
               .Case<tts::MakeTensorPtrOp>([&](auto makeTensorPtr) {
                 // For block pointers, the base could come from a sequence of
                 // `tt.addptr`. Accumulate the target offset with the offset
                 // we have saved.
-                auto offsetInfo = offsetMap.at(makeTensorPtr.getBase());
+                auto offsetInfo = offsetMap.at(makeTensorPtr->getOperand(0));
                 auto baseOffset = offsetInfo.offset;
 
-                makeTensorPtr.getBaseMutable().set(offsetInfo.ptr);
+                Value ptr = materializeBasePtr(offsetInfo, loc, b);
+                makeTensorPtr->setOperand(0, ptr);
 
                 // Add the existing offset from the base to the offset
                 // operand in the ops.
@@ -564,7 +890,7 @@ public:
       }
     }
 
-    for (auto op : toDelete) {
+    for (auto op : llvm::reverse(toDelete)) {
       auto ptrInfo = offsetMap.at(op->getResult(0));
       op->replaceAllUsesWith(ValueRange{ptrInfo.offset});
       op->erase();
@@ -574,12 +900,15 @@ public:
   }
 
   void runOnOperation() override {
-    if (failed(processUnstructuredPtrs(offsetBitWidth))) {
+    OwningOpRef<ModuleOp> transformedModule(getOperation().clone());
+    if (failed(processUnstructuredPtrs(*transformedModule, offsetBitWidth))) {
       getOperation()->emitWarning(
           "Cannot transform tensor of pointers into a single base pointer "
           "with tensor of offsets");
       return;
     }
+
+    getOperation().getBodyRegion().takeBody(transformedModule->getBodyRegion());
 
     PassManager pm(&getContext(), getOperation().getOperationName());
     pm.addPass(createCanonicalizerPass());

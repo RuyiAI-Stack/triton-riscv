@@ -11,6 +11,7 @@ from .flash_kernel import (
     flash_fwd_splitkv_kernel,
     flash_varlen_fwd_kernel,
 )
+from .rand import philox_backend_seed_offset
 
 
 def CHECK_DEVICE(x):
@@ -285,15 +286,9 @@ def mha_varlan_fwd(
     ), "FlashAttention only support fp16 and bf16 data type"
     assert q_dtype == k.dtype
     assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert k.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert v.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
 
     assert cu_seqlens_q.dtype == torch.int32
     assert cu_seqlens_q.is_contiguous()
@@ -346,7 +341,13 @@ def mha_varlan_fwd(
     if window_size_right >= max_seqlen_k:
         window_size_right = -1
 
-    is_local = window_size_left >= 0
+    is_causal = window_size_left < 0 and window_size_right == 0
+    is_local = window_size_left >= 0 or window_size_right >= 0
+    if is_local:
+        if window_size_left < 0:
+            window_size_left = max_seqlen_k
+        if window_size_right < 0:
+            window_size_right = max_seqlen_k
 
     # Optimize all single-query sequences by swapping the query-group and sequence dimensions
     seqlenq_ngroups_swapped = (
@@ -402,9 +403,7 @@ def mha_varlan_fwd(
     def round_multiple(x, m):
         return (x + m - 1) // m * m
 
-    head_size_rounded = (
-        round_multiple(head_size, 32) if head_size <= 192 else 256
-    )
+    head_size_rounded = round_multiple(head_size, 32) if head_size <= 192 else 256
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
@@ -454,8 +453,7 @@ def mha_varlan_fwd(
     if p_dropout > 0:
         is_dropout = True
         increment = batch_size * num_heads * 32
-        philox_seed = torch.randint(0, 2**31, (1,), device=q_device).item()
-        philox_offset = torch.randint(0, 2**31, (1,), device=q_device).item()
+        philox_seed, philox_offset = philox_backend_seed_offset(increment)
         philox_args = torch.tensor(
             [philox_seed, philox_offset], dtype=torch.int64, device=q_device
         )
@@ -501,7 +499,7 @@ def mha_varlan_fwd(
         o_batch_stride,  # o_batch_stride,
         cu_seqlens_q is not None,  # is_cu_seqlens_q,
         cu_seqlens_q,  # cu_seqlens_q_ptr,
-        seqused_k is None,  # is_cu_seqlens_k,
+        not is_paged,  # is_cu_seqlens_k,
         cu_seqlens_k,  # cu_seqlens_k_ptr,
         seqused_k is not None,  # is_seqused_k,
         seqused_k,  # seqused_k_ptr,
@@ -586,18 +584,14 @@ def mha_varlan_fwd(
     kernel(*args, **cfg_params)
 
     if seqlenq_ngroups_swapped:
-        out = out.reshape(
-            batch_size, max_seqlen_q, num_heads_k, head_size
-        ).transpose(1, 2)
+        out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
+            1, 2
+        )
         if out_ is not None:
-            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(
-                out
-            )
+            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
             out = out_
         else:
-            out = out.reshape(
-                batch_size, num_heads_k * max_seqlen_q, head_size
-            )
+            out = out.reshape(batch_size, num_heads_k * max_seqlen_q, head_size)
         lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
         lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
 
@@ -638,15 +632,9 @@ def mha_varlan_fwd_opt(
     ), "FlashAttention only support fp16 and bf16 data type"
     assert q_dtype == k.dtype
     assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert k.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert v.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
 
     assert cu_seqlens_q.dtype == torch.int32
     assert cu_seqlens_q.is_contiguous()
@@ -656,7 +644,7 @@ def mha_varlan_fwd_opt(
 
     is_paged = page_table is not None
     if not is_paged:
-        page_table = torch.emtpty((0, 0), device=q_device, dtype=torch.int32)
+        page_table = torch.empty((0, 0), device=q_device, dtype=torch.int32)
 
     # q shape: [total_q_tokens, num_heads, head_size]
     # k shape:
@@ -699,7 +687,13 @@ def mha_varlan_fwd_opt(
     if window_size_right >= max_seqlen_k:
         window_size_right = -1
 
-    is_local = window_size_left >= 0
+    is_causal = window_size_left < 0 and window_size_right == 0
+    is_local = window_size_left >= 0 or window_size_right >= 0
+    if is_local:
+        if window_size_left < 0:
+            window_size_left = max_seqlen_k
+        if window_size_right < 0:
+            window_size_right = max_seqlen_k
 
     # Optimize all single-query sequences by swapping the query-group and sequence dimensions
     seqlenq_ngroups_swapped = (
@@ -755,9 +749,7 @@ def mha_varlan_fwd_opt(
     def round_multiple(x, m):
         return (x + m - 1) // m * m
 
-    head_size_rounded = (
-        round_multiple(head_size, 32) if head_size <= 192 else 256
-    )
+    head_size_rounded = round_multiple(head_size, 32) if head_size <= 192 else 256
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
@@ -803,15 +795,12 @@ def mha_varlan_fwd_opt(
         o_batch_stride = out.stride(0) * max_seqlen_q
 
     if lse is None:
-        lse = torch.empty(
-            (num_heads, total_q), dtype=torch.float, device=q_device
-        )
+        lse = torch.empty((num_heads, total_q), dtype=torch.float, device=q_device)
 
     if p_dropout > 0:
         is_dropout = True
         increment = batch_size * num_heads * 32
-        philox_seed = torch.randint(0, 2**31, (1,), device=q_device).item()
-        philox_offset = torch.randint(0, 2**31, (1,), device=q_device).item()
+        philox_seed, philox_offset = philox_backend_seed_offset(increment)
         philox_args = torch.tensor(
             [philox_seed, philox_offset], dtype=torch.int64, device=q_device
         )
@@ -858,7 +847,7 @@ def mha_varlan_fwd_opt(
         o_batch_stride,  # o_batch_stride,
         cu_seqlens_q is not None,  # is_cu_seqlens_q,
         cu_seqlens_q,  # cu_seqlens_q_ptr,
-        cu_seqlens_k is not None,  # is_cu_seqlens_k,
+        not is_paged,  # is_cu_seqlens_k,
         cu_seqlens_k,  # cu_seqlens_k_ptr,
         seqused_k is not None,  # is_seqused_k,
         seqused_k,  # seqused_k_ptr,
@@ -943,18 +932,14 @@ def mha_varlan_fwd_opt(
     kernel(*args, **cfg_params)
 
     if seqlenq_ngroups_swapped:
-        out = out.reshape(
-            batch_size, max_seqlen_q, num_heads_k, head_size
-        ).transpose(1, 2)
+        out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
+            1, 2
+        )
         if out_ is not None:
-            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(
-                out
-            )
+            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
             out = out_
         else:
-            out = out.reshape(
-                batch_size, num_heads_k * max_seqlen_q, head_size
-            )
+            out = out.reshape(batch_size, num_heads_k * max_seqlen_q, head_size)
         lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
         lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
 
@@ -987,15 +972,9 @@ def mha_fwd(
     ), "FlashAttention only support fp16 and bf16 data type"
     assert q_dtype == k.dtype
     assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert k.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
-    assert v.stride(-1) == 1, (
-        "Input tensor must have contiguous last dimension"
-    )
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     batch_size, seqlen_q, num_heads, head_size = q.size()
     _, seqlen_k, num_heads_k, _ = k.size()
 
@@ -1022,7 +1001,12 @@ def mha_fwd(
         window_size_right = 0
 
     is_causal = window_size_left < 0 and window_size_right == 0
-    is_local = window_size_left >= 0 and window_size_right >= 0
+    is_local = window_size_left >= 0 or window_size_right >= 0
+    if is_local:
+        if window_size_left < 0:
+            window_size_left = seqlen_k
+        if window_size_right < 0:
+            window_size_right = seqlen_k
 
     seqlenq_ngroups_swapped = (
         seqlen_q == 1
@@ -1035,9 +1019,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(
-            1, 2
-        )
+        q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
 
@@ -1076,9 +1058,9 @@ def mha_fwd(
 
     if out is not None:
         if seqlenq_ngroups_swapped:
-            out = out.reshape(
-                batch_size, num_heads_k, q_groups, head_size
-            ).transpose(1, 2)
+            out = out.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(
+                1, 2
+            )
     else:
         out = torch.empty_like(q, dtype=v.dtype)
 
@@ -1086,8 +1068,7 @@ def mha_fwd(
     if p_dropout > 0:
         is_dropout = True
         increment = batch_size * num_heads * 32
-        philox_seed = torch.randint(0, 2**31, (1,), device=q_device).item()
-        philox_offset = torch.randint(0, 2**31, (1,), device=q_device).item()
+        philox_seed, philox_offset = philox_backend_seed_offset(increment)
         philox_args = torch.tensor(
             [philox_seed, philox_offset], dtype=torch.int64, device=q_device
         )
@@ -1178,10 +1159,10 @@ def mha_fwd(
                 params.softmax_lse_ptr = lse_splits
                 extra_args = {
                     "blocks_per_split": triton.cdiv(n_blocks, n_splits),
-                    "IS_EVEN_MN": True,
+                    "IS_EVEN_MN": Q % BM == 0 and K % BN == 0,
                     "PRE_LOAD_V": False,
-                    "BLOCK_M": 32,
-                    "BLOCK_N": 32,
+                    "BLOCK_M": BM,
+                    "BLOCK_N": BN,
                     "BLOCK_K": triton.next_power_of_2(D),
                     "num_warps": 4,
                     "num_stages": 1,
@@ -1208,7 +1189,9 @@ def mha_fwd(
                     "lse_split_stride": lse_splits.stride(0),
                     "out_b_stride": out.stride(0),
                     "out_s_stride": out.stride(-3),
-                    "out_h_stride": out.stride(-1),
+                    "out_h_stride": out.stride(-2),
+                    "seqlen_q": Q,
+                    "num_heads": H,
                     "out_splits_ptr": out_splits,
                     "lse_splits_ptr": lse_splits,
                     "n_splits": n_splits,
@@ -1313,9 +1296,7 @@ def mha_fwd(
 
     # Move TxD to last dims for correct stride in Triton tt.load
 
-    kernel = dispatch(
-        batch_size, num_heads, seqlen_q, seqlen_k, head_size, params
-    )
+    dispatch(batch_size, num_heads, seqlen_q, seqlen_k, head_size, params)
 
     if seqlenq_ngroups_swapped:
         out = out.transpose(1, 2).reshape(

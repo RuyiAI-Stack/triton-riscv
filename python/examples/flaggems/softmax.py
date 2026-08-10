@@ -54,9 +54,7 @@ def softmax_kernel_non_inner(
             inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
-            z = tl.where(
-                all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            )
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, 0)
@@ -109,21 +107,15 @@ def softmax_kernel_inner(
             inp = tl.load(input_ptr + n_offsets)
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
-            z = tl.where(
-                all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            )
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
         for start_n in range(previous_multiple, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets, mask=mask, other=-float("inf")
-            )
+            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
             m_new = tl.maximum(m, inp)
             all_neg_inf = m_new == float("-inf")
-            z = tl.where(
-                all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            )
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, 0)
@@ -170,12 +162,10 @@ def softmax_backward_kernel_non_inner(
         offsets_n = tl.arange(0, TILE_N)
         offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
         mask = (offsets_n < N)[:, None] & (offsets_k < K)
-        out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(
+        out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
             tl.float32
         )
-        out_grad_tile = tl.load(
-            out_grad_ptr + offsets, mask=mask, other=0.0
-        ).to(tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, axis=0)
         in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -185,12 +175,10 @@ def softmax_backward_kernel_non_inner(
         scale = tl.zeros([TILE_N, TILE_K], dtype=tl.float32)
         for _ in range(0, N, TILE_N):
             mask = (offsets_n < N)[:, None] & (offsets_k < K)
-            out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(
+            out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
                 tl.float32
             )
-            out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
             scale += out_tile * out_grad_tile
             offsets_n += TILE_N
             offsets += TILE_N * K
@@ -200,12 +188,10 @@ def softmax_backward_kernel_non_inner(
         offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
         for _ in range(0, N, TILE_N):
             mask = (offsets_n < N)[:, None] & (offsets_k < K)
-            out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(
+            out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
                 tl.float32
             )
-            out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
             in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             offsets_n += TILE_N
@@ -229,12 +215,10 @@ def softmax_backward_kernel_inner(
         n_offsets = tl.arange(0, TILE_N)
         offsets = m_offsets[:, None] * N + n_offsets
         mask = (m_offsets[:, None] < M) & (n_offsets < N)
-        out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(
+        out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
             tl.float32
         )
-        out_grad_tile = tl.load(
-            out_grad_ptr + offsets, mask=mask, other=0.0
-        ).to(tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, 1)
         in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -251,9 +235,9 @@ def softmax_backward_kernel_inner(
                 other=0.0,
                 eviction_policy="evict_last",
             ).to(tl.float32)
-            out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
             scale += out_tile * out_grad_tile
             n_offsets += TILE_N
             offsets += TILE_N
@@ -269,9 +253,9 @@ def softmax_backward_kernel_inner(
                 other=0.0,
                 eviction_policy="evict_first",
             ).to(tl.float32)
-            out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
             in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             n_offsets += TILE_N
@@ -297,9 +281,7 @@ def softmax_out(self, dim, half_to_float=False, *, out):
     if tuple(out.shape) != tuple(self.shape):
         out.resize_(self.shape)
     if out.dtype != dtype:
-        raise RuntimeError(
-            f"_softmax.out: expected out dtype {dtype}, got {out.dtype}"
-        )
+        raise RuntimeError(f"_softmax.out: expected out dtype {dtype}, got {out.dtype}")
 
     K = self.numel() // M // N
 

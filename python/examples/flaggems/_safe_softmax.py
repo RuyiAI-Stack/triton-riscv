@@ -27,9 +27,7 @@ def _safe_softmax_kernel(
     sum_exp = tl.sum(exp_x, axis=0)
     softmax = exp_x / sum_exp
 
-    softmax = tl.where(
-        all_neginf, tl.zeros([BLOCK_SIZE], dtype=tl.float32), softmax
-    )
+    softmax = tl.where(all_neginf, tl.zeros([BLOCK_SIZE], dtype=tl.float32), softmax)
 
     tl.store(output_ptr + row_offset + cols, softmax, mask=mask)
 
@@ -60,9 +58,7 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
     BLOCK_SIZE = min(4096, triton.next_power_of_2(n_cols))
     grid = (n_rows,)
 
-    _safe_softmax_kernel[grid](
-        y_fp32, out_fp32, n_rows, n_cols, BLOCK_SIZE=BLOCK_SIZE
-    )
+    _safe_softmax_kernel[grid](y_fp32, out_fp32, n_rows, n_cols, BLOCK_SIZE=BLOCK_SIZE)
 
     out = out_fp32
     if dtype is not None:

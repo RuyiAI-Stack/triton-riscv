@@ -35,7 +35,12 @@
 // CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<128x256xbf16>
 // CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_0]] : bf16) outs(%[[EMPTY_1]] : tensor<128x256xbf16>) -> tensor<128x256xbf16>
 // CHECK:           %[[MATMUL_0:.*]] = linalg.matmul ins(%[[TO_TENSOR_0]], %[[TO_TENSOR_1]] : tensor<128x64xbf16>, tensor<64x256xbf16>) outs(%[[FILL_1]] : tensor<128x256xbf16>) -> tensor<128x256xbf16>
-// CHECK:           bufferization.materialize_in_destination %[[MATMUL_0]] in writable %[[CAST_0]] : (tensor<128x256xbf16>, memref<128x256xbf16, strided<[?, 1]>>) -> ()
+// CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#map, #map, #map], iterator_types = ["parallel", "parallel"]} ins(%[[FILL_0]], %[[MATMUL_0]] : tensor<128x256xbf16>, tensor<128x256xbf16>) outs(%[[FILL_0]] : tensor<128x256xbf16>) {
+// CHECK:           ^bb0(%[[IN0:.*]]: bf16, %[[IN1:.*]]: bf16, %[[OUT:.*]]: bf16):
+// CHECK:             %[[ADDF_0:.*]] = arith.addf %[[IN0]], %[[IN1]] : bf16
+// CHECK:             linalg.yield %[[ADDF_0]] : bf16
+// CHECK:           } -> tensor<128x256xbf16>
+// CHECK:           bufferization.materialize_in_destination %[[GENERIC_0]] in writable %[[CAST_0]] : (tensor<128x256xbf16>, memref<128x256xbf16, strided<[?, 1]>>) -> ()
 // CHECK:           bufferization.materialize_in_destination %[[FILL_0]] in writable %[[CAST_0]] : (tensor<128x256xbf16>, memref<128x256xbf16, strided<[?, 1]>>) -> ()
 // CHECK:           return
 // CHECK:         }

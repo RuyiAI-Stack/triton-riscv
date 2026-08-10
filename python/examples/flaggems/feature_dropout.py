@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .rand import philox_backend_seed_offset
+
 
 @triton.jit
 def uint_to_uniform_float(x):
@@ -10,8 +12,7 @@ def uint_to_uniform_float(x):
         scale = 4.6566127342e-10
     else:
         tl.static_assert(
-            tl.constexpr(x.dtype == tl.uint64)
-            or tl.constexpr(x.dtype == tl.int64)
+            tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
         )
         x = x.to(tl.int64, bitcast=True)
         scale = 1.0842020432385337e-19
@@ -124,8 +125,8 @@ def feature_dropout(input, p, train=True):
     BLOCK_C = min(triton.next_power_of_2(C), 64)
     grid_mask = (triton.cdiv(N, BLOCK_N), triton.cdiv(C, BLOCK_C))
 
-    philox_seed = torch.initial_seed()
-    philox_offset = 0
+    increment = triton.cdiv(N * C, 4) * 4
+    philox_seed, philox_offset = philox_backend_seed_offset(increment)
     generate_feature_mask_kernel[grid_mask](
         mask,
         N,

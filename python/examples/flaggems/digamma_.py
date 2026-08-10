@@ -58,9 +58,7 @@ def digamma_kernel_(
 def digamma_(*args, **kwargs):
     x = args[0]
     if not isinstance(x, torch.Tensor):
-        raise TypeError(
-            "digamma_ expects a torch.Tensor as the first argument"
-        )
+        raise TypeError("digamma_ expects a torch.Tensor as the first argument")
 
     # Handle non-contiguous tensors by operating on a contiguous
     # copy and copying back

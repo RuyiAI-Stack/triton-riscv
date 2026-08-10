@@ -73,9 +73,7 @@ def bitonic_sortbykey_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    mask_val = _get_iinfo_val(
-        chunk_x.dtype.element_ty, return_max=not DESCENDING
-    )
+    mask_val = _get_iinfo_val(chunk_x.dtype.element_ty, return_max=not DESCENDING)
 
     chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val)
     chunk_index_val = tl.load(chunk_index + cols, mask=mask)
@@ -91,16 +89,16 @@ def bitonic_sortbykey_kernel(
 def radix_type_convert(k):
     ik = k.to(tl.int64)
     if tl.constexpr(k.dtype == tl.int8):
-        mask = (ik >> 7) & 0x1
+        mask = ((ik >> 7) & 0x1) != 0
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
-        mask = (ik >> 15) & 0x1
+        mask = ((ik >> 15) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
-        mask = (ik >> 31) & 0x1
+        mask = ((ik >> 31) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
     elif tl.constexpr(k.dtype == tl.int64):
-        mask = (ik >> 63) & 0x1
+        mask = ((ik >> 63) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
     else:
         o = k
@@ -139,9 +137,7 @@ def digit_hist_kernel(
             bin_offset = p * (bins + 1) * grid0 + (bin_id + 1) * grid0 + pid0
             # reduce rather than global atomic for perf issue
             tl.store(digit_hist + bin_offset, digit_sum)
-        tl.store(
-            digit_hist + p * (bins + 1) * grid0 + pid0, 0, mask=bin_segid == 0
-        )
+        tl.store(digit_hist + p * (bins + 1) * grid0 + pid0, 0, mask=bin_segid == 0)
         bit_offset += bits_per_pass
 
 
@@ -234,15 +230,11 @@ def radix_sortbykey_scatter_kernel(
         inc_bucket_offset = prefix_offsets.to(tl.int64) + inc_sum.to(tl.int64)
         if last_block and portion_id < num_portions - 1:
             tl.store(
-                digit_hist
-                + bin_offset
-                + (portion_id + 1) * passes * (bins + 1),
+                digit_hist + bin_offset + (portion_id + 1) * passes * (bins + 1),
                 inc_bucket_offset,
             )
         global_offsets = (
-            inc_bucket_offset
-            - bin_of_bucket.to(tl.int64)
-            + key_block_rank.to(tl.int64)
+            inc_bucket_offset - bin_of_bucket.to(tl.int64) + key_block_rank.to(tl.int64)
         )
         tl.store(key_out + global_offsets, key_data, mask=key_digit_mask)
         tl.store(value_out + global_offsets, value_data, mask=key_digit_mask)
@@ -276,12 +268,8 @@ def duplicate_keys_shuffle_kernel(
     mask_val = _get_iinfo_val(tl.uint32, True)
     r1 = tl.where(value_offset < n_elements, r1, mask_val)
     _, sorted_chunk_index = argsort(r1, offset_range, 0, descending=False)
-    store_offset = pid0.to(tl.int64) * BLOCK_SIZE + sorted_chunk_index.to(
-        tl.int64
-    )
-    tl.store(
-        value_in + store_offset, value_data, mask=store_offset < n_elements
-    )
+    store_offset = pid0.to(tl.int64) * BLOCK_SIZE + sorted_chunk_index.to(tl.int64)
+    tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
 def sort_by_key(key, value, valid_bits, generator=None):
@@ -348,11 +336,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
         bit_offset = 0
         for p in range(passes):
             k_in = (key if p == 0 else key_out_p) if p % 2 == 0 else key_out_q
-            v_in = (
-                (value if p == 0 else value_out_p)
-                if p % 2 == 0
-                else value_out_q
-            )
+            v_in = (value if p == 0 else value_out_p) if p % 2 == 0 else value_out_q
             k_out = key_out_q if p % 2 == 0 else key_out_p
             v_out = value_out_q if p % 2 == 0 else value_out_p
             for portion_id in range(num_portions):
@@ -456,7 +440,5 @@ def randperm(
     rand_key = torch.randint(
         low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
     )
-    perm_range = sort_by_key(
-        rand_key, in_range, valid_bits, generator=generator
-    )
+    perm_range = sort_by_key(rand_key, in_range, valid_bits, generator=generator)
     return perm_range

@@ -47,12 +47,25 @@ def test_act_quant(shape, block_size, scale_fmt):
     x = torch.randn(shape, dtype=torch.bfloat16, device="cpu")
 
     y_ref, s_ref = act_quant_ref(x, block_size=block_size, scale_fmt=scale_fmt)
-    y_triton, s_triton = act_quant_triton(
-        x, block_size=block_size, scale_fmt=scale_fmt
-    )
+    y_triton, s_triton = act_quant_triton(x, block_size=block_size, scale_fmt=scale_fmt)
 
     # float8_e4m3fn doesn't support allclose directly well, so convert to float32
-    torch.testing.assert_close(
-        y_ref.float(), y_triton.float(), rtol=1e-2, atol=1e-2
-    )
+    torch.testing.assert_close(y_ref.float(), y_triton.float(), rtol=1e-2, atol=1e-2)
     torch.testing.assert_close(s_ref, s_triton, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("block_size", [64, 128])
+def test_act_quant_midpoint_rounds_like_torch(block_size):
+    x = torch.zeros((1, block_size), dtype=torch.bfloat16, device="cpu")
+    x[0, 0] = torch.tensor(2.625, dtype=torch.bfloat16)
+    x[0, 1] = torch.tensor(0.181640625, dtype=torch.bfloat16)
+
+    y_ref, s_ref = act_quant_ref(x, block_size=block_size, scale_fmt=None)
+    y_triton, s_triton = act_quant_triton(x, block_size=block_size, scale_fmt=None)
+
+    assert s_ref[0, 0].item() == pytest.approx(0.005859375)
+    assert s_triton[0, 0].item() == pytest.approx(0.005859375)
+    assert y_ref.view(torch.uint8)[0, 1].item() == 0x60
+    assert y_triton.view(torch.uint8)[0, 1].item() == 0x60
+    torch.testing.assert_close(y_ref.float(), y_triton.float(), rtol=0.0, atol=0.0)
+    torch.testing.assert_close(s_ref, s_triton, rtol=0.0, atol=0.0)

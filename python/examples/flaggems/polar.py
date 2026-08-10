@@ -18,9 +18,7 @@ def polar_kernel(
     mask = offsets < n_elements
 
     abs_val = tl.load(abs_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    angle_val = tl.load(angle_ptr + offsets, mask=mask, other=0.0).to(
-        tl.float32
-    )
+    angle_val = tl.load(angle_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
     real = abs_val * tl.cos(angle_val)
     imag = abs_val * tl.sin(angle_val)
@@ -40,8 +38,6 @@ def polar(abs, angle):
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    polar_kernel[grid](
-        abs, angle, real, imag, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    polar_kernel[grid](abs, angle, real, imag, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
     return torch.complex(real, imag)

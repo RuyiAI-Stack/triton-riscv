@@ -22,8 +22,8 @@ module {
 // CHECK:           %[[VAL_7:.*]] = memref.alloc() : memref<128xbf16>
 // CHECK:           memref.copy %[[VAL_6]], %[[VAL_7]] : memref<128xbf16, strided<[1]>> to memref<128xbf16>
 // CHECK:           %[[VAL_8:.*]] = bufferization.to_tensor %[[VAL_7]] restrict writable : memref<128xbf16>
-// CHECK:           %[[VAL_9:.*]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           %[[VAL_10:.*]] = tensor.insert %[[VAL_5]] into %[[VAL_9]][] : tensor<f32>
+// CHECK:           %[[VAL_9:.*]] = tensor.empty() : tensor<f32>
+// CHECK:           %[[VAL_10:.*]] = linalg.fill ins(%[[VAL_5]] : f32) outs(%[[VAL_9]] : tensor<f32>) -> tensor<f32>
 // CHECK:           %[[VAL_11:.*]] = linalg.reduce ins(%[[VAL_8]] : tensor<128xbf16>) outs(%[[VAL_10]] : tensor<f32>) dimensions = [0]
 // CHECK:             (%[[VAL_12:.*]]: bf16, %[[VAL_13:.*]]: f32) {
 // CHECK:               %[[VAL_14:.*]] = arith.extf %[[VAL_12]] : bf16 to f32

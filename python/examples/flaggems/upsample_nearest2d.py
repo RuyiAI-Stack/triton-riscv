@@ -29,6 +29,7 @@ def upsample_nearest2d_kernel(
     nc_iter = tl.program_id(axis=1)
 
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < OH * OW
     ow = idx % OW
     oh = idx // OW % OH
 
@@ -49,8 +50,8 @@ def upsample_nearest2d_kernel(
     dst_index_stride = nc_stride * OH * OW
 
     while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
+        data = tl.load(ptr_i + offset_i, mask=mask, other=0.0)
+        tl.store(ptr_o + offset_o, data, mask=mask)
         ptr_i += src_index_stride
         ptr_o += dst_index_stride
         nc_iter += nc_stride
@@ -79,9 +80,7 @@ def upsample_nearest2d(
         reciprocal_scale_w = IW / OW
 
     # allocate output
-    output = torch.empty(
-        (N, C, OH, OW), device=input.device, dtype=input.dtype
-    )
+    output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     total_threads = OH * OW
     grid = (
         triton.cdiv(total_threads, 1024),

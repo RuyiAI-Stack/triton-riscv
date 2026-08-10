@@ -29,6 +29,7 @@ def trunc(x):
     """Trunc default - truncate to integer"""
     return tl.where(x >= 0, tl.math.floor(x), tl.math.ceil(x))
 
+
 @triton.jit
 def trunc_div(x, y):
     """Truncate division with higher precision to match PyTorch."""
@@ -59,9 +60,7 @@ def _float_floordiv(x, y):
     floor_q = tl.where(c, floor_q + 1.0, floor_q)
 
     q_is_zeros = q == 0.0
-    floor_q = tl.where(
-        q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q
-    )
+    floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
 
     is_div_by_zero = y == 0.0
     float_division = x / y
@@ -193,7 +192,7 @@ def int_trunc_div_kernel_tt(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask, other=1)
     res = x // y
     tl.store(out_ptr + offsets, res, mask=mask)
 
@@ -225,7 +224,7 @@ def int_trunc_div_kernel_st(
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    y = tl.load(y_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask, other=1)
     res = x_val // y
     tl.store(out_ptr + offsets, res, mask=mask)
 
@@ -342,9 +341,7 @@ def rem_kernel_st(
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
-def _invoke_kernel(
-    kernel_tt, kernel_ts, kernel_st, A, B, out=None, kwargs=None
-):
+def _invoke_kernel(kernel_tt, kernel_ts, kernel_st, A, B, out=None, kwargs=None):
     if kwargs is None:
         kwargs = {}
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
@@ -360,10 +357,7 @@ def _invoke_kernel(
             # true_divide always returns float unless specified otherwise in some contexts, but
             # actually PyTorch promotes integer division to float.
             # We'll just let PyTorch decide the out type for true_divide if we want, or manually promote.
-            if (
-                "true_div" in kernel_tt.__name__
-                and not common_dtype.is_floating_point
-            ):
+            if "true_div" in kernel_tt.__name__ and not common_dtype.is_floating_point:
                 common_dtype = torch.get_default_dtype()
                 A_c = A_c.to(common_dtype)
                 B_c = B_c.to(common_dtype)
@@ -371,9 +365,7 @@ def _invoke_kernel(
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        kernel_tt[grid](
-            A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, **kwargs
-        )
+        kernel_tt[grid](A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, **kwargs)
         return out.view_as(A)
     elif isinstance(A, torch.Tensor):
         A_c = A.contiguous()
@@ -384,9 +376,7 @@ def _invoke_kernel(
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        kernel_ts[grid](
-            A_c, B, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, **kwargs
-        )
+        kernel_ts[grid](A_c, B, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, **kwargs)
         return out.view_as(A)
     elif isinstance(B, torch.Tensor):
         B_c = B.contiguous()
@@ -397,9 +387,7 @@ def _invoke_kernel(
         n_elements = B_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        kernel_st[grid](
-            A, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, **kwargs
-        )
+        kernel_st[grid](A, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE, **kwargs)
         return out.view_as(B)
     else:
         return None
@@ -429,7 +417,7 @@ def true_divide_out(A, B, out):
 
 
 def true_divide_(A, B):
-    res = _invoke_kernel(
+    _invoke_kernel(
         true_div_kernel_tt, true_div_kernel_ts, true_div_kernel_st, A, B, out=A
     )
     return A
@@ -467,7 +455,7 @@ def trunc_divide_(A, B):
         isinstance(B, torch.Tensor) and not B.is_floating_point()
     ) or isinstance(B, int)
     if is_int_A and is_int_B:
-        res = _invoke_kernel(
+        _invoke_kernel(
             int_trunc_div_kernel_tt,
             int_trunc_div_kernel_ts,
             int_trunc_div_kernel_st,
@@ -476,7 +464,7 @@ def trunc_divide_(A, B):
             out=A,
         )
     else:
-        res = _invoke_kernel(
+        _invoke_kernel(
             trunc_div_kernel_tt,
             trunc_div_kernel_ts,
             trunc_div_kernel_st,
@@ -518,7 +506,7 @@ def floor_divide_(A, B):
     elif isinstance(B, torch.Tensor):
         is_int = not B.is_floating_point() and isinstance(A, int)
 
-    res = _invoke_kernel(
+    _invoke_kernel(
         floor_div_kernel_tt,
         floor_div_kernel_ts,
         floor_div_kernel_st,
@@ -564,9 +552,7 @@ def remainder(A, B):
 
 
 def remainder_(A, B):
-    res = _invoke_kernel(
-        rem_kernel_tt, rem_kernel_ts, rem_kernel_st, A, B, out=A
-    )
+    _invoke_kernel(rem_kernel_tt, rem_kernel_ts, rem_kernel_st, A, B, out=A)
     return A
 
 

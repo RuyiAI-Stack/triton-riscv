@@ -23,9 +23,7 @@ def selu_kernel(
     scale = 1.0507009873554804934193349852946
 
     zero = 0.0
-    x_neg = tl.minimum(
-        x_f32, zero
-    )  # clamp to non-positive to avoid exp overflow
+    x_neg = tl.minimum(x_f32, zero)  # clamp to non-positive to avoid exp overflow
     neg_part = alpha * (tl.exp(x_neg) - 1.0)
     out_f32 = tl.where(x_f32 > 0.0, x_f32, neg_part)
     out_f32 = scale * out_f32

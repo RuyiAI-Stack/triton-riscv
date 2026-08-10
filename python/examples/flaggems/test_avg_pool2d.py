@@ -54,9 +54,7 @@ def test_avg_pool2d_backward(
     kernel_size, stride, padding, count_include_pad, divisor_override
 ):
     torch.manual_seed(0)
-    x = torch.randn(
-        2, 3, 16, 16, device="cpu", dtype=torch.float32, requires_grad=True
-    )
+    x = torch.randn(2, 3, 16, 16, device="cpu", dtype=torch.float32, requires_grad=True)
 
     ref_out = F.avg_pool2d(
         x,

@@ -21,9 +21,9 @@
 // CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
 // CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<4096xi32>
 // CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<4096xi32>) -> tensor<4096xi32>
-// CHECK:           %[[ALLOC_TENSOR_0:.*]] = bufferization.alloc_tensor() : tensor<i32>
-// CHECK:           %[[INSERT_0:.*]] = tensor.insert %[[CONSTANT_0]] into %[[ALLOC_TENSOR_0]][] : tensor<i32>
-// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xi32>) outs(%[[INSERT_0]] : tensor<i32>) dimensions = [0]
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<i32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_1]] : tensor<i32>) -> tensor<i32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[FILL_0]] : tensor<4096xi32>) outs(%[[FILL_1]] : tensor<i32>) dimensions = [0]
 // CHECK:             (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
 // CHECK:               %[[ADDI_0:.*]] = arith.addi %[[VAL_0]], %[[VAL_1]] : i32
 // CHECK:               linalg.yield %[[ADDI_0]] : i32

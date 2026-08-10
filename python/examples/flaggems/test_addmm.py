@@ -42,9 +42,7 @@ def test_addmm_dtype_default(M, N, K, alpha, beta):
     mat2 = torch.randn(K, N, dtype=torch.float32, device="cpu")
 
     ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-    tri_out = addmm_dtype(
-        bias, mat1, mat2, torch.float32, alpha=alpha, beta=beta
-    )
+    tri_out = addmm_dtype(bias, mat1, mat2, torch.float32, alpha=alpha, beta=beta)
 
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-3, atol=1e-3)
 
@@ -59,8 +57,6 @@ def test_addmm_dtype_out(M, N, K, alpha, beta):
     out = torch.empty((M, N), dtype=torch.float32, device="cpu")
 
     ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-    addmm_dtype_out(
-        bias, mat1, mat2, torch.float32, alpha=alpha, beta=beta, out=out
-    )
+    addmm_dtype_out(bias, mat1, mat2, torch.float32, alpha=alpha, beta=beta, out=out)
 
     torch.testing.assert_close(out, ref_out, rtol=1e-3, atol=1e-3)

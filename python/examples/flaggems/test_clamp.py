@@ -39,9 +39,7 @@ def test_clamp_max_only(shape):
 
 
 def test_clamp_inplace():
-    x = torch.tensor(
-        [-2.0, -0.5, 0.0, 0.5, 2.0], dtype=torch.float32, device="cpu"
-    )
+    x = torch.tensor([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=torch.float32, device="cpu")
     x_ref = x.clone()
     x_ref.clamp_(-0.3, 0.3)
     clamp_(x, -0.3, 0.3)
@@ -101,9 +99,7 @@ def test_clamp_min_scalar(shape):
 
 
 def test_clamp_min_scalar_inplace():
-    x = torch.tensor(
-        [-2.0, -0.5, 0.0, 0.5, 2.0], dtype=torch.float32, device="cpu"
-    )
+    x = torch.tensor([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=torch.float32, device="cpu")
     x_ref = x.clone()
     x_ref.clamp_(min=-0.3)
     clamp_min_(x, -0.3)

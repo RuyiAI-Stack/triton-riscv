@@ -29,7 +29,7 @@ def scan_part_sum_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp_vals = tl.load(inp + offset, mask=mask)
+    inp_vals = tl.load(inp + offset, mask=mask, other=0)
     if tl.constexpr(
         inp_vals.dtype.is_int64()
         or inp_vals.dtype.is_uint64()
@@ -60,7 +60,7 @@ def add_base_sum_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    out_vals = tl.load(out + offset, mask=mask)
+    out_vals = tl.load(out + offset, mask=mask, other=0)
 
     if pid > 0:
         last_part_sum = tl.load(partial_sum + pid - 1)
@@ -94,7 +94,7 @@ def scan_part_sum_abc_kernel(
     part_offset = base_part_offset + pid_b * C
     mask = b_idx < B
 
-    inp_vals = tl.load(inp + offset, mask=mask)
+    inp_vals = tl.load(inp + offset, mask=mask, other=0)
     if tl.constexpr(
         inp_vals.dtype.is_int64()
         or inp_vals.dtype.is_uint64()
@@ -135,7 +135,7 @@ def add_base_sum_abc_kernel(
     last_part_offset = base_part_offset + (pid_b - 1) * C
     mask = b_idx < B
 
-    out_vals = tl.load(out + offset, mask=mask)
+    out_vals = tl.load(out + offset, mask=mask, other=0)
 
     if pid_b > 0:
         last_part_sum = tl.load(partial_sum + last_part_offset)
@@ -163,7 +163,7 @@ def reduce_then_scan_block_sum_kernel_row(
     acc = tl.zeros((TILE_SIZE,), dtype=tl.float32)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N).to(
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N, other=0).to(
             tl.float32
         )
         acc += x
@@ -172,9 +172,7 @@ def reduce_then_scan_block_sum_kernel_row(
 
 
 @triton.jit
-def reduce_then_scan_root_scan_kernel_row(
-    in_ptr, out_ptr, N, TILE_SIZE: tl.constexpr
-):
+def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.constexpr):
     pid = program_id(0)
     offsets = tl.arange(0, TILE_SIZE)
     mask = offsets < N
@@ -206,7 +204,7 @@ def reduce_then_scan_block_scan_kernel_row(
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask).to(tl.float32)
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask, other=0).to(tl.float32)
         tile_scan = prefix + tl.cumsum(x, 0)
         prefix += tl.sum(x, 0)
         tl.store(out_ptr + pid_m * N + offsets, tile_scan, mask=mask)
@@ -234,9 +232,7 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
     ROOT_SCAN_TILE_SIZE = triton.next_power_of_2(num_ctas)
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
 
-    block_sums = torch.empty(
-        (M, num_ctas), dtype=compute_dtype, device=x.device
-    )
+    block_sums = torch.empty((M, num_ctas), dtype=compute_dtype, device=x.device)
     block_inclusive_prefix = torch.empty_like(block_sums)
 
     reduce_then_scan_block_sum_kernel_row[(M, num_ctas, 1, 1)](
@@ -345,9 +341,7 @@ def cumsum_wrapper(inp, dim=0, *, dtype=None, out=None):
     K = inp.numel() // M // N
 
     compute_dtype = (
-        torch.float32
-        if inp.dtype in (torch.float16, torch.bfloat16)
-        else dtype
+        torch.float32 if inp.dtype in (torch.float16, torch.bfloat16) else dtype
     )
     if not inp.dtype.is_floating_point:
         compute_dtype = torch.int64

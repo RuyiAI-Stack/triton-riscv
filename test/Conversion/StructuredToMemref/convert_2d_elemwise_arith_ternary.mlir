@@ -21,9 +21,9 @@
 // CHECK-SAME:                      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:                      %[[ARG9:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
-// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<128x128xi32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_0]] : i32) outs(%[[EMPTY_0]] : tensor<128x128xi32>) -> tensor<128x128xi32>
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 128 : index
 // CHECK:           %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: [0], sizes: [128, 128], strides: [1, 1] : memref<*xi1> to memref<128x128xi1, strided<[1, 1]>>
 // CHECK:           %[[ALLOC_0:.*]] = memref.alloc() : memref<128x128xi1>
 // CHECK:           memref.copy %[[REINTERPRET_CAST_0]], %[[ALLOC_0]] : memref<128x128xi1, strided<[1, 1]>> to memref<128x128xi1>
@@ -42,11 +42,11 @@
 // CHECK:             linalg.yield %[[SELECT_0]] : f32
 // CHECK:           } -> tensor<128x128xf32>
 // CHECK:           %[[CAST_0:.*]] = memref.cast %[[ARG3]] : memref<*xf32> to memref<?xf32>
-// CHECK:           linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel", "parallel"]} ins(%[[FILL_0]], %[[GENERIC_0]] : tensor<128x128xi32>, tensor<128x128xf32>) {
-// CHECK:           ^bb0(%[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: f32):
-// CHECK:             %[[INDEX_CAST_0:.*]] = arith.index_cast %[[VAL_4]] : i32 to index
-// CHECK:             memref.store %[[VAL_5]], %[[CAST_0]]{{\[}}%[[INDEX_CAST_0]]] : memref<?xf32>
-// CHECK:             linalg.yield
+// CHECK:           scf.for %[[VAL_4:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_2]] step %[[CONSTANT_0]] {
+// CHECK:             scf.for %[[VAL_5:.*]] = %[[CONSTANT_1]] to %[[CONSTANT_2]] step %[[CONSTANT_0]] {
+// CHECK:               %[[EXTRACT_0:.*]] = tensor.extract %[[GENERIC_0]]{{\[}}%[[VAL_4]], %[[VAL_5]]] : tensor<128x128xf32>
+// CHECK:               memref.store %[[EXTRACT_0]], %[[CAST_0]]{{\[}}%[[CONSTANT_1]]] : memref<?xf32>
+// CHECK:             }
 // CHECK:           }
 // CHECK:           return
 // CHECK:         }

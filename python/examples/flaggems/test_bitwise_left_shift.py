@@ -10,6 +10,6 @@ def test_bitwise_left_shift(shape, dtype):
     torch.manual_seed(0)
     x = torch.randint(0, 255, shape, dtype=dtype, device="cpu")
     y = torch.randint(0, 4, shape, dtype=dtype, device="cpu")
-    ref = x << y
+    ref = torch.bitwise_left_shift(x, y)
     tri = bitwise_left_shift(x, y)
     torch.testing.assert_close(tri, ref)

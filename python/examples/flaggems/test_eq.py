@@ -10,7 +10,7 @@ def test_eq(shape):
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     y = torch.randn(shape, dtype=torch.float32, device="cpu")
 
-    ref = x == y
+    ref = torch.eq(x, y)
     tri = eq(x, y)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
@@ -19,7 +19,7 @@ def test_eq(shape):
 def test_eq_scalar():
     x = torch.tensor([0.0, 1.0, 2.0, 0.0], dtype=torch.float32, device="cpu")
     tri = eq(x, 0.0)
-    ref = x == 0.0
+    ref = torch.eq(x, 0.0)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
 
 
@@ -28,7 +28,7 @@ def test_eq_scalar_func(shape):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=torch.float32, device="cpu")
     scalar_val = 0.5
-    ref = x == scalar_val
+    ref = torch.eq(x, scalar_val)
     tri = eq_scalar(x, scalar_val)
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)
 

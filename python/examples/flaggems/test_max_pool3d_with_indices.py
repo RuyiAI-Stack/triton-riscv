@@ -19,9 +19,7 @@ from .max_pool3d_with_indices import (
         (2, 2, 0, 1, (1, 1, 8, 1024, 1024)),
     ],
 )
-def test_max_pool3d_with_indices_forward(
-    kernel_size, stride, padding, dilation, shape
-):
+def test_max_pool3d_with_indices_forward(kernel_size, stride, padding, dilation, shape):
     torch.manual_seed(0)
     x = torch.randn(*shape, device="cpu", dtype=torch.float32)
 
@@ -55,9 +53,7 @@ def test_max_pool3d_with_indices_forward(
 )
 def test_max_pool3d_backward(kernel_size, stride, padding, dilation, shape):
     torch.manual_seed(0)
-    x = torch.randn(
-        *shape, device="cpu", dtype=torch.float32, requires_grad=True
-    )
+    x = torch.randn(*shape, device="cpu", dtype=torch.float32, requires_grad=True)
 
     ref_out, ref_idx = F.max_pool3d_with_indices(
         x,

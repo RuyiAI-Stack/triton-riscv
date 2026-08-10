@@ -70,9 +70,7 @@ def _rsub_internal(A, B, alpha=1):
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        rsub_kernel_tt[grid](
-            A_c, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE
-        )
+        rsub_kernel_tt[grid](A_c, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(A)
     elif isinstance(A, torch.Tensor):
         A_c = A.contiguous()
@@ -80,9 +78,7 @@ def _rsub_internal(A, B, alpha=1):
         n_elements = A_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        rsub_kernel_ts[grid](
-            A_c, B, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE
-        )
+        rsub_kernel_ts[grid](A_c, B, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(A)
     elif isinstance(B, torch.Tensor):
         B_c = B.contiguous()
@@ -90,9 +86,7 @@ def _rsub_internal(A, B, alpha=1):
         n_elements = B_c.numel()
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        rsub_kernel_st[grid](
-            A, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE
-        )
+        rsub_kernel_st[grid](A, B_c, out, n_elements, alpha, BLOCK_SIZE=BLOCK_SIZE)
         return out.view_as(B)
     else:
         return torch.tensor(B - A * alpha)

@@ -5,9 +5,7 @@ from .baddbmm import baddbmm, baddbmm_out
 
 
 @pytest.mark.parametrize("batch", [2, 4])
-@pytest.mark.parametrize(
-    "M, N, K", [(128, 128, 64), (32, 16, 32), (64, 128, 32)]
-)
+@pytest.mark.parametrize("M, N, K", [(128, 128, 64), (32, 16, 32), (64, 128, 32)])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_baddbmm_forward(batch, M, N, K, dtype):
     torch.manual_seed(0)
@@ -56,12 +54,8 @@ def test_baddbmm_out(batch, M, N, K):
 @pytest.mark.parametrize("M, N, K", [(128, 128, 64)])
 def test_baddbmm_autograd(batch, M, N, K):
     torch.manual_seed(0)
-    A = torch.randn(
-        batch, M, K, dtype=torch.float32, device="cpu", requires_grad=True
-    )
-    B = torch.randn(
-        batch, K, N, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    A = torch.randn(batch, M, K, dtype=torch.float32, device="cpu", requires_grad=True)
+    B = torch.randn(batch, K, N, dtype=torch.float32, device="cpu", requires_grad=True)
     bias = torch.randn(
         batch, M, N, dtype=torch.float32, device="cpu", requires_grad=True
     )

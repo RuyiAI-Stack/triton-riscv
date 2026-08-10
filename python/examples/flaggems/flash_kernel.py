@@ -121,16 +121,11 @@ def apply_alibi(
             #   -3, -2, -1, 0,  X,
             #   -4, -3, -2, -1, 0,
             # ]
-            bias = alibi_slope * (-max_seqlen_k + 1 + col_idx[None, :]).to(
-                tl.float32
-            )
+            bias = alibi_slope * (-max_seqlen_k + 1 + col_idx[None, :]).to(tl.float32)
             S += bias
         else:
             bias = -alibi_slope * tl.abs(
-                col_idx[None, :]
-                - max_seqlen_k
-                + max_seqlen_q
-                - row_idx[:, None]
+                col_idx[None, :] - max_seqlen_k + max_seqlen_q - row_idx[:, None]
             ).to(tl.float32)
             S += bias
 
@@ -154,10 +149,8 @@ def apply_mask(
     # need_mask: tl.constexpr = is_causal | is_local
     if need_mask:
         # Extra care should be taken to void one-off errors: both col_lb and col_rb are inclusive!
-        col_lb = max(
-            0, row_idx + max_seqlen_k - max_seqlen_q - window_size_left
-        )
-        col_rb = min(
+        col_lb = tl.maximum(0, row_idx + max_seqlen_k - max_seqlen_q - window_size_left)
+        col_rb = tl.minimum(
             max_seqlen_k - 1,
             row_idx + max_seqlen_k - max_seqlen_q + window_size_right,
         )
@@ -197,14 +190,18 @@ def softmax_rescale(
     else:
         cur_max = row_max
 
-    p_scale = tl.math.exp2((prev_max - cur_max) * softmax_scale_log2e)
+    max_delta = tl.where(
+        prev_max == float("-inf"),
+        float("-inf"),
+        (prev_max - cur_max) * softmax_scale_log2e,
+    )
+    p_scale = tl.math.exp2(max_delta)
     row_sum *= p_scale
     O_acc *= p_scale[:, None]
 
-    max_scaled = tl.where(
-        row_max == float("-inf"), 0, row_max * softmax_scale_log2e
-    )
-    P = tl.math.exp2(S * softmax_scale_log2e - max_scaled[:, None])
+    max_scaled = tl.where(row_max == float("-inf"), 0, row_max * softmax_scale_log2e)
+    S_scaled = tl.where(S == float("-inf"), float("-inf"), S * softmax_scale_log2e)
+    P = tl.math.exp2(S_scaled - max_scaled[:, None])
     row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
 
@@ -246,9 +243,7 @@ def prune_fwd_configs(configs, nargs, **kwargs):
     is_dropout = nargs["is_dropout"]
     if is_dropout:
         return list(
-            filter(
-                lambda cfg: cfg.num_warps == 4 and cfg.num_stages < 4, configs
-            )
+            filter(lambda cfg: cfg.num_warps == 4 and cfg.num_stages < 4, configs)
         )
     else:
         return configs
@@ -347,7 +342,7 @@ def flash_fwd_kernel(
 
     col_min = 0
     if is_local:
-        col_min = max(
+        col_min = tl.maximum(
             0, m_block * BLOCK_M + seqlen_k - seqlen_q - window_size_left
         )
         if not IS_EVEN_MN:
@@ -359,7 +354,7 @@ def flash_fwd_kernel(
         col_max += (m_block - num_m_blocks + 1) * BLOCK_M
         if is_local:
             col_max += window_size_right
-        col_max = min(seqlen_k, col_max)
+        col_max = tl.minimum(seqlen_k, col_max)
 
     if not IS_EVEN_MN:
         # round right
@@ -399,15 +394,15 @@ def flash_fwd_kernel(
     if IS_EVEN_MN & d == BLOCK_K:
         Q = tl.load(q_ptr + q_off, cache_modifier=".cg")
     else:
-        Q = tl.load(q_ptr + q_off, mask=qmask, cache_modifier=".cg")
+        Q = tl.load(q_ptr + q_off, mask=qmask, other=0.0, cache_modifier=".cg")
 
     if return_softmax:
         p_ptr += (
             (bid * h + hid) * seqlen_q_rounded + m_block * BLOCK_M
         ) * seqlen_k_rounded
-        p_offset = tl.arange(0, BLOCK_M)[
-            :, None
-        ] * seqlen_k_rounded + tl.arange(0, BLOCK_N)
+        p_offset = tl.arange(0, BLOCK_M)[:, None] * seqlen_k_rounded + tl.arange(
+            0, BLOCK_N
+        )
         p_bp0 = p_ptr + p_offset
 
     acc_ = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
@@ -422,12 +417,10 @@ def flash_fwd_kernel(
     v_ptr += (hid // h_hk_ratio) * k_head_stride
 
     k_offset = (
-        tl.arange(0, BLOCK_N)[None, :] * k_row_stride
-        + tl.arange(0, BLOCK_K)[:, None]
+        tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
     )
     v_offset = (
-        tl.arange(0, BLOCK_N)[:, None] * k_row_stride
-        + tl.arange(0, BLOCK_K)[None, :]
+        tl.arange(0, BLOCK_N)[:, None] * k_row_stride + tl.arange(0, BLOCK_K)[None, :]
     )
 
     p_bk0 = k_ptr + k_offset
@@ -435,7 +428,7 @@ def flash_fwd_kernel(
 
     if is_causal | is_local | (not IS_EVEN_MN):
         # Cut short masking cols if there's not enough cols out there
-        masking_cols = min(col_max - col_min, masking_cols)
+        masking_cols = tl.minimum(col_max - col_min, masking_cols)
         for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
             col_start = col_max - col_shift - BLOCK_N
             col_start = tl.multiple_of(col_start, BLOCK_N)
@@ -448,11 +441,17 @@ def flash_fwd_kernel(
                 col_idx = col_start + tl.arange(0, BLOCK_N)
                 kvmask = col_idx < seqlen_k
                 K = tl.load(
-                    p_bk0 + off, mask=kvmask[None, :], cache_modifier=".cg"
+                    p_bk0 + off,
+                    mask=kvmask[None, :],
+                    other=0.0,
+                    cache_modifier=".cg",
                 )
                 if PRE_LOAD_V:
                     V = tl.load(
-                        p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg"
+                        p_bv0 + off,
+                        mask=kvmask[:, None],
+                        other=0.0,
+                        cache_modifier=".cg",
                     )
             else:
                 col_idx = col_start + tl.arange(0, BLOCK_N)
@@ -460,12 +459,14 @@ def flash_fwd_kernel(
                 K = tl.load(
                     p_bk0 + off,
                     mask=kvmask[None, :] & dmask[:, None],
+                    other=0.0,
                     cache_modifier=".cg",
                 )
                 if PRE_LOAD_V:
                     V = tl.load(
                         p_bv0 + off,
                         mask=kvmask[:, None] & dmask[None, :],
+                        other=0.0,
                         cache_modifier=".cg",
                     )
             S = tl.dot(Q, K, allow_tf32=False)
@@ -560,13 +561,17 @@ def flash_fwd_kernel(
                 elif d == BLOCK_K:
                     kvmask = col_idx < seqlen_k
                     V = tl.load(
-                        p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg"
+                        p_bv0 + off,
+                        mask=kvmask[:, None],
+                        other=0.0,
+                        cache_modifier=".cg",
                     )
                 else:
                     kvmask = col_idx < seqlen_k
                     V = tl.load(
                         p_bv0 + off,
                         mask=kvmask[:, None] & dmask[None, :],
+                        other=0.0,
                         cache_modifier=".cg",
                     )
             acc_ = tl.dot(P, V, acc_, allow_tf32=False)
@@ -581,10 +586,18 @@ def flash_fwd_kernel(
             if PRE_LOAD_V:
                 V = tl.load(p_bv0 + off, cache_modifier=".cg")
         else:
-            K = tl.load(p_bk0 + off, mask=dmask[:, None], cache_modifier=".cg")
+            K = tl.load(
+                p_bk0 + off,
+                mask=dmask[:, None],
+                other=0.0,
+                cache_modifier=".cg",
+            )
             if PRE_LOAD_V:
                 V = tl.load(
-                    p_bv0 + off, mask=dmask[None, :], cache_modifier=".cg"
+                    p_bv0 + off,
+                    mask=dmask[None, :],
+                    other=0.0,
+                    cache_modifier=".cg",
                 )
 
         S = tl.dot(Q, K)
@@ -647,9 +660,7 @@ def flash_fwd_kernel(
                     tl.store(p_bp0 + col_start, P_drop)
                 else:
                     kvmask = col_idx < seqlen_k
-                    tl.store(
-                        p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :]
-                    )
+                    tl.store(p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :])
 
             P = apply_dropout(
                 P,
@@ -674,7 +685,10 @@ def flash_fwd_kernel(
                 V = tl.load(p_bv0 + off, cache_modifier=".cg")
             else:
                 V = tl.load(
-                    p_bv0 + off, mask=dmask[None, :], cache_modifier=".cg"
+                    p_bv0 + off,
+                    mask=dmask[None, :],
+                    other=0.0,
+                    cache_modifier=".cg",
                 )
         acc_ = tl.dot(P, V, acc_)
 
@@ -810,13 +824,10 @@ def flash_fwd_splitkv_kernel(
 
     n_block_max = tl.cdiv(seqlen_k, BLOCK_N)
     if is_causal:
-        n_block_max = min(
+        n_block_max = tl.minimum(
             n_block_max,
             tl.cdiv(
-                (m_block + 1) * BLOCK_M
-                + seqlen_k
-                - seqlen_q
-                + window_size_right,
+                (m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + window_size_right,
                 BLOCK_N,
             ),
         )
@@ -848,7 +859,7 @@ def flash_fwd_splitkv_kernel(
     if IS_EVEN_MN & BLOCK_K == d:
         Q = tl.load(p_qm, cache_modifier=".cg")
     else:
-        Q = tl.load(p_qm, mask=qmask, cache_modifier=".cg")
+        Q = tl.load(p_qm, mask=qmask, other=0.0, cache_modifier=".cg")
 
     h_hk_ratio = h // hk
     k_ptr += bid * k_batch_stride
@@ -857,14 +868,12 @@ def flash_fwd_splitkv_kernel(
     v_ptr += (hid // h_hk_ratio) * k_head_stride
 
     k_offset = (
-        tl.arange(0, BLOCK_N)[None, :] * k_row_stride
-        + tl.arange(0, BLOCK_K)[:, None]
+        tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
     )
     p_k0 = k_ptr + k_offset
 
     v_offset = (
-        tl.arange(0, BLOCK_N)[:, None] * k_row_stride
-        + tl.arange(0, BLOCK_K)[None, :]
+        tl.arange(0, BLOCK_N)[:, None] * k_row_stride + tl.arange(0, BLOCK_K)[None, :]
     )
     p_v0 = v_ptr + v_offset
 
@@ -934,7 +943,7 @@ def flash_fwd_splitkv_kernel(
             acc_ = tl.dot(P, V, acc_)
     else:
         for n_block in tl.range(
-            split_block_min, min(split_block_max, n_block_max)
+            split_block_min, tl.minimum(split_block_max, n_block_max)
         ):
             kv_off = n_block * BLOCK_N * k_row_stride
             col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -946,12 +955,16 @@ def flash_fwd_splitkv_kernel(
             elif d == BLOCK_K:
                 kvmask = col_idx < seqlen_k
                 K = tl.load(
-                    p_k0 + kv_off, mask=kvmask[None, :], cache_modifier=".cg"
+                    p_k0 + kv_off,
+                    mask=kvmask[None, :],
+                    other=0.0,
+                    cache_modifier=".cg",
                 )
                 if PRE_LOAD_V:
                     V = tl.load(
                         p_v0 + kv_off,
                         mask=kvmask[:, None],
+                        other=0.0,
                         cache_modifier=".cg",
                     )
             else:
@@ -1011,6 +1024,7 @@ def flash_fwd_splitkv_kernel(
                     V = tl.load(
                         p_v0 + kv_off,
                         mask=kvmask[:, None],
+                        other=0.0,
                         cache_modifier=".cg",
                     )
                 else:
@@ -1039,9 +1053,7 @@ def flash_fwd_splitkv_kernel(
     # grid = (seq_block, split, batch * head)
     o_split_ptr = o_ptr
     # + split, batch, head offsets, seq_block offsets are already added in row_idx
-    o_split_ptr += (
-        (split_id * tl.num_programs(2) + tl.program_id(2)) * seqlen_q * d
-    )
+    o_split_ptr += (split_id * tl.num_programs(2) + tl.program_id(2)) * seqlen_q * d
     o_split_offset = row_idx[:, None] * d + tl.arange(0, BLOCK_K)
     o_split_ptr = tl.multiple_of(o_split_ptr, d)
     p_om = o_split_ptr + o_split_offset
@@ -1060,9 +1072,7 @@ def flash_fwd_splitkv_kernel(
     ) * seqlen_q + m_block * BLOCK_M
 
     if IS_EVEN_MN:
-        tl.store(
-            lse_split_ptr + tl.arange(0, BLOCK_M), lse, cache_modifier=".cg"
-        )
+        tl.store(lse_split_ptr + tl.arange(0, BLOCK_M), lse, cache_modifier=".cg")
     else:
         tl.store(
             lse_split_ptr + tl.arange(0, BLOCK_M),
@@ -1084,6 +1094,8 @@ def flash_fwd_splitkv_combine_kernel(
     out_b_stride,
     out_s_stride,
     out_h_stride,
+    seqlen_q,
+    num_heads,
     n_splits,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -1094,16 +1106,15 @@ def flash_fwd_splitkv_combine_kernel(
     lse_splits_ptr += pid * BLOCK_M
     lse_ptr += pid * BLOCK_M
     out_splits_ptr += pid * BLOCK_M * head_size
-    out_ptr += pid * BLOCK_M * head_size
 
     # Subtracting maximum from each of the split lse's for better numerical stability
     lse_split_offset = (
         tl.arange(0, BLOCK_M)[:, None]
         + tl.arange(0, MAX_N_SPLITS)[None, :] * lse_split_stride
     )
-    lse_split_mask = (
-        pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None] < q_total
-    ) & (tl.arange(0, MAX_N_SPLITS)[None, :] < n_splits)
+    lse_split_mask = (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None] < q_total) & (
+        tl.arange(0, MAX_N_SPLITS)[None, :] < n_splits
+    )
     lse_splits = tl.load(
         lse_splits_ptr + lse_split_offset,
         mask=lse_split_mask,
@@ -1138,13 +1149,19 @@ def flash_fwd_splitkv_combine_kernel(
     out = out.to(out_ptr.type.element_ty)
 
     # Write back output
-    out_offset = tl.arange(0, BLOCK_M)[:, None] * out_s_stride + tl.arange(
-        0, BLOCK_K
+    row_idx = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    batch_head_idx = row_idx // seqlen_q
+    batch_idx = batch_head_idx // num_heads
+    head_idx = batch_head_idx % num_heads
+    query_idx = row_idx % seqlen_q
+    out_offset = (
+        batch_idx[:, None] * out_b_stride
+        + query_idx[:, None] * out_s_stride
+        + head_idx[:, None] * out_h_stride
+        + tl.arange(0, BLOCK_K)[None, :]
     )
     dmask = tl.arange(0, BLOCK_K) < head_size
-    tl.store(
-        out_ptr + out_offset, out, mask=out_mask[:, None] & dmask[None, :]
-    )
+    tl.store(out_ptr + out_offset, out, mask=out_mask[:, None] & dmask[None, :])
 
 
 @triton.jit
@@ -1167,9 +1184,7 @@ def virtual_to_cache(
             other=0,
         ).to(tl.int32)
     else:
-        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(
-            tl.int32
-        )
+        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
     return page_block_index * block_size + page_offset
 
 
@@ -1193,12 +1208,8 @@ def load_from_kvcache(
         block_size,
         boundary_check,
     )
-    k_offset = (
-        tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
-    )
-    v_offset = (
-        tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
-    )
+    k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
+    v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
     if d == BLOCK_K:
         bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
         bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
@@ -1330,7 +1341,7 @@ def flash_varlen_fwd_kernel(
     is_even_mn: tl.constexpr = False
 
     if is_local:
-        n_block_min = max(
+        n_block_min = tl.maximum(
             0,
             (m_block * BLOCK_M + k_len - q_len - window_size_left) // BLOCK_N,
         )
@@ -1339,7 +1350,7 @@ def flash_varlen_fwd_kernel(
 
     n_block_max = tl.cdiv(k_len, BLOCK_N)
     if is_causal or is_local:
-        n_block_max = min(
+        n_block_max = tl.minimum(
             n_block_max,
             tl.cdiv(
                 (m_block + 1) * BLOCK_M + k_len - q_len + window_size_right,
@@ -1362,15 +1373,13 @@ def flash_varlen_fwd_kernel(
     k_ptr_base = k_ptr + k_row_offset
     v_ptr_base = v_ptr + k_row_offset
 
-    gQ = tl.make_block_ptr(
+    q_desc = tl.make_tensor_descriptor(
         base=q_ptr + q_offset + q_row_offset,
-        shape=(q_len, d),
-        strides=(q_row_stride, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_M, BLOCK_K),
-        order=(1, 0),
+        shape=[q_len, d],
+        strides=[q_row_stride, 1],
+        block_shape=[BLOCK_M, BLOCK_K],
     )
-    bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
+    bQ = q_desc.load([m_block * BLOCK_M, 0])
 
     acc_ = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
@@ -1390,7 +1399,7 @@ def flash_varlen_fwd_kernel(
     else:
         n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
 
-    n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
+    n_masking_steps = tl.minimum(n_block_max - n_block_min, n_masking_steps)
 
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
     n_block = n_block_max - 1
@@ -1413,25 +1422,21 @@ def flash_varlen_fwd_kernel(
             start_n = n_block * BLOCK_N
             k_ptr_seq = k_ptr_base + k_bos * k_row_stride
             v_ptr_seq = v_ptr_base + k_bos * k_row_stride
-            gK = tl.make_block_ptr(
+            k_desc = tl.make_tensor_descriptor(
                 base=k_ptr_seq,
-                shape=(k_len, d),
-                strides=(k_row_stride, 1),
-                offsets=(start_n, 0),
-                block_shape=(BLOCK_N, BLOCK_K),
-                order=(0, 1),
+                shape=[k_len, d],
+                strides=[k_row_stride, 1],
+                block_shape=[BLOCK_N, BLOCK_K],
             )
-            gV = tl.make_block_ptr(
+            v_desc = tl.make_tensor_descriptor(
                 base=v_ptr_seq,
-                shape=(k_len, d),
-                strides=(k_row_stride, 1),
-                offsets=(start_n, 0),
-                block_shape=(BLOCK_N, BLOCK_K),
-                order=(0, 1),
+                shape=[k_len, d],
+                strides=[k_row_stride, 1],
+                block_shape=[BLOCK_N, BLOCK_K],
             )
-            bK = tl.load(gK, boundary_check=(0, 1))
+            bK = k_desc.load([start_n, 0])
             bK = tl.trans(bK)
-            bV = tl.load(gV, boundary_check=(0, 1))
+            bV = v_desc.load([start_n, 0])
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         S = apply_alibi(
@@ -1508,25 +1513,21 @@ def flash_varlen_fwd_kernel(
             start_n = n_block * BLOCK_N
             k_ptr_seq = k_ptr_base + k_bos * k_row_stride
             v_ptr_seq = v_ptr_base + k_bos * k_row_stride
-            gK = tl.make_block_ptr(
+            k_desc = tl.make_tensor_descriptor(
                 base=k_ptr_seq,
-                shape=(k_len, d),
-                strides=(k_row_stride, 1),
-                offsets=(start_n, 0),
-                block_shape=(BLOCK_N, BLOCK_K),
-                order=(0, 1),
+                shape=[k_len, d],
+                strides=[k_row_stride, 1],
+                block_shape=[BLOCK_N, BLOCK_K],
             )
-            gV = tl.make_block_ptr(
+            v_desc = tl.make_tensor_descriptor(
                 base=v_ptr_seq,
-                shape=(k_len, d),
-                strides=(k_row_stride, 1),
-                offsets=(start_n, 0),
-                block_shape=(BLOCK_N, BLOCK_K),
-                order=(0, 1),
+                shape=[k_len, d],
+                strides=[k_row_stride, 1],
+                block_shape=[BLOCK_N, BLOCK_K],
             )
-            bK = tl.load(gK)
+            bK = k_desc.load([start_n, 0])
             bK = tl.trans(bK)
-            bV = tl.load(gV)
+            bV = v_desc.load([start_n, 0])
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         S = apply_alibi(
@@ -1596,15 +1597,13 @@ def flash_varlen_fwd_kernel(
     # Write back output
     o_row_offset = hid * o_head_stride
 
-    gO = tl.make_block_ptr(
+    o_desc = tl.make_tensor_descriptor(
         base=o_ptr + o_offset + o_row_offset,
-        shape=(q_len, d),
-        strides=(o_row_stride, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_M, BLOCK_K),
-        order=(1, 0),
+        shape=[q_len, d],
+        strides=[o_row_stride, 1],
+        block_shape=[BLOCK_M, BLOCK_K],
     )
-    tl.store(gO.advance([m_block * BLOCK_M, 0]), out, boundary_check=(0, 1))
+    o_desc.store([m_block * BLOCK_M, 0], out)
 
     # Write back lse
     # lse shape: [h, total_q]

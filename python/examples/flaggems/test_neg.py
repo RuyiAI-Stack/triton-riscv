@@ -15,6 +15,7 @@ def test_neg(shape):
 
 def test_neg_inplace():
     x = torch.tensor([1.0, -2.0, 3.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().neg_()
+    x_ref = x.clone()
+    torch.neg(x_ref, out=x_ref)
     neg_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)

@@ -20,9 +20,7 @@ def test_threshold(shape, threshold_val, value):
 @pytest.mark.parametrize("threshold_val", [0.5, -0.5])
 def test_threshold_backward(shape, threshold_val):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
     grad_output = torch.randn(shape, dtype=torch.float32, device="cpu")
 
     ref = torch.threshold(x, threshold_val, 0.0)

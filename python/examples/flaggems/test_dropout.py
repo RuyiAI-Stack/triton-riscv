@@ -11,9 +11,7 @@ from .dropout import dropout, dropout_backward
 @pytest.mark.parametrize("p", [0.0, 0.2, 0.5, 0.8, 1.0])
 def test_dropout(shape, p):
     torch.manual_seed(0)
-    x = torch.rand(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.rand(shape, dtype=torch.float32, device="cpu", requires_grad=True)
 
     # Run triton implementation
     out, mask = dropout(x, p, train=True)
@@ -41,9 +39,7 @@ def test_dropout(shape, p):
 
     # Check backward
     grad_out = torch.ones_like(out)
-    grad_in = dropout_backward(
-        grad_out, mask, 1.0 / (1.0 - p) if p < 1.0 else 0.0
-    )
+    grad_in = dropout_backward(grad_out, mask, 1.0 / (1.0 - p) if p < 1.0 else 0.0)
 
     if p == 1.0:
         assert torch.all(grad_in == 0)
@@ -52,3 +48,13 @@ def test_dropout(shape, p):
     else:
         torch.testing.assert_close(grad_in[mask], grad_out[mask] * scale)
         assert torch.all(grad_in[~mask] == 0)
+
+
+def test_dropout_repeated_calls_advance_philox_offset():
+    torch.manual_seed(0)
+    x = torch.ones((4096,), dtype=torch.float32, device="cpu")
+
+    _, first_mask = dropout(x, 0.5, train=True)
+    _, second_mask = dropout(x, 0.5, train=True)
+
+    assert not torch.equal(first_mask, second_mask)

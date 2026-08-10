@@ -12,9 +12,7 @@ PI = math.pi
 _FFT_REG_THRESHOLD = 256
 
 _BITREV_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
-_TWIDDLE_CACHE: dict[
-    tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]
-] = {}
+_TWIDDLE_CACHE: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
 
 
 def _is_power_of_two(n: int) -> bool:
@@ -41,9 +39,7 @@ def _bitrev_indices(n: int, device: torch.device) -> torch.Tensor:
     return rev
 
 
-def _twiddle_tables(
-    n: int, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor]:
+def _twiddle_tables(n: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
     key = (n, device)
     cached = _TWIDDLE_CACHE.get(key)
     if cached is not None:

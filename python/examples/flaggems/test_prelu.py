@@ -1,8 +1,19 @@
 import pytest
 import torch
-import torch.nn.functional as F
 
 from .prelu import prelu
+
+
+def _prelu_reference(a, w):
+    if w.numel() == 1:
+        alpha = w.reshape(())
+    elif a.dim() == 1:
+        alpha = w
+    else:
+        alpha_shape = [1] * a.dim()
+        alpha_shape[1] = w.numel()
+        alpha = w.reshape(alpha_shape)
+    return torch.where(a >= 0, a, alpha * a)
 
 
 @pytest.mark.parametrize(
@@ -22,6 +33,10 @@ def test_prelu(shape, num_channels, dtype):
     w = torch.randn((num_channels,), dtype=dtype)
 
     out_triton = prelu(a, w)
-    out_torch = F.prelu(a, w)
+    if a.dim() == 1 and w.numel() != 1:
+        # torch.nn.functional.prelu rejects this migrated per-element 1D case.
+        out_torch = _prelu_reference(a, w)
+    else:
+        out_torch = torch.nn.functional.prelu(a, w)
 
     torch.testing.assert_close(out_triton, out_torch)

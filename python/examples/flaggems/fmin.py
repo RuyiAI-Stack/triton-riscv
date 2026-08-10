@@ -87,9 +87,7 @@ def fmin_out(a, b, out):
     if out.device != a_c.device:
         raise ValueError("out tensor must be on the same device as inputs.")
     if out.dtype != out_dtype:
-        raise TypeError(
-            f"out tensor has dtype {out.dtype}, expected {out_dtype}."
-        )
+        raise TypeError(f"out tensor has dtype {out.dtype}, expected {out_dtype}.")
     if tuple(out.shape) != tuple(expected_shape):
         raise ValueError(
             "out tensor has shape "
@@ -99,9 +97,7 @@ def fmin_out(a, b, out):
     if compute_dtype == out_dtype and out.is_contiguous():
         out_c = out
     else:
-        out_c = torch.empty(
-            expected_shape, dtype=compute_dtype, device=out.device
-        )
+        out_c = torch.empty(expected_shape, dtype=compute_dtype, device=out.device)
 
     n_elements = out_c.numel()
     if n_elements == 0:

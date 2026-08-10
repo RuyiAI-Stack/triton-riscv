@@ -32,9 +32,7 @@ def test_slice_scatter_2d(size):
 def test_slice_scatter_with_step(size):
     torch.manual_seed(0)
     inp = torch.randn(size, device="cpu", dtype=torch.float32)
-    half = (
-        size + 1
-    ) // 2  # use ceiling division so src size matches the slice
+    half = (size + 1) // 2  # use ceiling division so src size matches the slice
     src = torch.randn(half, device="cpu", dtype=torch.float32)
     ref_out = torch.ops.aten.slice_scatter(
         inp, src, dim=0, start=0, end=half * 2, step=2

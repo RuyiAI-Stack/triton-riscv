@@ -4,9 +4,7 @@ import torch
 from .replication_pad3d import replication_pad3d, replication_pad3d_out
 
 
-@pytest.mark.parametrize(
-    "shape", [(1, 1, 8, 8, 8), (1, 3, 10, 10, 10), (3, 8, 8, 8)]
-)
+@pytest.mark.parametrize("shape", [(1, 1, 8, 8, 8), (1, 3, 10, 10, 10), (3, 8, 8, 8)])
 @pytest.mark.parametrize(
     "padding", [(1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1), (0, 0, 0, 0, 0, 0)]
 )

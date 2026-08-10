@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .rand import philox_backend_seed_offset
+
 
 @triton.jit
 def safe_fast_log_f32(x):
@@ -74,8 +76,7 @@ def uint_to_uniform_float(x):
         scale = 4.6566127342e-10
     else:
         tl.static_assert(
-            tl.constexpr(x.dtype == tl.uint64)
-            or tl.constexpr(x.dtype == tl.int64)
+            tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
         )
         x = x.to(tl.int64, bitcast=True)
         scale = 1.0842020432385337e-19
@@ -109,31 +110,15 @@ def fused_exponential_kernel_f32_unroll8(
     r0_0, r1_0, r2_0, r3_0 = tl.philox(philox_seed, c0_first, c1, z, z)
     r0_1, r1_1, r2_1, r3_1 = tl.philox(philox_seed, c0_second, c1, z, z)
 
-    y0_0 = transform_exponential_f32(
-        uint_to_uniform_float(r0_0), inv_lambd, eps_minus
-    )
-    y1_0 = transform_exponential_f32(
-        uint_to_uniform_float(r1_0), inv_lambd, eps_minus
-    )
-    y2_0 = transform_exponential_f32(
-        uint_to_uniform_float(r2_0), inv_lambd, eps_minus
-    )
-    y3_0 = transform_exponential_f32(
-        uint_to_uniform_float(r3_0), inv_lambd, eps_minus
-    )
+    y0_0 = transform_exponential_f32(uint_to_uniform_float(r0_0), inv_lambd, eps_minus)
+    y1_0 = transform_exponential_f32(uint_to_uniform_float(r1_0), inv_lambd, eps_minus)
+    y2_0 = transform_exponential_f32(uint_to_uniform_float(r2_0), inv_lambd, eps_minus)
+    y3_0 = transform_exponential_f32(uint_to_uniform_float(r3_0), inv_lambd, eps_minus)
 
-    y0_1 = transform_exponential_f32(
-        uint_to_uniform_float(r0_1), inv_lambd, eps_minus
-    )
-    y1_1 = transform_exponential_f32(
-        uint_to_uniform_float(r1_1), inv_lambd, eps_minus
-    )
-    y2_1 = transform_exponential_f32(
-        uint_to_uniform_float(r2_1), inv_lambd, eps_minus
-    )
-    y3_1 = transform_exponential_f32(
-        uint_to_uniform_float(r3_1), inv_lambd, eps_minus
-    )
+    y0_1 = transform_exponential_f32(uint_to_uniform_float(r0_1), inv_lambd, eps_minus)
+    y1_1 = transform_exponential_f32(uint_to_uniform_float(r1_1), inv_lambd, eps_minus)
+    y2_1 = transform_exponential_f32(uint_to_uniform_float(r2_1), inv_lambd, eps_minus)
+    y3_1 = transform_exponential_f32(uint_to_uniform_float(r3_1), inv_lambd, eps_minus)
 
     base_off = pid.to(tl.uint64) * BLOCK * 8
     off0 = base_off + tl.arange(0, BLOCK)
@@ -176,18 +161,10 @@ def fused_exponential_kernel_f32(
     z = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, z, z)
 
-    y0 = transform_exponential_f32(
-        uint_to_uniform_float(r0), inv_lambd, eps_minus
-    )
-    y1 = transform_exponential_f32(
-        uint_to_uniform_float(r1), inv_lambd, eps_minus
-    )
-    y2 = transform_exponential_f32(
-        uint_to_uniform_float(r2), inv_lambd, eps_minus
-    )
-    y3 = transform_exponential_f32(
-        uint_to_uniform_float(r3), inv_lambd, eps_minus
-    )
+    y0 = transform_exponential_f32(uint_to_uniform_float(r0), inv_lambd, eps_minus)
+    y1 = transform_exponential_f32(uint_to_uniform_float(r1), inv_lambd, eps_minus)
+    y2 = transform_exponential_f32(uint_to_uniform_float(r2), inv_lambd, eps_minus)
+    y3 = transform_exponential_f32(uint_to_uniform_float(r3), inv_lambd, eps_minus)
 
     start = pid.to(tl.uint64) * BLOCK * 4
     off0 = start + tl.arange(0, BLOCK)
@@ -223,18 +200,10 @@ def fused_exponential_kernel_f32_small(
 
     r0, r1, r2, r3 = tl.philox(philox_seed, c0_i, c1, z, z)
 
-    y0 = transform_exponential_f32(
-        uint_to_uniform_float(r0), inv_lambd, eps_minus
-    )
-    y1 = transform_exponential_f32(
-        uint_to_uniform_float(r1), inv_lambd, eps_minus
-    )
-    y2 = transform_exponential_f32(
-        uint_to_uniform_float(r2), inv_lambd, eps_minus
-    )
-    y3 = transform_exponential_f32(
-        uint_to_uniform_float(r3), inv_lambd, eps_minus
-    )
+    y0 = transform_exponential_f32(uint_to_uniform_float(r0), inv_lambd, eps_minus)
+    y1 = transform_exponential_f32(uint_to_uniform_float(r1), inv_lambd, eps_minus)
+    y2 = transform_exponential_f32(uint_to_uniform_float(r2), inv_lambd, eps_minus)
+    y3 = transform_exponential_f32(uint_to_uniform_float(r3), inv_lambd, eps_minus)
 
     off0 = base_idx + tl.arange(0, BLOCK)
     off1 = off0 + BLOCK
@@ -303,6 +272,9 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     )
 
     N = x.numel()
+    if N == 0:
+        return x
+
     inv_lambd = 1.0 / lambd
     eps_minus = -0.5 * torch.finfo(dtype).eps
 
@@ -312,8 +284,10 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     if dtype is torch.float64:
         UNROLL = 2
         grid = (triton.cdiv(N, BLOCK * UNROLL),)
-        philox_seed = torch.initial_seed()
-        philox_offset = 0
+        increment = triton.cdiv(N, UNROLL)
+        philox_seed, philox_offset = philox_backend_seed_offset(
+            increment, generator=generator
+        )
         fused_exponential_kernel_f64[grid](
             out,
             N,
@@ -326,8 +300,10 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     elif dtype in (torch.float16, torch.bfloat16) and N < 65536:
         UNROLL = 4
         grid = (triton.cdiv(N, BLOCK * UNROLL),)
-        philox_seed = torch.initial_seed()
-        philox_offset = 0
+        increment = triton.cdiv(N, UNROLL)
+        philox_seed, philox_offset = philox_backend_seed_offset(
+            increment, generator=generator
+        )
         fused_exponential_kernel_f32_small[grid](
             out,
             N,
@@ -340,8 +316,10 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     else:
         UNROLL = 8
         grid = (triton.cdiv(N, BLOCK * UNROLL),)
-        philox_seed = torch.initial_seed()
-        philox_offset = 0
+        increment = triton.cdiv(N, UNROLL)
+        philox_seed, philox_offset = philox_backend_seed_offset(
+            increment, generator=generator
+        )
         fused_exponential_kernel_f32_unroll8[grid](
             out,
             N,

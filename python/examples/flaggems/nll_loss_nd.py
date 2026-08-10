@@ -36,15 +36,11 @@ def nll_loss_nd_forward_kernel(
     mask_s = s_offsets < S
 
     tgt_offsets = pid_n * stride_tgt_n + s_offsets * stride_tgt_s
-    t = tl.load(target_ptr + tgt_offsets, mask=mask_s, other=ignore_index).to(
-        tl.int32
-    )
+    t = tl.load(target_ptr + tgt_offsets, mask=mask_s, other=ignore_index).to(tl.int32)
 
     valid = mask_s & (t != ignore_index) & (t >= 0) & (t < C)
 
-    in_offsets = (
-        pid_n * stride_in_n + t * stride_in_c + s_offsets * stride_in_s
-    )
+    in_offsets = pid_n * stride_in_n + t * stride_in_c + s_offsets * stride_in_s
     val = tl.load(input_ptr + in_offsets, mask=valid, other=0.0).to(tl.float32)
 
     if HAS_WEIGHT:
@@ -122,17 +118,15 @@ def nll_loss_nd_backward_kernel(
     mask_s = s_offsets < S
 
     tgt_offsets = pid_n * stride_tgt_n + s_offsets * stride_tgt_s
-    t = tl.load(target_ptr + tgt_offsets, mask=mask_s, other=ignore_index).to(
-        tl.int32
-    )
+    t = tl.load(target_ptr + tgt_offsets, mask=mask_s, other=ignore_index).to(tl.int32)
 
     valid = mask_s & (t != ignore_index) & (t >= 0) & (t < C)
 
     if REDUCTION == 0:  # none
         out_grad_offsets = pid_n * stride_go_n + s_offsets * stride_go_s
-        out_grad = tl.load(
-            grad_out_ptr + out_grad_offsets, mask=valid, other=0.0
-        ).to(tl.float32)
+        out_grad = tl.load(grad_out_ptr + out_grad_offsets, mask=valid, other=0.0).to(
+            tl.float32
+        )
     else:  # mean or sum
         out_grad = tl.load(grad_out_ptr).to(tl.float32)
 
@@ -143,15 +137,11 @@ def nll_loss_nd_backward_kernel(
 
     if REDUCTION == 1:  # mean
         total_weight = tl.load(total_weight_ptr).to(tl.float32)
-        grad_in_val = tl.where(
-            total_weight != 0.0, -w * out_grad / total_weight, 0.0
-        )
+        grad_in_val = tl.where(total_weight != 0.0, -w * out_grad / total_weight, 0.0)
     else:  # sum or none
         grad_in_val = -w * out_grad
 
-    in_offsets = (
-        pid_n * stride_in_n + t * stride_in_c + s_offsets * stride_in_s
-    )
+    in_offsets = pid_n * stride_in_n + t * stride_in_c + s_offsets * stride_in_s
     tl.store(
         grad_in_ptr + in_offsets,
         grad_in_val.to(grad_in_ptr.dtype.element_ty),
@@ -202,9 +192,7 @@ def nll_loss_nd_forward(
             w = weight.contiguous()
 
         if reduction not in [0, 1, 2]:
-            raise ValueError(
-                "reduction must be 0 ('none'), 1 ('mean'), or 2 ('sum')"
-            )
+            raise ValueError("reduction must be 0 ('none'), 1 ('mean'), or 2 ('sum')")
 
         BLOCK_S = 1024
         grid = (triton.cdiv(S, BLOCK_S), N)
@@ -236,9 +224,7 @@ def nll_loss_nd_forward(
             else:
                 res = out.reshape(target.shape)
 
-            total_weight = torch.empty(
-                [], device=input.device, dtype=input.dtype
-            )
+            total_weight = torch.empty([], device=input.device, dtype=input.dtype)
             return res, total_weight
 
         else:
@@ -268,9 +254,7 @@ def nll_loss_nd_forward(
             if reduction == 1:
                 total_weight = scratch[1]
             else:
-                total_weight = torch.empty(
-                    [], device=input.device, dtype=input.dtype
-                )
+                total_weight = torch.empty([], device=input.device, dtype=input.dtype)
 
             return out, total_weight
 
@@ -377,7 +361,5 @@ def nll_loss_nd(input, target, weight=None, reduction=1, ignore_index=-100):
                 )
                 return grad, None, None, None, None
 
-        return NLLLossNdFn.apply(
-            input, target, weight, reduction, ignore_index
-        )
+        return NLLLossNdFn.apply(input, target, weight, reduction, ignore_index)
     return out

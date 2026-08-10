@@ -5,9 +5,7 @@ import torch.nn.functional as F
 from .nll_loss_nd import nll_loss_nd, nll_loss_nd_backward, nll_loss_nd_forward
 
 
-@pytest.mark.parametrize(
-    "shape", [(2, 5, 4, 4), (4, 10, 8, 8), (2, 5, 4, 4, 4)]
-)
+@pytest.mark.parametrize("shape", [(2, 5, 4, 4), (4, 10, 8, 8), (2, 5, 4, 4, 4)])
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("ignore_index", [-100, 2])
 @pytest.mark.parametrize("use_weight", [False, True])
@@ -55,24 +53,21 @@ def test_nll_loss_nd(shape, reduction, ignore_index, use_weight):
 def test_nll_loss_nd_forward_backward(shape):
     torch.manual_seed(0)
     N, C, S = shape
-    inp = torch.randn(
-        N, C, S, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    inp = torch.randn(N, C, S, dtype=torch.float32, device="cpu", requires_grad=True)
     log_probs = torch.nn.functional.log_softmax(inp, dim=1)
+    log_probs = log_probs.detach().requires_grad_(True)
     target = torch.randint(0, C, (N, S), device="cpu", dtype=torch.long)
 
     # Reference
     ref = F.nll_loss(log_probs, target, reduction="mean")
     grad_out = torch.randn_like(ref)
     ref.backward(grad_out)
-    ref_dx = inp.grad.clone()
+    ref_dx = log_probs.grad.clone()
 
     # Triton forward/backward functions directly
-    inp.grad = None
-    log_probs2 = torch.nn.functional.log_softmax(inp, dim=1)
-    tri_out, total_weight = nll_loss_nd_forward(
-        log_probs2, target, reduction=1
-    )
+    log_probs.grad = None
+    log_probs2 = log_probs.detach().clone().requires_grad_(True)
+    tri_out, total_weight = nll_loss_nd_forward(log_probs2, target, reduction=1)
     torch.testing.assert_close(tri_out, ref, rtol=1e-3, atol=1e-3)
 
     tri_dx = nll_loss_nd_backward(

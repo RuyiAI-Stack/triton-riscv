@@ -17,7 +17,8 @@ def test_tanh(shape):
 
 def test_tanh_inplace():
     x = torch.tensor([0.0, 1.0, -1.0], dtype=torch.float32, device="cpu")
-    x_ref = x.clone().tanh_()
+    x_ref = x.clone()
+    torch.tanh(x_ref, out=x_ref)
     tanh_(x)
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
 
@@ -25,9 +26,7 @@ def test_tanh_inplace():
 @pytest.mark.parametrize("shape", [(512,), (1024,)])
 def test_tanh_backward(shape):
     torch.manual_seed(0)
-    x = torch.randn(
-        shape, dtype=torch.float32, device="cpu", requires_grad=True
-    )
+    x = torch.randn(shape, dtype=torch.float32, device="cpu", requires_grad=True)
     grad_output = torch.randn(shape, dtype=torch.float32, device="cpu")
 
     ref = torch.tanh(x)

@@ -16,16 +16,24 @@ module {
   }
 }
 
-// CHECK-LABEL:  func.func @kernel
-// CHECK-SAME:   ([[PARAM_0_:%.+]]: memref<*xbf16>, [[PARAM_1_:%.+]]: memref<*xbf16>, [[PARAM_2_:%.+]]: i32, [[PARAM_3_:%.+]]: i32, [[PARAM_4_:%.+]]: i32, [[PARAM_5_:%.+]]: i32, [[PARAM_6_:%.+]]: i32, [[PARAM_7_:%.+]]: i32) {
-// CHECK-DAG:       [[CST_0_dot_000000_:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:       [[RES_:%.+]] = memref.alloc() : memref<128xbf16>
-// CHECK-DAG:       [[VAR_0_:%.+]] = bufferization.to_tensor [[RES_]] restrict writable : memref<128xbf16>
-// CHECK-DAG:       [[VAR_1_:%.+]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           [[VAR_inserted_:%.+]] = tensor.insert [[CST_0_dot_000000_]] into [[VAR_1_]][] : tensor<f32>
-// CHECK:           [[VAR_reduced_:%.+]] = linalg.reduce ins([[VAR_0_]] : tensor<128xbf16>) outs([[VAR_inserted_]] : tensor<f32>) dimensions = [0]
-// CHECK:             ([[in_:%.+]]: bf16, [[init_:%.+]]: f32) {
-// CHECK:               [[VAR_3_:%.+]] = arith.extf [[in_]] : bf16 to f32
-// CHECK:               [[VAR_4_:%.+]] = arith.addf [[VAR_3_]], [[init_]] : f32
-// CHECK:               linalg.yield [[VAR_4_]] : f32
+// CHECK-LABEL:   func.func @kernel(
+// CHECK-SAME:  %[[VAL_0:.*]]: memref<*xbf16>, %[[VAL_1:.*]]: memref<*xbf16>, %[[VAL_2:.*]]: i32, %[[VAL_3:.*]]: i32, %[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: i32) {
+// CHECK:           %[[VAL_8:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:           %[[VAL_9:.*]] = memref.reinterpret_cast %[[VAL_0]] to offset: [0], sizes: [128], strides: [1] : memref<*xbf16> to memref<128xbf16, strided<[1]>>
+// CHECK:           %[[VAL_10:.*]] = memref.alloc() : memref<128xbf16>
+// CHECK:           memref.copy %[[VAL_9]], %[[VAL_10]] : memref<128xbf16, strided<[1]>> to memref<128xbf16>
+// CHECK:           %[[VAL_11:.*]] = bufferization.to_tensor %[[VAL_10]] restrict writable : memref<128xbf16> to tensor<128xbf16>
+// CHECK:           %[[VAL_12:.*]] = tensor.empty() : tensor<f32>
+// CHECK:           %[[VAL_13:.*]] = linalg.fill ins(%[[VAL_8]] : f32) outs(%[[VAL_12]] : tensor<f32>) -> tensor<f32>
+// CHECK:           %[[VAL_14:.*]] = linalg.reduce ins(%[[VAL_11]] : tensor<128xbf16>) outs(%[[VAL_13]] : tensor<f32>) dimensions = [0]
+// CHECK:             (%[[VAL_15:.*]]: bf16, %[[VAL_16:.*]]: f32) {
+// CHECK:               %[[VAL_17:.*]] = arith.extf %[[VAL_15]] : bf16 to f32
+// CHECK:               %[[VAL_18:.*]] = arith.addf %[[VAL_17]], %[[VAL_16]] : f32
+// CHECK:               linalg.yield %[[VAL_18]] : f32
 // CHECK:             }
+// CHECK:           %[[VAL_19:.*]] = tensor.extract %[[VAL_14]][] : tensor<f32>
+// CHECK:           %[[VAL_20:.*]] = arith.truncf %[[VAL_19]] : f32 to bf16
+// CHECK:           %[[VAL_21:.*]] = memref.reinterpret_cast %[[VAL_1]] to offset: [0], sizes: [1], strides: [1] : memref<*xbf16> to memref<1xbf16, strided<[1]>>
+// CHECK:           affine.store %[[VAL_20]], %[[VAL_21]][0] : memref<1xbf16, strided<[1]>>
+// CHECK:           return
+// CHECK:         }

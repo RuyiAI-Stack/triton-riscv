@@ -8,9 +8,7 @@ from .ones import ones
     "shape",
     [(16, 256), (4, 128), (512,), (1023,), (1024,)],
 )
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_ones(shape, dtype):
     tri_out = ones(shape, dtype=dtype, device="cpu")
     ref_out = torch.ones(shape, dtype=dtype, device="cpu")

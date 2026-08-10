@@ -49,9 +49,7 @@ def absolute(input: torch.Tensor):
         ri = torch.view_as_real(x).contiguous()
         out_dtype = x.real.dtype
         out = torch.empty(x.shape, dtype=out_dtype, device=x.device)
-        _absolute_complex_kernel[grid](
-            ri, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        _absolute_complex_kernel[grid](ri, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return out
     else:
         out = torch.empty_like(x)

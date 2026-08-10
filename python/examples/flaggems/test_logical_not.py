@@ -10,7 +10,7 @@ def test_logical_not(shape, dtype):
     torch.manual_seed(0)
     x = torch.randint(0, 2, shape, dtype=dtype, device="cpu")
 
-    ref = ~x
+    ref = torch.logical_not(x)
     tri = logical_not(x)
 
     torch.testing.assert_close(tri, ref, rtol=0, atol=0)

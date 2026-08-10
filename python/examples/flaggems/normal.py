@@ -1,20 +1,11 @@
 import torch
 import triton
 
+from .rand import philox_backend_seed_offset
 from .randn import randn_kernel
 
 
 UNROLL = 4
-
-
-def _get_philox_seed_offset(increment, generator=None):
-    if generator is not None:
-        seed = generator.seed()
-    else:
-        seed = torch.initial_seed()
-    offset = 0
-    increment = (increment + 3) // 4 * 4
-    return seed, offset
 
 
 def normal_tensor_tensor(mean, std, *, generator=None):
@@ -31,7 +22,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
     BLOCK = 1024
     grid = (triton.cdiv(N, BLOCK * UNROLL),)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = _get_philox_seed_offset(
+    philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     randn_kernel[grid](out, N, philox_seed, philox_offset, BLOCK=BLOCK)
@@ -49,7 +40,7 @@ def normal_tensor_float(mean, std, *, generator=None):
     BLOCK = 1024
     grid = (triton.cdiv(N, BLOCK * UNROLL),)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = _get_philox_seed_offset(
+    philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     randn_kernel[grid](out, N, philox_seed, philox_offset, BLOCK=BLOCK)
@@ -67,7 +58,7 @@ def normal_float_tensor(mean, std, *, generator=None):
     BLOCK = 1024
     grid = (triton.cdiv(N, BLOCK * UNROLL),)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = _get_philox_seed_offset(
+    philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     randn_kernel[grid](out, N, philox_seed, philox_offset, BLOCK=BLOCK)
@@ -94,7 +85,7 @@ def normal_(self, mean=0, std=1, *, generator=None):
     BLOCK = 1024
     grid = (triton.cdiv(N, BLOCK * UNROLL),)
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = _get_philox_seed_offset(
+    philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     randn_kernel[grid](self, N, philox_seed, philox_offset, BLOCK=BLOCK)

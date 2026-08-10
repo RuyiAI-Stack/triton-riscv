@@ -28,9 +28,7 @@ def alias_copy(x: torch.Tensor):
     if not out.is_contiguous():
         out = out.contiguous()
     if src.dtype != out.dtype:
-        raise RuntimeError(
-            "alias_copy: dtype mismatch between input and output."
-        )
+        raise RuntimeError("alias_copy: dtype mismatch between input and output.")
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     _alias_copy_kernel[grid](src, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
@@ -39,9 +37,7 @@ def alias_copy(x: torch.Tensor):
 
 def alias_copy_out(x: torch.Tensor, out: torch.Tensor):
     if x.dtype != out.dtype:
-        raise RuntimeError(
-            "alias_copy_out: dtype of input and output must match."
-        )
+        raise RuntimeError("alias_copy_out: dtype of input and output must match.")
     if x.numel() != out.numel():
         raise RuntimeError(
             "alias_copy_out: input and output must have the same number of elements."

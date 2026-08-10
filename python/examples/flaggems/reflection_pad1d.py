@@ -55,9 +55,7 @@ def _copy_rows_kernel(
     tl.store(out_ptr + base + offs_w, vals, mask=mask)
 
 
-def _launch_reflection_pad1d(
-    input: torch.Tensor, padding, out: torch.Tensor = None
-):
+def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = None):
     if not isinstance(padding, (list, tuple)) or len(padding) != 2:
         raise ValueError(
             "padding must be a sequence of length 2: (pad_left, pad_right)"
@@ -78,9 +76,7 @@ def _launch_reflection_pad1d(
     B = int(math.prod(leading_shape)) if len(leading_shape) > 0 else 1
 
     if out is None:
-        out = torch.empty(
-            (*leading_shape, W_out), device=x.device, dtype=x.dtype
-        )
+        out = torch.empty((*leading_shape, W_out), device=x.device, dtype=x.dtype)
     else:
         expected_shape = (*leading_shape, W_out)
         if tuple(out.shape) != expected_shape:
@@ -114,9 +110,7 @@ def _launch_reflection_pad1d(
         )
 
     grid = (B, triton.cdiv(W_out, 256))
-    reflection_pad1d_kernel[grid](
-        x, out, B, W_in, pad_left, W_out, BLOCK_W=256
-    )
+    reflection_pad1d_kernel[grid](x, out, B, W_in, pad_left, W_out, BLOCK_W=256)
     return out
 
 

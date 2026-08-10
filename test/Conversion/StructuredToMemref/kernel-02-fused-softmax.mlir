@@ -42,17 +42,17 @@
 // CHECK:           %[[SUBVIEW_1:.*]] = memref.subview %[[ALLOC_0]][0] {{\[}}%[[MAXSI_0]]] [1] : memref<128xf32> to memref<?xf32, strided<[1]>>
 // CHECK:           memref.copy %[[SUBVIEW_0]], %[[SUBVIEW_1]] : memref<?xf32, strided<[1], offset: ?>> to memref<?xf32, strided<[1]>>
 // CHECK:           %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[ALLOC_0]] restrict writable : memref<128xf32> to tensor<128xf32>
-// CHECK:           %[[ALLOC_TENSOR_0:.*]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           %[[INSERT_0:.*]] = tensor.insert %[[CONSTANT_2]] into %[[ALLOC_TENSOR_0]][] : tensor<f32>
-// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<128xf32>) outs(%[[INSERT_0]] : tensor<f32>) dimensions = [0]
+// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<f32>
+// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_2]] : f32) outs(%[[EMPTY_0]] : tensor<f32>) -> tensor<f32>
+// CHECK:           %[[REDUCE_0:.*]] = linalg.reduce ins(%[[TO_TENSOR_0]] : tensor<128xf32>) outs(%[[FILL_0]] : tensor<f32>) dimensions = [0]
 // CHECK:             (%[[VAL_0:.*]]: f32, %[[VAL_1:.*]]: f32) {
 // CHECK:               %[[MAXIMUMF_0:.*]] = arith.maximumf %[[VAL_0]], %[[VAL_1]] : f32
 // CHECK:               linalg.yield %[[MAXIMUMF_0]] : f32
 // CHECK:             }
 // CHECK:           %[[EXTRACT_0:.*]] = tensor.extract %[[REDUCE_0]][] : tensor<f32>
-// CHECK:           %[[EMPTY_0:.*]] = tensor.empty() : tensor<128xf32>
-// CHECK:           %[[FILL_0:.*]] = linalg.fill ins(%[[EXTRACT_0]] : f32) outs(%[[EMPTY_0]] : tensor<128xf32>) -> tensor<128xf32>
-// CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[TO_TENSOR_0]], %[[FILL_0]] : tensor<128xf32>, tensor<128xf32>) outs(%[[TO_TENSOR_0]] : tensor<128xf32>) {
+// CHECK:           %[[EMPTY_1:.*]] = tensor.empty() : tensor<128xf32>
+// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[EXTRACT_0]] : f32) outs(%[[EMPTY_1]] : tensor<128xf32>) -> tensor<128xf32>
+// CHECK:           %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[TO_TENSOR_0]], %[[FILL_1]] : tensor<128xf32>, tensor<128xf32>) outs(%[[TO_TENSOR_0]] : tensor<128xf32>) {
 // CHECK:           ^bb0(%[[VAL_2:.*]]: f32, %[[VAL_3:.*]]: f32, %[[VAL_4:.*]]: f32):
 // CHECK:             %[[SUBF_0:.*]] = arith.subf %[[VAL_2]], %[[VAL_3]] : f32
 // CHECK:             linalg.yield %[[SUBF_0]] : f32
@@ -62,16 +62,15 @@
 // CHECK:             %[[EXP_0:.*]] = math.exp %[[VAL_5]] : f32
 // CHECK:             linalg.yield %[[EXP_0]] : f32
 // CHECK:           } -> tensor<128xf32>
-// CHECK:           %[[ALLOC_TENSOR_1:.*]] = bufferization.alloc_tensor() : tensor<f32>
-// CHECK:           %[[INSERT_1:.*]] = tensor.insert %[[CONSTANT_3]] into %[[ALLOC_TENSOR_1]][] : tensor<f32>
-// CHECK:           %[[REDUCE_1:.*]] = linalg.reduce ins(%[[GENERIC_1]] : tensor<128xf32>) outs(%[[INSERT_1]] : tensor<f32>) dimensions = [0]
+// CHECK:           %[[FILL_2:.*]] = linalg.fill ins(%[[CONSTANT_3]] : f32) outs(%[[EMPTY_0]] : tensor<f32>) -> tensor<f32>
+// CHECK:           %[[REDUCE_1:.*]] = linalg.reduce ins(%[[GENERIC_1]] : tensor<128xf32>) outs(%[[FILL_2]] : tensor<f32>) dimensions = [0]
 // CHECK:             (%[[VAL_7:.*]]: f32, %[[VAL_8:.*]]: f32) {
 // CHECK:               %[[ADDF_0:.*]] = arith.addf %[[VAL_7]], %[[VAL_8]] : f32
 // CHECK:               linalg.yield %[[ADDF_0]] : f32
 // CHECK:             }
 // CHECK:           %[[EXTRACT_1:.*]] = tensor.extract %[[REDUCE_1]][] : tensor<f32>
-// CHECK:           %[[FILL_1:.*]] = linalg.fill ins(%[[EXTRACT_1]] : f32) outs(%[[EMPTY_0]] : tensor<128xf32>) -> tensor<128xf32>
-// CHECK:           %[[GENERIC_2:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[GENERIC_1]], %[[FILL_1]] : tensor<128xf32>, tensor<128xf32>) outs(%[[GENERIC_1]] : tensor<128xf32>) {
+// CHECK:           %[[FILL_3:.*]] = linalg.fill ins(%[[EXTRACT_1]] : f32) outs(%[[EMPTY_1]] : tensor<128xf32>) -> tensor<128xf32>
+// CHECK:           %[[GENERIC_2:.*]] = linalg.generic {indexing_maps = [#[[$ATTR_0]], #[[$ATTR_0]], #[[$ATTR_0]]], iterator_types = ["parallel"]} ins(%[[GENERIC_1]], %[[FILL_3]] : tensor<128xf32>, tensor<128xf32>) outs(%[[GENERIC_1]] : tensor<128xf32>) {
 // CHECK:           ^bb0(%[[VAL_9:.*]]: f32, %[[VAL_10:.*]]: f32, %[[VAL_11:.*]]: f32):
 // CHECK:             %[[DIVF_0:.*]] = arith.divf %[[VAL_9]], %[[VAL_10]] : f32
 // CHECK:             linalg.yield %[[DIVF_0]] : f32

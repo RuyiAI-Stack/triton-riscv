@@ -5,9 +5,7 @@ from .arctanh_ import arctanh_
 
 
 @pytest.mark.parametrize("shape", [(512,), (1023,), (1024,)])
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float16, torch.float64]
-)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.float64])
 def test_arctanh_inplace(shape, dtype):
     torch.manual_seed(0)
     x = torch.rand(shape, dtype=dtype, device="cpu") * 0.5  # keep in (-1, 1)
