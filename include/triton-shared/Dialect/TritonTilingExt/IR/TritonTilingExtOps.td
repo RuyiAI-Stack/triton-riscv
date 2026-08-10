@@ -166,6 +166,15 @@ class TritonTilingExt_TilingOp<string mnemonic> : Op<TritonTilingExt_Dialect, mn
       );
     }
 
+    FailureOr<TilingResult> $cppClass::getTiledImplementation(
+      OpBuilder &b,
+      ArrayRef<OpFoldResult> offsets,
+      ArrayRef<OpFoldResult> sizes,
+      ArrayRef<InnerTileAlignment>
+    ) {
+      return getTiledImplementation(b, offsets, sizes);
+    }
+
     // Forward each of the implementation to the shared implementation
     LogicalResult $cppClass::getResultTilePosition(
       OpBuilder &b,
@@ -190,6 +199,16 @@ class TritonTilingExt_TilingOp<string mnemonic> : Op<TritonTilingExt_Dialect, mn
       return mlir::ttx::generateResultTileValue<$cppClass>(
         *this, b, resultNumber, offsets, sizes
       );
+    }
+
+    FailureOr<TilingResult> $cppClass::generateResultTileValue(
+      OpBuilder &b,
+      unsigned resultNumber,
+      ArrayRef<OpFoldResult> offsets,
+      ArrayRef<OpFoldResult> sizes,
+      ArrayRef<InnerTileAlignment>
+    ) {
+      return generateResultTileValue(b, resultNumber, offsets, sizes);
     }
 
     // Implemented as part of MemoryEffectsOpInterface

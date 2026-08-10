@@ -120,9 +120,14 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.torch_threads is not None:
-        import torch
+    import torch
 
+    benchmark_threads = (
+        args.torch_threads
+        if args.torch_threads is not None
+        else torch.get_num_threads()
+    )
+    if args.torch_threads is not None:
         torch.set_num_threads(args.torch_threads)
         try:
             torch.set_num_interop_threads(args.torch_threads)
@@ -138,6 +143,13 @@ def main():
     csv_path.write_text("")
 
     env = os.environ.copy()
+    buddy_dir = Path(env.get("BUDDY_DIR", repo_root.parent / "buddy-mlir"))
+    buddy_bin = buddy_dir / "build" / "bin"
+    llvm_bin = buddy_dir / "llvm" / "build" / "bin"
+    if buddy_bin.is_dir():
+        env.setdefault("BUDDY_MLIR_BINARY_DIR", str(buddy_bin))
+    if llvm_bin.is_dir():
+        env.setdefault("LLVM_BINARY_DIR", str(llvm_bin))
     env["PYTHONPATH"] = (
         str(perf_dir)
         if not env.get("PYTHONPATH")
@@ -145,10 +157,10 @@ def main():
     )
     env["TRITON_RISCV_BENCH_CSV"] = str(csv_path)
     env["TRITON_RISCV_BENCH_HEADER"] = "0"
-    if args.torch_threads is not None:
-        env["OMP_NUM_THREADS"] = str(args.torch_threads)
-        env["MKL_NUM_THREADS"] = str(args.torch_threads)
-        env["TORCH_NUM_THREADS"] = str(args.torch_threads)
+    env["OMP_NUM_THREADS"] = str(benchmark_threads)
+    env["MKL_NUM_THREADS"] = str(benchmark_threads)
+    env["TORCH_NUM_THREADS"] = str(benchmark_threads)
+    env.setdefault("TRITON_RISCV_OPENMP_THREADS", str(benchmark_threads))
 
     scripts = sorted(perf_dir.glob("test_performance_*.py"))
     if args.cases:

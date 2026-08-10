@@ -1,3 +1,5 @@
+import os
+
 import torch
 
 import triton
@@ -21,9 +23,9 @@ def matmul_kernel_aligned(
     a_ptr,
     b_ptr,
     c_ptr,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     stride_am,
     stride_ak,
     stride_bk,
@@ -46,36 +48,26 @@ def matmul_kernel_aligned(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    a_desc = tl.make_tensor_descriptor(
-        base=a_ptr,
-        shape=(M, K),
-        strides=(stride_am, stride_ak),
-        block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_K),
-    )
-    b_desc = tl.make_tensor_descriptor(
-        base=b_ptr,
-        shape=(K, N),
-        strides=(stride_bk, stride_bn),
-        block_shape=(BLOCK_SIZE_K, BLOCK_SIZE_N),
-    )
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    a_ptrs = a_ptr + (offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn)
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k_offset in range(0, K, BLOCK_SIZE_K):
-        a = a_desc.load((pid_m * BLOCK_SIZE_M, k_offset))
-        b = b_desc.load((k_offset, pid_n * BLOCK_SIZE_N))
-        accumulator += tl.dot(a, b)
+    for _ in range(0, K, BLOCK_SIZE_K):
+        a = tl.load(a_ptrs)
+        b = tl.load(b_ptrs)
+        accumulator = tl.dot(a, b, accumulator)
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
 
     if ACTIVATION == "leaky_relu":
         accumulator = leaky_relu(accumulator)
     c = accumulator.to(tl.float32)
 
-    c_desc = tl.make_tensor_descriptor(
-        base=c_ptr,
-        shape=(M, N),
-        strides=(stride_cm, stride_cn),
-        block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_N),
-    )
-    c_desc.store((pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N), c)
+    c_ptrs = c_ptr + (offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn)
+    tl.store(c_ptrs, c)
 
 
 @triton.jit
@@ -97,9 +89,46 @@ def matmul(a, b, activation=""):
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         )
 
-    block_size_m = 32
-    block_size_n = 64
-    block_size_k = 16
+    # CPU lowering materializes each Triton program's tiles in temporary
+    # buffers.  Prefer the largest aligned tile so those buffers and the
+    # launcher are reused for more arithmetic, while retaining the original
+    # 32x64 minimum tile for smaller shapes.
+    openmp_threads = max(1, int(os.getenv("TRITON_RISCV_OPENMP_THREADS", "1")))
+    block_m_cap = max(32, 512 // openmp_threads)
+    block_size_m = next(
+        (
+            block
+            for block in (256, 128, 64, 32)
+            if block <= block_m_cap and M % block == 0
+        ),
+        32,
+    )
+    m_programs = triton.cdiv(M, block_size_m)
+    n_programs_needed = max(1, triton.cdiv(openmp_threads, m_programs))
+    block_n_cap = max(64, N // n_programs_needed)
+    block_size_n = next(
+        (
+            block
+            for block in (512, 256, 128, 64)
+            if block <= block_n_cap and N % block == 0
+        ),
+        64,
+    )
+    block_size_k = next(
+        (block for block in (512, 256, 128, 64, 32, 16) if K % block == 0),
+        16,
+    )
+    if openmp_threads == 1:
+        # On the C920, a 32x32 output tile keeps the fixed-width RVV
+        # accumulator working set cache-resident. A 64-wide K chunk amortizes
+        # loop overhead without recreating the large temporary tiles used by
+        # the throughput-oriented multi-thread configuration.
+        block_size_m = next((block for block in (32, 16, 8) if M % block == 0), 8)
+        block_size_n = next((block for block in (32, 16, 8) if N % block == 0), 8)
+        block_size_k = next((block for block in (64, 32, 16, 8) if K % block == 0), 8)
+    block_size_m = int(os.getenv("TRITON_RISCV_MATMUL_BLOCK_M", block_size_m))
+    block_size_n = int(os.getenv("TRITON_RISCV_MATMUL_BLOCK_N", block_size_n))
+    block_size_k = int(os.getenv("TRITON_RISCV_MATMUL_BLOCK_K", block_size_k))
     aligned = M % block_size_m == 0 and N % block_size_n == 0 and K % block_size_k == 0
     if not aligned:
         _warn_fallback_once(
@@ -128,6 +157,7 @@ def matmul(a, b, activation=""):
         BLOCK_SIZE_N=block_size_n,
         BLOCK_SIZE_K=block_size_k,
         GROUP_SIZE_M=8,
+        allow_fp_reassoc=True,
     )
     return c
 

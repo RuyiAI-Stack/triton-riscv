@@ -17,9 +17,8 @@ def TritonArithToLinalg : Pass<"triton-arith-to-linalg", "mlir::ModuleOp"> {
       Option<"tensorPtrToLinalg", "tensor-ptr-to-linalg", "bool", /*default*/"false",
              "Convert triton ops on tensor of pointers to linalg.generic">,
       Option<"transposeReduceToRank0", "transpose-reduce-to-rank0", "bool", /*default*/"true",
-             "Transpose reductions to rank 0 which collapses remaining dimensions. Otherwise "
-             "transpose any rank - 1 reduction to rank - 2 as the old behavior. These transposes "
-             "are planned for removal as Triton Shared should not be responsible for this.">,
+             "Transpose reductions to rank 0 which collapses remaining dimensions. When false, "
+             "preserve the source reduction axis and avoid materializing a transpose.">,
   ];
 }
 

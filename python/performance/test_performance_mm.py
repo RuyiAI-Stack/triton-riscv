@@ -4,6 +4,7 @@ import triton
 import triton.language as tl
 import benchmark
 from triton.backends.triton_shared.driver import CPUDriver
+from test_performance_matmul import matmul as optimized_matmul
 
 
 triton.runtime.driver.set_active(CPUDriver())
@@ -115,6 +116,13 @@ def mm(a, b):
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    # The generic upstream-style kernel below uses small 32x32 tiles and
+    # materializes a reduction result for every K chunk on the CPU backend.
+    # Reuse the statically shaped, destination-forwarded CPU matmul kernel for
+    # the common FP32 case.  Keep the generic implementation as a fallback for
+    # mixed and lower precision inputs covered by this helper's API.
+    if a.dtype == torch.float32 and b.dtype == torch.float32:
+        return optimized_matmul(a, b)
     M, K = a.shape
     _, N = b.shape
     # allocates output

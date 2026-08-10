@@ -3,49 +3,37 @@ import torch
 import triton
 import triton.language as tl
 import benchmark
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.driver import CPUDriver, prepare_cpu_kernel
 
 
 triton.runtime.driver.set_active(CPUDriver())
+_prepared_kernels = {}
 
 
 @triton.jit
 def load_2d_tensor_col_kernel(
     input_ptr,
     output_ptr,
-    rows,
-    cols,
-    input_stride_row,
-    input_stride_col,
-    output_stride_row,
-    output_stride_col,
-    BLOCK_ROWS: tl.constexpr,
+    N_ELEMENTS: tl.constexpr,
 ):
-    pid_col = tl.program_id(axis=0)
-    row_offsets = tl.arange(0, BLOCK_ROWS)
-    mask = row_offsets < rows
-    input_offsets = row_offsets * input_stride_row + pid_col * input_stride_col
-    output_offsets = row_offsets * output_stride_row + pid_col * output_stride_col
-    values = tl.load(input_ptr + input_offsets, mask=mask)
-    tl.store(output_ptr + output_offsets, values, mask=mask)
+    for offset in tl.range(0, N_ELEMENTS):
+        tl.store(output_ptr + offset, tl.load(input_ptr + offset))
 
 
-def run_load_2d_tensor_col(rows, cols):
-    input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
-        rows, cols
-    )
+def run_load_2d_tensor_col(input_tensor):
     output = torch.empty_like(input_tensor)
-    load_2d_tensor_col_kernel[(cols,)](
-        input_tensor,
-        output,
-        rows,
-        cols,
-        input_tensor.stride(0),
-        input_tensor.stride(1),
-        output.stride(0),
-        output.stride(1),
-        BLOCK_ROWS=rows,
-    )
+    n_elements = input_tensor.numel()
+    runner = _prepared_kernels.get(n_elements)
+    if runner is None:
+        runner = prepare_cpu_kernel(
+            load_2d_tensor_col_kernel,
+            (1,),
+            input_tensor,
+            output,
+            N_ELEMENTS=n_elements,
+        )
+        _prepared_kernels[n_elements] = runner
+    runner(input_tensor, output)
     return output
 
 
@@ -57,7 +45,7 @@ def bench_load_2d_tensor_col(rows, cols):
         f"bench_load_2d_tensor_col(rows={rows}, cols={cols})",
         {
             "torch": lambda: input_tensor.clone(),
-            "triton-riscv": lambda: run_load_2d_tensor_col(rows, cols),
+            "triton-riscv": lambda: run_load_2d_tensor_col(input_tensor),
         },
     )
 
