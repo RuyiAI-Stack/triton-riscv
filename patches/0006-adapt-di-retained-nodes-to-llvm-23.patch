@@ -2,11 +2,9 @@ diff --git a/lib/Target/LLVMIR/LLVMDILocalVariable.cpp b/lib/Target/LLVMIR/LLVMD
 index 29d07d44a..ad0000000 100644
 --- a/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
 +++ b/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
-@@ -241,6 +241,6 @@ private:
+@@ -241,4 +241,4 @@ private:
        LLVM::DITypeAttr typeAttr;
      };
      llvm::SmallVector<ArgInfo> argInfos;
 -    llvm::SmallVector<mlir::LLVM::DINodeAttr> retainedNodes;
 +    llvm::SmallVector<mlir::Attribute> retainedNodes;
-    for (unsigned idx = resNum; idx < argTypeAttrs.size(); idx++) {
-       LLVM::DITypeAttr argTypeAttr = argTypeAttrs[idx];
