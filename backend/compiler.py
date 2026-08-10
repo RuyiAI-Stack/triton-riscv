@@ -130,7 +130,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # ---------------------------------------------------------------
             # IME path: Triton-Shared MLIR → buddy-mlir IME dialect → LLVM IR
             # Lowers linalg.matmul (f16) to ime.vfmadot via buddy-mlir passes,
-            # then cross-compiles to a RISC-V ELF object with +buddyext.
+            # then cross-compiles to a RISC-V ELF object with +xsmtime.
             # ---------------------------------------------------------------
             ime_lowering_passes = [
                 # Bufferize tensor ops before IME lowering
@@ -238,14 +238,22 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-deallocation-pipeline",
-                    "--eliminate-memref-copy",
+                    # The pinned Buddy implementation of eliminate-memref-copy
+                    # is not type-safe for mixed-width matmul temporaries and
+                    # can fold away storage needed by aliasing kernels such as
+                    # swap. Keep the copies until those cases are handled by
+                    # the pass itself.
+                    # "--eliminate-memref-copy",
                     # Triton programs commonly materialize small, statically
                     # sized tiles for loads and scalar broadcasts.  Paying for
                     # several heap allocations on every grid invocation
                     # dominates elementwise CPU kernels, so keep bounded tile
                     # temporaries in the launcher thread's stack frame.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-                    "--matmul-vectorization",
+                    # The pinned Buddy matmul-vectorization pass creates loads
+                    # whose result element type does not match the backing
+                    # memref for fp16 and widening int8 dot products.
+                    # "--matmul-vectorization",
                     "--convert-linalg-to-affine-loops",
                     "--lower-affine",
                     "--convert-linalg-to-loops",
@@ -600,13 +608,13 @@ def _llir_to_bin(llir: str, metadata, options=None):
 
             subprocess.check_call(subprocess_args)
         elif _use_ime_pipeline():
-            # IME path: cross-compile to RISC-V with buddyext (vfmadot / vmadot).
+            # IME path: cross-compile to RISC-V with XSMTIME (vfmadot / vmadot).
             # buddy-llc understands the RISC-V IME intrinsics produced by
             # buddy-translate and generates correct machine code.
             buddy_llc_path = _get_buddy_llc_path()
             toolchain = RiscvToolchain.from_env()
             toolchain = replace(
-                toolchain, llc_features=f"{toolchain.llc_features},+buddyext"
+                toolchain, llc_features=f"{toolchain.llc_features},+xsmtime"
             )
             subprocess.check_call(
                 toolchain.llc_command(buddy_llc_path, src_path, dst_path)
