@@ -23,15 +23,17 @@ module {
 // CHECK:           %[[VAL_10:.*]] = memref.alloc() : memref<512x256xf32>
 // CHECK:           memref.copy %[[VAL_9]], %[[VAL_10]] : memref<512x256xf32, strided<[256, 1]>> to memref<512x256xf32>
 // CHECK:           %[[VAL_11:.*]] = bufferization.to_tensor %[[VAL_10]] restrict writable : memref<512x256xf32> to tensor<512x256xf32>
-// CHECK:           %[[VAL_12:.*]] = tensor.empty() : tensor<512xf32>
-// CHECK:           %[[VAL_13:.*]] = linalg.fill ins(%[[VAL_8]] : f32) outs(%[[VAL_12]] : tensor<512xf32>) -> tensor<512xf32>
-// CHECK:           %[[VAL_14:.*]] = linalg.reduce ins(%[[VAL_11]] : tensor<512x256xf32>) outs(%[[VAL_13]] : tensor<512xf32>) dimensions = [1]
-// CHECK:             (%[[VAL_15:.*]]: f32, %[[VAL_16:.*]]: f32) {
-// CHECK:               %[[VAL_17:.*]] = arith.addf %[[VAL_15]], %[[VAL_16]] : f32
-// CHECK:               linalg.yield %[[VAL_17]] : f32
+// CHECK:           %[[VAL_12:.*]] = tensor.empty() : tensor<256x512xf32>
+// CHECK:           %[[VAL_13:.*]] = linalg.transpose ins(%[[VAL_11]] : tensor<512x256xf32>) outs(%[[VAL_12]] : tensor<256x512xf32>) permutation = [1, 0]
+// CHECK:           %[[VAL_14:.*]] = tensor.empty() : tensor<512xf32>
+// CHECK:           %[[VAL_15:.*]] = linalg.fill ins(%[[VAL_8]] : f32) outs(%[[VAL_14]] : tensor<512xf32>) -> tensor<512xf32>
+// CHECK:           %[[VAL_16:.*]] = linalg.reduce ins(%[[VAL_13]] : tensor<256x512xf32>) outs(%[[VAL_15]] : tensor<512xf32>) dimensions = [0]
+// CHECK:             (%[[VAL_17:.*]]: f32, %[[VAL_18:.*]]: f32) {
+// CHECK:               %[[VAL_19:.*]] = arith.addf %[[VAL_17]], %[[VAL_18]] : f32
+// CHECK:               linalg.yield %[[VAL_19]] : f32
 // CHECK:             }
-// CHECK:           %[[VAL_18:.*]] = memref.reinterpret_cast %[[VAL_1]] to offset: [0], sizes: [512], strides: [1] : memref<*xf32> to memref<512xf32, strided<[1]>>
-// CHECK:           bufferization.materialize_in_destination %[[VAL_14]] in writable %[[VAL_18]] : (tensor<512xf32>, memref<512xf32, strided<[1]>>) -> ()
+// CHECK:           %[[VAL_20:.*]] = memref.reinterpret_cast %[[VAL_1]] to offset: [0], sizes: [512], strides: [1] : memref<*xf32> to memref<512xf32, strided<[1]>>
+// CHECK:           bufferization.materialize_in_destination %[[VAL_16]] in writable %[[VAL_20]] : (tensor<512xf32>, memref<512xf32, strided<[1]>>) -> ()
 // CHECK:           return
 // CHECK:         }
     tt.func @kernel(%afloat : !tt.ptr<f32>,
