@@ -238,22 +238,14 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-deallocation-pipeline",
-                    # The pinned Buddy implementation of eliminate-memref-copy
-                    # is not type-safe for mixed-width matmul temporaries and
-                    # can fold away storage needed by aliasing kernels such as
-                    # swap. Keep the copies until those cases are handled by
-                    # the pass itself.
-                    # "--eliminate-memref-copy",
+                    "--eliminate-memref-copy",
                     # Triton programs commonly materialize small, statically
                     # sized tiles for loads and scalar broadcasts.  Paying for
                     # several heap allocations on every grid invocation
                     # dominates elementwise CPU kernels, so keep bounded tile
                     # temporaries in the launcher thread's stack frame.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-                    # The pinned Buddy matmul-vectorization pass creates loads
-                    # whose result element type does not match the backing
-                    # memref for fp16 and widening int8 dot products.
-                    # "--matmul-vectorization",
+                    "--matmul-vectorization",
                     "--convert-linalg-to-affine-loops",
                     "--lower-affine",
                     "--convert-linalg-to-loops",
