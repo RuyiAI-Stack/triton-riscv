@@ -21,7 +21,7 @@ jobs:
             runner: ubuntu-24.04
           - arch: riscv64
             target_arch: riscv64
-            runner: ubuntu-24.04-riscv
+            runner: [ubuntu-24.04-riscv, rva23, xlarge]
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +35,18 @@ jobs:
           sudo apt-get install -y clang lld ninja-build ccache
 
       - name: Build Triton with triton-riscv
-        run: ./scripts/build.sh
+        run: |
+          # Triton defaults to 2 * CPU count, which can exhaust memory on the
+          # RISC-V runner during the C++ build.
+          if [[ "${{ matrix.arch }}" == "riscv64" ]]; then
+            export MAX_JOBS="$(nproc)"
+            export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+            {
+              echo "MAX_JOBS=${MAX_JOBS}"
+              echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
+            } >> "$GITHUB_ENV"
+          fi
+          ./scripts/build.sh
 
       - name: Install test dependencies (riscv64)
         if: matrix.arch == 'riscv64'
