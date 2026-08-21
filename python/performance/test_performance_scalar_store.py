@@ -3,10 +3,11 @@ import torch
 import triton
 import triton.language as tl
 import benchmark
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.driver import CPUDriver, prepare_cpu_kernel
 
 
 triton.runtime.driver.set_active(CPUDriver())
+_prepared_kernels = {}
 
 
 @triton.jit
@@ -24,7 +25,16 @@ def run_scalar_store(size):
     assert size > 0
     assert size % 2 == 0
     output = torch.empty((size,), device="cpu", dtype=torch.float32)
-    scalar_store_kernel[(1,)](output, BLOCK_SIZE=size)
+    runner = _prepared_kernels.get(size)
+    if runner is None:
+        runner = prepare_cpu_kernel(
+            scalar_store_kernel,
+            (1,),
+            output,
+            BLOCK_SIZE=size,
+        )
+        _prepared_kernels[size] = runner
+    runner(output)
     return output
 
 

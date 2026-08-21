@@ -3,68 +3,63 @@ import torch
 import triton
 import triton.language as tl
 import benchmark
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.triton_shared.driver import CPUDriver, prepare_cpu_kernel
 
 triton.runtime.driver.set_active(CPUDriver())
+_prepared_kernels = {}
 
 
 @triton.jit
-def softmax_kernel(
+def softmax_cpu_kernel(
     output_ptr,
     input_ptr,
-    input_row_stride,
-    output_row_stride,
-    n_cols,
-    BLOCK_SIZE: tl.constexpr,
+    INPUT_ROW_STRIDE: tl.constexpr,
+    OUTPUT_ROW_STRIDE: tl.constexpr,
+    N_ROWS: tl.constexpr,
+    N_COLS: tl.constexpr,
 ):
-    # The rows of the softmax are independent, so we parallelize across those
-    row_idx = tl.program_id(0)
-    # The stride represents how much we need to increase the pointer to advance 1 row
-    row_start_ptr = input_ptr + row_idx * input_row_stride
-    # The block size is the next power of two greater than n_cols, so we can fit each
-    # row in a single block
-    col_offsets = tl.arange(0, BLOCK_SIZE)
-    input_ptrs = row_start_ptr + col_offsets
-    # Load the row into SRAM, using a mask since BLOCK_SIZE may be > than n_cols
-    row = tl.load(input_ptrs, mask=col_offsets < n_cols, other=-float("inf"))
-    # Subtract maximum for numerical stability
-    row_minus_max = row - tl.max(row, axis=0)
-    # Note that exponentiation in Triton is fast but approximate (i.e., think __expf in CUDA)
-    numerator = tl.exp(row_minus_max)
-    denominator = tl.sum(numerator, axis=0)
-    softmax_output = numerator / denominator
-    # Write back output to DRAM
-    output_row_start_ptr = output_ptr + row_idx * output_row_stride
-    output_ptrs = output_row_start_ptr + col_offsets
-    tl.store(output_ptrs, softmax_output, mask=col_offsets < n_cols)
+    # Work directly on the input/output rows. Tensor materialization of the
+    # conventional whole-row formulation creates several full-row stack
+    # buffers on CPU. This three-pass form computes exp only once, stages the
+    # numerator in the final output, and lets LLVM vectorize every inner loop.
+    for row in tl.range(0, N_ROWS):
+        input_base = row * INPUT_ROW_STRIDE
+        output_base = row * OUTPUT_ROW_STRIDE
+
+        maximum = -float("inf")
+        for col in tl.range(0, N_COLS):
+            maximum = tl.maximum(maximum, tl.load(input_ptr + input_base + col))
+
+        denominator = 0.0
+        for col in tl.range(0, N_COLS):
+            numerator = tl.exp(tl.load(input_ptr + input_base + col) - maximum)
+            denominator += numerator
+            tl.store(output_ptr + output_base + col, numerator)
+
+        for col in tl.range(0, N_COLS):
+            output = tl.load(output_ptr + output_base + col)
+            tl.store(output_ptr + output_base + col, output / denominator)
 
 
 def softmax(x):
     n_rows, n_cols = x.shape
-    # The block size is the smallest power of two greater than the number of columns in `x`
-    BLOCK_SIZE = triton.next_power_of_2(n_cols)
-    # Another trick we can use is to ask the compiler to use more threads per row by
-    # increasing the number of warps (`num_warps`) over which each row is distributed.
-    # You will see in the next tutorial how to auto-tune this value in a more natural
-    # way so you don't have to come up with manual heuristics yourself.
-    num_warps = 4
-    if BLOCK_SIZE >= 2048:
-        num_warps = 8
-    if BLOCK_SIZE >= 4096:
-        num_warps = 16
-    # Allocate output
     y = torch.empty_like(x)
-    # Enqueue kernel. The 1D launch grid is simple: we have one kernel instance per row o
-    # f the input matrix
-    softmax_kernel[(n_rows,)](
-        y,
-        x,
-        x.stride(0),
-        y.stride(0),
-        n_cols,
-        num_warps=num_warps,
-        BLOCK_SIZE=BLOCK_SIZE,
-    )
+    key = (n_rows, n_cols, x.stride(0), y.stride(0), x.dtype)
+    runner = _prepared_kernels.get(key)
+    if runner is None:
+        runner = prepare_cpu_kernel(
+            softmax_cpu_kernel,
+            (1,),
+            y,
+            x,
+            INPUT_ROW_STRIDE=x.stride(0),
+            OUTPUT_ROW_STRIDE=y.stride(0),
+            N_ROWS=n_rows,
+            N_COLS=n_cols,
+            allow_fp_reassoc=True,
+        )
+        _prepared_kernels[key] = runner
+    runner(y, x)
     return y
 
 

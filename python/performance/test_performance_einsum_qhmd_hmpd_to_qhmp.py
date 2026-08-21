@@ -15,87 +15,45 @@ def einsum_qhmd_hmpd_to_qhmp_kernel(
     A_ptr,
     B_ptr,
     C_ptr,
-    Q,
-    H,
-    M,
-    P,
-    D,
-    strideAq,
-    strideAh,
-    strideAm,
-    strideAd,
-    strideBh,
-    strideBm,
-    strideBp,
-    strideBd,
-    strideCq,
-    strideCh,
-    strideCm,
-    strideCp,
-    BLOCK_QHM: tl.constexpr,
-    BLOCK_P: tl.constexpr,
+    Q: tl.constexpr,
+    H: tl.constexpr,
+    M: tl.constexpr,
+    P: tl.constexpr,
+    D: tl.constexpr,
+    strideAq: tl.constexpr,
+    strideAh: tl.constexpr,
+    strideAm: tl.constexpr,
+    strideAd: tl.constexpr,
+    strideBh: tl.constexpr,
+    strideBm: tl.constexpr,
+    strideBp: tl.constexpr,
+    strideBd: tl.constexpr,
+    strideCq: tl.constexpr,
+    strideCh: tl.constexpr,
+    strideCm: tl.constexpr,
+    strideCp: tl.constexpr,
 ):
     """
     Triton kernel computing:
        C[q,h,m,p] = sum_{d=0..D-1} A[q,h,m,d] * B[h,m,p,d].
 
-    We tile over Q*H*M in one dimension (BLOCK_QHM), and P in another (BLOCK_P).
-    Then unroll a for-loop over d in [0..D-1], with a mask to guard against invalid indices loads.
+    Use structured scalar loops on CPU. These benchmark shapes are small, so
+    2x2 tensor tiles spend substantially more time in staging and grid dispatch
+    than in the contraction itself.
     """
-
-    pid_qhm = tl.program_id(axis=0)  # which block for Q*H*M
-    pid_p = tl.program_id(axis=1)  # which block for P
-
-    # Indices for qhm, p
-    qhm_off = pid_qhm * BLOCK_QHM
-    qhm_idx = qhm_off + tl.arange(0, BLOCK_QHM)  # [BLOCK_QHM]
-
-    p_off = pid_p * BLOCK_P
-    p_idx = p_off + tl.arange(0, BLOCK_P)  # [BLOCK_P]
-
-    # Valid ranges
-    valid_qhm = qhm_idx < (Q * H * M)
-    valid_p = p_idx < P
-
-    # Expand to 2D for final store
-    qhm_mask_2d = tl.broadcast_to(valid_qhm[:, None], [BLOCK_QHM, BLOCK_P])
-    p_mask_2d = tl.broadcast_to(valid_p[None, :], [BLOCK_QHM, BLOCK_P])
-    full_mask = qhm_mask_2d & p_mask_2d
-
-    # Decompose qhm = q * (H * M) + h * M + m -> (q, h, m)
-    q_ = qhm_idx // (H * M)
-    hm_ = qhm_idx % (H * M)
-    h_ = hm_ // M
-    m_ = hm_ % M
-
-    # Accumulator
-    c_acc = tl.zeros((BLOCK_QHM, BLOCK_P), dtype=tl.float32)
-
-    for d_idx in range(D):
-        # offset in A => q_*strideAq + h_*strideAh + m_*strideAm + d_idx*strideAd
-        baseA = (q_ * strideAq) + (h_ * strideAh) + (m_ * strideAm)
-        A_offset = baseA + d_idx * strideAd
-        # shape => [BLOCK_QHM]
-        # Expand to 2D for masked load
-        A_mask = valid_qhm  # shape [BLOCK_QHM]
-        A_vals = tl.load(A_ptr + A_offset, mask=A_mask, other=0.0)
-
-        # offset in B => h_*strideBh + m_*strideBm + d_idx*strideBd + p_idx*strideBp
-        baseB = (h_ * strideBh) + (m_ * strideBm) + (d_idx * strideBd)
-        B_offset = baseB[:, None] + (p_idx[None, :] * strideBp)
-        B_mask_2d = qhm_mask_2d & p_mask_2d
-        B_vals = tl.load(B_ptr + B_offset, mask=B_mask_2d, other=0.0)
-
-        # multiply-accumulate
-        # Expand A_vals to [BLOCK_QHM, 1]
-        # A_vals shape [BLOCK_QHM], B_vals shape [BLOCK_QHM,BLOCK_P]
-        a_col_2d = A_vals[:, None]
-        c_acc += a_col_2d * B_vals
-
-    # Store result
-    baseC = (q_ * strideCq) + (h_ * strideCh) + (m_ * strideCm)
-    c_offset = baseC[:, None] + (p_idx[None, :] * strideCp)
-    tl.store(C_ptr + c_offset, c_acc, mask=full_mask)
+    for q in tl.range(0, Q):
+        for h in tl.range(0, H):
+            for m in tl.range(0, M):
+                a_base = q * strideAq + h * strideAh + m * strideAm
+                b_base = h * strideBh + m * strideBm
+                c_base = q * strideCq + h * strideCh + m * strideCm
+                for p in tl.range(0, P):
+                    accumulator = 0.0
+                    for d in tl.range(0, D):
+                        a = tl.load(A_ptr + a_base + d * strideAd)
+                        b = tl.load(B_ptr + b_base + p * strideBp + d * strideBd)
+                        accumulator += a * b
+                    tl.store(C_ptr + c_base + p * strideCp, accumulator)
 
 
 def einsum_qhmd_hmpd_to_qhmp(A, B, BLOCK_QHM=2, BLOCK_P=2):
@@ -113,9 +71,7 @@ def einsum_qhmd_hmpd_to_qhmp(A, B, BLOCK_QHM=2, BLOCK_P=2):
 
     C = torch.empty((Q, H, M, P), device=A.device, dtype=A.dtype)
 
-    grid = (triton.cdiv(Q * H * M, BLOCK_QHM), triton.cdiv(P, BLOCK_P))
-
-    einsum_qhmd_hmpd_to_qhmp_kernel[grid](
+    einsum_qhmd_hmpd_to_qhmp_kernel[(1,)](
         A,
         B,
         C,
@@ -136,8 +92,6 @@ def einsum_qhmd_hmpd_to_qhmp(A, B, BLOCK_QHM=2, BLOCK_P=2):
         C.stride(1),
         C.stride(2),
         C.stride(3),
-        BLOCK_QHM,
-        BLOCK_P,
     )
 
     return C

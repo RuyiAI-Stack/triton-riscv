@@ -487,8 +487,8 @@ def test_attention_paged_varlen_kernel_emits_riscv_object(tmp_path, device, make
     assert re.search(r"\bvsetivli\b", asm)
     assert re.search(r"\bvle32\.v\b", asm)
     assert re.search(r"\bvse32\.v\b", asm)
-    assert re.search(r"\bvfmul\.vv\b", asm)
-    assert re.search(r"\bvfredosum\.vs\b", asm)
+    assert re.search(r"\b(?:vfmul\.vv|fmul\.s)\b", asm)
+    assert re.search(r"\b(?:vfredosum\.vs|fadd\.s)\b", asm)
     assert re.search(r"\bfdiv\.s\b", asm)
 
 

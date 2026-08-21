@@ -13,41 +13,25 @@ triton.runtime.driver.set_active(CPUDriver())
 def modulo_kernel(
     input_ptr,
     output_ptr,
-    n_rows,
-    n_cols,
-    input_stride_row,
-    input_stride_col,
-    output_stride_row,
-    output_stride_col,
-    BLOCK_SIZE: tl.constexpr,
+    N_ROWS: tl.constexpr,
+    N_COLS: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    if pid >= n_rows:
-        return
-    cols = tl.arange(0, BLOCK_SIZE)
-    wrapped_cols = (pid + cols) % n_cols
-    input_ptrs = input_ptr + pid * input_stride_row + wrapped_cols * input_stride_col
-    output_ptrs = output_ptr + pid * output_stride_row + cols * output_stride_col
-    mask = cols < n_cols
-    values = tl.load(input_ptrs, mask=mask, other=0.0)
-    tl.store(output_ptrs, values, mask=mask)
+    for row in tl.range(0, N_ROWS):
+        for col in tl.range(0, N_COLS):
+            wrapped_col = (row + col) % N_COLS
+            value = tl.load(input_ptr + row * N_COLS + wrapped_col)
+            tl.store(output_ptr + row * N_COLS + col, value)
 
 
 def run_modulo(x):
     assert x.ndim == 2
     assert x.shape[1] > 0
     output = torch.empty_like(x)
-    block_size = triton.next_power_of_2(x.shape[1])
-    modulo_kernel[(x.shape[0],)](
+    modulo_kernel[(1,)](
         x,
         output,
-        x.shape[0],
-        x.shape[1],
-        x.stride(0),
-        x.stride(1),
-        output.stride(0),
-        output.stride(1),
-        BLOCK_SIZE=block_size,
+        N_ROWS=x.shape[0],
+        N_COLS=x.shape[1],
     )
     return output
 

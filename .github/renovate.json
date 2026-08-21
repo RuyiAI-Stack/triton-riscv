@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["custom.regex"],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["* 2 * * *"],
+  "platformAutomerge": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^scripts\\/build\\.sh$/"],
+      "matchStrings": [
+        "BUDDY_RELEASE_TAG=\\\"(?<currentValue>[^\\\"\\n]+)\\\""
+      ],
+      "depNameTemplate": "buddy-compiler/buddy-mlir",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^(?:release/v|nightly/v)(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.dev(?<build>\\d+))?$"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["custom.regex"],
+      "matchPackageNames": ["buddy-compiler/buddy-mlir"],
+      "allowedVersions": "/^nightly\\/v\\d+\\.\\d+\\.\\d+\\.dev\\d+$/",
+      "ignoreUnstable": false,
+      "maxMajorIncrement": 0,
+      "groupName": "Buddy MLIR nightly",
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "ignoreTests": false,
+      "prCreation": "immediate"
+    }
+  ]
+}

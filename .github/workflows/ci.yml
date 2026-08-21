@@ -29,12 +29,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Prepare variables
-        run: |
-          PY_NODOT="${{ matrix.python }}"
-          PY_NODOT="${PY_NODOT//./}"
-          echo "TRITON_PYTHON_TAG=cp${PY_NODOT}-cp${PY_NODOT}" >> "$GITHUB_ENV"
-
       - name: Install system dependencies
         run: |
           sudo apt-get update

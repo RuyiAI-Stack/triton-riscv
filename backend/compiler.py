@@ -44,6 +44,21 @@ def _use_ime_pipeline() -> bool:
     return os.getenv("TRITON_RISCV_USE_IME", "") == "1"
 
 
+def _get_openmp_num_threads() -> int:
+    value = os.getenv("TRITON_RISCV_OPENMP_THREADS", "0")
+    if value == "":
+        return 0
+    try:
+        threads = int(value)
+    except ValueError as exc:
+        raise ValueError(
+            "TRITON_RISCV_OPENMP_THREADS must be an integer thread count"
+        ) from exc
+    if threads < 0:
+        raise ValueError("TRITON_RISCV_OPENMP_THREADS must be non-negative")
+    return threads
+
+
 def _dump_ir_if_needed(files):
     path = os.getenv("TRITON_SHARED_DUMP_PATH", "")
     if not path:
@@ -191,7 +206,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     llmlir_path,
                 ]
             )
-            # LLVM-MLIR → LLVM-IR via buddy-translate (handles the IME output)
+            # LLVM-MLIR → LLVM-IR via buddy-translate (handles buddyext dialect)
             buddy_translate_path = _get_buddy_translate_path()
             subprocess.check_call(
                 [
@@ -210,17 +225,28 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 [
                     buddy_opt_path,
                     ttshared_path,
-                    "--convert-linalg-to-affine-loops",
                     # Note: eliminate-empty-tensors fails when there are multiple func.return ops
                     # in a single kernel which are the results of early returns.
                     # See python/examples/test_early_return.py for examples.
                     # We disable this pass for now since performance on CPU isn't the main
                     # focus at the moment.
                     # "--eliminate-empty-tensors",
+                    # Fuse tensor-level elementwise chains before bufferization
+                    # turns every intermediate and scalar broadcast into a
+                    # separate temporary buffer.
+                    "--linalg-fuse-elementwise-ops",
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-deallocation-pipeline",
+                    "--eliminate-memref-copy",
+                    # Triton programs commonly materialize small, statically
+                    # sized tiles for loads and scalar broadcasts.  Paying for
+                    # several heap allocations on every grid invocation
+                    # dominates elementwise CPU kernels, so keep bounded tile
+                    # temporaries in the launcher thread's stack frame.
+                    "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
                     "--matmul-vectorization",
+                    "--convert-linalg-to-affine-loops",
                     "--lower-affine",
                     "--convert-linalg-to-loops",
                     "--expand-strided-metadata",
@@ -232,8 +258,8 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     "--convert-index-to-llvm",
                     "--memref-expand",
                     "--finalize-memref-to-llvm",
-                    "--convert-func-to-llvm",
                     "--convert-cf-to-llvm",
+                    "--convert-func-to-llvm",
                     # Lowering memrefs creates more affine.apply ops.
                     # Lowering these affine ops again creates further arith ops,
                     # so we have to run these two passes again here.
@@ -256,18 +282,124 @@ def _ttsharedir_to_llir(ttsharedir: str):
         return Path(llir_path).read_text()
 
 
-def _optimize_llir(llir: str):
-    # with tempfile.TemporaryDirectory() as tmpdir:
-    #     llir_path = os.path.join(tmpdir, "ll.ir")
-    #     lliropt_path = os.path.join(tmpdir, "llopt.ir")
-    #     Path(llir_path).write_text(llir)
+_FADD_INSTRUCTION = re.compile(
+    r"^(?P<prefix>\s*%[-\w.$\"]+\s*=\s*fadd)[ \t]+"
+    r"(?P<flags>(?:(?:fast|reassoc|nnan|ninf|nsz|arcp|contract|afn)[ \t]+)*)"
+    r"(?P<operands>\S.*)$",
+    re.MULTILINE,
+)
 
-    #     opt_path = _get_llvm_bin_path("opt")
-    #     subprocess.check_call([opt_path, llir_path, "-O2", "-S", "-o", lliropt_path])
 
-    #     _dump_ir_if_needed([lliropt_path])
-    #     return Path(lliropt_path).read_text()
-    return llir
+def _enable_fadd_reassociation(llir: str) -> str:
+    """Add reassoc only to complete fadd instructions that do not have it."""
+
+    def add_flag(match):
+        flags = match.group("flags").split()
+        if "fast" in flags or "reassoc" in flags:
+            return match.group(0)
+        flags.insert(0, "reassoc")
+        return f"{match.group('prefix')} {' '.join(flags)} {match.group('operands')}"
+
+    return _FADD_INSTRUCTION.sub(add_flag, llir)
+
+
+def _optimize_llir(llir: str, options=None):
+    # llc's -O3 controls code-generation optimizations but does not run the
+    # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
+    # loops emitted for elementwise Triton tiles remain scalar unless opt sees
+    # the host vector width.  Run the native O3 pipeline for host x86 builds;
+    # leave cross-compiled IR untouched so its explicit target contract is
+    # preserved by the RISC-V toolchain below.
+    host_machine = platform.machine()
+    if host_machine not in {"x86_64", "AMD64", "riscv64"} or getattr(
+        options, "target_triple", None
+    ):
+        return llir
+
+    if getattr(options, "allow_fp_reassoc", False):
+        # Per-kernel opt-in for reduction-heavy code whose numerical contract
+        # permits reassociation. LLVM otherwise preserves scalar accumulation
+        # order and cannot vectorize these loops.
+        llir = _enable_fadd_reassociation(llir)
+
+    # The launcher constructs unranked-memref descriptors on its stack and
+    # keeps them immutable for the complete kernel call. MLIR lowers access to
+    # the descriptor's aligned data pointer as a load through `arg + 8`, but
+    # LLVM cannot otherwise prove that stores through the loaded data pointer
+    # do not modify the descriptor itself. Mark just those descriptor-field
+    # loads invariant so LICM can hoist them and the loop vectorizer can see a
+    # normal contiguous load/store loop.
+    define = re.search(r"^define\b[^\n]*\((.*)\)[^{]*\{", llir, re.MULTILINE)
+    if define:
+        pointer_args = set(
+            re.findall(r"(?:^|,\s*)ptr(?:\s+[^,%]+)*\s+(%[-\w.]+)", define.group(1))
+        )
+        descriptor_fields = set()
+        for match in re.finditer(
+            r"^\s*(%[-\w.]+) = getelementptr(?: inbounds)? i8, "
+            r"ptr (%[-\w.]+), i64 8\s*$",
+            llir,
+            re.MULTILINE,
+        ):
+            if match.group(2) in pointer_args:
+                descriptor_fields.add(match.group(1))
+        # Before instcombine, the same second descriptor field is expressed
+        # as a one-element GEP on `ptr`. A constant index of one is specific to
+        # the two-pointer memref descriptor prefix; user data indexing remains
+        # variable or is typed by the pointee element.
+        for match in re.finditer(
+            r"^\s*(%[-\w.]+) = getelementptr(?: inbounds)? ptr, "
+            r"ptr (%[-\w.]+), i(?:32|64) 1\s*$",
+            llir,
+            re.MULTILINE,
+        ):
+            # Do not classify an arbitrary one-element user-data GEP as a
+            # descriptor field. It must be derived directly from a pointer
+            # argument of the generated kernel ABI.
+            if match.group(2) in pointer_args:
+                descriptor_fields.add(match.group(1))
+        if descriptor_fields:
+            metadata_ids = [
+                int(value) for value in re.findall(r"^!(\d+) =", llir, re.MULTILINE)
+            ]
+            invariant_id = max(metadata_ids, default=-1) + 1
+            fields = "|".join(re.escape(value) for value in descriptor_fields)
+            load_pattern = re.compile(
+                rf"^(\s*%[-\w.]+ = load ptr, ptr (?:{fields})[^\n]*)(?<!\binvariant\.load !\d)$",
+                re.MULTILINE,
+            )
+            llir, replacements = load_pattern.subn(
+                rf"\1, !invariant.load !{invariant_id}", llir
+            )
+            if replacements:
+                llir += f"\n!{invariant_id} = !{{}}\n"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ll")
+        dst_path = os.path.join(tmpdir, "kernel-opt.ll")
+        Path(src_path).write_text(llir)
+        command = [_get_llvm_bin_path("opt"), "-O3"]
+        if host_machine in {"x86_64", "AMD64"}:
+            command.extend(
+                [
+                    "-mtriple=x86_64-unknown-linux-gnu",
+                    "-mcpu=native",
+                    "-vector-library=LIBMVEC",
+                ]
+            )
+        else:
+            command.extend(
+                [
+                    "-mtriple=riscv64-unknown-linux-gnu",
+                    f"-mattr={DEFAULT_LLC_FEATURES}",
+                    "-riscv-v-vector-bits-min=128",
+                    "-riscv-v-vector-bits-max=128",
+                ]
+            )
+        command.extend(["-S", src_path, "-o", dst_path])
+        subprocess.check_call(command)
+        _dump_ir_if_needed([dst_path])
+        return Path(dst_path).read_text()
 
 
 def _ttsharedir_to_vectorir(ttsharedir: str):
@@ -381,6 +513,7 @@ def _vectorir_to_llir(vectorir: str):
 
 
 _LLVM_SYMBOL = r'(?:"([^"]+)"|([A-Za-z$._][A-Za-z0-9$._-]*))'
+_LLVM_HELPER_SYMBOLS = {"dealloc_helper"}
 
 
 def _find_kernel_name(llir: str) -> str:
@@ -402,7 +535,10 @@ def _find_kernel_name(llir: str) -> str:
             rf"\b(?:call|invoke)\b[^@\n]*@{_LLVM_SYMBOL}\s*\(", llir
         )
     }
-    candidates = sorted(definitions - callees)
+    # LLVM O3 can prove a generated deallocation helper unnecessary and erase
+    # all calls without deleting the externally visible helper definition.
+    # Such runtime helpers are never Triton kernel entry points.
+    candidates = sorted(definitions - callees - _LLVM_HELPER_SYMBOLS)
     if len(candidates) != 1:
         raise RuntimeError(
             "expected exactly one externally callable kernel definition, "
@@ -464,7 +600,7 @@ def _llir_to_bin(llir: str, metadata, options=None):
 
             subprocess.check_call(subprocess_args)
         elif _use_ime_pipeline():
-            # IME path: cross-compile to RISC-V with xsmtime (vfmadot / vmadot).
+            # IME path: cross-compile to RISC-V with XSMTIME (vfmadot / vmadot).
             # buddy-llc understands the RISC-V IME intrinsics produced by
             # buddy-translate and generates correct machine code.
             buddy_llc_path = _get_buddy_llc_path()
@@ -481,6 +617,7 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 llc_path,
                 src_path,
                 "-filetype=obj",
+                "-O3",
                 "-relocation-model=pic",
                 "-o",
                 dst_path,
@@ -497,7 +634,15 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
             elif platform.machine() == "riscv64":
-                llc_args.extend([f"-mattr={DEFAULT_LLC_FEATURES}"])
+                llc_args.extend(
+                    [
+                        f"-mattr={DEFAULT_LLC_FEATURES}",
+                        "-riscv-v-vector-bits-min=128",
+                        "-riscv-v-vector-bits-max=128",
+                    ]
+                )
+            elif platform.machine() in {"x86_64", "AMD64"}:
+                llc_args.extend(["-mcpu=native"])
             subprocess.check_call(llc_args)
 
         return Path(dst_path).read_bytes()
@@ -526,6 +671,8 @@ class CPUOptions:
     instrumentation_mode: str = ""
     target_triple: str = None
     target_features: str = None
+    openmp_num_threads: int = 0
+    allow_fp_reassoc: bool = False
 
     def __post_init__(self):
         pass
@@ -550,6 +697,7 @@ class CPUBackend(BaseBackend):
         args.update(
             {k: opts[k] for k in CPUOptions.__dataclass_fields__.keys() if k in opts}
         )
+        args.setdefault("openmp_num_threads", _get_openmp_num_threads())
         if (
             os.getenv("TRITON_RISCV_CROSS_COMPILE", "") == "1"
             or _use_ime_pipeline()
@@ -605,15 +753,9 @@ class CPUBackend(BaseBackend):
         stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
             _ttir_to_ttsharedir(src)
         )
-        if _use_ime_pipeline():
-            stages["llir"] = lambda src, metadata: _optimize_llir(
-                _ttsharedir_to_llir(src)
-            )
-        else:
-            stages["vectorir"] = lambda src, metadata: _ttsharedir_to_vectorir(src)
-            stages["llir"] = lambda src, metadata: _optimize_llir(
-                _vectorir_to_llir(src)
-            )
+        stages["llir"] = lambda src, metadata: _optimize_llir(
+            _ttsharedir_to_llir(src), options
+        )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
     @functools.lru_cache()

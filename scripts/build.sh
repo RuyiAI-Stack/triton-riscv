@@ -20,24 +20,20 @@ if [ ! -x "${PYTHON}" ]; then
     python3 -m venv "${ROOT_DIR}/.venv"
 fi
 
-PY_TAG="${TRITON_PYTHON_TAG:-$("${PYTHON}" - <<'PY'
-import sys
-
-print(f"cp{sys.version_info.major}{sys.version_info.minor}-cp{sys.version_info.major}{sys.version_info.minor}")
-PY
-)}"
-
-BUDDY_RELEASE_TAG="nightly/2026-07-05-a2f759f"
-BUDDY_PACKAGE_VERSION="0.0.4.dev71+a2f759f"
+# renovate: datasource=github-releases depName=buddy-compiler/buddy-mlir
+BUDDY_RELEASE_TAG="release/v0.0.5"
+BUDDY_PACKAGE_VERSION="${BUDDY_RELEASE_TAG#release/v}"
+BUDDY_PACKAGE_VERSION="${BUDDY_PACKAGE_VERSION#nightly/v}"
+BUDDY_PYTHON_TAG="cp312-abi3"
 
 case "$(uname -m)" in
     amd64|x86_64)
-        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/llvm-23.0.0git-${PY_TAG}-manylinux_2_28_x86_64.tar.gz"
-        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/buddy-${BUDDY_PACKAGE_VERSION}-${PY_TAG}-manylinux_2_28_x86_64.tar.gz"
+        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-manylinux_2_28_x86_64.tar.gz"
+        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/buddy-${BUDDY_PACKAGE_VERSION}-${BUDDY_PYTHON_TAG}-manylinux_2_28_x86_64.tar.gz"
         ;;
     riscv64)
-        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/llvm-23.0.0git-${PY_TAG}-manylinux_2_39_riscv64.tar.gz"
-        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/buddy-${BUDDY_PACKAGE_VERSION}-${PY_TAG}-manylinux_2_39_riscv64.tar.gz"
+        LLVM_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-manylinux_2_39_riscv64.tar.gz"
+        BUDDY_DEFAULT_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}/buddy-${BUDDY_PACKAGE_VERSION}-${BUDDY_PYTHON_TAG}-manylinux_2_39_riscv64.tar.gz"
         ;;
     *)
         echo "unsupported arch: $(uname -m)" >&2

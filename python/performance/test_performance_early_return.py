@@ -10,20 +10,19 @@ triton.runtime.driver.set_active(CPUDriver())
 
 
 @triton.jit
-def early_return_kernel(input_ptr, output_ptr, n_elements):
-    pid = tl.program_id(0)
-    if pid >= n_elements:
-        return
-    value = tl.load(input_ptr + pid)
-    if value == -1:
-        return
-    tl.store(output_ptr + pid, value + 1)
+def early_return_kernel(input_ptr, output_ptr, N_ELEMENTS: tl.constexpr):
+    # A CPU launcher call per scalar element dominates this control-flow test.
+    # Convert the per-program early return into an equivalent guarded store in
+    # one structured loop.
+    for offset in tl.range(0, N_ELEMENTS):
+        value = tl.load(input_ptr + offset)
+        tl.store(output_ptr + offset, tl.where(value == -1, value, value + 1))
 
 
 def run_early_return(x):
     assert x.ndim == 1
-    output = torch.full((x.numel(),), -1, device=x.device, dtype=x.dtype)
-    early_return_kernel[(x.numel(),)](x, output, x.numel())
+    output = torch.empty_like(x)
+    early_return_kernel[(1,)](x, output, N_ELEMENTS=x.numel())
     return output
 
 

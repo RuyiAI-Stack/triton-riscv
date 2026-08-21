@@ -24,6 +24,9 @@ git clone https://github.com/RuyiAI-Stack/triton-riscv.git triton-riscv
 TRITON_RISCV_DIR="$(pwd)/triton-riscv"
 git clone https://github.com/triton-lang/triton.git triton
 cd triton && git checkout "$(cat "${TRITON_RISCV_DIR}/triton-hash.txt")"
+cd "${TRITON_RISCV_DIR}/.."
+git clone https://github.com/buddy-compiler/buddy-mlir.git buddy-mlir
+cd buddy-mlir && git checkout "$(cat "${TRITON_RISCV_DIR}/buddy-hash.txt")"
 ```
 
 > Note: Ensure PyTorch is available in your virtual environment. For RISC-V, since PyTorch does not officially support RISC-V yet, you can build from source or use third-party builds: https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch . To use the third-party builds, python 3.12 or 3.13 are required.
@@ -67,7 +70,7 @@ When a conda environment is active, `scripts/triton-riscv-env.sh` automatically 
 
    `cmake`, `ninja`, and `pybind11` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
 
-3. Build the Buddy Compiler — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
+3. Build the pinned Buddy Compiler checkout — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
 
 ## Environment helper
 
