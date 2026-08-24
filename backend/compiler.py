@@ -149,6 +149,10 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 # Bufferize tensor ops before IME lowering
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                # Hoist loop/allocation pairs before deallocation insertion.
+                # CAS while-loops (scatter_reduce) otherwise get per-iteration
+                # heap alloc/free that corrupts the heap on riscv64.
+                "--buffer-loop-hoisting",
                 # One-shot bufferization creates heap-backed temporary
                 # memrefs. Insert and lower their deallocations while the
                 # memref-level ownership information is still available.
@@ -246,12 +250,20 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 # We disable this pass for now since performance on CPU isn't the main
                 # focus at the moment.
                 # "--eliminate-empty-tensors",
-                # Fuse tensor-level elementwise chains before bufferization
-                # turns every intermediate and scalar broadcast into a
-                # separate temporary buffer.
-                "--linalg-fuse-elementwise-ops",
+            ]
+            # Fuse elementwise chains before bufferization for vanilla kernels.
+            # On atomic-CAS while loops (scatter_reduce prod/amax/amin) this pass
+            # makes scf.while carry memref values with per-iteration alloc/copy/
+            # dealloc; convert-scf-to-cf then double-frees the tile buffer.
+            if "__triton_shared_atomic_cas_" not in ttsharedir:
+                standard_lowering_passes.append("--linalg-fuse-elementwise-ops")
+            standard_lowering_passes.extend(
+                [
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                # Before buffer-deallocation: reuse CAS/while tile buffers across
+                # iterations instead of heap alloc+free inside scf.while.
+                "--buffer-loop-hoisting",
                 "--buffer-deallocation-pipeline",
                 "--eliminate-memref-copy",
                 # Triton programs commonly materialize small, statically
@@ -260,7 +272,8 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 # dominates elementwise CPU kernels, so keep bounded tile
                 # temporaries in the launcher thread's stack frame.
                 "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-            ]
+                ]
+            )
             # VLEN=128 → 4 x f32 per vector register. Keep matmul-vectorization
             # (RVV path) but size vectors to the host VLEN; default vector-size=32
             # is an AVX-512-oriented width and over-commits RVV LMUL.
@@ -351,6 +364,24 @@ _FADD_INSTRUCTION = re.compile(
     r"(?P<operands>\S.*)$",
     re.MULTILINE,
 )
+
+_HEAP_MALLOC = re.compile(
+    r"^\s*(?:tail )?call (?:noalias noundef )?ptr @malloc\b", re.MULTILINE
+)
+_HEAP_FREE = re.compile(
+    r"^\s*(?:tail )?call void @free\(ptr [^)]+\)\s*$", re.MULTILINE
+)
+
+
+def _strip_orphan_heap_frees(llir: str) -> str:
+    """Remove heap @free calls when LLVM promoted all @malloc to stack.
+
+    riscv64 opt -O1+ with -mtriple=riscv64 leaves orphan frees after promotion,
+    which corrupts the heap (scatter_reduce CAS loops).
+    """
+    if _HEAP_MALLOC.search(llir):
+        return llir
+    return _HEAP_FREE.sub("", llir)
 
 
 def _enable_fadd_reassociation(llir: str) -> str:
@@ -474,8 +505,12 @@ def _optimize_llir(llir: str, options=None):
             )
         command.extend(["-S", src_path, "-o", dst_path])
         subprocess.check_call(command)
+        optimized = Path(dst_path).read_text()
+        if host_machine == "riscv64":
+            optimized = _strip_orphan_heap_frees(optimized)
+            Path(dst_path).write_text(optimized)
         _dump_ir_if_needed([dst_path])
-        return Path(dst_path).read_text()
+        return optimized
 
 
 def _ttsharedir_to_vectorir(ttsharedir: str):
@@ -496,6 +531,7 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
                 # "--eliminate-empty-tensors",
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                "--buffer-loop-hoisting",
                 "--buffer-deallocation-pipeline",
                 "--lower-linalg-to-vir",
                 "--lower-vir-to-vector=vector-width=16",
