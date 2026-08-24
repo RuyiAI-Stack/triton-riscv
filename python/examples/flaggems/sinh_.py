@@ -16,7 +16,8 @@ def sinh_kernel_(
 
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
     x_f32 = x.to(tl.float32)
-    y = 0.5 * (tl.exp(x_f32) - tl.exp(-x_f32))
+    exp2x = tl.exp(2.0 * x_f32)
+    y = (exp2x - 1.0) / (2.0 * tl.exp(x_f32))
     y_cast = y.to(x.dtype)
     tl.store(x_ptr + offsets, y_cast, mask=mask)
 
