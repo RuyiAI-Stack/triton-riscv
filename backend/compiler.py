@@ -127,7 +127,35 @@ def _optimize_ttsharedir(ttsharedir: str):
     return ttsharedir
 
 
-def _ttsharedir_to_llir(ttsharedir: str):
+def _targets_riscv(options=None) -> bool:
+    if platform.machine() == "riscv64":
+        return True
+    triple = getattr(options, "target_triple", None) if options else None
+    return bool(triple and "riscv" in triple)
+
+
+def _cross_compiles_riscv(options=None) -> bool:
+    """True when the compile request explicitly targets RISC-V (cross-compile).
+
+    VIR elementwise vectorization is only needed for this case: the RVV object
+    test passes target_triple, and x86 hosts cross-compiling disable LLVM's loop
+    vectorizer.  Applying VIR on native riscv64 execution miscompiles some tile
+    kernels (euclidean_dist: corrupted size vs. prev_size at launch).
+    """
+    triple = getattr(options, "target_triple", None) if options else None
+    return bool(triple and "riscv" in triple)
+
+
+def _riscv_vir_vector_passes() -> list[str]:
+    # VLEN=128 → 4 x f32. Lower elementwise linalg to explicit vector ops so
+    # llc emits RVV vfsub/vfmul (FlagGems euclidean_dist RVV object test).
+    return [
+        "--lower-linalg-to-vir",
+        "--lower-vir-to-vector=vector-width=4",
+    ]
+
+
+def _ttsharedir_to_llir(ttsharedir: str, options=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         ime_pre_llvm_path = os.path.join(tmpdir, "ime-pre-llvm.mlir")
@@ -278,12 +306,14 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # VLEN=128 → 4 x f32 per vector register. Keep matmul-vectorization
             # (RVV path) but size vectors to the host VLEN; default vector-size=32
             # is an AVX-512-oriented width and over-commits RVV LMUL.
-            if platform.machine() == "riscv64":
+            if _targets_riscv(options):
                 standard_lowering_passes.append(
                     "--matmul-vectorization=vector-size=4"
                 )
             else:
                 standard_lowering_passes.append("--matmul-vectorization")
+            if _cross_compiles_riscv(options):
+                standard_lowering_passes.extend(_riscv_vir_vector_passes())
             standard_lowering_passes.extend(
                 [
                 "--convert-linalg-to-affine-loops",
@@ -399,23 +429,147 @@ def _enable_fadd_reassociation(llir: str) -> str:
     return _FADD_INSTRUCTION.sub(add_flag, llir)
 
 
+_ATOMIC_LLIR_MARKERS = (
+    "atomicrmw",
+    "cmpxchg",
+    "__triton_shared_atomic_cas_",
+)
+
+_LIBM_LLIR_MARKERS = (
+    "@erff",
+    "@erf",
+    "@sinhf",
+    "@sinh",
+    "@expf",
+    "@exp",
+    "@logf",
+    "@log",
+    "@tanhf",
+    "@tanh",
+)
+
+# convert-math-to-llvm lowers tl.exp/log/... before libm sees them.
+_LLVM_MATH_INTRINSIC_MARKERS = (
+    "@llvm.exp.",
+    "@llvm.log.",
+    "@llvm.log10.",
+    "@llvm.log2.",
+    "@llvm.pow.",
+    "@llvm.sin.",
+    "@llvm.cos.",
+    "@llvm.tan.",
+    "@llvm.sqrt.",
+    "@llvm.fabs.",
+    "@llvm.erf.",
+)
+
+_DOT_KERNEL_NAME_MARKERS = (
+    "matmul",
+    "gemm",
+    "dot",
+    "logits",
+    "_mm",
+)
+
+# Elementwise norms/reductions can contain many fmul/fadd without being matmul.
+_DOT_REDUCTION_EXCLUDED_NAME_MARKERS = (
+    "euclidean",
+    "fill",
+    "neg_inf",
+)
+
+
+def _llir_contains_libm_calls(llir: str) -> bool:
+    return any(marker in llir for marker in _LIBM_LLIR_MARKERS)
+
+
+def _llir_contains_llvm_math_intrinsics(llir: str) -> bool:
+    return any(marker in llir for marker in _LLVM_MATH_INTRINSIC_MARKERS)
+
+
+def _llir_contains_llvm_vector_dot_ops(llir: str) -> bool:
+    return "@llvm.fmuladd.v" in llir
+
+
+def _llir_contains_dot_reduction(llir: str) -> bool:
+    name_match = re.search(r"define void @(\w+)", llir)
+    if name_match:
+        name = name_match.group(1).lower()
+        if any(marker in name for marker in _DOT_REDUCTION_EXCLUDED_NAME_MARKERS):
+            return False
+        if any(marker in name for marker in _DOT_KERNEL_NAME_MARKERS):
+            return True
+    fmul_count = len(re.findall(r"=\s*fmul float", llir))
+    fadd_count = len(re.findall(r"=\s*fadd float", llir))
+    return fmul_count >= 4 and fadd_count >= 4
+
+
+def _llir_is_simple_store_only_kernel(llir: str) -> bool:
+    name_match = re.search(r"define void @(\w+)", llir)
+    if name_match:
+        name = name_match.group(1).lower()
+        if "fill" in name or "neg_inf" in name:
+            return True
+
+    fmul_count = len(re.findall(r"=\s*fmul float", llir))
+    fadd_count = len(re.findall(r"=\s*fadd float", llir))
+    fcmp_count = len(re.findall(r"=\s*fcmp ", llir))
+    call_count = len(re.findall(r"=\s*call ", llir))
+    store_count = len(re.findall(r"=\s*store ", llir))
+
+    return (
+        store_count >= 1
+        and fmul_count == 0
+        and fadd_count == 0
+        and fcmp_count == 0
+        and call_count == 0
+    )
+
+
+def _llir_contains_atomics(llir: str) -> bool:
+    return any(marker in llir for marker in _ATOMIC_LLIR_MARKERS)
+
+
+def _llir_needs_scalar_riscv_codegen(llir: str, *, for_cross_compile: bool = False) -> bool:
+    """Return True when riscv64 codegen must avoid LLVM loop vectorization."""
+    if _llir_contains_atomics(llir) or _llir_contains_dot_reduction(llir):
+        return True
+    if for_cross_compile:
+        return False
+    return (
+        _llir_contains_libm_calls(llir)
+        or _llir_contains_llvm_math_intrinsics(llir)
+        or _llir_contains_llvm_vector_dot_ops(llir)
+        or _llir_is_simple_store_only_kernel(llir)
+    )
+
+
 def _optimize_llir(llir: str, options=None):
     # llc's -O3 controls code-generation optimizations but does not run the
     # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
     # loops emitted for elementwise Triton tiles remain scalar unless opt sees
     # the host vector width.  Run the native O3 pipeline for host x86 builds;
-    # leave cross-compiled IR untouched so its explicit target contract is
-    # preserved by the RISC-V toolchain below.
+    # for RISC-V (native or cross-compile via target_triple) run the RVV-safe
+    # opt pipeline so explicit <N x float> ops reach llc intact.
     host_machine = platform.machine()
-    if host_machine not in {"x86_64", "AMD64", "riscv64"} or getattr(
-        options, "target_triple", None
+    target_triple = getattr(options, "target_triple", None)
+    target_features = getattr(options, "target_features", None)
+    cross_compile_riscv = bool(target_triple and "riscv" in target_triple)
+    riscv_opt = host_machine == "riscv64" or cross_compile_riscv
+
+    if (host_machine == "riscv64" or cross_compile_riscv) and _llir_needs_scalar_riscv_codegen(
+        llir, for_cross_compile=cross_compile_riscv
     ):
         return llir
 
-    if getattr(options, "allow_fp_reassoc", False):
-        # Per-kernel opt-in for reduction-heavy code whose numerical contract
-        # permits reassociation. LLVM otherwise preserves scalar accumulation
-        # order and cannot vectorize these loops.
+    if host_machine not in {"x86_64", "AMD64", "riscv64"} and not riscv_opt:
+        return llir
+    if target_triple is not None and not riscv_opt:
+        return llir
+
+    if getattr(options, "allow_fp_reassoc", False) or cross_compile_riscv:
+        # Cross-compiled RVV objects need reassociation so reduction chains can
+        # lower to vfadd/vfmul; native opt-in covers other reduction kernels.
         llir = _enable_fadd_reassociation(llir)
 
     # The launcher constructs unranked-memref descriptors on its stack and
@@ -475,7 +629,19 @@ def _optimize_llir(llir: str, options=None):
         dst_path = os.path.join(tmpdir, "kernel-opt.ll")
         Path(src_path).write_text(llir)
         command = [_get_llvm_bin_path("opt"), "-O3"]
-        if host_machine in {"x86_64", "AMD64"}:
+        if cross_compile_riscv:
+            command.extend(
+                [
+                    f"-mtriple={target_triple}",
+                    f"-mattr={target_features or DEFAULT_LLC_FEATURES}",
+                    "-riscv-v-vector-bits-min=128",
+                    "-riscv-v-vector-bits-max=128",
+                    "--unroll-threshold=0",
+                    "-vectorize-loops=false",
+                    "-vectorize-slp=false",
+                ]
+            )
+        elif host_machine in {"x86_64", "AMD64"}:
             command.extend(
                 [
                     "-mtriple=x86_64-unknown-linux-gnu",
@@ -484,31 +650,21 @@ def _optimize_llir(llir: str, options=None):
                 ]
             )
         else:
-            # Keep +v so llc can lower buddy matmul-vectorization's explicit
-            # <N x float> ops to RVV. Do NOT let LLVM's loop vectorizer invent
-            # new vectors from scalar IR: on this LLVM/riscv64 stack it
-            # miscompiles expand-float8's integer bitcast/shift chains into
-            # <8 x i32> ops (FlagGems act_quant: ~85% wrong FP8 lanes, then
-            # free(): invalid size / SIGABRT). SLP vectorization also turns
-            # masked -inf tile stores (fill_neg_inf in fp8_paged_mqa_logits)
-            # into broken VP/strided vector stores that corrupt the heap on
-            # exit (corrupted size vs. prev_size / SIGABRT). --unroll-threshold=0
-            # keeps small tiles as loops instead of exploding the function body.
+            # Native riscv64: historical opt pipeline (act_quant FP8 quant relies
+            # on this).  Cross-compile uses the guarded branch above; disabling
+            # the loop vectorizer here miscompiles FP8 bitcast/shift chains.
             command.extend(
                 [
                     "-mtriple=riscv64-unknown-linux-gnu",
                     f"-mattr={DEFAULT_LLC_FEATURES}",
                     "-riscv-v-vector-bits-min=128",
                     "-riscv-v-vector-bits-max=128",
-                    "--unroll-threshold=0",
-                    "-vectorize-loops=false",
-                    "-vectorize-slp=false",
                 ]
             )
         command.extend(["-S", src_path, "-o", dst_path])
         subprocess.check_call(command)
         optimized = Path(dst_path).read_text()
-        if host_machine == "riscv64":
+        if riscv_opt and _llir_contains_atomics(optimized):
             optimized = _strip_orphan_heap_frees(optimized)
             Path(dst_path).write_text(optimized)
         _dump_ir_if_needed([dst_path])
@@ -748,13 +904,29 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
             elif platform.machine() == "riscv64":
-                llc_args.extend(
-                    [
+                if _llir_needs_scalar_riscv_codegen(llir):
+                    # libm/intrinsic/atomic kernels: RVV vlen hints and -O3 loop
+                    # opts still miscompile these loops on native riscv64.
+                    llc_args = [
+                        llc_path,
+                        src_path,
+                        "-filetype=obj",
+                        "-O2",
+                        "-relocation-model=pic",
                         f"-mattr={DEFAULT_LLC_FEATURES}",
-                        "-riscv-v-vector-bits-min=128",
-                        "-riscv-v-vector-bits-max=128",
+                        "-vectorize-loops=false",
+                        "-vectorize-slp=false",
+                        "-o",
+                        dst_path,
                     ]
-                )
+                else:
+                    llc_args.extend(
+                        [
+                            f"-mattr={DEFAULT_LLC_FEATURES}",
+                            "-riscv-v-vector-bits-min=128",
+                            "-riscv-v-vector-bits-max=128",
+                        ]
+                    )
             elif platform.machine() in {"x86_64", "AMD64"}:
                 llc_args.extend(["-mcpu=native"])
             subprocess.check_call(llc_args)
@@ -868,7 +1040,7 @@ class CPUBackend(BaseBackend):
             _ttir_to_ttsharedir(src)
         )
         stages["llir"] = lambda src, metadata: _optimize_llir(
-            _ttsharedir_to_llir(src), options
+            _ttsharedir_to_llir(src, options), options
         )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
