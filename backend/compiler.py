@@ -96,11 +96,9 @@ def _ttir_to_ttsharedir(mod):
         )
         if platform.machine() == "riscv64":
             # StructuredToMemref tensor-first-vector-cpu emits fixed-width
-            # vector<W x T> lowered to LLVM <W x T> (default W=16 for AVX-512).
-            # riscv64 llc miscompiles these ops (heap corruption on masked 1D
-            # stores in fill_neg_inf / fp8_paged_mqa_logits). W=1 keeps scalar
-            # loops; RVV matmul stays on buddy --matmul-vectorization.
-            linalg_experimental_opts += " cpu-vector-width=1"
+            # vector<W x T> (default W=16 for AVX-512). On riscv64 use W=4 to
+            # match VLEN=128 (LMUL=1); W=16 miscompiles masked 1D copy loops.
+            linalg_experimental_opts += " cpu-vector-width=4"
 
         subprocess_args = [
             triton_shared_opt_path,
@@ -130,18 +128,6 @@ def _optimize_ttsharedir(ttsharedir: str):
 def _targets_riscv(options=None) -> bool:
     if platform.machine() == "riscv64":
         return True
-    triple = getattr(options, "target_triple", None) if options else None
-    return bool(triple and "riscv" in triple)
-
-
-def _cross_compiles_riscv(options=None) -> bool:
-    """True when the compile request explicitly targets RISC-V (cross-compile).
-
-    VIR elementwise vectorization is only needed for this case: the RVV object
-    test passes target_triple, and x86 hosts cross-compiling disable LLVM's loop
-    vectorizer.  Applying VIR on native riscv64 execution miscompiles some tile
-    kernels (euclidean_dist: corrupted size vs. prev_size at launch).
-    """
     triple = getattr(options, "target_triple", None) if options else None
     return bool(triple and "riscv" in triple)
 
@@ -303,16 +289,18 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                 "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
                 ]
             )
-            # VLEN=128 → 4 x f32 per vector register. Keep matmul-vectorization
-            # (RVV path) but size vectors to the host VLEN; default vector-size=32
-            # is an AVX-512-oriented width and over-commits RVV LMUL.
+            # VLEN=128 → 4 x f32 per vector register (LMUL=1). Default
+            # vector-size=32 is AVX-512-oriented and over-commits the 32-entry
+            # RVV register file (fp8_matmul SIGABRT). Size vectors in MLIR via
+            # buddy matmul-vectorization; do not disable LLVM loop vectorizer
+            # globally — act_quant relies on expand-float8 (above) plus normal opt.
             if _targets_riscv(options):
                 standard_lowering_passes.append(
                     "--matmul-vectorization=vector-size=4"
                 )
             else:
                 standard_lowering_passes.append("--matmul-vectorization")
-            if _cross_compiles_riscv(options):
+            if _targets_riscv(options):
                 standard_lowering_passes.extend(_riscv_vir_vector_passes())
             standard_lowering_passes.extend(
                 [
@@ -435,141 +423,26 @@ _ATOMIC_LLIR_MARKERS = (
     "__triton_shared_atomic_cas_",
 )
 
-_LIBM_LLIR_MARKERS = (
-    "@erff",
-    "@erf",
-    "@sinhf",
-    "@sinh",
-    "@expf",
-    "@exp",
-    "@logf",
-    "@log",
-    "@tanhf",
-    "@tanh",
-)
-
-# convert-math-to-llvm lowers tl.exp/log/... before libm sees them.
-_LLVM_MATH_INTRINSIC_MARKERS = (
-    "@llvm.exp.",
-    "@llvm.log.",
-    "@llvm.log10.",
-    "@llvm.log2.",
-    "@llvm.pow.",
-    "@llvm.sin.",
-    "@llvm.cos.",
-    "@llvm.tan.",
-    "@llvm.sqrt.",
-    "@llvm.fabs.",
-    "@llvm.erf.",
-)
-
-_DOT_KERNEL_NAME_MARKERS = (
-    "matmul",
-    "gemm",
-    "dot",
-    "logits",
-    "_mm",
-)
-
-# Elementwise norms/reductions can contain many fmul/fadd without being matmul.
-_DOT_REDUCTION_EXCLUDED_NAME_MARKERS = (
-    "euclidean",
-    "fill",
-    "neg_inf",
-)
-
-
-def _llir_contains_libm_calls(llir: str) -> bool:
-    return any(marker in llir for marker in _LIBM_LLIR_MARKERS)
-
-
-def _llir_contains_llvm_math_intrinsics(llir: str) -> bool:
-    return any(marker in llir for marker in _LLVM_MATH_INTRINSIC_MARKERS)
-
-
-def _llir_contains_llvm_vector_dot_ops(llir: str) -> bool:
-    return "@llvm.fmuladd.v" in llir
-
-
-def _llir_contains_dot_reduction(llir: str) -> bool:
-    name_match = re.search(r"define void @(\w+)", llir)
-    if name_match:
-        name = name_match.group(1).lower()
-        if any(marker in name for marker in _DOT_REDUCTION_EXCLUDED_NAME_MARKERS):
-            return False
-        if any(marker in name for marker in _DOT_KERNEL_NAME_MARKERS):
-            return True
-    fmul_count = len(re.findall(r"=\s*fmul float", llir))
-    fadd_count = len(re.findall(r"=\s*fadd float", llir))
-    return fmul_count >= 4 and fadd_count >= 4
-
-
-def _llir_is_simple_store_only_kernel(llir: str) -> bool:
-    name_match = re.search(r"define void @(\w+)", llir)
-    if name_match:
-        name = name_match.group(1).lower()
-        if "fill" in name or "neg_inf" in name:
-            return True
-
-    fmul_count = len(re.findall(r"=\s*fmul float", llir))
-    fadd_count = len(re.findall(r"=\s*fadd float", llir))
-    fcmp_count = len(re.findall(r"=\s*fcmp ", llir))
-    call_count = len(re.findall(r"=\s*call ", llir))
-    store_count = len(re.findall(r"=\s*store ", llir))
-
-    return (
-        store_count >= 1
-        and fmul_count == 0
-        and fadd_count == 0
-        and fcmp_count == 0
-        and call_count == 0
-    )
-
 
 def _llir_contains_atomics(llir: str) -> bool:
     return any(marker in llir for marker in _ATOMIC_LLIR_MARKERS)
 
 
-def _llir_needs_scalar_riscv_codegen(llir: str, *, for_cross_compile: bool = False) -> bool:
-    """Return True when riscv64 codegen must avoid LLVM loop vectorization."""
-    if _llir_contains_atomics(llir) or _llir_contains_dot_reduction(llir):
-        return True
-    if for_cross_compile:
-        return False
-    return (
-        _llir_contains_libm_calls(llir)
-        or _llir_contains_llvm_math_intrinsics(llir)
-        or _llir_contains_llvm_vector_dot_ops(llir)
-        or _llir_is_simple_store_only_kernel(llir)
-    )
-
-
 def _optimize_llir(llir: str, options=None):
     # llc's -O3 controls code-generation optimizations but does not run the
-    # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
-    # loops emitted for elementwise Triton tiles remain scalar unless opt sees
-    # the host vector width.  Run the native O3 pipeline for host x86 builds;
-    # for RISC-V (native or cross-compile via target_triple) run the RVV-safe
-    # opt pipeline so explicit <N x float> ops reach llc intact.
+    # target-aware LLVM middle-end pipeline.  Run opt -O3 for x86 and RISC-V so
+    # scalar linalg loops can vectorize; MLIR passes (expand-float8, VIR,
+    # matmul-vectorization, cpu-vector-width) establish correct vector widths.
     host_machine = platform.machine()
     target_triple = getattr(options, "target_triple", None)
     target_features = getattr(options, "target_features", None)
     cross_compile_riscv = bool(target_triple and "riscv" in target_triple)
     riscv_opt = host_machine == "riscv64" or cross_compile_riscv
 
-    if (host_machine == "riscv64" or cross_compile_riscv) and _llir_needs_scalar_riscv_codegen(
-        llir, for_cross_compile=cross_compile_riscv
-    ):
+    if host_machine not in {"x86_64", "AMD64", "riscv64"} and not cross_compile_riscv:
         return llir
 
-    if host_machine not in {"x86_64", "AMD64", "riscv64"} and not riscv_opt:
-        return llir
-    if target_triple is not None and not riscv_opt:
-        return llir
-
-    if getattr(options, "allow_fp_reassoc", False) or cross_compile_riscv:
-        # Cross-compiled RVV objects need reassociation so reduction chains can
-        # lower to vfadd/vfmul; native opt-in covers other reduction kernels.
+    if getattr(options, "allow_fp_reassoc", False):
         llir = _enable_fadd_reassociation(llir)
 
     # The launcher constructs unranked-memref descriptors on its stack and
@@ -636,9 +509,6 @@ def _optimize_llir(llir: str, options=None):
                     f"-mattr={target_features or DEFAULT_LLC_FEATURES}",
                     "-riscv-v-vector-bits-min=128",
                     "-riscv-v-vector-bits-max=128",
-                    "--unroll-threshold=0",
-                    "-vectorize-loops=false",
-                    "-vectorize-slp=false",
                 ]
             )
         elif host_machine in {"x86_64", "AMD64"}:
@@ -650,9 +520,6 @@ def _optimize_llir(llir: str, options=None):
                 ]
             )
         else:
-            # Native riscv64: historical opt pipeline (act_quant FP8 quant relies
-            # on this).  Cross-compile uses the guarded branch above; disabling
-            # the loop vectorizer here miscompiles FP8 bitcast/shift chains.
             command.extend(
                 [
                     "-mtriple=riscv64-unknown-linux-gnu",
@@ -904,29 +771,13 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
             elif platform.machine() == "riscv64":
-                if _llir_needs_scalar_riscv_codegen(llir):
-                    # libm/intrinsic/atomic kernels: RVV vlen hints and -O3 loop
-                    # opts still miscompile these loops on native riscv64.
-                    llc_args = [
-                        llc_path,
-                        src_path,
-                        "-filetype=obj",
-                        "-O2",
-                        "-relocation-model=pic",
+                llc_args.extend(
+                    [
                         f"-mattr={DEFAULT_LLC_FEATURES}",
-                        "-vectorize-loops=false",
-                        "-vectorize-slp=false",
-                        "-o",
-                        dst_path,
+                        "-riscv-v-vector-bits-min=128",
+                        "-riscv-v-vector-bits-max=128",
                     ]
-                else:
-                    llc_args.extend(
-                        [
-                            f"-mattr={DEFAULT_LLC_FEATURES}",
-                            "-riscv-v-vector-bits-min=128",
-                            "-riscv-v-vector-bits-max=128",
-                        ]
-                    )
+                )
             elif platform.machine() in {"x86_64", "AMD64"}:
                 llc_args.extend(["-mcpu=native"])
             subprocess.check_call(llc_args)

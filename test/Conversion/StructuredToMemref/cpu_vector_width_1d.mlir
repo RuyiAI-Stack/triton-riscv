@@ -1,15 +1,14 @@
 // Regression for riscv64: StructuredToMemref must not hardcode AVX-512
-// vector<16xT> when cpu-vector-width=1. FlagGems fill_neg_inf (fp8_paged_mqa_logits)
-// lowers through this path; fixed-width LLVM <16 x float> was miscompiled by llc
-// and corrupted the heap on process exit.
+// vector<16xT> when cpu-vector-width=4. FlagGems fill_neg_inf (fp8_paged_mqa_logits)
+// lowers through this path; W=16 miscompiles on riscv64 llc, W=4 matches VLEN=128.
 
-// RUN: triton-shared-opt --triton-to-linalg-experimental="structured-ldst-mode=tensor-first-vector-cpu cpu-vector-width=1" %s | FileCheck %s
+// RUN: triton-shared-opt --triton-to-linalg-experimental="structured-ldst-mode=tensor-first-vector-cpu cpu-vector-width=4" %s | FileCheck %s
 
 // CHECK-LABEL: func.func @fill_neg_inf
-// CHECK: arith.constant 1 : index
+// CHECK: arith.constant 4 : index
 // CHECK-NOT: arith.constant 16 : index
 // CHECK-NOT: vector<16x
-// CHECK: vector<1xf32>
+// CHECK: vector<4xf32>
 // CHECK: vector.store
 
 module {
