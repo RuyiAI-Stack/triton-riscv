@@ -249,13 +249,25 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 # dominates elementwise CPU kernels, so keep bounded tile
                 # temporaries in the launcher thread's stack frame.
                 "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-                "--matmul-vectorization",
+            ]
+            # VLEN=128 → 4 x f32 per vector register. Keep matmul-vectorization
+            # (RVV path) but size vectors to the host VLEN; default vector-size=32
+            # is an AVX-512-oriented width and over-commits RVV LMUL.
+            if platform.machine() == "riscv64":
+                standard_lowering_passes.append(
+                    "--matmul-vectorization=vector-size=4"
+                )
+            else:
+                standard_lowering_passes.append("--matmul-vectorization")
+            standard_lowering_passes.extend(
+                [
                 "--convert-linalg-to-affine-loops",
                 "--lower-affine",
                 "--convert-linalg-to-loops",
                 "--expand-strided-metadata",
                 "--convert-scf-to-cf",
-            ]
+                ]
+            )
             llvm_lowering_passes = [
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
@@ -428,12 +440,21 @@ def _optimize_llir(llir: str, options=None):
                 ]
             )
         else:
+            # Keep +v so llc can lower buddy matmul-vectorization's explicit
+            # <N x float> ops to RVV. Do NOT let LLVM's loop vectorizer invent
+            # new vectors from scalar IR: on this LLVM/riscv64 stack it
+            # miscompiles expand-float8's integer bitcast/shift chains into
+            # <8 x i32> ops (FlagGems act_quant: ~85% wrong FP8 lanes, then
+            # free(): invalid size / SIGABRT). --unroll-threshold=0 keeps
+            # small tiles as loops instead of exploding the function body.
             command.extend(
                 [
                     "-mtriple=riscv64-unknown-linux-gnu",
                     f"-mattr={DEFAULT_LLC_FEATURES}",
                     "-riscv-v-vector-bits-min=128",
                     "-riscv-v-vector-bits-max=128",
+                    "--unroll-threshold=0",
+                    "-vectorize-loops=false",
                 ]
             )
         command.extend(["-S", src_path, "-o", dst_path])
