@@ -94,7 +94,7 @@ public:
 
     RewritePatternSet prePatterns(&getContext());
     triton::populateStructuredToMemrefPreConversionPatterns(
-        prePatterns, enableTensorFirstVectorCpu);
+        prePatterns, enableTensorFirstVectorCpu, cpuVectorWidth);
     if (failed(applyPatternsGreedily(moduleOp, std::move(prePatterns)))) {
       signalPassFailure();
       return;
@@ -117,7 +117,7 @@ public:
     PtrToUnrankedMemrefConverter typeConverter;
 
     triton::populateStructuredToMemrefConversionPatterns(
-        patterns, typeConverter, enableTensorFirstVectorCpu);
+        patterns, typeConverter, enableTensorFirstVectorCpu, cpuVectorWidth);
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
@@ -127,8 +127,10 @@ public:
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-triton::createStructuredToMemrefPass(bool enableTensorFirstVectorCpu) {
+triton::createStructuredToMemrefPass(bool enableTensorFirstVectorCpu,
+                                     int64_t cpuVectorWidth) {
   StructuredToMemrefOptions options;
   options.enableTensorFirstVectorCpu = enableTensorFirstVectorCpu;
+  options.cpuVectorWidth = cpuVectorWidth;
   return std::make_unique<StructuredToMemrefPass>(options);
 }

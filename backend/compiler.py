@@ -91,10 +91,21 @@ def _ttir_to_ttsharedir(mod):
         _dump_ir_if_needed([src_path])
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
+        linalg_experimental_opts = (
+            "structured-ldst-mode=tensor-first-vector-cpu"
+        )
+        if platform.machine() == "riscv64":
+            # StructuredToMemref tensor-first-vector-cpu emits fixed-width
+            # vector<W x T> lowered to LLVM <W x T> (default W=16 for AVX-512).
+            # riscv64 llc miscompiles these ops (heap corruption on masked 1D
+            # stores in fill_neg_inf / fp8_paged_mqa_logits). W=1 keeps scalar
+            # loops; RVV matmul stays on buddy --matmul-vectorization.
+            linalg_experimental_opts += " cpu-vector-width=1"
+
         subprocess_args = [
             triton_shared_opt_path,
             src_path,
-            "--triton-to-linalg-experimental=structured-ldst-mode=tensor-first-vector-cpu",
+            f"--triton-to-linalg-experimental={linalg_experimental_opts}",
             "--mlir-print-debuginfo",
             "-o",
             dst_path,
@@ -445,8 +456,11 @@ def _optimize_llir(llir: str, options=None):
             # new vectors from scalar IR: on this LLVM/riscv64 stack it
             # miscompiles expand-float8's integer bitcast/shift chains into
             # <8 x i32> ops (FlagGems act_quant: ~85% wrong FP8 lanes, then
-            # free(): invalid size / SIGABRT). --unroll-threshold=0 keeps
-            # small tiles as loops instead of exploding the function body.
+            # free(): invalid size / SIGABRT). SLP vectorization also turns
+            # masked -inf tile stores (fill_neg_inf in fp8_paged_mqa_logits)
+            # into broken VP/strided vector stores that corrupt the heap on
+            # exit (corrupted size vs. prev_size / SIGABRT). --unroll-threshold=0
+            # keeps small tiles as loops instead of exploding the function body.
             command.extend(
                 [
                     "-mtriple=riscv64-unknown-linux-gnu",
@@ -455,6 +469,7 @@ def _optimize_llir(llir: str, options=None):
                     "-riscv-v-vector-bits-max=128",
                     "--unroll-threshold=0",
                     "-vectorize-loops=false",
+                    "-vectorize-slp=false",
                 ]
             )
         command.extend(["-S", src_path, "-o", dst_path])

@@ -83,7 +83,8 @@ public:
     pm.addPass(createTritonArithToLinalgPass(
         /*tensorPtrToLinalg=*/true, /*transposeReduceToRank0=*/false));
 
-    pm.addPass(createStructuredToMemrefPass(enableTensorFirstVectorCpu));
+    pm.addPass(createStructuredToMemrefPass(enableTensorFirstVectorCpu,
+                                            cpuVectorWidth));
     pm.addPass(createUnstructuredToMemrefPass());
     pm.addPass(createTritonPtrToMemrefPass());
     pm.addPass(createTritonToPtrPass());
