@@ -172,6 +172,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 "--convert-cf-to-llvm",
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
+                "--convert-math-to-libm",
                 "--convert-complex-to-llvm",
                 "--convert-vector-to-llvm",
                 "--convert-index-to-llvm",
@@ -295,6 +296,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
             llvm_lowering_passes = [
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
+                "--convert-math-to-libm",
                 "--convert-complex-to-llvm",
                 "--convert-vector-to-llvm",
                 "--convert-index-to-llvm",
