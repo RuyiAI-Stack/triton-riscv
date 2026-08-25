@@ -15,16 +15,28 @@
       "depNameTemplate": "buddy-compiler/buddy-mlir",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "regex:^(?:release/v|nightly/v)(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.dev(?<build>\\d+))?$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^buddy-hash\\.txt$/"],
+      "matchStrings": [
+        "(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "currentValueTemplate": "release/v0.0.5",
+      "autoReplaceStringTemplate": "{{{newDigest}}}",
+      "depNameTemplate": "buddy-compiler/buddy-mlir",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^(?:release/v|nightly/v)(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.dev(?<build>\\d+))?$"
     }
   ],
   "packageRules": [
     {
       "matchManagers": ["custom.regex"],
       "matchPackageNames": ["buddy-compiler/buddy-mlir"],
-      "allowedVersions": "/^nightly\\/v\\d+\\.\\d+\\.\\d+\\.dev\\d+$/",
+      "allowedVersions": "/^(?:release\\/v|nightly\\/v)\\d+\\.\\d+\\.\\d+(?:\\.dev\\d+)?$/",
       "ignoreUnstable": false,
       "maxMajorIncrement": 0,
-      "groupName": "Buddy MLIR nightly",
+      "groupName": "Buddy MLIR release",
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
