@@ -1103,17 +1103,16 @@ struct MaskedElementwiseStoreFusionPattern
       Type elementType =
           cast<RankedTensorType>(load.getType()).getElementType();
       Value result =
-          vectorMode
-              ? rewriter
-                    .create<vector::LoadOp>(
-                        load.getLoc(),
-                        getCpuVectorType(elementType, cpuVectorWidth),
-                        ptrIt->second, ValueRange{index})
-                    .getResult()
-              : rewriter
-                    .create<memref::LoadOp>(load.getLoc(), ptrIt->second,
-                                            ValueRange{index})
-                    .getResult();
+          vectorMode ? rewriter
+                           .create<vector::LoadOp>(
+                               load.getLoc(),
+                               getCpuVectorType(elementType, cpuVectorWidth),
+                               ptrIt->second, ValueRange{index})
+                           .getResult()
+                     : rewriter
+                           .create<memref::LoadOp>(load.getLoc(), ptrIt->second,
+                                                   ValueRange{index})
+                           .getResult();
       cache[value] = result;
       return result;
     }
@@ -1161,9 +1160,8 @@ struct MaskedElementwiseStoreFusionPattern
         state.addOperands(mapped);
       }
       for (Type type : bodyOp.getResultTypes())
-        state.addTypes(vectorMode
-                           ? Type(getCpuVectorType(type, cpuVectorWidth))
-                           : type);
+        state.addTypes(vectorMode ? Type(getCpuVectorType(type, cpuVectorWidth))
+                                  : type);
       state.addAttributes(bodyOp.getAttrs());
       Operation *cloned = rewriter.create(state);
       for (auto [oldResult, newResult] :
@@ -2955,9 +2953,8 @@ void mlir::triton::populateStructuredToMemrefPreConversionPatterns(
   }
   patterns.add<MaskedReduceFusionPattern>(patterns.getContext(), cpuVectorWidth,
                                           PatternBenefit(10));
-  patterns.add<MaskedElementwiseStoreFusionPattern>(patterns.getContext(),
-                                                    cpuVectorWidth,
-                                                    PatternBenefit(10));
+  patterns.add<MaskedElementwiseStoreFusionPattern>(
+      patterns.getContext(), cpuVectorWidth, PatternBenefit(10));
 }
 
 void mlir::triton::populateStructuredToMemrefConversionPatterns(

@@ -91,9 +91,7 @@ def _ttir_to_ttsharedir(mod):
         _dump_ir_if_needed([src_path])
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
-        linalg_experimental_opts = (
-            "structured-ldst-mode=tensor-first-vector-cpu"
-        )
+        linalg_experimental_opts = "structured-ldst-mode=tensor-first-vector-cpu"
         if platform.machine() == "riscv64":
             # StructuredToMemref tensor-first-vector-cpu emits fixed-width
             # vector<W x T> (default W=16 for AVX-512). On riscv64 use W=4 to
@@ -274,19 +272,19 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                 standard_lowering_passes.append("--linalg-fuse-elementwise-ops")
             standard_lowering_passes.extend(
                 [
-                "--empty-tensor-to-alloc-tensor",
-                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                # Before buffer-deallocation: reuse CAS/while tile buffers across
-                # iterations instead of heap alloc+free inside scf.while.
-                "--buffer-loop-hoisting",
-                "--buffer-deallocation-pipeline",
-                "--eliminate-memref-copy",
-                # Triton programs commonly materialize small, statically
-                # sized tiles for loads and scalar broadcasts.  Paying for
-                # several heap allocations on every grid invocation
-                # dominates elementwise CPU kernels, so keep bounded tile
-                # temporaries in the launcher thread's stack frame.
-                "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
+                    "--empty-tensor-to-alloc-tensor",
+                    "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    # Before buffer-deallocation: reuse CAS/while tile buffers across
+                    # iterations instead of heap alloc+free inside scf.while.
+                    "--buffer-loop-hoisting",
+                    "--buffer-deallocation-pipeline",
+                    "--eliminate-memref-copy",
+                    # Triton programs commonly materialize small, statically
+                    # sized tiles for loads and scalar broadcasts.  Paying for
+                    # several heap allocations on every grid invocation
+                    # dominates elementwise CPU kernels, so keep bounded tile
+                    # temporaries in the launcher thread's stack frame.
+                    "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
                 ]
             )
             # VLEN=128 → 4 x f32 per vector register (LMUL=1). Default
@@ -295,20 +293,18 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             # buddy matmul-vectorization; do not disable LLVM loop vectorizer
             # globally — act_quant relies on expand-float8 (above) plus normal opt.
             if _targets_riscv(options):
-                standard_lowering_passes.append(
-                    "--matmul-vectorization=vector-size=4"
-                )
+                standard_lowering_passes.append("--matmul-vectorization=vector-size=4")
             else:
                 standard_lowering_passes.append("--matmul-vectorization")
             if _targets_riscv(options):
                 standard_lowering_passes.extend(_riscv_vir_vector_passes())
             standard_lowering_passes.extend(
                 [
-                "--convert-linalg-to-affine-loops",
-                "--lower-affine",
-                "--convert-linalg-to-loops",
-                "--expand-strided-metadata",
-                "--convert-scf-to-cf",
+                    "--convert-linalg-to-affine-loops",
+                    "--lower-affine",
+                    "--convert-linalg-to-loops",
+                    "--expand-strided-metadata",
+                    "--convert-scf-to-cf",
                 ]
             )
             llvm_lowering_passes = [
@@ -388,9 +384,7 @@ _FADD_INSTRUCTION = re.compile(
 _HEAP_MALLOC = re.compile(
     r"^\s*(?:tail )?call (?:noalias noundef )?ptr @malloc\b", re.MULTILINE
 )
-_HEAP_FREE = re.compile(
-    r"^\s*(?:tail )?call void @free\(ptr [^)]+\)\s*$", re.MULTILINE
-)
+_HEAP_FREE = re.compile(r"^\s*(?:tail )?call void @free\(ptr [^)]+\)\s*$", re.MULTILINE)
 
 
 def _strip_orphan_heap_frees(llir: str) -> str:

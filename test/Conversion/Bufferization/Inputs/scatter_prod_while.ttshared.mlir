@@ -265,7 +265,7 @@ module {
         } -> tensor<128xi32> loc(#loc60)
         %57 = tensor.empty() : tensor<i32> loc(#loc66)
         %58 = linalg.fill ins(%c0_i32 : i32) outs(%57 : tensor<i32>) -> tensor<i32> loc(#loc66)
-        %reduced = linalg.reduce ins(%56 : tensor<128xi32>) outs(%58 : tensor<i32>) dimensions = [0] 
+        %reduced = linalg.reduce ins(%56 : tensor<128xi32>) outs(%58 : tensor<i32>) dimensions = [0]
           (%in: i32 loc(callsite(#loc28 at #loc61)), %init: i32 loc(callsite(#loc28 at #loc61))) {
             %60 = arith.addi %in, %init : i32 loc(#loc66)
             linalg.yield %60 : i32 loc(#loc66)
@@ -293,4 +293,3 @@ module {
 #loc62 = loc(fused[#loc43, #loc42])
 #loc63 = loc("block_stop"(#loc52))
 #loc65 = loc(fused[#loc53, #loc40])
-
