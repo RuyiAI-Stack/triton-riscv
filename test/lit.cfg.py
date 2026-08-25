@@ -65,11 +65,6 @@ tools = [
     ToolSubst("%PYTHON", config.python_executable, unresolved="ignore"),
 ]
 
-buddy_opt_dir = os.environ.get("BUDDY_MLIR_BINARY_DIR")
-if buddy_opt_dir:
-    llvm_config.with_environment("PATH", buddy_opt_dir, append_path=True)
-    tools.append("buddy-opt")
-
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 # TODO: what's this?
