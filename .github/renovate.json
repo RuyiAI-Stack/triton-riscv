@@ -9,22 +9,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^scripts\\/build\\.sh$/"],
-      "matchStrings": [
-        "BUDDY_RELEASE_TAG=\\\"(?<currentValue>[^\\\"\\n]+)\\\""
-      ],
-      "depNameTemplate": "buddy-compiler/buddy-mlir",
-      "datasourceTemplate": "github-releases",
-      "versioningTemplate": "regex:^(?:release/v|nightly/v)(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.dev(?<build>\\d+))?$"
-    },
-    {
-      "customType": "regex",
       "managerFilePatterns": ["/^buddy-hash\\.txt$/"],
       "matchStrings": [
-        "(?<currentDigest>[0-9a-f]{40})"
+        "(?<currentDigest>[0-9a-f]{40})\\r?\\n(?<currentValue>(?:release/v|nightly/v)\\d+\\.\\d+\\.\\d+(?:\\.dev\\d+)?)"
       ],
-      "currentValueTemplate": "release/v0.0.5",
-      "autoReplaceStringTemplate": "{{{newDigest}}}",
       "depNameTemplate": "buddy-compiler/buddy-mlir",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "regex:^(?:release/v|nightly/v)(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.dev(?<build>\\d+))?$"
@@ -36,7 +24,6 @@
       "matchPackageNames": ["buddy-compiler/buddy-mlir"],
       "allowedVersions": "/^(?:release\\/v|nightly\\/v)\\d+\\.\\d+\\.\\d+(?:\\.dev\\d+)?$/",
       "ignoreUnstable": false,
-      "maxMajorIncrement": 0,
       "groupName": "Buddy MLIR release",
       "automerge": true,
       "automergeType": "pr",

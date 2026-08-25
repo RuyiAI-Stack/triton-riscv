@@ -20,8 +20,7 @@ if [ ! -x "${PYTHON}" ]; then
     python3 -m venv "${ROOT_DIR}/.venv"
 fi
 
-# renovate: datasource=github-releases depName=buddy-compiler/buddy-mlir
-BUDDY_RELEASE_TAG="release/v0.0.5"
+BUDDY_RELEASE_TAG="$(tail -n 1 "${TRITON_RISCV_DIR}/buddy-hash.txt")"
 BUDDY_PACKAGE_VERSION="${BUDDY_RELEASE_TAG#release/v}"
 BUDDY_PACKAGE_VERSION="${BUDDY_PACKAGE_VERSION#nightly/v}"
 BUDDY_PYTHON_TAG="cp312-abi3"

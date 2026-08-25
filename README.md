@@ -26,7 +26,7 @@ git clone https://github.com/triton-lang/triton.git triton
 cd triton && git checkout "$(cat "${TRITON_RISCV_DIR}/triton-hash.txt")"
 cd "${TRITON_RISCV_DIR}/.."
 git clone https://github.com/buddy-compiler/buddy-mlir.git buddy-mlir
-cd buddy-mlir && git checkout "$(cat "${TRITON_RISCV_DIR}/buddy-hash.txt")"
+cd buddy-mlir && git checkout "$(head -n 1 "${TRITON_RISCV_DIR}/buddy-hash.txt")"
 ```
 
 > Note: Ensure PyTorch is available in your virtual environment. For RISC-V, since PyTorch does not officially support RISC-V yet, you can build from source or use third-party builds: https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch . To use the third-party builds, python 3.12 or 3.13 are required.
