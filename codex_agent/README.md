@@ -3,6 +3,24 @@
 This directory contains tools for building an autonomous validation agent for
 Triton-RISCV.
 
+## Web Control Plane
+
+The experimental web workbench connects a React interface to FastAPI and the
+official DeepSeek Harness Python SDK. Build the frontend, then start the API:
+
+```sh
+cd codex_agent/frontend
+npm ci
+npm run build
+cd ../..
+.harness-venv/bin/python -m codex_agent.platform --port 8765
+```
+
+Open `http://127.0.0.1:8765`. Task execution requires explicit confirmation;
+live model runs also require a configured `DEEPSEEK_API_KEY`. See
+`codex_agent/docs/deepseek-harness-integration.md` for the architecture,
+verification levels and next delivery steps.
+
 The agent is intended to discover validation targets, run them, classify
 failures, and produce project-level coverage signals. It is separate from the
 older operator-task workflow under `codex/`, which assumes that a human already
