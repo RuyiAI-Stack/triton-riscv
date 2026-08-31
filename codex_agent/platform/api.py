@@ -14,6 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from codex_agent.harness import HarnessAgent, HarnessSettings
+from codex_agent.operator_lifecycle import (
+    decide_repair_proposal,
+    get_repair_proposal,
+)
 from codex_agent.platform.executor import HarnessRunExecutor
 from codex_agent.platform.service import PlatformService
 from codex_agent.platform.store import PlatformStore
@@ -25,6 +29,12 @@ class SessionRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=12000)
+
+
+class RepairDecisionRequest(BaseModel):
+    approve: bool
+    reviewer: str = Field(min_length=1, max_length=120)
+    note: str = Field(default="", max_length=2000)
 
 
 def create_app(
@@ -165,6 +175,28 @@ def create_app(
                 await asyncio.sleep(1)
 
         return StreamingResponse(generate(), media_type="text/event-stream")
+
+    @app.get("/api/repair-proposals/{proposal_id}")
+    def repair_proposal(proposal_id: str) -> dict:
+        try:
+            return get_repair_proposal(root, proposal_id)
+        except (FileNotFoundError, ValueError) as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @app.post("/api/repair-proposals/{proposal_id}/decision")
+    def repair_decision(proposal_id: str, request: RepairDecisionRequest) -> dict:
+        try:
+            return decide_repair_proposal(
+                root,
+                proposal_id,
+                approve=request.approve,
+                reviewer=request.reviewer,
+                note=request.note,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     return app
 

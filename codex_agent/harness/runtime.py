@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
@@ -64,6 +65,16 @@ class DeepSeekHarnessBackend:
             model=self.settings.model,
             cwd=str(self.settings.repo_root),
             session_root=str(self.settings.session_root),
+            cordis=str(self.settings.cordis_path),
+            env={
+                "TRITON_RISCV_MCP_PYTHON": self.settings.mcp_python,
+                "TRITON_RISCV_ALLOW_VALIDATION": os.environ.get(
+                    "TRITON_RISCV_ALLOW_VALIDATION", "0"
+                ),
+                "TRITON_RISCV_ALLOW_REPAIR_APPLY": os.environ.get(
+                    "TRITON_RISCV_ALLOW_REPAIR_APPLY", "0"
+                ),
+            },
             base_url=self.settings.base_url,
             api_key=self.settings.api_key,
             request_timeout_seconds=self.settings.request_timeout_seconds,

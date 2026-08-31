@@ -57,6 +57,7 @@ class HarnessIntegrationTests(unittest.TestCase):
 
         self.assertEqual(settings.model, "company-deepseek")
         self.assertEqual(settings.remote_host, "sg2044")
+        self.assertEqual(settings.cordis_path.name, "cordis.yml")
         self.assertNotIn("secret-value", repr(settings))
 
     def test_official_runtime_is_reused_and_closed(self) -> None:
@@ -101,6 +102,19 @@ class HarnessIntegrationTests(unittest.TestCase):
         self.assertEqual(len(instances), 1)
         self.assertEqual(instances[0].calls, ["first", "second"])
         self.assertEqual(instances[0].kwargs["session_root"], str(settings.session_root))
+        self.assertEqual(instances[0].kwargs["cordis"], str(settings.cordis_path))
+        self.assertEqual(
+            instances[0].kwargs["env"]["TRITON_RISCV_MCP_PYTHON"],
+            settings.mcp_python,
+        )
+        self.assertEqual(
+            instances[0].kwargs["env"]["TRITON_RISCV_ALLOW_VALIDATION"],
+            "0",
+        )
+        self.assertEqual(
+            instances[0].kwargs["env"]["TRITON_RISCV_ALLOW_REPAIR_APPLY"],
+            "0",
+        )
         self.assertNotIn("profile", instances[0].kwargs)
         self.assertNotIn("dsh_home", instances[0].kwargs)
         self.assertTrue(instances[0].closed)
@@ -120,7 +134,9 @@ class HarnessIntegrationTests(unittest.TestCase):
 
         self.assertIn("验证 relu_and_mul 算子", prompt)
         self.assertIn("sg2044:/home/user/work/triton-riscv", prompt)
-        self.assertIn("python -m codex_agent.operator_agent", prompt)
+        self.assertIn("mcp__triton_riscv__discover_operator", prompt)
+        self.assertIn("mcp__triton_riscv__validate_operator", prompt)
+        self.assertIn("mcp__triton_riscv__propose_repair", prompt)
         self.assertIn("Never weaken", prompt)
 
     def test_agent_delegates_to_backend_and_preserves_session(self) -> None:

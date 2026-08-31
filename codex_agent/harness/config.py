@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional
@@ -21,6 +23,8 @@ class HarnessSettings:
 
     repo_root: Path
     session_root: Path
+    cordis_path: Path
+    mcp_python: str
     provider: str = "deepseek-official"
     model: str = "deepseek-v4-flash"
     base_url: Optional[str] = None
@@ -43,9 +47,19 @@ class HarnessSettings:
                 resolved_root / "agent-results" / "deepseek-harness",
             )
         ).expanduser()
+        cordis_path = Path(
+            env.get(
+                "TRITON_RISCV_CORDIS_CONFIG",
+                Path(__file__).with_name("cordis.yml"),
+            )
+        ).expanduser()
+        if not cordis_path.is_absolute():
+            cordis_path = resolved_root / cordis_path
         return cls(
             repo_root=resolved_root,
             session_root=session_root.resolve(),
+            cordis_path=cordis_path.resolve(),
+            mcp_python=env.get("TRITON_RISCV_MCP_PYTHON", sys.executable),
             provider=env.get("DSH_PROVIDER", "deepseek-official").strip(),
             model=env.get("DSH_MODEL", "deepseek-v4-flash").strip(),
             base_url=_optional_text(env.get("DEEPSEEK_BASE_URL")),
@@ -57,8 +71,15 @@ class HarnessSettings:
             ),
         )
 
-    def validate_live_run(self) -> None:
-        if not self.api_key:
-            raise ValueError("DEEPSEEK_API_KEY is required for a live Harness run")
+    def validate_runtime_config(self) -> None:
         if not self.repo_root.is_dir():
             raise ValueError(f"repository does not exist: {self.repo_root}")
+        if not self.cordis_path.is_file():
+            raise ValueError(f"Cordis config does not exist: {self.cordis_path}")
+        if not shutil.which(self.mcp_python):
+            raise ValueError(f"MCP Python executable was not found: {self.mcp_python}")
+
+    def validate_live_run(self) -> None:
+        self.validate_runtime_config()
+        if not self.api_key:
+            raise ValueError("DEEPSEEK_API_KEY is required for a live Harness run")

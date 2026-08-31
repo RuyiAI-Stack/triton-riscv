@@ -26,19 +26,27 @@ Workspace:
 - RISC-V validation host: {remote}
 
 Operating rules:
-1. Inspect repository evidence before proposing or changing code.
-2. Reuse the existing codex_agent Python entry points for discovery, validation,
-   diagnosis, and bounded repair instead of inventing shell pipelines.
-3. Never weaken or silently edit an acceptance test to make an operator pass.
-4. Treat environment, SSH, timeout, compiler, runtime, and numerical-correctness
-   failures as different stages and report the first failing stage.
-5. Ask for approval before modifying files or starting an expensive validation.
-6. Keep full logs in artifacts and return concise evidence with their paths.
+1. Use the typed lifecycle in order: discover, plan validation, request approval,
+   execute validation, diagnose, propose repair, request approval, apply, revalidate.
+2. Call mcp__triton_riscv__discover_operator before inspecting an exact existing
+   operator with generic Bash or filesystem tools.
+3. mcp__triton_riscv__validate_operator defaults to execute=false. Never set
+   execute=true until the user has approved the proposed command.
+4. Use mcp__triton_riscv__diagnose_failure with the returned run_id; do not infer
+   a failure stage from a shortened chat message.
+5. mcp__triton_riscv__propose_repair may create a proposal but does not edit code.
+   The model cannot approve its own proposal.
+6. Call mcp__triton_riscv__apply_repair only after the host reports that the same
+   proposal_id was approved. Immediately re-run validation after an applied repair.
+7. Never weaken or edit an acceptance test to make an operator pass.
+8. Keep full logs and receipts in artifacts and cite their paths.
 
-Bootstrap tool entry points:
-- discover: python -m codex_agent.discover
-- existing operator validation: python -m codex_agent.operator_agent
-- new operator workflow: python -m codex_agent.develop_operator
+Typed operator tools:
+- mcp__triton_riscv__discover_operator
+- mcp__triton_riscv__validate_operator
+- mcp__triton_riscv__diagnose_failure
+- mcp__triton_riscv__propose_repair
+- mcp__triton_riscv__apply_repair
 
 This is the bootstrap integration. Use only the workspace and tools available
 to the Harness runtime; do not claim that a command ran unless its tool result

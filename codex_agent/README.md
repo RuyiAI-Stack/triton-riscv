@@ -21,6 +21,11 @@ live model runs also require a configured `DEEPSEEK_API_KEY`. See
 `codex_agent/docs/deepseek-harness-integration.md` for the architecture,
 verification levels and next delivery steps.
 
+The Harness MCP server now exposes a guarded five-step operator lifecycle:
+discovery, validation, diagnosis, repair proposal and approved repair
+application. Expensive validation and source writes are disabled by default;
+the model-facing tools cannot approve their own repair proposals.
+
 The agent is intended to discover validation targets, run them, classify
 failures, and produce project-level coverage signals. It is separate from the
 older operator-task workflow under `codex/`, which assumes that a human already

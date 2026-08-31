@@ -11,6 +11,8 @@ User
   -> FastAPI session, confirmation and SSE layer
   -> DeepSeek Harness Python SDK
   -> Harness agent loop, session log and tool pipeline
+  -> Harness MCP client
+  -> Triton-RISCV Python MCP server
   -> Triton-RISCV domain tools
   -> existing Python discovery, validation, diagnosis and repair workflows
   -> local checkout or SSH-connected RISC-V validation host
@@ -43,13 +45,15 @@ requires graph-specific checkpoint or transition semantics.
    notifications through FastAPI to React. No model call begins before user
    confirmation. The SDK subprocess is reused across turns and closed with the
    FastAPI application lifecycle.
-2. **Typed tools (next):** register `discover_operator`, `validate_operator`,
-   `diagnose_failure` and `develop_operator` as Harness tools instead of asking
-   the model to construct shell commands.
-3. **Remote executor:** add a guarded SSH provider so compilation and testing
+2. **Typed lifecycle tools (complete):** MCP exposes discovery, validation,
+   diagnosis, repair proposal and approved repair application. Validation plans
+   by default; live execution and source writes use separate host-side switches.
+   Repair proposals lock both implementation and acceptance-test hashes.
+3. **Approval boundary (complete):** FastAPI exposes proposal inspection and a
+   separate human decision endpoint. Approval is deliberately not available to
+   the model-facing MCP server, so the Agent cannot approve its own patch.
+4. **Remote executor:** add a guarded SSH provider so compilation and testing
    execute on the RISC-V host while Harness stays on a supported control host.
-4. **Approval and repair loop:** require approval for writes and expensive runs,
-   then expose the existing locked-test repair workflow as one domain tool.
 5. **Memory and evaluation:** connect evidence memory, replay representative
    sessions, and compare success rate, tool errors, repair attempts and cost.
 
@@ -70,12 +74,30 @@ Prepare and inspect a task without calling a model:
   "验证 relu_and_mul 算子"
 ```
 
+Run the real stdio MCP server, list its lifecycle tools and call the read-only
+operator discovery tool without a model credential:
+
+```sh
+.harness-venv/bin/python -m codex_agent.harness.mcp_demo relu_and_mul
+```
+
+The JSON output records the `stdio` transport, all five advertised lifecycle
+tools, the discovery call and its structured result. For a known
+operator, the result includes implementation and test paths, pytest nodes,
+validation command, Triton kernels, Torch references and risk hints. This is
+the deterministic second-delivery demo; it exercises the same subprocess
+boundary that the Harness MCP client uses.
+
 For a real run, configure a compatible endpoint and credential, then opt in:
 
 ```sh
 export DEEPSEEK_API_KEY=...
 export DEEPSEEK_BASE_URL=...
 export DSH_MODEL=...
+# Enable only the operations that this host is allowed to execute.
+export TRITON_RISCV_ALLOW_VALIDATION=1
+# Keep source writes disabled until repair application is intentionally tested.
+# export TRITON_RISCV_ALLOW_REPAIR_APPLY=1
 .harness-venv/bin/python -m codex_agent.harness \
   "验证 relu_and_mul 算子" --live
 ```
@@ -89,6 +111,31 @@ Start the connected React, FastAPI and Harness workbench with:
 .harness-venv/bin/python -m codex_agent.platform --port 8765
 ```
 
+The repair lifecycle is:
+
+```text
+discover_operator
+  -> validate_operator(execute=false)
+  -> human confirms command
+  -> validate_operator(execute=true)
+  -> diagnose_failure(run_id)
+  -> propose_repair(run_id, replacement_source, rationale)
+  -> GET /api/repair-proposals/{proposal_id}
+  -> POST /api/repair-proposals/{proposal_id}/decision
+  -> apply_repair(proposal_id)
+  -> validate_operator(execute=true)
+```
+
+The decision endpoint accepts JSON such as:
+
+```json
+{
+  "approve": true,
+  "reviewer": "ada-cl25",
+  "note": "Reviewed the diff and preserved the acceptance test."
+}
+```
+
 ## Verification Levels
 
 The integration is verified at three levels:
@@ -98,9 +145,15 @@ The integration is verified at three levels:
 2. An HTTP integration test creates a session, posts an arbitrary task,
    confirms it, crosses the FastAPI-to-Harness adapter and verifies that the
    result and Harness event are persisted.
-3. Frontend tests verify message and confirmation requests, followed by a
+3. Lifecycle tests prove that live validation is opt-in, unapproved patches are
+   not applied, changed acceptance tests block a patch, and compiler limitations
+   are not silently rewritten as operator fixes.
+4. Frontend tests verify message and confirmation requests, followed by a
    strict TypeScript and Vite production build.
 
 A real provider run still requires `DEEPSEEK_API_KEY`; a company endpoint also
 uses `DEEPSEEK_BASE_URL` and `DSH_MODEL`. The no-key failure is intentional and
-must not be reported as a successful live Agent run.
+must not be reported as a successful live Agent run. The MCP demo proves tool
+registration and execution, but model-driven tool selection remains pending
+until a provider credential is configured. Without that key, deterministic MCP
+and lifecycle tests exercise the tool boundary but do not claim model autonomy.

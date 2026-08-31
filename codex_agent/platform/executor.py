@@ -99,7 +99,6 @@ class HarnessRunExecutor:
                 "finish_reason": result.finish_reason,
                 "event_count": event_count,
             }
-            self.store.update_run(run_id, status="completed", phase="completed", result=final)
             self.store.add_event(run_id, "completed", final)
             self.store.add_message(
                 run["session_id"],
@@ -111,9 +110,11 @@ class HarnessRunExecutor:
                     "harness_session_id": result.session_id,
                 },
             )
+            # Publish terminal status last. Consumers treat it as a barrier after
+            # which all events and the final assistant message are durable.
+            self.store.update_run(run_id, status="completed", phase="completed", result=final)
         except Exception as error:
             final = {"error": str(error), "event_count": event_count}
-            self.store.update_run(run_id, status="failed", phase="failed", result=final)
             self.store.add_event(run_id, "failed", {"message": str(error)})
             self.store.add_message(
                 run["session_id"],
@@ -121,6 +122,7 @@ class HarnessRunExecutor:
                 f"DeepSeek Harness 执行失败：`{error}`",
                 {"view": "harness-error", "run_id": run_id},
             )
+            self.store.update_run(run_id, status="failed", phase="failed", result=final)
         finally:
             with self._lock:
                 self._active.discard(run_id)
