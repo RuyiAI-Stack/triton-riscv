@@ -47,6 +47,10 @@
 
 using namespace mlir;
 
+static VectorType getCpuVectorType(Type elemType, int64_t width) {
+  return VectorType::get({width}, elemType);
+}
+
 static const std::string WRAP_SIDE_BY_SIDE = "wrap_side_by_side";
 static const std::string WRAP_STACKED = "wrap_stacked";
 static const std::string WRAP_LINEAR = "wrap_linear";
@@ -151,6 +155,7 @@ static memref::SubViewOp getSubview(int rank, ArrayRef<OpFoldResult> dims,
 
 static void emit1DMemrefToMemrefCopyLoop(Location loc, Value srcSubview,
                                          Value dstSubview, Value upperBound,
+                                         int64_t cpuVectorWidth,
                                          ConversionPatternRewriter &rewriter) {
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.getContext()->loadDialect<vector::VectorDialect>();
@@ -161,12 +166,12 @@ static void emit1DMemrefToMemrefCopyLoop(Location loc, Value srcSubview,
       hasUnitStride1DLayout(srcType) && hasUnitStride1DLayout(dstType)) {
     auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    auto cVec = rewriter.create<arith::ConstantIndexOp>(loc, 16);
+    auto cVec = rewriter.create<arith::ConstantIndexOp>(loc, cpuVectorWidth);
 
     // Vectorized main body: [0, floor(upperBound / VL) * VL) with step VL.
     Value vecIters = rewriter.create<arith::DivUIOp>(loc, upperBound, cVec);
     Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, cVec);
-    auto vecType = VectorType::get({16}, srcType.getElementType());
+    auto vecType = getCpuVectorType(srcType.getElementType(), cpuVectorWidth);
     auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, cVec);
     rewriter.setInsertionPointToStart(vecLoop.getBody());
     Value ivVec = vecLoop.getInductionVar();
@@ -196,6 +201,7 @@ static void emit1DMemrefToMemrefCopyLoop(Location loc, Value srcSubview,
 
 static void emit1DTensorToMemrefStoreLoop(Location loc, Value srcTensor,
                                           Value dstSubview, Value upperBound,
+                                          int64_t cpuVectorWidth,
                                           ConversionPatternRewriter &rewriter) {
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.getContext()->loadDialect<vector::VectorDialect>();
@@ -205,13 +211,13 @@ static void emit1DTensorToMemrefStoreLoop(Location loc, Value srcTensor,
       hasUnitStride1DLayout(dstType)) {
     auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    auto cVec = rewriter.create<arith::ConstantIndexOp>(loc, 16);
+    auto cVec = rewriter.create<arith::ConstantIndexOp>(loc, cpuVectorWidth);
 
     // Vectorized main body: [0, floor(upperBound / VL) * VL) with step VL.
     Value vecIters = rewriter.create<arith::DivUIOp>(loc, upperBound, cVec);
     Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, cVec);
     auto elemType = srcType.getElementType();
-    auto vecType = VectorType::get({16}, elemType);
+    auto vecType = getCpuVectorType(elemType, cpuVectorWidth);
     auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, cVec);
     rewriter.setInsertionPointToStart(vecLoop.getBody());
     Value ivVec = vecLoop.getInductionVar();
@@ -878,7 +884,12 @@ getMaskedReduceCombiningKind(MaskedReduceKind kind) {
 }
 
 struct MaskedReduceFusionPattern : public OpRewritePattern<linalg::ReduceOp> {
-  using OpRewritePattern::OpRewritePattern;
+  int64_t cpuVectorWidth;
+
+  MaskedReduceFusionPattern(MLIRContext *context, int64_t cpuVectorWidth,
+                            PatternBenefit benefit)
+      : OpRewritePattern<linalg::ReduceOp>(context, benefit),
+        cpuVectorWidth(cpuVectorWidth) {}
 
   LogicalResult matchAndRewrite(linalg::ReduceOp op,
                                 PatternRewriter &rewriter) const override {
@@ -957,14 +968,14 @@ struct MaskedReduceFusionPattern : public OpRewritePattern<linalg::ReduceOp> {
 
     auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    auto c16 = rewriter.create<arith::ConstantIndexOp>(loc, 16);
+    auto cVec = rewriter.create<arith::ConstantIndexOp>(loc, cpuVectorWidth);
     auto cFull = rewriter.create<arith::ConstantIndexOp>(loc, fullSize);
 
-    Value vecIters = rewriter.create<arith::DivUIOp>(loc, validLen, c16);
-    Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, c16);
-    auto vecType = VectorType::get({16}, loadType.getElementType());
+    Value vecIters = rewriter.create<arith::DivUIOp>(loc, validLen, cVec);
+    Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, cVec);
+    auto vecType = getCpuVectorType(loadType.getElementType(), cpuVectorWidth);
 
-    auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, c16,
+    auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, cVec,
                                                ValueRange{accInit});
     rewriter.setInsertionPointToStart(vecLoop.getBody());
     Value ivVec = vecLoop.getInductionVar();
@@ -1012,7 +1023,13 @@ struct MaskedReduceFusionPattern : public OpRewritePattern<linalg::ReduceOp> {
 // masked-load bounds semantics are preserved without padded heap allocations.
 struct MaskedElementwiseStoreFusionPattern
     : public OpRewritePattern<tts::StoreOp> {
-  using OpRewritePattern::OpRewritePattern;
+  int64_t cpuVectorWidth;
+
+  MaskedElementwiseStoreFusionPattern(MLIRContext *context,
+                                      int64_t cpuVectorWidth,
+                                      PatternBenefit benefit)
+      : OpRewritePattern<tts::StoreOp>(context, benefit),
+        cpuVectorWidth(cpuVectorWidth) {}
 
   static bool isIdentityElementwise(linalg::GenericOp generic) {
     if (generic->getNumResults() != 1 || generic.getNumLoops() != 1 ||
@@ -1086,16 +1103,16 @@ struct MaskedElementwiseStoreFusionPattern
       Type elementType =
           cast<RankedTensorType>(load.getType()).getElementType();
       Value result =
-          vectorMode
-              ? rewriter
-                    .create<vector::LoadOp>(load.getLoc(),
-                                            VectorType::get({16}, elementType),
-                                            ptrIt->second, ValueRange{index})
-                    .getResult()
-              : rewriter
-                    .create<memref::LoadOp>(load.getLoc(), ptrIt->second,
-                                            ValueRange{index})
-                    .getResult();
+          vectorMode ? rewriter
+                           .create<vector::LoadOp>(
+                               load.getLoc(),
+                               getCpuVectorType(elementType, cpuVectorWidth),
+                               ptrIt->second, ValueRange{index})
+                           .getResult()
+                     : rewriter
+                           .create<memref::LoadOp>(load.getLoc(), ptrIt->second,
+                                                   ValueRange{index})
+                           .getResult();
       cache[value] = result;
       return result;
     }
@@ -1122,7 +1139,7 @@ struct MaskedElementwiseStoreFusionPattern
           auto typed = dyn_cast<TypedAttr>(constant.getValue());
           if (!typed)
             return failure();
-          auto vectorType = VectorType::get({16}, resultType);
+          auto vectorType = getCpuVectorType(resultType, cpuVectorWidth);
           auto splat = DenseElementsAttr::get(vectorType, typed);
           Value cloned = rewriter.create<arith::ConstantOp>(constant.getLoc(),
                                                             vectorType, splat);
@@ -1143,7 +1160,8 @@ struct MaskedElementwiseStoreFusionPattern
         state.addOperands(mapped);
       }
       for (Type type : bodyOp.getResultTypes())
-        state.addTypes(vectorMode ? Type(VectorType::get({16}, type)) : type);
+        state.addTypes(vectorMode ? Type(getCpuVectorType(type, cpuVectorWidth))
+                                  : type);
       state.addAttributes(bodyOp.getAttrs());
       Operation *cloned = rewriter.create(state);
       for (auto [oldResult, newResult] :
@@ -1231,10 +1249,10 @@ struct MaskedElementwiseStoreFusionPattern
         ofrToIndexValue(store.getMixedMaskDims()[0], loc, rewriter);
     auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    auto c16 = rewriter.create<arith::ConstantIndexOp>(loc, 16);
-    Value vecIters = rewriter.create<arith::DivUIOp>(loc, validLen, c16);
-    Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, c16);
-    auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, c16);
+    auto cVec = rewriter.create<arith::ConstantIndexOp>(loc, cpuVectorWidth);
+    Value vecIters = rewriter.create<arith::DivUIOp>(loc, validLen, cVec);
+    Value vecUpper = rewriter.create<arith::MulIOp>(loc, vecIters, cVec);
+    auto vecLoop = rewriter.create<scf::ForOp>(loc, c0, vecUpper, cVec);
     rewriter.setInsertionPointToStart(vecLoop.getBody());
     Value ivVec = vecLoop.getInductionVar();
     llvm::DenseMap<Value, Value> vectorCache;
@@ -1678,6 +1696,7 @@ struct MakeGatherScatterTensorPtrConverter
 struct LoadConverter : public OpConversionPattern<tts::LoadOp> {
 private:
   bool enableTensorFirstVectorCpu;
+  int64_t cpuVectorWidth;
 
   bool isTensorFirstFastPathCandidate(tts::LoadOp op, Value ptr) const {
     if (!enableTensorFirstVectorCpu) {
@@ -1848,7 +1867,7 @@ private:
       auto dstSubview = getSubview(rank, copyDims, alloc, loc, rewriter);
       Value copyLen = ofrToIndexValue(copyDims[0], loc, rewriter);
       emit1DMemrefToMemrefCopyLoop(loc, srcSubview, dstSubview, copyLen,
-                                   rewriter);
+                                   cpuVectorWidth, rewriter);
 
       Value tensor = rewriter.create<bufferization::ToTensorOp>(
           loc, tensorType, alloc, true /*restrict*/, true /*writable*/);
@@ -2438,9 +2457,11 @@ private:
 
 public:
   LoadConverter(const TypeConverter &typeConverter,
-                bool enableTensorFirstVectorCpu, MLIRContext *context)
+                bool enableTensorFirstVectorCpu, int64_t cpuVectorWidth,
+                MLIRContext *context)
       : OpConversionPattern<tts::LoadOp>(typeConverter, context),
-        enableTensorFirstVectorCpu(enableTensorFirstVectorCpu) {}
+        enableTensorFirstVectorCpu(enableTensorFirstVectorCpu),
+        cpuVectorWidth(cpuVectorWidth) {}
 
   LogicalResult
   matchAndRewrite(tts::LoadOp op, OpAdaptor adaptor,
@@ -2495,6 +2516,7 @@ public:
 struct StoreConverter : public OpConversionPattern<tts::StoreOp> {
 private:
   bool enableTensorFirstVectorCpu;
+  int64_t cpuVectorWidth;
 
   LogicalResult
   rewriteRank1WraparoundStore(tts::StoreOp op, Value storeValue,
@@ -2586,7 +2608,8 @@ private:
       SmallVector<OpFoldResult> mixedDims = op.getMixedMaskDims();
       auto dstSubview = getSubview(rank, mixedDims, ptr, loc, rewriter);
       Value copyLen = ofrToIndexValue(mixedDims[0], loc, rewriter);
-      emit1DTensorToMemrefStoreLoop(loc, stVal, dstSubview, copyLen, rewriter);
+      emit1DTensorToMemrefStoreLoop(loc, stVal, dstSubview, copyLen,
+                                    cpuVectorWidth, rewriter);
       rewriter.eraseOp(op);
       return success();
     }
@@ -2779,9 +2802,11 @@ private:
 
 public:
   StoreConverter(const TypeConverter &typeConverter,
-                 bool enableTensorFirstVectorCpu, MLIRContext *context)
+                 bool enableTensorFirstVectorCpu, int64_t cpuVectorWidth,
+                 MLIRContext *context)
       : OpConversionPattern<tts::StoreOp>(typeConverter, context),
-        enableTensorFirstVectorCpu(enableTensorFirstVectorCpu) {}
+        enableTensorFirstVectorCpu(enableTensorFirstVectorCpu),
+        cpuVectorWidth(cpuVectorWidth) {}
 
   LogicalResult
   matchAndRewrite(tts::StoreOp op, OpAdaptor adaptor,
@@ -2921,21 +2946,23 @@ public:
 } // namespace
 
 void mlir::triton::populateStructuredToMemrefPreConversionPatterns(
-    RewritePatternSet &patterns, bool enableTensorFirstVectorCpu) {
+    RewritePatternSet &patterns, bool enableTensorFirstVectorCpu,
+    int64_t cpuVectorWidth) {
   if (!enableTensorFirstVectorCpu) {
     return;
   }
-  patterns.add<MaskedReduceFusionPattern>(patterns.getContext(),
+  patterns.add<MaskedReduceFusionPattern>(patterns.getContext(), cpuVectorWidth,
                                           PatternBenefit(10));
-  patterns.add<MaskedElementwiseStoreFusionPattern>(patterns.getContext(),
-                                                    PatternBenefit(10));
+  patterns.add<MaskedElementwiseStoreFusionPattern>(
+      patterns.getContext(), cpuVectorWidth, PatternBenefit(10));
 }
 
 void mlir::triton::populateStructuredToMemrefConversionPatterns(
     RewritePatternSet &patterns, TypeConverter &typeConverter,
-    bool enableTensorFirstVectorCpu) {
+    bool enableTensorFirstVectorCpu, int64_t cpuVectorWidth) {
   patterns.add<MakeTensorPtrConverter, MakeGatherScatterTensorPtrConverter>(
       typeConverter, patterns.getContext());
   patterns.add<LoadConverter, StoreConverter>(
-      typeConverter, enableTensorFirstVectorCpu, patterns.getContext());
+      typeConverter, enableTensorFirstVectorCpu, cpuVectorWidth,
+      patterns.getContext());
 }

@@ -91,10 +91,17 @@ def _ttir_to_ttsharedir(mod):
         _dump_ir_if_needed([src_path])
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
+        linalg_experimental_opts = "structured-ldst-mode=tensor-first-vector-cpu"
+        if platform.machine() == "riscv64":
+            # StructuredToMemref tensor-first-vector-cpu emits fixed-width
+            # vector<W x T> (default W=16 for AVX-512). On riscv64 use W=4 to
+            # match VLEN=128 (LMUL=1); W=16 miscompiles masked 1D copy loops.
+            linalg_experimental_opts += " cpu-vector-width=4"
+
         subprocess_args = [
             triton_shared_opt_path,
             src_path,
-            "--triton-to-linalg-experimental=structured-ldst-mode=tensor-first-vector-cpu",
+            f"--triton-to-linalg-experimental={linalg_experimental_opts}",
             "--mlir-print-debuginfo",
             "-o",
             dst_path,
@@ -116,10 +123,28 @@ def _optimize_ttsharedir(ttsharedir: str):
     return ttsharedir
 
 
-def _ttsharedir_to_llir(ttsharedir: str):
+def _targets_riscv(options=None) -> bool:
+    if platform.machine() == "riscv64":
+        return True
+    triple = getattr(options, "target_triple", None) if options else None
+    return bool(triple and "riscv" in triple)
+
+
+def _riscv_vir_vector_passes() -> list[str]:
+    # VLEN=128 → 4 x f32. Lower elementwise linalg to explicit vector ops so
+    # llc emits RVV vfsub/vfmul (FlagGems euclidean_dist RVV object test).
+    return [
+        "--lower-linalg-to-vir",
+        "--lower-vir-to-vector=vector-width=4",
+    ]
+
+
+def _ttsharedir_to_llir(ttsharedir: str, options=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         ime_pre_llvm_path = os.path.join(tmpdir, "ime-pre-llvm.mlir")
+        standard_pre_llvm_path = os.path.join(tmpdir, "pre-llvm.mlir")
+        pre_llvm_transformed_path = os.path.join(tmpdir, "pre-llvm-transformed.mlir")
         atomic_cas_path = os.path.join(tmpdir, "ttshared-atomic-cas.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
@@ -136,6 +161,10 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 # Bufferize tensor ops before IME lowering
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                # Hoist loop/allocation pairs before deallocation insertion.
+                # CAS while-loops (scatter_reduce) otherwise get per-iteration
+                # heap alloc/free that corrupts the heap on riscv64.
+                "--buffer-loop-hoisting",
                 # One-shot bufferization creates heap-backed temporary
                 # memrefs. Insert and lower their deallocations while the
                 # memref-level ownership information is still available.
@@ -155,6 +184,7 @@ def _ttsharedir_to_llir(ttsharedir: str):
                 "--convert-cf-to-llvm",
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
+                "--convert-math-to-libm",
                 "--convert-complex-to-llvm",
                 "--convert-vector-to-llvm",
                 "--convert-index-to-llvm",
@@ -221,22 +251,32 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # ---------------------------------------------------------------
             # Standard path: buddy-mlir vectorisation → host LLVM IR
             # ---------------------------------------------------------------
-            subprocess.check_call(
+            # Split bufferize/loop lowering from LLVM conversion so triton-shared
+            # can expand FP8 arith.extf/truncf (and lower atomic CAS helpers)
+            # before convert-arith-to-llvm. Without this, f32→f8E4M3FN truncf
+            # survives into mlir-translate, which does not register the arith
+            # dialect (FlagGems test_act_quant / fp8 kernels).
+            standard_lowering_passes = [
+                # Note: eliminate-empty-tensors fails when there are multiple func.return ops
+                # in a single kernel which are the results of early returns.
+                # See python/examples/test_early_return.py for examples.
+                # We disable this pass for now since performance on CPU isn't the main
+                # focus at the moment.
+                # "--eliminate-empty-tensors",
+            ]
+            # Fuse elementwise chains before bufferization for vanilla kernels.
+            # On atomic-CAS while loops (scatter_reduce prod/amax/amin) this pass
+            # makes scf.while carry memref values with per-iteration alloc/copy/
+            # dealloc; convert-scf-to-cf then double-frees the tile buffer.
+            if "__triton_shared_atomic_cas_" not in ttsharedir:
+                standard_lowering_passes.append("--linalg-fuse-elementwise-ops")
+            standard_lowering_passes.extend(
                 [
-                    buddy_opt_path,
-                    ttshared_path,
-                    # Note: eliminate-empty-tensors fails when there are multiple func.return ops
-                    # in a single kernel which are the results of early returns.
-                    # See python/examples/test_early_return.py for examples.
-                    # We disable this pass for now since performance on CPU isn't the main
-                    # focus at the moment.
-                    # "--eliminate-empty-tensors",
-                    # Fuse tensor-level elementwise chains before bufferization
-                    # turns every intermediate and scalar broadcast into a
-                    # separate temporary buffer.
-                    "--linalg-fuse-elementwise-ops",
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    # Before buffer-deallocation: reuse CAS/while tile buffers across
+                    # iterations instead of heap alloc+free inside scf.while.
+                    "--buffer-loop-hoisting",
                     "--buffer-deallocation-pipeline",
                     "--eliminate-memref-copy",
                     # Triton programs commonly materialize small, statically
@@ -245,28 +285,80 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     # dominates elementwise CPU kernels, so keep bounded tile
                     # temporaries in the launcher thread's stack frame.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-                    "--matmul-vectorization",
+                ]
+            )
+            # VLEN=128 → 4 x f32 per vector register (LMUL=1). Default
+            # vector-size=32 is AVX-512-oriented and over-commits the 32-entry
+            # RVV register file (fp8_matmul SIGABRT). Size vectors in MLIR via
+            # buddy matmul-vectorization; do not disable LLVM loop vectorizer
+            # globally — act_quant relies on expand-float8 (above) plus normal opt.
+            if _targets_riscv(options):
+                standard_lowering_passes.append("--matmul-vectorization=vector-size=4")
+            else:
+                standard_lowering_passes.append("--matmul-vectorization")
+            if _targets_riscv(options):
+                standard_lowering_passes.extend(_riscv_vir_vector_passes())
+            standard_lowering_passes.extend(
+                [
                     "--convert-linalg-to-affine-loops",
                     "--lower-affine",
                     "--convert-linalg-to-loops",
                     "--expand-strided-metadata",
                     "--convert-scf-to-cf",
-                    "--convert-arith-to-llvm",
-                    "--convert-math-to-llvm",
-                    "--convert-complex-to-llvm",
-                    "--convert-vector-to-llvm",
-                    "--convert-index-to-llvm",
-                    "--memref-expand",
-                    "--finalize-memref-to-llvm",
-                    "--convert-cf-to-llvm",
-                    "--convert-func-to-llvm",
-                    # Lowering memrefs creates more affine.apply ops.
-                    # Lowering these affine ops again creates further arith ops,
-                    # so we have to run these two passes again here.
-                    "--lower-affine",
-                    "--convert-arith-to-llvm",
-                    # Remove all unrealized casts created
-                    "--reconcile-unrealized-casts",
+                ]
+            )
+            llvm_lowering_passes = [
+                "--convert-arith-to-llvm",
+                "--convert-math-to-llvm",
+                "--convert-math-to-libm",
+                "--convert-complex-to-llvm",
+                "--convert-vector-to-llvm",
+                "--convert-index-to-llvm",
+                "--memref-expand",
+                "--finalize-memref-to-llvm",
+                "--convert-cf-to-llvm",
+                "--convert-func-to-llvm",
+                # Lowering memrefs creates more affine.apply ops.
+                # Lowering these affine ops again creates further arith ops,
+                # so we have to run these two passes again here.
+                "--lower-affine",
+                "--convert-arith-to-llvm",
+                # Remove all unrealized casts created
+                "--reconcile-unrealized-casts",
+            ]
+
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    ttshared_path,
+                    *standard_lowering_passes,
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    standard_pre_llvm_path,
+                ]
+            )
+            # Match the vector path: expand FP8 before LLVM dialect conversion.
+            pre_llvm_transform_passes = ["--expand-float8-conversions"]
+            if "__triton_shared_atomic_cas_" in ttsharedir:
+                # LLVM cmpxchg is not bufferizable, so lower helper calls only
+                # after Buddy has completed its tensor-to-memref work.
+                pre_llvm_transform_passes.insert(0, "--lower-atomic-cas-to-llvm")
+            subprocess.check_call(
+                [
+                    _get_triton_shared_opt_path(),
+                    standard_pre_llvm_path,
+                    *pre_llvm_transform_passes,
+                    "--canonicalize",
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    pre_llvm_transformed_path,
+                ]
+            )
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    pre_llvm_transformed_path,
+                    *llvm_lowering_passes,
                     "--mlir-print-debuginfo",
                     "-o",
                     llmlir_path,
@@ -289,6 +381,22 @@ _FADD_INSTRUCTION = re.compile(
     re.MULTILINE,
 )
 
+_HEAP_MALLOC = re.compile(
+    r"^\s*(?:tail )?call (?:noalias noundef )?ptr @malloc\b", re.MULTILINE
+)
+_HEAP_FREE = re.compile(r"^\s*(?:tail )?call void @free\(ptr [^)]+\)\s*$", re.MULTILINE)
+
+
+def _strip_orphan_heap_frees(llir: str) -> str:
+    """Remove heap @free calls when LLVM promoted all @malloc to stack.
+
+    riscv64 opt -O1+ with -mtriple=riscv64 leaves orphan frees after promotion,
+    which corrupts the heap (scatter_reduce CAS loops).
+    """
+    if _HEAP_MALLOC.search(llir):
+        return llir
+    return _HEAP_FREE.sub("", llir)
+
 
 def _enable_fadd_reassociation(llir: str) -> str:
     """Add reassoc only to complete fadd instructions that do not have it."""
@@ -303,23 +411,32 @@ def _enable_fadd_reassociation(llir: str) -> str:
     return _FADD_INSTRUCTION.sub(add_flag, llir)
 
 
+_ATOMIC_LLIR_MARKERS = (
+    "atomicrmw",
+    "cmpxchg",
+    "__triton_shared_atomic_cas_",
+)
+
+
+def _llir_contains_atomics(llir: str) -> bool:
+    return any(marker in llir for marker in _ATOMIC_LLIR_MARKERS)
+
+
 def _optimize_llir(llir: str, options=None):
     # llc's -O3 controls code-generation optimizations but does not run the
-    # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
-    # loops emitted for elementwise Triton tiles remain scalar unless opt sees
-    # the host vector width.  Run the native O3 pipeline for host x86 builds;
-    # leave cross-compiled IR untouched so its explicit target contract is
-    # preserved by the RISC-V toolchain below.
+    # target-aware LLVM middle-end pipeline.  Run opt -O3 for x86 and RISC-V so
+    # scalar linalg loops can vectorize; MLIR passes (expand-float8, VIR,
+    # matmul-vectorization, cpu-vector-width) establish correct vector widths.
     host_machine = platform.machine()
-    if host_machine not in {"x86_64", "AMD64", "riscv64"} or getattr(
-        options, "target_triple", None
-    ):
+    target_triple = getattr(options, "target_triple", None)
+    target_features = getattr(options, "target_features", None)
+    cross_compile_riscv = bool(target_triple and "riscv" in target_triple)
+    riscv_opt = host_machine == "riscv64" or cross_compile_riscv
+
+    if host_machine not in {"x86_64", "AMD64", "riscv64"} and not cross_compile_riscv:
         return llir
 
     if getattr(options, "allow_fp_reassoc", False):
-        # Per-kernel opt-in for reduction-heavy code whose numerical contract
-        # permits reassociation. LLVM otherwise preserves scalar accumulation
-        # order and cannot vectorize these loops.
         llir = _enable_fadd_reassociation(llir)
 
     # The launcher constructs unranked-memref descriptors on its stack and
@@ -379,7 +496,16 @@ def _optimize_llir(llir: str, options=None):
         dst_path = os.path.join(tmpdir, "kernel-opt.ll")
         Path(src_path).write_text(llir)
         command = [_get_llvm_bin_path("opt"), "-O3"]
-        if host_machine in {"x86_64", "AMD64"}:
+        if cross_compile_riscv:
+            command.extend(
+                [
+                    f"-mtriple={target_triple}",
+                    f"-mattr={target_features or DEFAULT_LLC_FEATURES}",
+                    "-riscv-v-vector-bits-min=128",
+                    "-riscv-v-vector-bits-max=128",
+                ]
+            )
+        elif host_machine in {"x86_64", "AMD64"}:
             command.extend(
                 [
                     "-mtriple=x86_64-unknown-linux-gnu",
@@ -398,8 +524,12 @@ def _optimize_llir(llir: str, options=None):
             )
         command.extend(["-S", src_path, "-o", dst_path])
         subprocess.check_call(command)
+        optimized = Path(dst_path).read_text()
+        if riscv_opt and _llir_contains_atomics(optimized):
+            optimized = _strip_orphan_heap_frees(optimized)
+            Path(dst_path).write_text(optimized)
         _dump_ir_if_needed([dst_path])
-        return Path(dst_path).read_text()
+        return optimized
 
 
 def _ttsharedir_to_vectorir(ttsharedir: str):
@@ -420,6 +550,7 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
                 # "--eliminate-empty-tensors",
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                "--buffer-loop-hoisting",
                 "--buffer-deallocation-pipeline",
                 "--lower-linalg-to-vir",
                 "--lower-vir-to-vector=vector-width=16",
@@ -754,7 +885,7 @@ class CPUBackend(BaseBackend):
             _ttir_to_ttsharedir(src)
         )
         stages["llir"] = lambda src, metadata: _optimize_llir(
-            _ttsharedir_to_llir(src), options
+            _ttsharedir_to_llir(src, options), options
         )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 

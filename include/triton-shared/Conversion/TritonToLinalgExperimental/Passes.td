@@ -20,6 +20,8 @@ def TritonToLinalgExperimental : Pass<"triton-to-linalg-experimental", "mlir::Mo
              "Enable collapse shape pass">,
       Option<"structuredLdstMode", "structured-ldst-mode", "std::string", /*default*/"\"legacy_memref_bridge\"",
              "Structured load/store lowering mode: legacy_memref_bridge | tensor-first-vector-cpu">,
+      Option<"cpuVectorWidth", "cpu-vector-width", "int64_t", /*default*/"16",
+             "Forwarded to structured-to-memref cpu-vector-width (see that pass for semantics)">,
   ];
 }
 

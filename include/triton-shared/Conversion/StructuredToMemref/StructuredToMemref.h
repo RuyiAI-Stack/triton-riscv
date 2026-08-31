@@ -13,16 +13,17 @@ namespace triton {
 #define GEN_PASS_DECL
 #include "triton-shared/Conversion/StructuredToMemref/Passes.h.inc"
 
-void populateStructuredToMemrefConversionPatterns(RewritePatternSet &patterns,
-                                                  TypeConverter &typeConverter,
-                                                  bool enableTensorFirstVectorCpu =
-                                                      false);
+void populateStructuredToMemrefConversionPatterns(
+    RewritePatternSet &patterns, TypeConverter &typeConverter,
+    bool enableTensorFirstVectorCpu = false, int64_t cpuVectorWidth = 16);
 
 void populateStructuredToMemrefPreConversionPatterns(
-    RewritePatternSet &patterns, bool enableTensorFirstVectorCpu = false);
+    RewritePatternSet &patterns, bool enableTensorFirstVectorCpu = false,
+    int64_t cpuVectorWidth = 16);
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createStructuredToMemrefPass(bool enableTensorFirstVectorCpu = false);
+createStructuredToMemrefPass(bool enableTensorFirstVectorCpu = false,
+                             int64_t cpuVectorWidth = 16);
 
 } // namespace triton
 } // namespace mlir
