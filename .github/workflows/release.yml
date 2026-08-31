@@ -120,6 +120,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build wheel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
