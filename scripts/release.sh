@@ -64,6 +64,9 @@ if [ -z "${IN_DOCKER:-}" ]; then
             DOCKER_ENV_ARGS+=(-e "${proxy_var}=${!proxy_var}")
         fi
     done
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        DOCKER_ENV_ARGS+=(-e GITHUB_TOKEN)
+    fi
 
     docker "${DOCKER_RUN_ARGS[@]}" \
         "${DOCKER_ENV_ARGS[@]}" \

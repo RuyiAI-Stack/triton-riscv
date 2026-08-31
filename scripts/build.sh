@@ -43,17 +43,22 @@ esac
 LLVM_URL="${TRITON_LLVM_PACKAGE_URL:-${LLVM_DEFAULT_URL}}"
 BUDDY_URL="${TRITON_BUDDY_PACKAGE_URL:-${BUDDY_DEFAULT_URL}}"
 
+# Keep the token out of the repository's remote URL while authenticating CI
+# clones and fetches. Without a token, Git remains usable for local builds.
+GIT_AUTH_ARGS=()
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    GIT_AUTH_HEADER="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')"
+    GIT_AUTH_ARGS=(-c "http.extraHeader=AUTHORIZATION: basic ${GIT_AUTH_HEADER}")
+fi
+
 if [ ! -d "${TRITON_DIR}" ]; then
-    git clone https://github.com/triton-lang/triton.git "${TRITON_DIR}"
+    git "${GIT_AUTH_ARGS[@]}" clone https://github.com/triton-lang/triton.git "${TRITON_DIR}"
 fi
 
 git config --global --add safe.directory "${TRITON_RISCV_DIR}"
 git config --global --add safe.directory "${TRITON_DIR}"
 if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; then
-    git -C "${TRITON_DIR}" fetch origin
-fi
-if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; then
-    git -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
+    git "${GIT_AUTH_ARGS[@]}" -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
 fi
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
 
@@ -61,21 +66,23 @@ git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
 
 mkdir -p "${TOOLCHAIN_DIR}"
 
-if [ ! -d "${LLVM_BINARY_DIR}" ]; then
-    rm -rf "${LLVM_EXTRACT_DIR}"
-    mkdir -p "${LLVM_EXTRACT_DIR}"
-    curl -fL "${LLVM_URL}" -o "${TOOLCHAIN_DIR}/llvm.tar.gz"
-    tar -xzf "${TOOLCHAIN_DIR}/llvm.tar.gz" -C "${LLVM_EXTRACT_DIR}"
-    rm -f "${TOOLCHAIN_DIR}/llvm.tar.gz"
-fi
+download_package() {
+    local binary_dir="$1"
+    local extract_dir="$2"
+    local url="$3"
+    local archive="$4"
 
-if [ ! -d "${BUDDY_MLIR_BINARY_DIR}" ]; then
-    rm -rf "${BUDDY_EXTRACT_DIR}"
-    mkdir -p "${BUDDY_EXTRACT_DIR}"
-    curl -fL "${BUDDY_URL}" -o "${TOOLCHAIN_DIR}/buddy.tar.gz"
-    tar -xzf "${TOOLCHAIN_DIR}/buddy.tar.gz" -C "${BUDDY_EXTRACT_DIR}"
-    rm -f "${TOOLCHAIN_DIR}/buddy.tar.gz"
-fi
+    if [ ! -d "${binary_dir}" ]; then
+        rm -rf "${extract_dir}"
+        mkdir -p "${extract_dir}"
+        curl -fL "${url}" -o "${TOOLCHAIN_DIR}/${archive}"
+        tar -xzf "${TOOLCHAIN_DIR}/${archive}" -C "${extract_dir}"
+        rm -f "${TOOLCHAIN_DIR}/${archive}"
+    fi
+}
+
+download_package "${LLVM_BINARY_DIR}" "${LLVM_EXTRACT_DIR}" "${LLVM_URL}" llvm.tar.gz
+download_package "${BUDDY_MLIR_BINARY_DIR}" "${BUDDY_EXTRACT_DIR}" "${BUDDY_URL}" buddy.tar.gz
 
 [ -d "${LLVM_BINARY_DIR}" ]
 [ -d "${BUDDY_MLIR_BINARY_DIR}" ]

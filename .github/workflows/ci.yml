@@ -35,6 +35,8 @@ jobs:
           sudo apt-get install -y clang lld ninja-build ccache
 
       - name: Build Triton with triton-riscv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           # Triton defaults to 2 * CPU count, which can exhaust memory on the
           # RISC-V runner during the C++ build.
