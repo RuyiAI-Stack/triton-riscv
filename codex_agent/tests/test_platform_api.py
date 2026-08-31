@@ -44,7 +44,7 @@ class PlatformApiTests(unittest.TestCase):
             root = Path(temporary)
             settings = HarnessSettings.from_env(
                 root,
-                {"DEEPSEEK_API_KEY": "test-key", "DSH_MODEL": "test-model"},
+                {"ISRC_API_KEY": "test-key", "DSH_MODEL": "test-model"},
             )
             agent = HarnessAgent(settings, FakeHarnessBackend())
             app = create_app(root, harness_agent=agent)

@@ -25,9 +25,10 @@ class HarnessSettings:
     session_root: Path
     cordis_path: Path
     mcp_python: str
-    provider: str = "deepseek-official"
-    model: str = "deepseek-v4-flash"
-    base_url: Optional[str] = None
+    provider: str = "isrc-proxy"
+    model: str = "gpt-5.6-sol"
+    base_url: Optional[str] = "https://llmapi.isrc.ac.cn/v1"
+    api_key_env: str = "ISRC_API_KEY"
     api_key: Optional[str] = field(default=None, repr=False)
     remote_host: Optional[str] = None
     remote_root: Optional[str] = None
@@ -55,15 +56,21 @@ class HarnessSettings:
         ).expanduser()
         if not cordis_path.is_absolute():
             cordis_path = resolved_root / cordis_path
+        api_key_env = env.get("DSH_API_KEY_ENV", "ISRC_API_KEY").strip()
+        if not api_key_env:
+            raise ValueError("DSH_API_KEY_ENV cannot be empty")
         return cls(
             repo_root=resolved_root,
             session_root=session_root.resolve(),
             cordis_path=cordis_path.resolve(),
             mcp_python=env.get("TRITON_RISCV_MCP_PYTHON", sys.executable),
-            provider=env.get("DSH_PROVIDER", "deepseek-official").strip(),
-            model=env.get("DSH_MODEL", "deepseek-v4-flash").strip(),
-            base_url=_optional_text(env.get("DEEPSEEK_BASE_URL")),
-            api_key=_optional_text(env.get("DEEPSEEK_API_KEY")),
+            provider=env.get("DSH_PROVIDER", "isrc-proxy").strip(),
+            model=env.get("DSH_MODEL", "gpt-5.6-sol").strip(),
+            base_url=_optional_text(
+                env.get("ISRC_BASE_URL", "https://llmapi.isrc.ac.cn/v1")
+            ),
+            api_key_env=api_key_env,
+            api_key=_optional_text(env.get(api_key_env)),
             remote_host=_optional_text(env.get("RISCV_HOST")),
             remote_root=_optional_text(env.get("RISCV_REPO")),
             request_timeout_seconds=float(
@@ -78,8 +85,14 @@ class HarnessSettings:
             raise ValueError(f"Cordis config does not exist: {self.cordis_path}")
         if not shutil.which(self.mcp_python):
             raise ValueError(f"MCP Python executable was not found: {self.mcp_python}")
+        if not self.provider:
+            raise ValueError("DSH_PROVIDER cannot be empty")
+        if not self.model:
+            raise ValueError("DSH_MODEL cannot be empty")
 
     def validate_live_run(self) -> None:
         self.validate_runtime_config()
         if not self.api_key:
-            raise ValueError("DEEPSEEK_API_KEY is required for a live Harness run")
+            raise ValueError(
+                f"{self.api_key_env} is required for a live Harness run"
+            )

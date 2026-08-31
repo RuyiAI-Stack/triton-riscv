@@ -17,7 +17,8 @@ cd ../..
 ```
 
 Open `http://127.0.0.1:8765`. Task execution requires explicit confirmation;
-live model runs also require a configured `DEEPSEEK_API_KEY`. See
+live model runs also require a configured `ISRC_API_KEY`. The default provider
+uses the ISRC Responses-compatible endpoint and model `gpt-5.6-sol`. See
 `codex_agent/docs/deepseek-harness-integration.md` for the architecture,
 verification levels and next delivery steps.
 

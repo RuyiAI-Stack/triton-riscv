@@ -47,15 +47,18 @@ class HarnessIntegrationTests(unittest.TestCase):
             settings = HarnessSettings.from_env(
                 root,
                 {
-                    "DEEPSEEK_API_KEY": "secret-value",
-                    "DEEPSEEK_BASE_URL": "https://model.example/v1",
-                    "DSH_MODEL": "company-deepseek",
+                    "ISRC_API_KEY": "secret-value",
+                    "ISRC_BASE_URL": "https://model.example/v1",
+                    "DSH_MODEL": "company-model",
                     "RISCV_HOST": "sg2044",
                     "RISCV_REPO": "/home/user/work/triton-riscv",
                 },
             )
 
-        self.assertEqual(settings.model, "company-deepseek")
+        self.assertEqual(settings.model, "company-model")
+        self.assertEqual(settings.provider, "isrc-proxy")
+        self.assertEqual(settings.api_key_env, "ISRC_API_KEY")
+        self.assertEqual(settings.base_url, "https://model.example/v1")
         self.assertEqual(settings.remote_host, "sg2044")
         self.assertEqual(settings.cordis_path.name, "cordis.yml")
         self.assertNotIn("secret-value", repr(settings))
@@ -90,7 +93,7 @@ class HarnessIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             settings = HarnessSettings.from_env(
                 Path(temporary),
-                {"DEEPSEEK_API_KEY": "test-key"},
+                {"ISRC_API_KEY": "test-key"},
             )
             backend = DeepSeekHarnessBackend(settings)
             events: list[dict[str, Any]] = []
@@ -108,6 +111,10 @@ class HarnessIntegrationTests(unittest.TestCase):
             settings.mcp_python,
         )
         self.assertEqual(
+            instances[0].kwargs["env"]["DSH_API_KEY_ENV"],
+            "ISRC_API_KEY",
+        )
+        self.assertEqual(
             instances[0].kwargs["env"]["TRITON_RISCV_ALLOW_VALIDATION"],
             "0",
         )
@@ -115,6 +122,13 @@ class HarnessIntegrationTests(unittest.TestCase):
             instances[0].kwargs["env"]["TRITON_RISCV_ALLOW_REPAIR_APPLY"],
             "0",
         )
+        self.assertEqual(instances[0].kwargs["env"]["ISRC_API_KEY"], "test-key")
+        self.assertEqual(
+            instances[0].kwargs["env"]["ISRC_BASE_URL"],
+            "https://llmapi.isrc.ac.cn/v1",
+        )
+        self.assertNotIn("api_key", instances[0].kwargs)
+        self.assertNotIn("base_url", instances[0].kwargs)
         self.assertNotIn("profile", instances[0].kwargs)
         self.assertNotIn("dsh_home", instances[0].kwargs)
         self.assertTrue(instances[0].closed)

@@ -88,12 +88,15 @@ validation command, Triton kernels, Torch references and risk hints. This is
 the deterministic second-delivery demo; it exercises the same subprocess
 boundary that the Harness MCP client uses.
 
-For a real run, configure a compatible endpoint and credential, then opt in:
+For a real run, export the ISRC credential, then opt in. The checked-in Harness
+configuration defaults to `https://llmapi.isrc.ac.cn/v1`, the
+`openai-responses` wire protocol and model `gpt-5.6-sol`:
 
 ```sh
-export DEEPSEEK_API_KEY=...
-export DEEPSEEK_BASE_URL=...
-export DSH_MODEL=...
+export ISRC_API_KEY=...
+# Optional overrides; the defaults above normally require no changes.
+# export ISRC_BASE_URL=https://llmapi.isrc.ac.cn/v1
+# export DSH_MODEL=gpt-5.6-sol
 # Enable only the operations that this host is allowed to execute.
 export TRITON_RISCV_ALLOW_VALIDATION=1
 # Keep source writes disabled until repair application is intentionally tested.
@@ -151,9 +154,9 @@ The integration is verified at three levels:
 4. Frontend tests verify message and confirmation requests, followed by a
    strict TypeScript and Vite production build.
 
-A real provider run still requires `DEEPSEEK_API_KEY`; a company endpoint also
-uses `DEEPSEEK_BASE_URL` and `DSH_MODEL`. The no-key failure is intentional and
-must not be reported as a successful live Agent run. The MCP demo proves tool
-registration and execution, but model-driven tool selection remains pending
-until a provider credential is configured. Without that key, deterministic MCP
-and lifecycle tests exercise the tool boundary but do not claim model autonomy.
+A real provider run still requires `ISRC_API_KEY`. `ISRC_BASE_URL` and
+`DSH_MODEL` may override the checked-in defaults. The no-key failure is
+intentional and must not be reported as a successful live Agent run. The MCP
+demo proves tool registration and execution, but model-driven tool selection
+requires a provider credential. Without that key, deterministic MCP and
+lifecycle tests exercise the tool boundary but do not claim model autonomy.

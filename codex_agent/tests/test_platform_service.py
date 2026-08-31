@@ -52,7 +52,7 @@ class PlatformServiceTests(unittest.TestCase):
         settings = HarnessSettings.from_env(
             root,
             {
-                "DEEPSEEK_API_KEY": "test-key",
+                "ISRC_API_KEY": "test-key",
                 "DSH_MODEL": "test-model",
             },
         )

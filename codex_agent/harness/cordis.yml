@@ -9,8 +9,18 @@
     workspaceContext:
       maxBytes: 65536
 
-- id: llm-deepseek
-  name: '@deepseek-ai/dsh-llm-deepseek'
+- id: llm-isrc
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      isrc-proxy:
+        displayName: ISRC Responses Proxy
+        apiKeyEnv: !!js process.env.DSH_API_KEY_ENV ?? 'ISRC_API_KEY'
+        api: openai-responses
+        baseURL: !!js process.env.ISRC_BASE_URL ?? 'https://llmapi.isrc.ac.cn/v1'
+        models:
+          - id: gpt-5.6-sol
+            name: GPT-5.6 SOL
 
 - id: sessions
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
