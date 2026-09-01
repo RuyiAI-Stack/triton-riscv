@@ -25,7 +25,6 @@
 // CHECK-SAME:      %[[ARG6:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32 {tt.divisibility = 16 : i32},
 // CHECK-SAME:      %[[ARG7:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32 {tt.divisibility = 16 : i32},
 // CHECK-SAME:      %[[ARG8:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32 {tt.divisibility = 16 : i32}) attributes {noinline = false} {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : i32
 // CHECK:           %[[CONSTANT_1:.*]] = arith.constant -2.000000e+00 : f32
 // CHECK:           %[[CONSTANT_2:.*]] = arith.constant 4 : index
 // CHECK:           %[[CONSTANT_3:.*]] = arith.constant 16 : index
@@ -56,11 +55,8 @@
 // CHECK:           %[[MINSI_3:.*]] = arith.minsi %[[MAXSI_1]], %[[CONSTANT_3]] : index
 // CHECK:           %[[MINSI_4:.*]] = arith.minsi %[[MAXSI_2]], %[[CONSTANT_2]] : index
 // CHECK:           %[[MINSI_5:.*]] = arith.minsi %[[MINSI_3]], %[[CONSTANT_3]] : index
-// CHECK:           %[[DIVUI_0:.*]] = arith.divui %[[CONSTANT_0]], %[[ARG8]] : i32
-// CHECK:           %[[SPLAT_0:.*]] = tensor.splat %[[DIVUI_0]] : tensor<8xi32>
 // CHECK:           %[[MAKE_RANGE_0:.*]] = tt.make_range {end = 8 : i32, start = 0 : i32} : tensor<8xi32>
-// CHECK:           %[[ADDI_0:.*]] = arith.addi %[[SPLAT_0]], %[[MAKE_RANGE_0]] : tensor<8xi32>
-// CHECK:           %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [4, 8, 16] gather_scatter_dim: 1 gather_scatter_offset: %[[ADDI_0]] gather_scatter_mask: %[[CMPI_0]], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]], 1], offsets: [0, 0, 0] : tensor<8xi32> tensor<8xi1> <f32> to tensor<4x8x16x!tt.ptr<f32>>
+// CHECK:           %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [4, 8, 16] gather_scatter_dim: 1 gather_scatter_offset: %[[MAKE_RANGE_0]] gather_scatter_mask: %[[CMPI_0]], strides: {{\[}}%[[INDEX_CAST_2]], %[[INDEX_CAST_3]], 1], offsets: [0, 0, 0] : tensor<8xi32> tensor<8xi1> <f32> to tensor<4x8x16x!tt.ptr<f32>>
 // CHECK:           %[[VAL_2:.*]] = "tts.load"(%[[MAKE_GATHER_SCATTER_TPTR_0]], %[[MINSI_4]], %[[MINSI_5]], %[[CONSTANT_1]]) <{operandSegmentSizes = array<i32: 1, 2, 1>, static_mask_dims = array<i64: -9223372036854775808, 0, -9223372036854775808>}> : (tensor<4x8x16x!tt.ptr<f32>>, index, index, f32) -> tensor<4x8x16xf32>
 // CHECK:           %[[MINSI_6:.*]] = arith.minsi %[[MAXSI_0]], %[[CONSTANT_6]] : index
 // CHECK:           %[[MINSI_7:.*]] = arith.minsi %[[MINSI_6]], %[[CONSTANT_6]] : index

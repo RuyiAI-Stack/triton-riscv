@@ -130,6 +130,43 @@ struct ExpandShapeConverter
   }
 };
 
+// Convert collapse shape ops on tensors of triton pointers to use !ptr.ptr.
+struct CollapseShapeConverter
+    : public OpConversionPattern<tensor::CollapseShapeOp> {
+  using OpConversionPattern<tensor::CollapseShapeOp>::OpConversionPattern;
+
+  CollapseShapeConverter(const TypeConverter &typeConverter,
+                         MLIRContext *context)
+      : OpConversionPattern<tensor::CollapseShapeOp>(typeConverter, context) {}
+
+  LogicalResult
+  matchAndRewrite(tensor::CollapseShapeOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
+        op, getTypeConverter()->convertType(op.getType()), adaptor.getSrc(),
+        op.getReassociationExprs());
+    return success();
+  }
+};
+
+// Convert linalg.transpose on tensors of triton pointers to use !ptr.ptr.
+struct LinalgTransposePtrConverter
+    : public OpConversionPattern<linalg::TransposeOp> {
+  using OpConversionPattern<linalg::TransposeOp>::OpConversionPattern;
+
+  LinalgTransposePtrConverter(const TypeConverter &typeConverter,
+                              MLIRContext *context)
+      : OpConversionPattern<linalg::TransposeOp>(typeConverter, context) {}
+
+  LogicalResult
+  matchAndRewrite(linalg::TransposeOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<linalg::TransposeOp>(
+        op, adaptor.getInput(), adaptor.getInit(), op.getPermutation());
+    return success();
+  }
+};
+
 // arith.select could operate on triton pointers. Convert to use !ptr.ptr
 struct SelectOpConverter : public OpConversionPattern<arith::SelectOp> {
   using OpConversionPattern<arith::SelectOp>::OpConversionPattern;
@@ -475,12 +512,12 @@ public:
 
     target.addDynamicallyLegalOp<
         linalg::FillOp, linalg::GenericOp, linalg::YieldOp, tensor::EmptyOp,
-        tensor::ExpandShapeOp, tensor::InsertSliceOp, arith::SelectOp>(
-        [](auto op) {
-          return llvm::all_of(
-              llvm::concat<Value>(op->getOperands(), op->getResults()),
-              [&](Value v) { return !triton::isPtrTypeLike(v.getType()); });
-        });
+        linalg::TransposeOp, tensor::CollapseShapeOp, tensor::ExpandShapeOp,
+        tensor::InsertSliceOp, arith::SelectOp>([](auto op) {
+      return llvm::all_of(
+          llvm::concat<Value>(op->getOperands(), op->getResults()),
+          [&](Value v) { return !triton::isPtrTypeLike(v.getType()); });
+    });
 
     target.addLegalDialect<arith::ArithDialect, linalg::LinalgDialect,
                            tensor::TensorDialect, affine::AffineDialect,
@@ -488,7 +525,8 @@ public:
 
     patterns
         .add<AddPtrConverter, BitCastConverter, StoreConverter, LoadConverter,
-             PtrToIntConverter, IntToPtrConverter, ExpandShapeConverter,
+             PtrToIntConverter, IntToPtrConverter, CollapseShapeConverter,
+             ExpandShapeConverter, LinalgTransposePtrConverter,
              SelectOpConverter, InsertSliceConverter, EmptyTensorConverter,
              LinalgFillPtrConverter, LinalgPtrConverter, LinalgYieldConverter>(
             typeConverter, patterns.getContext());

@@ -928,23 +928,6 @@ struct PreciseDivConverter : public OpConversionPattern<triton::PreciseDivFOp> {
   }
 };
 
-struct CatConverter : public OpConversionPattern<triton::CatOp> {
-  using OpConversionPattern<triton::CatOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(triton::CatOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto operands = adaptor.getOperands();
-    if (operands.empty())
-      return failure();
-
-    auto replacement = rewriter.create<tensor::ConcatOp>(
-        op.getLoc(), op.getType(), (uint64_t)0, operands);
-    rewriter.replaceOp(op, replacement.getResult());
-    return success();
-  }
-};
-
 struct SplitConverter : public OpConversionPattern<triton::SplitOp> {
   using OpConversionPattern<triton::SplitOp>::OpConversionPattern;
 

@@ -726,7 +726,7 @@ public:
                                                  valueInfo.offset});
                   return success();
                 })
-                .Case<triton::CatOp>([](triton::CatOp op) {
+                .Case<triton::JoinOp>([](triton::JoinOp op) {
                   op->emitError("Do not support gather / scatter with multiple "
                                 "bases yet");
                   return failure();

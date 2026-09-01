@@ -109,6 +109,6 @@ esac
 "${PYTHON}" -m pip install -U \
     "setuptools>=40.8.0" \
     "ninja>=1.11.1" \
-    "pybind11>=2.13.1" \
+    "nanobind==2.10.2" \
     "pytest"
 "${PYTHON}" -m pip install --no-build-isolation -e .

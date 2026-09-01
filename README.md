@@ -31,7 +31,7 @@ cd buddy-mlir && git checkout "$(head -n 1 "${TRITON_RISCV_DIR}/buddy-hash.txt")
 
 > Note: Ensure PyTorch is available in your virtual environment. For RISC-V, since PyTorch does not officially support RISC-V yet, you can build from source or use third-party builds: https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch . To use the third-party builds, python 3.12 or 3.13 are required.
 
-Apply the build-system patches from `triton-riscv/patches/` using the helper script. These patches make the NVIDIA/AMD LLVM codegen libraries conditional on their backends being enabled, so the build succeeds without any GPU toolchain.
+Apply the rebased Triton integration patch using the helper script. It configures Triton as a frontend-only build, keeps GPU-specific dependencies conditional, and adds the small frontend APIs required by triton-riscv.
 
 ```sh
 "${TRITON_RISCV_DIR}/scripts/apply_patches.sh" "${TRITON_RISCV_DIR}/../triton"
@@ -65,10 +65,10 @@ When a conda environment is active, `scripts/triton-riscv-env.sh` automatically 
 2. Install triton-riscv Python dependencies in the active environment:
 
    ```sh
-   pip install cmake ninja pytest-xdist pybind11 setuptools
+   pip install cmake ninja pytest-xdist nanobind==2.10.2 setuptools
    ```
 
-   `cmake`, `ninja`, and `pybind11` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
+   `cmake`, `ninja`, and `nanobind` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
 
 3. Build the pinned Buddy Compiler checkout — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
 

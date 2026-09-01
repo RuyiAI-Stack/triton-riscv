@@ -7,7 +7,6 @@ set(TRITON_SHARED_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include) # Tablegen'd files
 include_directories(${Python3_INCLUDE_DIR})
-include_directories(${pybind11_INCLUDE_DIR})
 
 function(add_symlink source_file link_name)
     if (EXISTS ${source_file})
@@ -24,7 +23,7 @@ add_subdirectory(tools/triton-shared-opt)
 
 if (TRITON_SHARED_BUILD_CPU_BACKEND)
     add_triton_plugin(TritonShared ${CMAKE_CURRENT_SOURCE_DIR}/triton_shared.cc LINK_LIBS TritonSharedAnalysis TritonToLinalg TritonTilingExtIR)
-    target_link_libraries(TritonShared PRIVATE Python3::Module pybind11::headers)
+    target_link_libraries(TritonShared PRIVATE Python3::Module nanobind-static)
 endif()
 
 # Add symlinks to selected pytest files in triton. The tests are imported into triton-shared’s test folder to
