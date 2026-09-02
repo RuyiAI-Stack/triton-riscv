@@ -764,6 +764,7 @@ class CPUOptions:
     allowed_dot_input_precisions: Tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
     instrumentation_mode: str = ""
+    fpsan_homomorphic_casts: bool = False
     target_triple: str = None
     target_features: str = None
     openmp_num_threads: int = 0

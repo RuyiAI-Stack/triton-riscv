@@ -1,8 +1,30 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 957d542936799321b7b4087b9e08a6607d632767..b3ef5f95df8ec194b0b9b4310620ffaaf6e3bedd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -282,7 +282,7 @@ if(NOT MSVC)
+     # crash a Triton not compiled with visibility due to missing symbols.
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTRITON_EXT_ENABLED=1")
+   endif()
+-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default ")
++  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-error=deprecated-declarations -Wno-covered-switch-default ")
+ else()
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
+ endif()
+@@ -405,6 +405,8 @@ if(TRITON_BUILD_PYTHON_MODULE)
+ 
+     # LLVM
+     LLVMPasses
++    LLVMMIRParser
++    LLVMPlugins
+ 
+     Python3::Module
+     nanobind-static
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 026a05e32a69468ab143fe05f3028650abe73421..58592bf8881e2c01bab6f9d021049d15d71084cf 100644
+index 16cf6fb90f10015e9a89c0e6e602afcb06e87d3c..16718362de68f1f6e6b8f45babca0413fef080c2 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -1723,6 +1723,18 @@ void init_triton_ir(py::module &&m) {
+@@ -1764,6 +1764,18 @@ void init_triton_ir(py::module_ &m) {
             [](TritonOpBuilder &self, Value &val) -> Value {
               return self.create<math::SinOp>(val);
             })
@@ -21,8 +43,21 @@ index 026a05e32a69468ab143fe05f3028650abe73421..58592bf8881e2c01bab6f9d021049d15
        .def("create_log",
             [](TritonOpBuilder &self, Value &val) -> Value {
               return self.create<math::LogOp>(val);
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+index 0bc98405ec879e2cc58063eb7e7177f04ff4d705..0a48c8880857c591cf32ce4037cdaf59bf2d24ab 100644
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -807,7 +807,7 @@ void init_triton_llvm(py::module_ &m) {
+           // registry name "vector-combine".
+           const StringRef kVectorCombinePassName = "VectorCombinePass";
+           passInstrCb.registerShouldRunOptionalPassCallback(
+-              [kVectorCombinePassName](StringRef passName, Any) {
++              [kVectorCombinePassName](StringRef passName, IRUnitRef) {
+                 return passName != kVectorCombinePassName;
+               });
+           enablePassInstrumentation = true;
 diff --git a/python/triton/language/math.py b/python/triton/language/math.py
-index 582cd876cb13374a0d31e8c783e4fea1a1003c4a..f74a20ebd60dd1c57067e3036e3d88b1f83380e1 100644
+index dd29febfcf04cb048d67c237ffbadf4ffe327f4f..93e7a7097d02ffc580684c41318ff43d356da632 100644
 --- a/python/triton/language/math.py
 +++ b/python/triton/language/math.py
 @@ -247,3 +247,31 @@ def fma(x, y, z, _semantic=None):

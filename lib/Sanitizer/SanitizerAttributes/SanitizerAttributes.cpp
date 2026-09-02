@@ -22,7 +22,7 @@ static cl::opt<std::string>
 
 namespace {
 
-struct SanitizerAttributes : PassInfoMixin<SanitizerAttributes> {
+struct SanitizerAttributes : RequiredPassInfoMixin<SanitizerAttributes> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
     // add an attribute to the function depending on the type of sanitizer
     if (opts::SanitizerType == "asan") {

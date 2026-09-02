@@ -68,7 +68,6 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
   patterns.add<MulHiUIOpConverter>(patterns.getContext());
   patterns.add<PreciseSqrtConverter>(patterns.getContext());
   patterns.add<PreciseDivConverter>(patterns.getContext());
-  patterns.add<CatConverter>(patterns.getContext());
   patterns.add<SplitConverter>(patterns.getContext());
   patterns.add<JoinConverter>(patterns.getContext());
   patterns.add<FpToFpConverter>(patterns.getContext());

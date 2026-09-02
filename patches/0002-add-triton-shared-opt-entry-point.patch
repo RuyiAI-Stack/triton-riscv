@@ -1,7 +1,8 @@
 diff --git a/setup.py b/setup.py
+index 2faa56f533e364ce9968ea3a71efa7645f56df3f..271fbebab6d3194daa240c1c2feb8b628a6e725d 100644
 --- a/setup.py
 +++ b/setup.py
-@@ -744,12 +744,15 @@
+@@ -537,12 +537,15 @@ class plugin_sdist(sdist):
  
  
  def get_entry_points():
