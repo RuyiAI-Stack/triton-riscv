@@ -1,0 +1,94 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 957d542936799321b7b4087b9e08a6607d632767..b3ef5f95df8ec194b0b9b4310620ffaaf6e3bedd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -282,7 +282,7 @@ if(NOT MSVC)
+     # crash a Triton not compiled with visibility due to missing symbols.
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTRITON_EXT_ENABLED=1")
+   endif()
+-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default ")
++  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-error=deprecated-declarations -Wno-covered-switch-default ")
+ else()
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
+ endif()
+@@ -405,6 +405,8 @@ if(TRITON_BUILD_PYTHON_MODULE)
+ 
+     # LLVM
+     LLVMPasses
++    LLVMMIRParser
++    LLVMPlugins
+ 
+     Python3::Module
+     nanobind-static
+diff --git a/python/src/ir.cc b/python/src/ir.cc
+index 16cf6fb90f10015e9a89c0e6e602afcb06e87d3c..16718362de68f1f6e6b8f45babca0413fef080c2 100644
+--- a/python/src/ir.cc
++++ b/python/src/ir.cc
+@@ -1764,6 +1764,18 @@ void init_triton_ir(py::module_ &m) {
+            [](TritonOpBuilder &self, Value &val) -> Value {
+              return self.create<math::SinOp>(val);
+            })
++      .def("create_acos",
++           [](TritonOpBuilder &self, Value &val) -> Value {
++             return self.create<math::AcosOp>(val);
++           })
++      .def("create_atan",
++           [](TritonOpBuilder &self, Value &val) -> Value {
++             return self.create<math::AtanOp>(val);
++           })
++      .def("create_atan2",
++           [](TritonOpBuilder &self, Value &lhs, Value &rhs) -> Value {
++             return self.create<math::Atan2Op>(lhs, rhs);
++           })
+       .def("create_log",
+            [](TritonOpBuilder &self, Value &val) -> Value {
+              return self.create<math::LogOp>(val);
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+index 0bc98405ec879e2cc58063eb7e7177f04ff4d705..0a48c8880857c591cf32ce4037cdaf59bf2d24ab 100644
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -807,7 +807,7 @@ void init_triton_llvm(py::module_ &m) {
+           // registry name "vector-combine".
+           const StringRef kVectorCombinePassName = "VectorCombinePass";
+           passInstrCb.registerShouldRunOptionalPassCallback(
+-              [kVectorCombinePassName](StringRef passName, Any) {
++              [kVectorCombinePassName](StringRef passName, IRUnitRef) {
+                 return passName != kVectorCombinePassName;
+               });
+           enablePassInstrumentation = true;
+diff --git a/python/triton/language/math.py b/python/triton/language/math.py
+index dd29febfcf04cb048d67c237ffbadf4ffe327f4f..93e7a7097d02ffc580684c41318ff43d356da632 100644
+--- a/python/triton/language/math.py
++++ b/python/triton/language/math.py
+@@ -247,3 +247,31 @@ def fma(x, y, z, _semantic=None):
+     z, x = core.binary_op_type_legalization(z, x, _semantic)
+     z, y = core.binary_op_type_legalization(z, y, _semantic)
+     return core.tensor(_semantic.builder.create_fma(x.handle, y.handle, z.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_1arg_docstr("inverse cosine")
++@core._tensor_member_fn
++def acos(x, _semantic=None):
++    x = _semantic.to_tensor(x)
++    return core.tensor(_semantic.builder.create_acos(x.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_1arg_docstr("inverse tangent")
++@core._tensor_member_fn
++def atan(x, _semantic=None):
++    x = _semantic.to_tensor(x)
++    return core.tensor(_semantic.builder.create_atan(x.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_2arg_docstr("four-quadrant inverse tangent")
++def atan2(x, y, _semantic=None):
++    x = _semantic.to_tensor(x)
++    y = _semantic.to_tensor(y)
++    x, y = core.binary_op_type_legalization(x, y, _semantic)
++    return core.tensor(_semantic.builder.create_atan2(x.handle, y.handle), x.type)
