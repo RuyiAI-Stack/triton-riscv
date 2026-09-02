@@ -91,10 +91,12 @@ def _ttir_to_ttsharedir(mod):
         _dump_ir_if_needed([src_path])
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
+        linalg_experimental_opts = "structured-ldst-mode=tensor-first-vector-cpu"
+
         subprocess_args = [
             triton_shared_opt_path,
             src_path,
-            "--triton-to-linalg-experimental=structured-ldst-mode=tensor-first-vector-cpu",
+            f"--triton-to-linalg-experimental={linalg_experimental_opts}",
             "--mlir-print-debuginfo",
             "-o",
             dst_path,
@@ -116,7 +118,17 @@ def _optimize_ttsharedir(ttsharedir: str):
     return ttsharedir
 
 
-def _ttsharedir_to_llir(ttsharedir: str):
+def _targets_riscv(options=None) -> bool:
+    target_triple = getattr(options, "target_triple", None) if options else None
+    return bool(target_triple and "riscv" in target_triple)
+
+
+def _riscv_vir_vector_passes() -> list[str]:
+    # Keep explicit vectors VLEN-aligned for cross-compiled RISC-V objects.
+    return ["--lower-linalg-to-vir", "--lower-vir-to-vector=vector-width=4"]
+
+
+def _ttsharedir_to_llir(ttsharedir: str, options=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         ime_pre_llvm_path = os.path.join(tmpdir, "ime-pre-llvm.mlir")
@@ -221,38 +233,43 @@ def _ttsharedir_to_llir(ttsharedir: str):
             # ---------------------------------------------------------------
             # Standard path: buddy-mlir vectorisation → host LLVM IR
             # ---------------------------------------------------------------
-            subprocess.check_call(
+            standard_lowering_passes = [
+                # Note: eliminate-empty-tensors fails when there are multiple
+                # func.return ops in kernels with early returns.
+                "--linalg-fuse-elementwise-ops",
+                "--empty-tensor-to-alloc-tensor",
+                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                "--buffer-deallocation-pipeline",
+                "--eliminate-memref-copy",
+                "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
+            ]
+            if _targets_riscv(options):
+                standard_lowering_passes.extend(
+                    [
+                        "--matmul-vectorization=vector-size=4",
+                        *_riscv_vir_vector_passes(),
+                    ]
+                )
+            else:
+                standard_lowering_passes.append("--matmul-vectorization")
+            standard_lowering_passes.extend(
                 [
-                    buddy_opt_path,
-                    ttshared_path,
-                    # Note: eliminate-empty-tensors fails when there are multiple func.return ops
-                    # in a single kernel which are the results of early returns.
-                    # See python/examples/test_early_return.py for examples.
-                    # We disable this pass for now since performance on CPU isn't the main
-                    # focus at the moment.
-                    # "--eliminate-empty-tensors",
-                    # Fuse tensor-level elementwise chains before bufferization
-                    # turns every intermediate and scalar broadcast into a
-                    # separate temporary buffer.
-                    "--linalg-fuse-elementwise-ops",
-                    "--empty-tensor-to-alloc-tensor",
-                    "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                    "--buffer-deallocation-pipeline",
-                    "--eliminate-memref-copy",
-                    # Triton programs commonly materialize small, statically
-                    # sized tiles for loads and scalar broadcasts.  Paying for
-                    # several heap allocations on every grid invocation
-                    # dominates elementwise CPU kernels, so keep bounded tile
-                    # temporaries in the launcher thread's stack frame.
-                    "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-                    "--matmul-vectorization",
                     "--convert-linalg-to-affine-loops",
                     "--lower-affine",
                     "--convert-linalg-to-loops",
                     "--expand-strided-metadata",
-                    "--convert-scf-to-cf",
+                ]
+            )
+            # VIR lowering emits vector.transfer_read for tiled copies. Lower
+            # those transfers to scalar SCF loops before converting SCF to CF.
+            if _targets_riscv(options):
+                standard_lowering_passes.append("--convert-vector-to-scf")
+            standard_lowering_passes.append("--convert-scf-to-cf")
+            standard_lowering_passes.extend(
+                [
                     "--convert-arith-to-llvm",
                     "--convert-math-to-llvm",
+                    "--convert-math-to-libm",
                     "--convert-complex-to-llvm",
                     "--convert-vector-to-llvm",
                     "--convert-index-to-llvm",
@@ -260,13 +277,16 @@ def _ttsharedir_to_llir(ttsharedir: str):
                     "--finalize-memref-to-llvm",
                     "--convert-cf-to-llvm",
                     "--convert-func-to-llvm",
-                    # Lowering memrefs creates more affine.apply ops.
-                    # Lowering these affine ops again creates further arith ops,
-                    # so we have to run these two passes again here.
                     "--lower-affine",
                     "--convert-arith-to-llvm",
-                    # Remove all unrealized casts created
                     "--reconcile-unrealized-casts",
+                ]
+            )
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    ttshared_path,
+                    *standard_lowering_passes,
                     "--mlir-print-debuginfo",
                     "-o",
                     llmlir_path,
@@ -303,6 +323,68 @@ def _enable_fadd_reassociation(llir: str) -> str:
     return _FADD_INSTRUCTION.sub(add_flag, llir)
 
 
+_ATOMIC_LLIR_MARKERS = ("atomicrmw", "cmpxchg", "__triton_shared_atomic_cas_")
+_RISC_V_SCALAR_MATH_MARKERS = (
+    "@llvm.exp.",
+    "@llvm.log.",
+    "@llvm.sqrt.",
+    "@erff",
+    "@expf",
+)
+
+
+def _llir_needs_scalar_riscv_codegen(llir: str) -> bool:
+    """Identify kernels whose scalar reduction CFG is unsafe for RVV llc."""
+    if any(marker in llir for marker in _ATOMIC_LLIR_MARKERS):
+        return True
+    if any(marker in llir for marker in _RISC_V_SCALAR_MATH_MARKERS):
+        return True
+    return (
+        len(re.findall(r"=\s*fmul float", llir)) >= 4
+        and len(re.findall(r"=\s*fadd float", llir)) >= 4
+    )
+
+
+def _llir_needs_unoptimized_riscv_codegen(llir: str) -> bool:
+    """Identify native kernels whose memcpy lowering is unsafe when optimized."""
+    # The host RISC-V llc miscompiles fixed-size memcpy emitted for
+    # tensor-descriptor block copies at optimization levels above O0.
+    return "@llvm.memcpy" in llir or "@memrefCopy" in llir
+
+
+_LLVM_VALUE = re.compile(r"%[-\w.]+")
+
+
+def _remove_invalid_stack_frees(llir: str) -> str:
+    """Remove frees whose pointer is derived from an LLVM stack allocation."""
+    definitions = {
+        match.group(1): match.group(2)
+        for match in re.finditer(r"^\s*(%[-\w.]+)\s*=\s*(.+)$", llir, re.MULTILINE)
+    }
+    stack_values = {
+        value
+        for value, expression in definitions.items()
+        if expression.startswith("alloca ")
+    }
+    changed = True
+    while changed:
+        changed = False
+        for value, expression in definitions.items():
+            if value in stack_values:
+                continue
+            operands = _LLVM_VALUE.findall(expression)
+            if any(operand in stack_values for operand in operands):
+                stack_values.add(value)
+                changed = True
+
+    return re.sub(
+        r"^\s*call void @free\(ptr (%[-\w.]+)\)\s*$",
+        lambda match: "" if match.group(1) in stack_values else match.group(0),
+        llir,
+        flags=re.MULTILINE,
+    )
+
+
 def _optimize_llir(llir: str, options=None):
     # llc's -O3 controls code-generation optimizations but does not run the
     # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
@@ -311,9 +393,12 @@ def _optimize_llir(llir: str, options=None):
     # leave cross-compiled IR untouched so its explicit target contract is
     # preserved by the RISC-V toolchain below.
     host_machine = platform.machine()
-    if host_machine not in {"x86_64", "AMD64", "riscv64"} or getattr(
-        options, "target_triple", None
-    ):
+    target_triple = getattr(options, "target_triple", None)
+    if host_machine == "riscv64" or target_triple:
+        # opt's LCSSA rewrite can detach ownership guards from pointer PHIs
+        # emitted by MLIR buffer deallocation and double-free a carried buffer.
+        return llir
+    if host_machine not in {"x86_64", "AMD64"}:
         return llir
 
     if getattr(options, "allow_fp_reassoc", False):
@@ -634,13 +719,23 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
             elif platform.machine() == "riscv64":
-                llc_args.extend(
-                    [
-                        f"-mattr={DEFAULT_LLC_FEATURES}",
-                        "-riscv-v-vector-bits-min=128",
-                        "-riscv-v-vector-bits-max=128",
-                    ]
-                )
+                # Buffer deallocation can emit free for stack-backed memrefs.
+                llir = _remove_invalid_stack_frees(llir)
+                Path(src_path).write_text(llir)
+                # The host RISC-V llc currently miscompiles several classes
+                # of generated Triton IR when optimized (including masked
+                # copies and scalar random-number kernels). Keep native
+                # codegen unoptimized until those backend issues are fixed.
+                llc_args = [
+                    llc_path,
+                    src_path,
+                    "-filetype=obj",
+                    "-O0",
+                    "-relocation-model=pic",
+                    f"-mattr={DEFAULT_LLC_FEATURES}",
+                    "-o",
+                    dst_path,
+                ]
             elif platform.machine() in {"x86_64", "AMD64"}:
                 llc_args.extend(["-mcpu=native"])
             subprocess.check_call(llc_args)
@@ -754,7 +849,7 @@ class CPUBackend(BaseBackend):
             _ttir_to_ttsharedir(src)
         )
         stages["llir"] = lambda src, metadata: _optimize_llir(
-            _ttsharedir_to_llir(src), options
+            _ttsharedir_to_llir(src, options), options
         )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
