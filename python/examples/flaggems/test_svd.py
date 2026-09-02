@@ -4,6 +4,20 @@ import torch
 from .svd import svd
 
 
+def _torch_has_lapack() -> bool:
+    try:
+        torch.linalg.svd(torch.eye(2))
+        return True
+    except RuntimeError as exc:
+        if "LAPACK" in str(exc):
+            return False
+        raise
+
+
+@pytest.mark.skipif(
+    not _torch_has_lapack(),
+    reason="PyTorch was built without LAPACK; torch.svd is unavailable",
+)
 @pytest.mark.parametrize("M, N", [(4, 4), (2, 8)])
 def test_svd(M, N):
     torch.manual_seed(0)

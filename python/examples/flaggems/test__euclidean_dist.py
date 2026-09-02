@@ -6,7 +6,12 @@ import torch
 import triton
 
 from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
-from test_utils import get_llvm_bin_path, requires_rvv_execution
+from test_utils import (
+    get_llvm_bin_path,
+    requires_rvv_execution,
+    RVV_VECTOR_LOAD,
+    RVV_VECTOR_STORE,
+)
 
 from ._euclidean_dist import _euclidean_dist, _euclidean_dist_kernel
 
@@ -62,8 +67,8 @@ def test_euclidean_dist_kernel_emits_riscv_object(tmp_path, N, M, D):
     )
     assert re.search(r"<_euclidean_dist_kernel>:", asm)
     assert re.search(r"\bvsetivli\b", asm)
-    assert re.search(r"\bvle32\.v\b", asm)
-    assert re.search(r"\bvse32\.v\b", asm)
+    assert RVV_VECTOR_LOAD.search(asm)
+    assert RVV_VECTOR_STORE.search(asm)
     assert re.search(r"\bvfsub\.vv\b", asm)
     assert re.search(r"\bvfmul\.vv\b", asm)
 
