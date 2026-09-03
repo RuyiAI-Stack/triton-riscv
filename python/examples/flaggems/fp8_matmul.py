@@ -29,8 +29,9 @@ BLOCK_M = 64
 BLOCK_N = 64
 BLOCK_K = 128
 GROUP_SIZE_M = 4
-NUM_STAGES = 3
-NUM_WARPS = 4
+# CPU backend ignores GPU pipeline/warp knobs; num_stages>1 can drop the K loop.
+NUM_STAGES = 1
+NUM_WARPS = 1
 
 # Debug print helper (flush immediately for real-time visibility)
 # def _p(msg):
@@ -101,8 +102,9 @@ def fp8_matmul_kernel(
             b_s = tl.load(Bs + offs_bs_n * stride_bs_n + k_idx * stride_bs_k)
 
         mask_k = offs_k < K - k * BLOCK_K
-        a = tl.load(a_ptrs, mask=mask_k[None, :], other=0.0)
-        b = tl.load(b_ptrs, mask=mask_k[None, :], other=0.0)
+        # CPU has no fp8 tensor-core dots; compute in f32.
+        a = tl.load(a_ptrs, mask=mask_k[None, :], other=0.0).to(tl.float32)
+        b = tl.load(b_ptrs, mask=mask_k[None, :], other=0.0).to(tl.float32)
 
         dot = tl.dot(a, tl.trans(b))
 
@@ -114,10 +116,11 @@ def fp8_matmul_kernel(
         a_ptrs += BLOCK_K * stride_ak
         b_ptrs += BLOCK_K * stride_bk
 
-    c = acc.to(tl.bfloat16)
+    # Store f32 on CPU. f32->bf16 in-kernel uses __truncsfbf2 with an ABI
+    # that zeros the tile on RISC-V (g++ vs llc). Convert on the host instead.
     c_ptrs = C + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
     store_mask = (offs_m_raw[:, None] < M) & (offs_n_raw[None, :] < N)
-    tl.store(c_ptrs, c, mask=store_mask)
+    tl.store(c_ptrs, acc, mask=store_mask)
 
 
 def fp8_matmul(
@@ -161,7 +164,7 @@ def fp8_matmul(
     a_2d = a.view(M, K)
     a_s_2d = a_s.view(M, -1)
 
-    C = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
+    C = torch.empty((M, N), device=a.device, dtype=torch.float32)
 
     grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
 
@@ -193,4 +196,4 @@ def fp8_matmul(
         num_warps=NUM_WARPS,
     )
 
-    return C.view(out_shape)
+    return C.view(out_shape).to(torch.bfloat16)

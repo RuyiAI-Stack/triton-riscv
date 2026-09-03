@@ -138,7 +138,7 @@ def _riscv_vir_vector_passes() -> list[str]:
     return ["--lower-linalg-to-vir", "--lower-vir-to-vector=vector-width=4"]
 
 
-_UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|i8|i16)\b")
+_UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|f8|i8|i16)\b")
 
 
 def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
