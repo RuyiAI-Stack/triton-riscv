@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 
 
 @pytest.mark.parametrize("shape", [(16, 256), (4, 128)])
@@ -55,3 +55,17 @@ def test_lerp_inplace(shape, weight):
     lerp_scalar_(x, end, weight)
 
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
+
+
+def test_lerp_tensor_inplace():
+    torch.manual_seed(0)
+    x = torch.randn(4, 128, dtype=torch.float32)
+    end = torch.randn(4, 128, dtype=torch.float32)
+    weight = torch.rand(4, 128, dtype=torch.float32)
+    ref = x.clone()
+
+    ref.lerp_(end, weight)
+    returned = lerp_tensor_(x, end, weight)
+
+    assert returned is x
+    torch.testing.assert_close(x, ref, rtol=1e-4, atol=1e-4)

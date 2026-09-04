@@ -22,11 +22,15 @@ def logical_xor_kernel(
 
 def logical_xor(A, B):
     assert isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor)
-    n_elements = A.numel()
+    broadcast_A, broadcast_B = torch.broadcast_tensors(A, B)
+    n_elements = broadcast_A.numel()
+    out = torch.empty_like(broadcast_A, dtype=torch.bool)
+    if n_elements == 0:
+        return out
+
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    out = torch.empty_like(A, dtype=torch.bool)
-    A_c = A.contiguous()
-    B_c = B.contiguous()
+    A_c = broadcast_A.contiguous()
+    B_c = broadcast_B.contiguous()
     logical_xor_kernel[grid](A_c, B_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out
