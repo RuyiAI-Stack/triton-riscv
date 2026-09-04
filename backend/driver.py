@@ -99,7 +99,7 @@ def _grid_parallel_pragma() -> str:
 # -------------------- Launcher ----------------------------
 _OMP_PARALLEL_FOR_PLACEHOLDER = "__TRITON_SHARED_OMP_PARALLEL_FOR__"
 _OMP_PARALLEL_FOR = "#pragma omp parallel for collapse(3)"
-_LAUNCHER_CACHE_VERSION = b"triton_shared_launcher_v3"
+_LAUNCHER_CACHE_VERSION = b"triton_shared_launcher_v4"
 
 
 def _get_ordinary_openmp_config(sanitizer_type):
@@ -227,9 +227,29 @@ def _generate_launcher(constants, signature, kernel_name):
     return f"""
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 #include <Python.h>
 #include "ExecutionEngine/CRunnerUtils.h"
 #include "ExecutionEngine/CRunnerUtils.cpp"
+
+// RISC-V llc without +zfbfmin lowers f32<->bf16 to compiler-rt/libgcc
+// libcalls (__truncsfbf2 / __extendbfsf2). Ubuntu RISC-V libgcc often does
+// not export them, so define the helpers in the launcher .so.
+extern "C" uint16_t __truncsfbf2(float value) {{
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  uint32_t lsb = (bits >> 16) & 1u;
+  bits += 0x7fffu + lsb;
+  return (uint16_t)(bits >> 16);
+}}
+
+extern "C" float __extendbfsf2(uint16_t value) {{
+  uint32_t bits = ((uint32_t)value) << 16;
+  float out;
+  memcpy(&out, &bits, sizeof(out));
+  return out;
+}}
 
 extern "C" {{
   // Pointer type (=Memref) becomes int64_t + MemRef struct

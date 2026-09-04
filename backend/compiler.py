@@ -119,6 +119,16 @@ def _optimize_ttsharedir(ttsharedir: str):
 
 
 def _targets_riscv(options=None) -> bool:
+    if platform.machine() == "riscv64":
+        return True
+    target_triple = getattr(options, "target_triple", None) if options else None
+    return bool(target_triple and "riscv" in target_triple)
+
+
+def _use_vir_vector_passes(options=None) -> bool:
+    # VIR on native execution currently breaks some reduction kernels
+    # (FlagGems flash_api). Keep it for explicit RISC-V object emit tests
+    # that pass target_triple.
     target_triple = getattr(options, "target_triple", None) if options else None
     return bool(target_triple and "riscv" in target_triple)
 
@@ -128,10 +138,23 @@ def _riscv_vir_vector_passes() -> list[str]:
     return ["--lower-linalg-to-vir", "--lower-vir-to-vector=vector-width=4"]
 
 
+_UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|f8|i8|i16)\b")
+
+
+def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
+    if _UNSAFE_MATMUL_VECTORIZATION_TYPE.search(ttsharedir):
+        return []
+    if _targets_riscv(options):
+        return ["--matmul-vectorization=vector-size=4"]
+    return ["--matmul-vectorization"]
+
+
 def _ttsharedir_to_llir(ttsharedir: str, options=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         ime_pre_llvm_path = os.path.join(tmpdir, "ime-pre-llvm.mlir")
+        standard_pre_llvm_path = os.path.join(tmpdir, "pre-llvm.mlir")
+        pre_llvm_transformed_path = os.path.join(tmpdir, "pre-llvm-transformed.mlir")
         atomic_cas_path = os.path.join(tmpdir, "ttshared-atomic-cas.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
@@ -148,9 +171,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                 # Bufferize tensor ops before IME lowering
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                # One-shot bufferization creates heap-backed temporary
-                # memrefs. Insert and lower their deallocations while the
-                # memref-level ownership information is still available.
+                "--buffer-loop-hoisting",
                 "--buffer-deallocation-pipeline",
                 # Lower linalg.matmul (memref) → ime.vfmadot / ime.vmadot
                 "--lower-linalg-to-ime",
@@ -167,6 +188,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                 "--convert-cf-to-llvm",
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
+                "--convert-math-to-libm",
                 "--convert-complex-to-llvm",
                 "--convert-vector-to-llvm",
                 "--convert-index-to-llvm",
@@ -233,25 +255,26 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             # ---------------------------------------------------------------
             # Standard path: buddy-mlir vectorisation → host LLVM IR
             # ---------------------------------------------------------------
-            standard_lowering_passes = [
-                # Note: eliminate-empty-tensors fails when there are multiple
-                # func.return ops in kernels with early returns.
-                "--linalg-fuse-elementwise-ops",
-                "--empty-tensor-to-alloc-tensor",
-                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-                "--buffer-deallocation-pipeline",
-                "--eliminate-memref-copy",
-                "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
-            ]
-            if _targets_riscv(options):
-                standard_lowering_passes.extend(
-                    [
-                        "--matmul-vectorization=vector-size=4",
-                        *_riscv_vir_vector_passes(),
-                    ]
-                )
-            else:
-                standard_lowering_passes.append("--matmul-vectorization")
+            # Split bufferize/loop lowering from LLVM conversion so triton-shared
+            # can expand FP8 arith.extf/truncf (and lower atomic CAS helpers)
+            # before convert-arith-to-llvm.
+            standard_lowering_passes = []
+            if "__triton_shared_atomic_cas_" not in ttsharedir:
+                standard_lowering_passes.append("--linalg-fuse-elementwise-ops")
+            standard_lowering_passes.extend(
+                [
+                    "--empty-tensor-to-alloc-tensor",
+                    "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                    "--buffer-loop-hoisting",
+                    "--buffer-deallocation-pipeline",
+                    "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
+                ]
+            )
+            standard_lowering_passes.extend(
+                _matmul_vectorization_passes(ttsharedir, options)
+            )
+            if _use_vir_vector_passes(options):
+                standard_lowering_passes.extend(_riscv_vir_vector_passes())
             standard_lowering_passes.extend(
                 [
                     "--convert-linalg-to-affine-loops",
@@ -262,31 +285,53 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             )
             # VIR lowering emits vector.transfer_read for tiled copies. Lower
             # those transfers to scalar SCF loops before converting SCF to CF.
-            if _targets_riscv(options):
+            if _use_vir_vector_passes(options):
                 standard_lowering_passes.append("--convert-vector-to-scf")
             standard_lowering_passes.append("--convert-scf-to-cf")
-            standard_lowering_passes.extend(
-                [
-                    "--convert-arith-to-llvm",
-                    "--convert-math-to-llvm",
-                    "--convert-math-to-libm",
-                    "--convert-complex-to-llvm",
-                    "--convert-vector-to-llvm",
-                    "--convert-index-to-llvm",
-                    "--memref-expand",
-                    "--finalize-memref-to-llvm",
-                    "--convert-cf-to-llvm",
-                    "--convert-func-to-llvm",
-                    "--lower-affine",
-                    "--convert-arith-to-llvm",
-                    "--reconcile-unrealized-casts",
-                ]
-            )
+            llvm_lowering_passes = [
+                "--convert-arith-to-llvm",
+                "--convert-math-to-llvm",
+                "--convert-math-to-libm",
+                "--convert-complex-to-llvm",
+                "--convert-vector-to-llvm",
+                "--convert-index-to-llvm",
+                "--memref-expand",
+                "--finalize-memref-to-llvm",
+                "--convert-cf-to-llvm",
+                "--convert-func-to-llvm",
+                "--lower-affine",
+                "--convert-arith-to-llvm",
+                "--reconcile-unrealized-casts",
+            ]
             subprocess.check_call(
                 [
                     buddy_opt_path,
                     ttshared_path,
                     *standard_lowering_passes,
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    standard_pre_llvm_path,
+                ]
+            )
+            pre_llvm_transform_passes = ["--expand-float8-conversions"]
+            if "__triton_shared_atomic_cas_" in ttsharedir:
+                pre_llvm_transform_passes.insert(0, "--lower-atomic-cas-to-llvm")
+            subprocess.check_call(
+                [
+                    _get_triton_shared_opt_path(),
+                    standard_pre_llvm_path,
+                    *pre_llvm_transform_passes,
+                    "--canonicalize",
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    pre_llvm_transformed_path,
+                ]
+            )
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    pre_llvm_transformed_path,
+                    *llvm_lowering_passes,
                     "--mlir-print-debuginfo",
                     "-o",
                     llmlir_path,

@@ -8,7 +8,7 @@ import triton
 import triton.language as tl
 from triton.backends.triton_shared.driver import CPUDriver
 from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
-from test_utils import get_llvm_bin_path, requires_rvv_execution
+from test_utils import get_llvm_bin_path, requires_rvv_execution, RVV_VECTOR_LOAD
 
 triton.runtime.driver.set_active(CPUDriver())
 
@@ -485,7 +485,7 @@ def test_attention_paged_varlen_kernel_emits_riscv_object(tmp_path, device, make
     )
     assert re.search(r"<_paged_varlen_kernel>:", asm)
     assert re.search(r"\bvsetivli\b", asm)
-    assert re.search(r"\bvle32\.v\b", asm)
+    assert RVV_VECTOR_LOAD.search(asm)
     assert re.search(r"\bvse32\.v\b", asm)
     assert re.search(r"\b(?:vfmul\.vv|fmul\.s)\b", asm)
     assert re.search(r"\b(?:vfredosum\.vs|fadd\.s)\b", asm)

@@ -77,7 +77,7 @@ def fp8_paged_mqa_logits_kernel(
     kv_base = phys_block_ids * stride_kvblk + intra_block_pos * stride_kvpos
 
     scale_addr = kv_base + dim * stride_kvbyte
-    scale_base = kv_ptr.to(tl.pointer_type(tl.uint32, 1), bitcast=True)
+    scale_base = kv_ptr.to(tl.pointer_type(tl.uint32), bitcast=True)
     scale_u32 = tl.load(scale_base + (scale_addr >> 2), mask=valid_mask, other=0)
     scale_f32 = scale_u32.to(tl.float32, bitcast=True)
 

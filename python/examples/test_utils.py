@@ -89,3 +89,10 @@ requires_rvv_execution = pytest.mark.skipif(
     not supports_rvv_execution(),
     reason="requires native RVV support to execute generated RISC-V kernels",
 )
+
+# Native RISC-V llc often emits whole-register loads/stores (vl1re32.v / vs4r.v)
+# instead of unit-stride vle32.v / vse32.v used by x86 cross-compiled objects.
+RVV_VECTOR_LOAD = re.compile(
+    r"\b(?:vle(?:8|16|32|64)\.v|vl\d+re(?:8|16|32|64)\.v|vl\d+r\.v)\b"
+)
+RVV_VECTOR_STORE = re.compile(r"\b(?:vse(?:8|16|32|64)\.v|vs\d+r\.v)\b")
