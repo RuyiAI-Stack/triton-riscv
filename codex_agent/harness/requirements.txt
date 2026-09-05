@@ -1,0 +1,4 @@
+# DeepSeek Harness is currently a developer-preview release and requires Python 3.10+.
+-r ../platform/requirements.txt
+deepseek-harness-sdk==0.1.1rc1
+mcp==2.1.1
