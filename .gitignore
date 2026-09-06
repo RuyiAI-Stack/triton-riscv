@@ -13,3 +13,4 @@ build/*
 .omx/
 triton
 /artifacts/
+/agent-results/
