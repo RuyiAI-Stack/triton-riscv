@@ -13,3 +13,7 @@ build/*
 .omx/
 triton
 /artifacts/
+/agent-results/
+/.harness-venv/
+/codex_agent/frontend/node_modules/
+/codex_agent/frontend/dist/
