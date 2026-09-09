@@ -28,6 +28,21 @@ def test_stack_three_tensors():
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
 
+def test_stack_six_tensors():
+    torch.manual_seed(0)
+    tensors = [torch.randn(128, dtype=torch.float32, device="cpu") for _ in range(6)]
+    ref = torch.stack(tensors)
+    tri = stack(tensors)
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
+def test_stack_empty_tensors():
+    tensors = [torch.empty(2, 0, dtype=torch.float32, device="cpu") for _ in range(4)]
+    ref = torch.stack(tensors, dim=1)
+    tri = stack(tensors, dim=1)
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
 def test_stack_dim1():
     torch.manual_seed(0)
     a = torch.randn(4, 128, dtype=torch.float32, device="cpu")
