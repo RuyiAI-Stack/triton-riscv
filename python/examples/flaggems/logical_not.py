@@ -27,3 +27,15 @@ def logical_not(A):
     A_c = A.contiguous()
     logical_not_kernel[grid](A_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out
+
+
+def logical_not_(A):
+    assert isinstance(A, torch.Tensor)
+    n_elements = A.numel()
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    A_c = A if A.is_contiguous() else A.contiguous()
+    logical_not_kernel[grid](A_c, A_c, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+    if not A.is_contiguous():
+        A.copy_(A_c)
+    return A

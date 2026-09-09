@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .mm import mm, mm_out
+from .mm import mm, mm_out, router_gemm
 
 
 @pytest.mark.parametrize(
@@ -30,3 +30,15 @@ def test_mm_out(M, N, K):
     mm_out(a, b, out=out)
 
     torch.testing.assert_close(out, ref_out, rtol=1e-2, atol=1e-2)
+
+
+@pytest.mark.parametrize("M, K, N", [(16, 32, 64), (4, 128, 256)])
+def test_router_gemm(M, K, N):
+    torch.manual_seed(0)
+    x = torch.randn((M, K), dtype=torch.bfloat16, device="cpu")
+    weight = torch.randn((N, K), dtype=torch.bfloat16, device="cpu")
+
+    # reference: x (bf16) @ weight.t() (bf16) -> fp32
+    ref_out = torch.matmul(x.float(), weight.t().float())
+    tri_out = router_gemm(x, weight)
+    torch.testing.assert_close(tri_out, ref_out, rtol=1e-2, atol=1e-2)
