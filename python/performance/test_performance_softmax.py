@@ -36,9 +36,11 @@ def softmax_cpu_kernel(
             denominator += numerator
             tl.store(output_ptr + output_base + col, numerator)
 
+        # Compute the reciprocal once per row, then normalize with multiplies.
+        inv_denominator = 1.0 / denominator
         for col in tl.range(0, N_COLS):
             output = tl.load(output_ptr + output_base + col)
-            tl.store(output_ptr + output_base + col, output / denominator)
+            tl.store(output_ptr + output_base + col, output * inv_denominator)
 
 
 def softmax(x):
@@ -74,6 +76,7 @@ def bench_softmax(size):
         },
         rtol=1e-3,
         atol=1e-3,
+        repeats=50,
     )
 
 
