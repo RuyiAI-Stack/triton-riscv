@@ -142,6 +142,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/TypeRange.h"
@@ -149,6 +150,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "triton-shared/Analysis/OpFoldResultUtils.h"
 #include "triton-shared/AnalysisStructured/PtrAnalysis.h"
@@ -408,6 +410,49 @@ public:
       workList.push(res);
     });
 
+    auto isScalarBaseSelection = [&](auto &&self, Value value) -> bool {
+      if (!isa<triton::PointerType>(value.getType())) {
+        return false;
+      }
+
+      if (ptrArgs.contains(value)) {
+        return true;
+      }
+
+      if (auto select = value.getDefiningOp<arith::SelectOp>()) {
+        return self(self, select.getTrueValue()) &&
+               self(self, select.getFalseValue());
+      }
+
+      auto ifOp = value.getDefiningOp<scf::IfOp>();
+      if (!ifOp || ifOp.getThenRegion().empty() ||
+          ifOp.getElseRegion().empty()) {
+        return false;
+      }
+
+      unsigned resultIndex = cast<OpResult>(value).getResultNumber();
+      auto isBaseYield = [&](Region &region) {
+        auto yield = dyn_cast<scf::YieldOp>(region.front().getTerminator());
+        return yield && resultIndex < yield.getNumOperands() &&
+               self(self, yield.getOperand(resultIndex));
+      };
+      return isBaseYield(ifOp.getThenRegion()) &&
+             isBaseYield(ifOp.getElseRegion());
+    };
+
+    auto trackScalarBase = [&](Value base, Operation *insertionPoint) {
+      if (offsetMap.contains(base)) {
+        return;
+      }
+
+      OpBuilder b(insertionPoint);
+      Type offsetType = getPtrOffsetType(base.getType(), defaultBitWidth);
+      Value zero = b.create<arith::ConstantOp>(base.getLoc(),
+                                               b.getIntegerAttr(offsetType, 0));
+      offsetMap.insert({base, {base, base.getType(), defaultBitWidth, zero}});
+      workList.push(base);
+    };
+
     llvm::SmallVector<Operation *> toDelete;
     llvm::SmallVector<Operation *> ptrUsers;
     llvm::SmallVector<OperandReplacement> operandReplacements;
@@ -574,6 +619,25 @@ public:
 
                   return success();
                 })
+                .Case<arith::SelectOp>([&](arith::SelectOp select) {
+                  Value result = select.getResult();
+                  if (!triton::isPtrTypeLike(result.getType())) {
+                    return success();
+                  }
+                  if (result.use_empty()) {
+                    return success();
+                  }
+
+                  // A uniform scalar pointer choice is a new base pointer.
+                  // Keep the choice intact for the later pointer conversion
+                  // instead of trying to encode it as an offset from either
+                  // selected input.
+                  if (!isScalarBaseSelection(isScalarBaseSelection, result)) {
+                    return failure();
+                  }
+                  trackScalarBase(result, select);
+                  return success();
+                })
                 .Case<tts::MakeGatherScatterTensorPtrOp>(
                     [&](tts::MakeGatherScatterTensorPtrOp makeGatherScatter) {
                       Value base = makeGatherScatter->getOperand(0);
@@ -706,6 +770,25 @@ public:
                 })
                 .Case<scf::YieldOp>([&](scf::YieldOp yield) {
                   Operation *parent = yield->getParentOp();
+                  if (auto ifOp = dyn_cast<scf::IfOp>(parent)) {
+                    Value result = ifOp.getResult(use.getOperandNumber());
+                    // Dead pointer results need no base-and-offset
+                    // representation and must not block unrelated lowering.
+                    if (result.use_empty()) {
+                      return success();
+                    }
+                    if (!isa<triton::PointerType>(result.getType())) {
+                      // Live tensor-pointer results remain unsupported and
+                      // preserve the pass's clone-and-rollback behavior.
+                      return failure();
+                    }
+                    if (!isScalarBaseSelection(isScalarBaseSelection, result)) {
+                      return failure();
+                    }
+                    trackScalarBase(result, ifOp);
+                    return success();
+                  }
+
                   Value init;
                   if (auto forOp = dyn_cast<scf::ForOp>(parent)) {
                     init = forOp.getInitArgs()[use.getOperandNumber()];
@@ -844,9 +927,23 @@ public:
                 Value ptr = materializeBasePtr(offsetInfo, loc, b);
                 makeTensorPtr->setOperand(0, ptr);
 
+                auto offsets = makeTensorPtr.getOffsetsMutable();
+                if (offsets.empty()) {
+                  // Static offsets already describe the block pointer. A
+                  // scalar base selection contributes no additional offset,
+                  // so only the base needs to be replaced in this case.
+                  if (!matchPattern(baseOffset, m_Zero())) {
+                    makeTensorPtr.emitError(
+                        "cannot materialize a non-zero pointer offset with "
+                        "only static block-pointer offsets");
+                    return failure();
+                  }
+                  return success();
+                }
+
                 // Add the existing offset from the base to the offset
                 // operand in the ops.
-                auto &offsetOpnd = makeTensorPtr.getOffsetsMutable()[0];
+                auto &offsetOpnd = offsets[0];
                 auto currOffset = offsetOpnd.get();
 
                 auto baseOffType = baseOffset.getType();
@@ -901,6 +998,20 @@ public:
 
   void runOnOperation() override {
     OwningOpRef<ModuleOp> transformedModule(getOperation().clone());
+
+    // Drop dead control-flow results before following pointer def-use chains.
+    // Otherwise a derived pointer that is yielded only to an unused result
+    // looks like a live escape and forces the transactional conversion to
+    // roll back. Canonicalization rebuilds side-effecting control flow while
+    // preserving its live results and effects.
+    RewritePatternSet prePatterns(&getContext());
+    scf::IfOp::getCanonicalizationPatterns(prePatterns, &getContext());
+    if (failed(applyPatternsGreedily(*transformedModule,
+                                     std::move(prePatterns)))) {
+      signalPassFailure();
+      return;
+    }
+
     if (failed(processUnstructuredPtrs(*transformedModule, offsetBitWidth))) {
       getOperation()->emitWarning(
           "Cannot transform tensor of pointers into a single base pointer "
