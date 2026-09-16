@@ -82,7 +82,7 @@ def apply_dropout(
 
         offset = philox_offset + bid * NUM_HEADS + hid
         offset += subsequence * 0
-        r0, r1, r2, r3 = tl.philox(philox_seed, subsequence, offset)
+        r0, r1, r2, r3 = philox_(philox_seed, subsequence, offset)
 
         r = tl.join(tl.join(r0, r1), tl.join(r2, r3)).reshape(BLOCK_M, BLOCK_N)
 
@@ -1475,8 +1475,8 @@ def flash_varlen_fwd_kernel(
         if is_dropout:
             P = apply_dropout(
                 P,
-                n_block * BLOCK_N,
                 m_block * BLOCK_M,
+                n_block * BLOCK_N,
                 k_len,
                 bid,
                 hid,
@@ -1591,6 +1591,8 @@ def flash_varlen_fwd_kernel(
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
 
     acc_ *= inv_sum[:, None]
+    if is_dropout:
+        acc_ *= rp_dropout
 
     out = acc_.to(o_ptr.type.element_ty)
 
