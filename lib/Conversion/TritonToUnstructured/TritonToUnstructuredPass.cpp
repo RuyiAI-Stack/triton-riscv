@@ -757,20 +757,40 @@ public:
                 Value ptr = materializeBasePtr(offsetInfo, loc, b);
 
                 auto other = load.getOther();
+                Value tensorOther;
 
                 if (other) {
-                  other = tts::utils::getScalarValue(other, loc, b);
-                  if (!other) {
-                    load->emitError("cannot parse `other` value for load");
-                    return failure();
+                  Value scalarOther = tts::utils::getScalarValue(other, loc, b);
+                  if (!scalarOther) {
+                    auto otherType =
+                        dyn_cast<RankedTensorType>(other.getType());
+                    if (!load.getMask() || !otherType ||
+                        otherType != load.getType()) {
+                      load->emitError("cannot parse `other` value for load");
+                      return failure();
+                    }
+                    auto zero = b.getZeroAttr(otherType.getElementType());
+                    if (!zero) {
+                      load->emitError(
+                          "cannot materialize zero for load `other`");
+                      return failure();
+                    }
+                    scalarOther = b.create<arith::ConstantOp>(loc, zero);
+                    tensorOther = other;
                   }
+                  other = scalarOther;
                 }
 
                 auto gather = b.create<tts::GatherOp>(loc, load.getType(), ptr,
                                                       offsetInfo.offset,
                                                       load.getMask(), other);
 
-                load->replaceAllUsesWith(gather->getResults());
+                Value result = gather.getResult();
+                if (tensorOther) {
+                  result = b.create<arith::SelectOp>(loc, load.getMask(),
+                                                     result, tensorOther);
+                }
+                load->replaceAllUsesWith(ValueRange{result});
                 load->erase();
                 return success();
               })
