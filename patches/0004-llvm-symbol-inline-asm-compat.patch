@@ -1,0 +1,111 @@
+diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dialect/Triton/IR/TritonOps.td
+index bdab1bd33c..7de82e9a8c 100644
+--- a/include/triton/Dialect/Triton/IR/TritonOps.td
++++ b/include/triton/Dialect/Triton/IR/TritonOps.td
+@@ -1227,6 +1227,38 @@ def FuncOp : TT_Op<"func", [
+     //===------------------------------------------------------------------===//
+ 
+     bool isDeclaration() { return isExternal(); }
++
++    /// Returns the name attribute of this symbol.
++    ///
++    /// Newer MLIR revisions stopped providing these accessors from the
++    /// SymbolOpInterface trait (the op must define them instead), so spell them
++    /// out here to stay compatible with both the old and new symbol API.
++    ::mlir::StringAttr getNameAttr() { return getSymNameAttr(); }
++
++    /// Returns the name of this symbol.
++    ::mlir::StringRef getName() { return getSymName(); }
++
++    /// Returns the visibility of this symbol.
++    ::mlir::SymbolTable::Visibility getVisibility() {
++      auto visibility = getSymVisibilityAttr();
++      if (!visibility || visibility.getValue() == "public")
++        return ::mlir::SymbolTable::Visibility::Public;
++      if (visibility.getValue() == "private")
++        return ::mlir::SymbolTable::Visibility::Private;
++      return ::mlir::SymbolTable::Visibility::Nested;
++    }
++
++    /// Sets the visibility of this symbol.
++    void setVisibility(::mlir::SymbolTable::Visibility visibility) {
++      if (visibility == ::mlir::SymbolTable::Visibility::Public) {
++        setSymVisibilityAttr(nullptr);
++        return;
++      }
++      ::llvm::StringRef value =
++          visibility == ::mlir::SymbolTable::Visibility::Private ? "private"
++                                                                  : "nested";
++      setSymVisibilityAttr(::mlir::StringAttr::get(getContext(), value));
++    }
+   }];
+   let hasCustomAssemblyFormat = 1;
+ }
+diff --git a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
+index b0f1f92bf0..92e07b9c0b 100644
+--- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -194,6 +194,45 @@ struct ExternElementwiseOpConversion
+   }
+ };
+ 
++namespace {
++
++// The `convergent` attribute was added to `llvm.inline_asm`, which changed the
++// generated builder signature. Detect the available builder so the same call
++// site compiles against both the old and the new LLVM dialect.
++template <typename T, typename = void>
++struct InlineAsmBuilderHasConvergent : std::false_type {};
++
++template <typename T>
++struct InlineAsmBuilderHasConvergent<
++    T, std::void_t<decltype(T::create(
++           std::declval<OpBuilder &>(), std::declval<Location>(),
++           std::declval<Type>(), std::declval<ValueRange>(),
++           std::declval<StringRef>(), std::declval<StringRef>(),
++           std::declval<bool>(), std::declval<bool>(),
++           std::declval<LLVM::TailCallKind>(), std::declval<bool>(),
++           std::declval<LLVM::AsmDialectAttr>(),
++           std::declval<ArrayAttr>()))>> : std::true_type {};
++
++template <typename OpTy = LLVM::InlineAsmOp>
++OpTy createInlineAsmOp(OpBuilder &builder, Location loc, Type resType,
++                       ValueRange operands, StringRef asmString,
++                       StringRef constraints, bool hasSideEffects,
++                       bool isAlignStack, LLVM::TailCallKind tailCallKind,
++                       LLVM::AsmDialectAttr asmDialect,
++                       ArrayAttr operandAttrs) {
++  if constexpr (InlineAsmBuilderHasConvergent<OpTy>::value) {
++    return OpTy::create(builder, loc, resType, operands, asmString, constraints,
++                        hasSideEffects, isAlignStack, tailCallKind,
++                        /*convergent=*/false, asmDialect, operandAttrs);
++  } else {
++    return OpTy::create(builder, loc, resType, operands, asmString, constraints,
++                        hasSideEffects, isAlignStack, tailCallKind, asmDialect,
++                        operandAttrs);
++  }
++}
++
++} // namespace
++
+ struct ElementwiseInlineAsmOpConversion
+     : public ConvertOpToLLVMPattern<ElementwiseInlineAsmOp> {
+   using Base = ConvertOpToLLVMPattern<ElementwiseInlineAsmOp>;
+@@ -269,7 +308,7 @@ struct ElementwiseInlineAsmOpConversion
+     Type asmRetType =
+         asmRetTypes.size() > 1 ? struct_ty(asmRetTypes) : asmRetTypes[0];
+ 
+-    Value asmResults = LLVM::InlineAsmOp::create(
++    Value asmResults = createInlineAsmOp(
+                            rewriter, loc, asmRetType,
+                            /*operands=*/packedOperands,
+                            /*asm_string=*/op.getAsmString(),
+@@ -280,7 +319,7 @@ struct ElementwiseInlineAsmOpConversion
+                            LLVM::AsmDialectAttr::get(rewriter.getContext(),
+                                                      LLVM::AsmDialect::AD_ATT),
+                            /*operand_attrs=*/ArrayAttr())
+-                           ->getResult(0);
++                           .getResult(0);
+ 
+     // asmResults is a flat struct; pack its values into
+     // [return_value][op.getPackedElement()].
