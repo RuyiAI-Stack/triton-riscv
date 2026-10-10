@@ -62,6 +62,7 @@ jobs:
 
       - name: Export toolchain environment
         run: |
+          echo "TRITON_DIR=${GITHUB_WORKSPACE}/triton" >> "$GITHUB_ENV"
           echo "TRITON_PLUGIN_DIRS=${GITHUB_WORKSPACE}" >> "$GITHUB_ENV"
           echo "LLVM_BINARY_DIR=${GITHUB_WORKSPACE}/.cache/llvm/bin" >> "$GITHUB_ENV"
           echo "LLVM_SYSPATH=${GITHUB_WORKSPACE}/.cache/llvm" >> "$GITHUB_ENV"
