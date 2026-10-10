@@ -48,6 +48,30 @@ def test_hstack_varying_shapes_2d():
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
 
+def test_hstack_six_tensors():
+    torch.manual_seed(0)
+    tensors = [
+        torch.randn(4, width, dtype=torch.float32, device="cpu")
+        for width in [1, 2, 3, 4, 5, 6]
+    ]
+    ref = torch.hstack(tensors)
+    tri = hstack(tensors)
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
+def test_hstack_mixed_empty_tensors():
+    torch.manual_seed(0)
+    tensors = [
+        torch.randn(4, 0, dtype=torch.float32, device="cpu"),
+        torch.randn(4, 3, dtype=torch.float32, device="cpu"),
+        torch.randn(4, 0, dtype=torch.float32, device="cpu"),
+        torch.randn(4, 5, dtype=torch.float32, device="cpu"),
+    ]
+    ref = torch.hstack(tensors)
+    tri = hstack(tensors)
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
 def test_hstack_single_tensor():
     a = torch.randn(4, 4, dtype=torch.float32, device="cpu")
     ref = torch.hstack([a])
