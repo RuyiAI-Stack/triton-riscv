@@ -21,13 +21,17 @@ index 957d542936799321b7b4087b9e08a6607d632767..b3ef5f95df8ec194b0b9b4310620ffaa
      Python3::Module
      nanobind-static
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 16cf6fb90f10015e9a89c0e6e602afcb06e87d3c..16718362de68f1f6e6b8f45babca0413fef080c2 100644
+index 16cf6fb90f10015e9a89c0e6e602afcb06e87d3c..a6ac9bc3f802131506c0e9a3ee4c2e1ab1596ed3 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -1764,6 +1764,18 @@ void init_triton_ir(py::module_ &m) {
+@@ -1764,6 +1764,22 @@ void init_triton_ir(py::module_ &m) {
             [](TritonOpBuilder &self, Value &val) -> Value {
               return self.create<math::SinOp>(val);
             })
++      .def("create_asin",
++           [](TritonOpBuilder &self, Value &val) -> Value {
++             return self.create<math::AsinOp>(val);
++           })
 +      .def("create_acos",
 +           [](TritonOpBuilder &self, Value &val) -> Value {
 +             return self.create<math::AcosOp>(val);
@@ -57,13 +61,22 @@ index 0bc98405ec879e2cc58063eb7e7177f04ff4d705..0a48c8880857c591cf32ce4037cdaf59
                });
            enablePassInstrumentation = true;
 diff --git a/python/triton/language/math.py b/python/triton/language/math.py
-index dd29febfcf04cb048d67c237ffbadf4ffe327f4f..93e7a7097d02ffc580684c41318ff43d356da632 100644
+index dd29febfcf04cb048d67c237ffbadf4ffe327f4f..2ad208980964bd801a02123119e5a30a0f4c732c 100644
 --- a/python/triton/language/math.py
 +++ b/python/triton/language/math.py
-@@ -247,3 +247,31 @@ def fma(x, y, z, _semantic=None):
+@@ -247,3 +247,40 @@ def fma(x, y, z, _semantic=None):
      z, x = core.binary_op_type_legalization(z, x, _semantic)
      z, y = core.binary_op_type_legalization(z, y, _semantic)
      return core.tensor(_semantic.builder.create_fma(x.handle, y.handle, z.handle), x.type)
++
++
++@core.builtin
++@_check_dtype(dtypes=["fp32", "fp64"])
++@_add_math_1arg_docstr("inverse sine")
++@core._tensor_member_fn
++def asin(x, _semantic=None):
++    x = _semantic.to_tensor(x)
++    return core.tensor(_semantic.builder.create_asin(x.handle), x.type)
 +
 +
 +@core.builtin
