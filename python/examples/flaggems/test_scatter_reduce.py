@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .scatter_reduce import scatter_reduce, scatter_reduce_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 
 
 @pytest.mark.parametrize(
@@ -76,3 +76,17 @@ def test_scatter_reduce_rejects_invalid_dim(dim):
 
     with pytest.raises(IndexError):
         scatter_reduce(inp, dim, index, src, reduce="sum")
+
+
+def test_scatter_reduce_out():
+    torch.manual_seed(0)
+    inp = torch.randn(4, 8, dtype=torch.float32)
+    src = torch.randn(4, 8, dtype=torch.float32)
+    index = torch.randint(0, 8, (4, 8), dtype=torch.long)
+    ref = torch.scatter_reduce(inp, 1, index, src, reduce="sum")
+    out = torch.empty_like(inp)
+
+    returned = scatter_reduce_out(inp, 1, index, src, "sum", out=out)
+
+    assert returned is out
+    torch.testing.assert_close(out, ref, rtol=1e-3, atol=1e-3)
