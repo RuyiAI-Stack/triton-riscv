@@ -532,7 +532,7 @@ def _optimize_llir(llir: str, options=None):
         return Path(dst_path).read_text()
 
 
-def _ttsharedir_to_vectorir(ttsharedir: str):
+def _ttsharedir_to_vectorir(ttsharedir: str, options=None) -> str:
     with tempfile.TemporaryDirectory() as tmpdir:
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         vector_path = os.path.join(tmpdir, "vector.mlir")
@@ -551,8 +551,10 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
                 "--empty-tensor-to-alloc-tensor",
                 "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                 "--buffer-deallocation-pipeline",
-                "--lower-linalg-to-vir",
+                "--lower-linalg-to-vir="
+                f"matmul-m-unroll={getattr(options, 'matmul_m_unroll', 8)}",
                 "--lower-vir-to-vector=vector-width=16",
+                "--canonicalize",
                 "--cse",
                 "--mlir-print-debuginfo",
                 "-o",
@@ -581,6 +583,7 @@ def _vectorir_to_llir(vectorir: str):
                 vector_path,
                 *transform_passes,
                 "--canonicalize",
+                "--cse",
                 "--mlir-print-debuginfo",
                 "-o",
                 transformed_vector_path,
@@ -627,6 +630,8 @@ def _vectorir_to_llir(vectorir: str):
                 "--convert-arith-to-llvm",
                 # Remove all unrealized casts created
                 "--reconcile-unrealized-casts",
+                "--canonicalize",
+                "--cse",
                 "--mlir-print-debuginfo",
                 "-o",
                 llmlir_path,
@@ -814,9 +819,11 @@ class CPUOptions:
     target_features: str = None
     openmp_num_threads: int = 0
     allow_fp_reassoc: bool = False
+    matmul_m_unroll: int = 8
 
     def __post_init__(self):
-        pass
+        if type(self.matmul_m_unroll) is not int or not 1 <= self.matmul_m_unroll <= 32:
+            raise ValueError("matmul_m_unroll must be an integer between 1 and 32")
 
     def hash(self):
         key = "_".join([f"{name}-{val}" for name, val in self.__dict__.items()])
@@ -895,7 +902,7 @@ class CPUBackend(BaseBackend):
             _ttir_to_ttsharedir(src)
         )
         stages["llir"] = lambda src, metadata: _optimize_llir(
-            _ttsharedir_to_llir(src, options), options
+            _vectorir_to_llir(_ttsharedir_to_vectorir(src, options)), options
         )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
