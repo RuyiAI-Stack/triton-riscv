@@ -1,0 +1,34 @@
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -222,8 +222,18 @@
+       llvm::TargetRegistry::lookupTarget(module->getTargetTriple(), error);
+   llvm::TargetOptions opt;
+   bool disableLLVMOpt = mlir::triton::tools::getBoolEnv("DISABLE_LLVM_OPT");
++#if LLVM_VERSION_MAJOR < 24
+   if (enable_fp_fusion)
+     opt.AllowFPOpFusion = llvm::FPOpFusion::Fast;
++#else
++  // LLVM 24 uses instruction fast-math flags instead of AllowFPOpFusion.
++  if (enable_fp_fusion)
++    for (llvm::Function &function : *module)
++      for (llvm::BasicBlock &block : function)
++        for (llvm::Instruction &instruction : block)
++          if (llvm::isa<llvm::FPMathOperator>(instruction))
++            instruction.setHasAllowContract(true);
++#endif
+   opt.TrapUnreachable = true;
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+@@ -855,7 +865,11 @@
+         if (!pluginFile.empty()) {
+           // TODO: Add some logging here that we inserted a pass into the LLVM
+           // pass pipeline
++#if LLVM_VERSION_MAJOR >= 24
++          auto passPlugin = llvm::PassPlugin::load(pluginFile);
++#else
+           auto passPlugin = llvm::PassPlugin::Load(pluginFile);
++#endif
+           if (!passPlugin) {
+             llvm::Error Err = passPlugin.takeError();
+             std::string ErrMsg =
