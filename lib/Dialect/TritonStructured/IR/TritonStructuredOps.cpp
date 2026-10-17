@@ -34,7 +34,8 @@ namespace utils {
 // (currently only support splat, sitofp, and truncf) that produce it to
 // extract the underlying scalar value. We then reconstruct the chain of
 // operations that can produce this constant with the original type. If no
-// scalar value can be extracted, a nullptr is returned.
+// scalar value can be extracted, return nullptr without a diagnostic: callers
+// can preserve a nonuniform tensor with an elementwise select instead.
 Value getScalarValue(Value operand, Location loc, OpBuilder &builder) {
   SmallVector<Operation *> ops;
 
@@ -69,9 +70,6 @@ Value getScalarValue(Value operand, Location loc, OpBuilder &builder) {
     } else if (auto op = operand.getDefiningOp<arith::ConstantOp>()) {
       if (auto attr = dyn_cast<DenseElementsAttr>(op.getValue())) {
         if (!attr.isSplat()) {
-          InFlightDiagnostic diag = emitError(loc)
-                                    << "other value used in masked load "
-                                       "produced by unsupported instruction";
           return nullptr;
         }
         auto elemValue = attr.getSplatValue<Attribute>();
@@ -79,6 +77,7 @@ Value getScalarValue(Value operand, Location loc, OpBuilder &builder) {
             builder, elemValue, attr.getElementType(), op.getLoc());
         return reconstructScalarValue(constOp.getResult());
       }
+      return nullptr;
     } else if (auto op = operand.getDefiningOp<triton::SplatOp>()) {
       operand = op.getSrc();
     } else if (auto op = operand.getDefiningOp<arith::SIToFPOp>()) {
@@ -88,9 +87,6 @@ Value getScalarValue(Value operand, Location loc, OpBuilder &builder) {
       ops.push_back(op.getOperation());
       operand = op.getIn();
     } else {
-      InFlightDiagnostic diag = emitError(loc)
-                                << "other value used in masked load produced "
-                                   "by unsupported instruction";
       return nullptr;
     }
   }
