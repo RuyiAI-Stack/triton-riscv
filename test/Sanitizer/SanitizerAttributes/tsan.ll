@@ -1,5 +1,5 @@
 ; REQUIRES: triton-san
-; RUN: opt -load-pass-plugin %sanitizer_dir/libSanitizerAttributes.so -passes=sanitizer-attributes -sanitizer-type=tsan -S %s | FileCheck %s
+; RUN: opt -load-pass-plugin %sanitizer_dir/libSanitizerAttributes.so -passes='sanitizer-attributes<tsan>' -S %s | FileCheck %s --implicit-check-not=sanitize_address
 
 ; ModuleID = 'LLVMDialectModule'
 source_filename = "LLVMDialectModule"
@@ -51,6 +51,10 @@ define void @kernel(i64 %0, ptr %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 
   ret void, !dbg !6
 }
 
+define void @unoptimized_kernel() noinline optnone {
+  ret void
+}
+
 ; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
 declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i64, i1 immarg) #0
 
@@ -72,3 +76,5 @@ attributes #0 = { nocallback nofree nounwind willreturn memory(argmem: readwrite
 
 ; CHECK: ; Function Attrs: sanitize_thread
 ; CHECK: define void @kernel
+; CHECK: ; Function Attrs: noinline optnone sanitize_thread
+; CHECK: define void @unoptimized_kernel

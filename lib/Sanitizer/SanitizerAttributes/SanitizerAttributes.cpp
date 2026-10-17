@@ -4,32 +4,16 @@
 #else
 #include "llvm/Passes/PassPlugin.h"
 #endif
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
-
-namespace opts {
-
-// command line option for the type of sanitizer
-static cl::opt<std::string>
-    SanitizerType("sanitizer-type",
-                  cl::desc("Type of sanitizer being used: AddressSanitizer = "
-                           "asan, ThreadSanitizer = tsan"),
-                  cl::value_desc("string"));
-
-} // namespace opts
 
 namespace {
 
 struct SanitizerAttributes : RequiredPassInfoMixin<SanitizerAttributes> {
+  explicit SanitizerAttributes(Attribute::AttrKind Type) : Type(Type) {}
+
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
-    // add an attribute to the function depending on the type of sanitizer
-    if (opts::SanitizerType == "asan") {
-      F.addFnAttr(Attribute::SanitizeAddress);
-    } else if (opts::SanitizerType == "tsan") {
-      F.addFnAttr(Attribute::SanitizeThread);
-    }
+    F.addFnAttr(Type);
 
     // this pass modifies all function attributes
     return PreservedAnalyses::none();
@@ -39,6 +23,9 @@ struct SanitizerAttributes : RequiredPassInfoMixin<SanitizerAttributes> {
   // decorated with the optnone LLVM attribute. Note that clang -O0 decorates
   // all functions with optnone.
   static bool isRequired() { return true; }
+
+private:
+  Attribute::AttrKind Type;
 };
 } // namespace
 
@@ -48,8 +35,16 @@ llvm::PassPluginLibraryInfo getSanitizerAttributesPluginInfo() {
             PB.registerPipelineParsingCallback(
                 [](StringRef Name, FunctionPassManager &FPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name == "sanitizer-attributes") {
-                    FPM.addPass(SanitizerAttributes());
+                  // opt loads pass plugins after parsing command-line options.
+                  // Keep the sanitizer type in the pipeline, not a global
+                  // option.
+                  if (Name == "sanitizer-attributes<asan>") {
+                    FPM.addPass(
+                        SanitizerAttributes(Attribute::SanitizeAddress));
+                    return true;
+                  }
+                  if (Name == "sanitizer-attributes<tsan>") {
+                    FPM.addPass(SanitizerAttributes(Attribute::SanitizeThread));
                     return true;
                   }
                   return false;
