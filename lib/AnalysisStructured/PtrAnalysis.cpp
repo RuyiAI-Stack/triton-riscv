@@ -1131,6 +1131,9 @@ LogicalResult PtrAnalysis::visitOperandForOp(scf::ForOp forOp, Value operand,
                                              OpBuilder &builder) {
 
   auto it = llvm::find(forOp->getResults(), operand);
+  if (it == forOp->getResults().end()) {
+    return failure();
+  }
   auto index = std::distance(forOp->getResults().begin(), it);
 
   auto newState = getLoopResultPtrState(forOp, index);
@@ -1428,6 +1431,24 @@ FailureOr<PtrState> PtrAnalysis::getLoopIterArgPtrState(scf::ForOp forOp,
 
 FailureOr<PtrState> PtrAnalysis::getLoopResultPtrState(scf::ForOp forOp,
                                                        size_t index) {
+  // The loop prepass decomposes a tensor iter-arg into its raw value and
+  // structured offset/stride state. If the value yielded by the loop is no
+  // longer structured, the auxiliary state contains neutral placeholders and
+  // must not be used to reconstruct the result. Keep the raw loop result as
+  // the gather/scatter offset, including when it initializes another loop.
+  Value yieldedValue = forOp.getBody()->getTerminator()->getOperand(index);
+  if (auto getStateOp = yieldedValue.getDefiningOp<tts::GetStructuredStateOp>();
+      getStateOp && yieldedValue == getStateOp.getStructured()) {
+    Value originalValue = getStateOp->getOperand(0);
+    auto knownState = knownPtrs.find(originalValue);
+    if (knownState != knownPtrs.end() && !knownState->second.isStructured()) {
+      PtrState state;
+      if (failed(state.rebuildAsUnsupportedOp(forOp.getResult(index))))
+        return failure();
+      return state;
+    }
+  }
+
   auto state = getLoopInitArgPtrState(forOp, index);
   if (failed(state)) {
     return failure();
