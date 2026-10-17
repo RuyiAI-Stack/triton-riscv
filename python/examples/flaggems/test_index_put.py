@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .index_put import index_put, index_put_
+from .index_put import _index_put_impl_, index_put, index_put_
 
 
 @pytest.mark.parametrize(
@@ -101,3 +101,17 @@ def test_index_put_inplace(shape, idx):
     index_put_(x, (idx_t,), vals)
 
     torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
+
+
+def test_index_put_impl_boolean_mask():
+    torch.manual_seed(0)
+    inp = torch.randn(4, 3, dtype=torch.float32)
+    ref = inp.clone()
+    mask = torch.tensor([True, False, True, False])
+    values = torch.randn(2, 3, dtype=torch.float32)
+
+    ref[mask] = values
+    returned = _index_put_impl_(inp, (mask,), values)
+
+    assert returned is inp
+    torch.testing.assert_close(inp, ref, rtol=1e-4, atol=1e-4)
