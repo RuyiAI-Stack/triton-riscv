@@ -2,6 +2,7 @@
 #define TRITON_CONVERSION_TRITONARITHTOLINALG_CONVERSIONTOOLS_H
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 
 namespace mlir {
 namespace triton {

@@ -14,6 +14,10 @@ set(TRITON_SHARED_TEST_DEPENDS
   triton-shared-opt
 )
 
+if(TRITON_SHARED_BUILD_TRITON_SAN)
+  list(APPEND TRITON_SHARED_TEST_DEPENDS SanitizerAttributes)
+endif()
+
 set(FILECHECK_PATH "${LLVM_LIBRARY_DIR}/../bin/FileCheck")
 set(LIT_ARGS "-Dfilecheck=${FILECHECK_PATH}")
 add_lit_testsuite(check-triton-shared-lit-tests "Running the triton-shared regression tests"

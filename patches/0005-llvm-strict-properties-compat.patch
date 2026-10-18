@@ -1,0 +1,150 @@
+diff --git a/include/triton/Dialect/Gluon/IR/GluonDialect.td b/include/triton/Dialect/Gluon/IR/GluonDialect.td
+index ce33863baa..6d118d6bed 100644
+--- a/include/triton/Dialect/Gluon/IR/GluonDialect.td
++++ b/include/triton/Dialect/Gluon/IR/GluonDialect.td
+@@ -4,6 +4,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def Gluon_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "gluon";
+   let cppNamespace = "::mlir::triton::gluon";
+   let description = [{
+diff --git a/include/triton/Dialect/Triton/IR/TritonDialect.td b/include/triton/Dialect/Triton/IR/TritonDialect.td
+index 702bf2df1d..a206ee3740 100644
+--- a/include/triton/Dialect/Triton/IR/TritonDialect.td
++++ b/include/triton/Dialect/Triton/IR/TritonDialect.td
+@@ -4,6 +4,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def Triton_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "tt";
+ 
+   let cppNamespace = "::mlir::triton";
+diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUDialect.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUDialect.td
+index 7863c089a1..0805267cd4 100644
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUDialect.td
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUDialect.td
+@@ -4,6 +4,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def TritonGPU_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "ttg";
+ 
+   let cppNamespace = "::mlir::triton::gpu";
+diff --git a/include/triton/Dialect/TritonInstrument/IR/TritonInstrumentDialect.td b/include/triton/Dialect/TritonInstrument/IR/TritonInstrumentDialect.td
+index 6a7f3eed62..1247b9ccc6 100644
+--- a/include/triton/Dialect/TritonInstrument/IR/TritonInstrumentDialect.td
++++ b/include/triton/Dialect/TritonInstrument/IR/TritonInstrumentDialect.td
+@@ -4,6 +4,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def TritonInstrument_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "tti";
+   let cppNamespace = "::mlir::triton::instrument";
+ }
+diff --git a/include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td b/include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td
+index 25d1a0ffb1..9be6e5bd06 100644
+--- a/include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td
++++ b/include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td
+@@ -25,6 +25,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def TritonNvidiaGPU_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "ttng";
+ 
+   let cppNamespace = "::mlir::triton::nvidia_gpu";
+diff --git a/test/Triton/ops.mlir b/test/Triton/ops.mlir
+index fa0f60d287..bdba3038d4 100644
+--- a/test/Triton/ops.mlir
++++ b/test/Triton/ops.mlir
+@@ -1,4 +1,5 @@
+ // RUN: triton-opt %s | FileCheck %s
++// RUN: triton-opt %s | triton-opt | FileCheck %s
+ 
+ // CHECK-LABEL: @cast_ops
+ tt.func @cast_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_f32: f32, %scalar_i64: i64) {
+@@ -292,3 +293,13 @@ tt.func @ptr_addr_space(%arg0: !tt.ptr<i8, "descriptor">, %arg1: !tt.ptr<f32>) {
+   // CHECK-SAME: %arg1: !tt.ptr<f32>
+   tt.return
+ }
++
++// Keep inherent attributes in attr-dict when using LLVM's strict-properties API.
++// CHECK-LABEL: @call_attribute_roundtrip
++tt.func @call_attribute_roundtrip(%arg0: f32) -> f32 {
++  // CHECK: tt.call @attribute_callee(%arg0) {arg_attrs = [{tt.divisibility = 16 : i32}], res_attrs = [{}]} : (f32) -> f32
++  %0 = tt.call @attribute_callee(%arg0) {arg_attrs = [{tt.divisibility = 16 : i32}], res_attrs = [{}]} : (f32) -> f32
++  tt.return %0 : f32
++}
++
++tt.func private @attribute_callee(f32) -> f32
+diff --git a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUDialect.td b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUDialect.td
+index 95ad790379..270343c332 100644
+--- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUDialect.td
++++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUDialect.td
+@@ -25,6 +25,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def NVGPU_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "nvg";
+   let cppNamespace = "::mlir::triton::nvgpu";
+ 
+diff --git a/third_party/nvidia/include/Dialect/NVWS/IR/NVWSDialect.td b/third_party/nvidia/include/Dialect/NVWS/IR/NVWSDialect.td
+index 92cd3718b0..feca5dcd8d 100644
+--- a/third_party/nvidia/include/Dialect/NVWS/IR/NVWSDialect.td
++++ b/third_party/nvidia/include/Dialect/NVWS/IR/NVWSDialect.td
+@@ -25,6 +25,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def NVWS_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "nvws";
+   let cppNamespace = "::mlir::triton::nvws";
+ 
+diff --git a/third_party/proton/Dialect/include/Dialect/Proton/IR/ProtonDialect.td b/third_party/proton/Dialect/include/Dialect/Proton/IR/ProtonDialect.td
+index 245f2e09a2..0cbff1134b 100644
+--- a/third_party/proton/Dialect/include/Dialect/Proton/IR/ProtonDialect.td
++++ b/third_party/proton/Dialect/include/Dialect/Proton/IR/ProtonDialect.td
+@@ -4,6 +4,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def Proton_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "proton";
+   let cppNamespace = "::mlir::triton::proton";
+ 
+diff --git a/third_party/proton/Dialect/include/Dialect/ProtonGPU/IR/ProtonGPUDialect.td b/third_party/proton/Dialect/include/Dialect/ProtonGPU/IR/ProtonGPUDialect.td
+index c63baa3856..f522a0e090 100644
+--- a/third_party/proton/Dialect/include/Dialect/ProtonGPU/IR/ProtonGPUDialect.td
++++ b/third_party/proton/Dialect/include/Dialect/ProtonGPU/IR/ProtonGPUDialect.td
+@@ -4,6 +4,9 @@
+ include "mlir/IR/OpBase.td"
+ 
+ def ProtonGPU_Dialect : Dialect {
++  // Preserve the existing textual IR format with LLVM strict properties.
++  let useStrictPropertiesInAssemblyFormat = 0;
++
+   let name = "proton_gpu";
+   let cppNamespace = "::mlir::triton::proton::gpu";
+ 

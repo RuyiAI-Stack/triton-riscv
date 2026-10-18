@@ -39,6 +39,14 @@ Apply the rebased Triton integration patch using the helper script. It configure
 
 The script is idempotent: re-running it on an already-patched tree prints `SKIPPED (patch already applied)` per patch and exits cleanly.
 
+The patch set also preserves Triton's existing `attr-dict` textual IR format
+when building against LLVM revisions that enable strict properties by default.
+It opts Triton's dialects into MLIR's legacy assembly-format behavior without
+changing the LLVM checkout. LLVM 24 compatibility also uses instruction
+`contract` flags for floating-point fusion and the renamed pass-plugin loader.
+Re-run `scripts/apply_patches.sh` before rebuilding an existing Triton checkout
+after updating this repository's patches.
+
 ## Prerequisites
 
 ### Create a virtual environment
