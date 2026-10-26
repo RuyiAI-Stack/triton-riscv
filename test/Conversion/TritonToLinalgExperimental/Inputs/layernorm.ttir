@@ -1,0 +1,51 @@
+module {
+  tt.func public @triton_layernorm_197x768(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>, %arg3: !tt.ptr<f32>) attributes {noinline = false} {
+    %cst = arith.constant 9.99999996E-13 : f32
+    %cst_0 = arith.constant 7.680000e+02 : f32
+    %cst_1 = arith.constant dense<1.000000e+00> : tensor<1024xf32>
+    %cst_2 = arith.constant dense<0.000000e+00> : tensor<1024xf32>
+    %cst_3 = arith.constant dense<768> : tensor<1024xi32>
+    %c768_i32 = arith.constant 768 : i32
+    %0 = tt.get_program_id x : i32
+    %1 = tt.make_range {end = 1024 : i32, start = 0 : i32} : tensor<1024xi32>
+    %2 = arith.cmpi slt, %1, %cst_3 : tensor<1024xi32>
+    %3 = arith.muli %0, %c768_i32 : i32
+    %4 = tt.addptr %arg0, %3 : !tt.ptr<f32>, i32
+    %5 = tt.splat %4 : !tt.ptr<f32> -> tensor<1024x!tt.ptr<f32>>
+    %6 = tt.addptr %5, %1 : tensor<1024x!tt.ptr<f32>>, tensor<1024xi32>
+    %7 = tt.load %6, %2, %cst_2 : tensor<1024x!tt.ptr<f32>>
+    %8 = tt.splat %arg1 : !tt.ptr<f32> -> tensor<1024x!tt.ptr<f32>>
+    %9 = tt.addptr %8, %1 : tensor<1024x!tt.ptr<f32>>, tensor<1024xi32>
+    %10 = tt.load %9, %2, %cst_1 : tensor<1024x!tt.ptr<f32>>
+    %11 = tt.splat %arg2 : !tt.ptr<f32> -> tensor<1024x!tt.ptr<f32>>
+    %12 = tt.addptr %11, %1 : tensor<1024x!tt.ptr<f32>>, tensor<1024xi32>
+    %13 = tt.load %12, %2, %cst_2 : tensor<1024x!tt.ptr<f32>>
+    %14 = "tt.reduce"(%7) <{axis = 0 : i32}> ({
+    ^bb0(%arg4: f32, %arg5: f32):
+      %30 = arith.addf %arg4, %arg5 : f32
+      tt.reduce.return %30 : f32
+    }) : (tensor<1024xf32>) -> f32
+    %15 = arith.divf %14, %cst_0 : f32
+    %16 = tt.splat %15 : f32 -> tensor<1024xf32>
+    %17 = arith.subf %7, %16 : tensor<1024xf32>
+    %18 = arith.select %2, %17, %cst_2 : tensor<1024xi1>, tensor<1024xf32>
+    %19 = arith.mulf %18, %18 : tensor<1024xf32>
+    %20 = "tt.reduce"(%19) <{axis = 0 : i32}> ({
+    ^bb0(%arg4: f32, %arg5: f32):
+      %30 = arith.addf %arg4, %arg5 : f32
+      tt.reduce.return %30 : f32
+    }) : (tensor<1024xf32>) -> f32
+    %21 = arith.divf %20, %cst_0 : f32
+    %22 = arith.addf %21, %cst : f32
+    %23 = math.rsqrt %22 : f32
+    %24 = tt.splat %23 : f32 -> tensor<1024xf32>
+    %25 = arith.mulf %18, %24 : tensor<1024xf32>
+    %26 = arith.mulf %25, %10 : tensor<1024xf32>
+    %27 = arith.addf %26, %13 : tensor<1024xf32>
+    %28 = tt.addptr %arg3, %3 : !tt.ptr<f32>, i32
+    %29 = tt.splat %28 : !tt.ptr<f32> -> tensor<1024x!tt.ptr<f32>>
+    %30 = tt.addptr %29, %1 : tensor<1024x!tt.ptr<f32>>, tensor<1024xi32>
+    tt.store %30, %27, %2 : tensor<1024x!tt.ptr<f32>>
+    tt.return
+  }
+}

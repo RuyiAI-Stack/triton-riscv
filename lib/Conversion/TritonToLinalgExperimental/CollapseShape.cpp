@@ -18,7 +18,6 @@
 #include "triton-shared/Conversion/UnstructuredToMemref/UnstructuredToMemref.h"
 #include "triton-shared/Dialect/TPtr/IR/TPtrDialect.h"
 #include "triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.h"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"

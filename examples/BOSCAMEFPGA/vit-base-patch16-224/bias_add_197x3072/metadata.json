@@ -1,0 +1,10 @@
+{
+  "name": "bias_add_197x3072",
+  "kind": "bias_add",
+  "shape": [
+    197,
+    3072
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224"
+}

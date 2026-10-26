@@ -3,6 +3,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "triton-shared/Conversion/TritonLoweringConfig.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -13,16 +14,16 @@ namespace triton {
 #define GEN_PASS_DECL
 #include "triton-shared/Conversion/StructuredToMemref/Passes.h.inc"
 
-void populateStructuredToMemrefConversionPatterns(RewritePatternSet &patterns,
-                                                  TypeConverter &typeConverter,
-                                                  bool enableTensorFirstVectorCpu =
-                                                      false);
+void populateStructuredToMemrefConversionPatterns(
+    RewritePatternSet &patterns, TypeConverter &typeConverter,
+    bool enableTensorFirstVectorCpu = false, TritonLoweringConfig config = {});
 
 void populateStructuredToMemrefPreConversionPatterns(
     RewritePatternSet &patterns, bool enableTensorFirstVectorCpu = false);
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createStructuredToMemrefPass(bool enableTensorFirstVectorCpu = false);
+createStructuredToMemrefPass(bool enableTensorFirstVectorCpu = false,
+                             TritonLoweringConfig config = {});
 
 } // namespace triton
 } // namespace mlir

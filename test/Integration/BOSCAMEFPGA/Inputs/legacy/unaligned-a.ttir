@@ -1,0 +1,40 @@
+// A rows are 100 bytes apart, so no A row start is provably 64 B aligned.
+module {
+  tt.func public @unaligned_a(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %pid: i32) {
+    %cpitch = arith.constant dense<100> : tensor<64x1xi32>
+    %cnb = arith.constant dense<64> : tensor<64x1xi32>
+    %cpitchn = arith.constant dense<100> : tensor<1x64xi32>
+    %cn = arith.constant dense<64> : tensor<64x1xi32>
+    %acc0 = arith.constant dense<0> : tensor<64x64xi32>
+    %rm = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %rn = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %rk = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %m = tt.expand_dims %rm {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+    %n = tt.expand_dims %rn {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+    %k = tt.expand_dims %rk {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+    %kn = tt.expand_dims %rk {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+    %aoff = arith.muli %m, %cpitch : tensor<64x1xi32>
+    %pa = tt.splat %A : !tt.ptr<i8> -> tensor<64x1x!tt.ptr<i8>>
+    %pa1 = tt.addptr %pa, %aoff : tensor<64x1x!tt.ptr<i8>>, tensor<64x1xi32>
+    %pa2 = tt.broadcast %pa1 : tensor<64x1x!tt.ptr<i8>> -> tensor<64x64x!tt.ptr<i8>>
+    %ak = tt.broadcast %kn : tensor<1x64xi32> -> tensor<64x64xi32>
+    %pa3 = tt.addptr %pa2, %ak : tensor<64x64x!tt.ptr<i8>>, tensor<64x64xi32>
+    %a = tt.load %pa3 : tensor<64x64x!tt.ptr<i8>>
+    %boff = arith.muli %n, %cpitchn : tensor<1x64xi32>
+    %pb = tt.splat %B : !tt.ptr<i8> -> tensor<1x64x!tt.ptr<i8>>
+    %pb1 = tt.addptr %pb, %boff : tensor<1x64x!tt.ptr<i8>>, tensor<1x64xi32>
+    %pb2 = tt.broadcast %pb1 : tensor<1x64x!tt.ptr<i8>> -> tensor<64x64x!tt.ptr<i8>>
+    %bk = tt.broadcast %k : tensor<64x1xi32> -> tensor<64x64xi32>
+    %pb3 = tt.addptr %pb2, %bk : tensor<64x64x!tt.ptr<i8>>, tensor<64x64xi32>
+    %b = tt.load %pb3 : tensor<64x64x!tt.ptr<i8>>
+    %dot = tt.dot %a, %b, %acc0 : tensor<64x64xi8> * tensor<64x64xi8> -> tensor<64x64xi32>
+    %coff = arith.muli %m, %cnb : tensor<64x1xi32>
+    %pc = tt.splat %C : !tt.ptr<i32> -> tensor<64x1x!tt.ptr<i32>>
+    %pc1 = tt.addptr %pc, %coff : tensor<64x1x!tt.ptr<i32>>, tensor<64x1xi32>
+    %pc2 = tt.broadcast %pc1 : tensor<64x1x!tt.ptr<i32>> -> tensor<64x64x!tt.ptr<i32>>
+    %cnb2 = tt.broadcast %n : tensor<1x64xi32> -> tensor<64x64xi32>
+    %pc3 = tt.addptr %pc2, %cnb2 : tensor<64x64x!tt.ptr<i32>>, tensor<64x64xi32>
+    tt.store %pc3, %dot : tensor<64x64x!tt.ptr<i32>>
+    tt.return
+  }
+}

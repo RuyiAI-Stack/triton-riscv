@@ -1,0 +1,10 @@
+{
+  "kind": "bias_add",
+  "shape": [
+    196,
+    768
+  ],
+  "dtype": "f32",
+  "target": "nr-fpga",
+  "checked_elements": 150528
+}

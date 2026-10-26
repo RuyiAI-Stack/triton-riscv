@@ -14,6 +14,14 @@ def TritonToLinalgExperimental : Pass<"triton-to-linalg-experimental", "mlir::Mo
   let summary = "Convert Triton to Linalg dialect";
   let constructor = "triton::createTritonToLinalgExperimentalPass()";
   let options = [
+      Option<"emitContract", "contract", "bool", /*default*/"false",
+             "Produce target-neutral buffer-form Linalg/MemRef/SCF with a verified kernel contract">,
+      Option<"dumpFacts", "dump-facts", "bool", /*default*/"false",
+             "Print the generated neutral kernel contract">,
+      Option<"callerContract", "caller-contract", "std::string", /*default*/"\"\"",
+             "Caller ABI promise: args_aligned64_nonalias (optional)">,
+      Option<"launchGrid", "launch-grid", "std::string", /*default*/"\"\"",
+             "Known launch grids: symbol:x,y,z entries separated by semicolons">,
       Option<"enableMakeGatherScatterTensorPtr", "enable-make-gather-scatter", "bool", /*default*/"true",
              "Enable make_gather_scatter_tptr support">,
       Option<"enableCollapseShape", "enable-collapse-shape", "bool", /*default*/"false",

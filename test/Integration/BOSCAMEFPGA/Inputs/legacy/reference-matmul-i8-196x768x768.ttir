@@ -1,0 +1,75 @@
+
+module {
+  tt.func public @triton_matmul_i8_196x768x768(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) attributes {noinline = false} {
+    %cst = arith.constant dense<0> : tensor<256x16xi8>
+    %cst_0 = arith.constant dense<0> : tensor<16x256xi8>
+    %c1_i32 = arith.constant 1 : i32
+    %c3_i32 = arith.constant 3 : i32
+    %c0_i32 = arith.constant 0 : i32
+    %cst_1 = arith.constant dense<768> : tensor<16x1xi32>
+    %cst_2 = arith.constant dense<768> : tensor<256x1xi32>
+    %cst_3 = arith.constant dense<768> : tensor<1x16xi32>
+    %cst_4 = arith.constant dense<768> : tensor<1x256xi32>
+    %cst_5 = arith.constant dense<196> : tensor<16x1xi32>
+    %c256_i32 = arith.constant 256 : i32
+    %cst_6 = arith.constant dense<0> : tensor<16x16xi32>
+    %c16_i32 = arith.constant 16 : i32
+    %rows = tt.get_program_id x : i32
+    %rows_7 = arith.muli %rows, %c16_i32 : i32
+    %rows_8 = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+    %rows_9 = tt.splat %rows_7 : i32 -> tensor<16xi32>
+    %rows_10 = arith.addi %rows_9, %rows_8 : tensor<16xi32>
+    %cols = tt.get_program_id y : i32
+    %cols_11 = arith.muli %cols, %c16_i32 : i32
+    %cols_12 = tt.splat %cols_11 : i32 -> tensor<16xi32>
+    %cols_13 = arith.addi %cols_12, %rows_8 : tensor<16xi32>
+    %k = tt.make_range {end = 256 : i32, start = 0 : i32} : tensor<256xi32>
+    %valid_a = tt.expand_dims %rows_10 {axis = 1 : i32} : tensor<16xi32> -> tensor<16x1xi32>
+    %valid_a_14 = arith.cmpi slt, %valid_a, %cst_5 : tensor<16x1xi32>
+    %valid_a_15 = tt.broadcast %valid_a_14 : tensor<16x1xi1> -> tensor<16x256xi1>
+    %valid_b = tt.expand_dims %cols_13 {axis = 0 : i32} : tensor<16xi32> -> tensor<1x16xi32>
+    %valid_b_16 = arith.cmpi slt, %valid_b, %cst_3 : tensor<1x16xi32>
+    %valid_b_17 = tt.broadcast %valid_b_16 : tensor<1x16xi1> -> tensor<256x16xi1>
+    %a = arith.muli %valid_a, %cst_1 : tensor<16x1xi32>
+    %a_18 = tt.splat %A : !tt.ptr<i8> -> tensor<16x1x!tt.ptr<i8>>
+    %a_19 = tt.addptr %a_18, %a : tensor<16x1x!tt.ptr<i8>>, tensor<16x1xi32>
+    %a_20 = tt.broadcast %a_19 : tensor<16x1x!tt.ptr<i8>> -> tensor<16x256x!tt.ptr<i8>>
+    %b = arith.muli %valid_b, %cst_3 : tensor<1x16xi32>
+    %b_21 = tt.splat %B : !tt.ptr<i8> -> tensor<1x16x!tt.ptr<i8>>
+    %b_22 = tt.addptr %b_21, %b : tensor<1x16x!tt.ptr<i8>>, tensor<1x16xi32>
+    %b_23 = tt.broadcast %b_22 : tensor<1x16x!tt.ptr<i8>> -> tensor<256x16x!tt.ptr<i8>>
+    %acc = scf.for %block = %c0_i32 to %c3_i32 step %c1_i32 iter_args(%acc_30 = %cst_6) -> (tensor<16x16xi32>)  : i32 {
+      %kk = arith.muli %block, %c256_i32 : i32
+      %kk_31 = tt.splat %kk : i32 -> tensor<256xi32>
+      %kk_32 = arith.addi %kk_31, %k : tensor<256xi32>
+      %valid_a_33 = tt.expand_dims %kk_32 {axis = 0 : i32} : tensor<256xi32> -> tensor<1x256xi32>
+      %valid_a_34 = arith.cmpi slt, %valid_a_33, %cst_4 : tensor<1x256xi32>
+      %valid_a_35 = tt.broadcast %valid_a_34 : tensor<1x256xi1> -> tensor<16x256xi1>
+      %valid_a_36 = arith.andi %valid_a_15, %valid_a_35 : tensor<16x256xi1>
+      %valid_b_37 = tt.expand_dims %kk_32 {axis = 1 : i32} : tensor<256xi32> -> tensor<256x1xi32>
+      %valid_b_38 = arith.cmpi slt, %valid_b_37, %cst_2 : tensor<256x1xi32>
+      %valid_b_39 = tt.broadcast %valid_b_38 : tensor<256x1xi1> -> tensor<256x16xi1>
+      %valid_b_40 = arith.andi %valid_b_17, %valid_b_39 : tensor<256x16xi1>
+      %a_41 = tt.broadcast %valid_a_33 : tensor<1x256xi32> -> tensor<16x256xi32>
+      %a_42 = tt.addptr %a_20, %a_41 : tensor<16x256x!tt.ptr<i8>>, tensor<16x256xi32>
+      %a_43 = tt.load %a_42, %valid_a_36, %cst_0 : tensor<16x256x!tt.ptr<i8>>
+      %b_44 = tt.broadcast %valid_b_37 : tensor<256x1xi32> -> tensor<256x16xi32>
+      %b_45 = tt.addptr %b_23, %b_44 : tensor<256x16x!tt.ptr<i8>>, tensor<256x16xi32>
+      %b_46 = tt.load %b_45, %valid_b_40, %cst : tensor<256x16x!tt.ptr<i8>>
+      %acc_47 = tt.dot %a_43, %b_46, %acc_30 : tensor<16x256xi8> * tensor<256x16xi8> -> tensor<16x16xi32>
+      scf.yield %acc_47 : tensor<16x16xi32>
+    }
+    %valid = tt.broadcast %valid_a_14 : tensor<16x1xi1> -> tensor<16x16xi1>
+    %valid_24 = tt.broadcast %valid_b_16 : tensor<1x16xi1> -> tensor<16x16xi1>
+    %valid_25 = arith.andi %valid, %valid_24 : tensor<16x16xi1>
+    %address = tt.splat %C : !tt.ptr<i32> -> tensor<16x1x!tt.ptr<i32>>
+    %address_26 = tt.addptr %address, %a : tensor<16x1x!tt.ptr<i32>>, tensor<16x1xi32>
+    %address_27 = tt.broadcast %address_26 : tensor<16x1x!tt.ptr<i32>> -> tensor<16x16x!tt.ptr<i32>>
+    %address_28 = tt.broadcast %valid_b : tensor<1x16xi32> -> tensor<16x16xi32>
+    %address_29 = tt.addptr %address_27, %address_28 : tensor<16x16x!tt.ptr<i32>>, tensor<16x16xi32>
+    %previous = tt.load %address_29, %valid_25, %cst_6 : tensor<16x16x!tt.ptr<i32>>
+    %0 = arith.addi %acc, %previous : tensor<16x16xi32>
+    tt.store %address_29, %0, %valid_25 : tensor<16x16x!tt.ptr<i32>>
+    tt.return
+  }
+}

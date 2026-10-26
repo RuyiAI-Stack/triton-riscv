@@ -1,0 +1,6 @@
+{
+  "kind": "dequantization",
+  "shape": [1, 1000],
+  "dtype": "i32 -> f32",
+  "target": "scalar"
+}

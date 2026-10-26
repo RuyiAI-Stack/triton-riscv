@@ -1,0 +1,54 @@
+// Tight, unpadded buffers; dynamic K masks and nonzero other/ACC initializer.
+module {
+  tt.func public @padded_k(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %validK: i32) {
+    %r = tt.make_range {end = 2 : i32, start = 0 : i32} : tensor<2xi32>
+    %n = tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32>
+    %k = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
+    %rm = tt.expand_dims %r {axis = 1 : i32} : tensor<2xi32> -> tensor<2x1xi32>
+    %nn = tt.expand_dims %n {axis = 0 : i32} : tensor<4xi32> -> tensor<1x4xi32>
+    %ka = tt.expand_dims %k {axis = 0 : i32} : tensor<32xi32> -> tensor<1x32xi32>
+    %kb = tt.expand_dims %k {axis = 1 : i32} : tensor<32xi32> -> tensor<32x1xi32>
+    %c32m = arith.constant dense<32> : tensor<2x1xi32>
+    %c32n = arith.constant dense<32> : tensor<1x4xi32>
+    %ao = arith.muli %rm, %c32m : tensor<2x1xi32>
+    %bo = arith.muli %nn, %c32n : tensor<1x4xi32>
+    %ap = tt.splat %A : !tt.ptr<i8> -> tensor<2x1x!tt.ptr<i8>>
+    %ap0 = tt.addptr %ap, %ao : tensor<2x1x!tt.ptr<i8>>, tensor<2x1xi32>
+    %ap1 = tt.broadcast %ap0 : tensor<2x1x!tt.ptr<i8>> -> tensor<2x32x!tt.ptr<i8>>
+    %ak = tt.broadcast %ka : tensor<1x32xi32> -> tensor<2x32xi32>
+    %ap2 = tt.addptr %ap1, %ak : tensor<2x32x!tt.ptr<i8>>, tensor<2x32xi32>
+    %bp = tt.splat %B : !tt.ptr<i8> -> tensor<1x4x!tt.ptr<i8>>
+    %bp0 = tt.addptr %bp, %bo : tensor<1x4x!tt.ptr<i8>>, tensor<1x4xi32>
+    %bp1 = tt.broadcast %bp0 : tensor<1x4x!tt.ptr<i8>> -> tensor<32x4x!tt.ptr<i8>>
+    %bk = tt.broadcast %kb : tensor<32x1xi32> -> tensor<32x4xi32>
+    %bp2 = tt.addptr %bp1, %bk : tensor<32x4x!tt.ptr<i8>>, tensor<32x4xi32>
+    %alimit = tt.splat %validK : i32 -> tensor<2x32xi32>
+    %blimit = tt.splat %validK : i32 -> tensor<32x4xi32>
+    %am = arith.cmpi slt, %ak, %alimit : tensor<2x32xi32>
+    %bm = arith.cmpi slt, %bk, %blimit : tensor<32x4xi32>
+    %otherA = arith.constant dense<3> : tensor<2x32xi8>
+    %otherB = arith.constant dense<-2> : tensor<32x4xi8>
+    %a = tt.load %ap2, %am, %otherA : tensor<2x32x!tt.ptr<i8>>
+    %b = tt.load %bp2, %bm, %otherB : tensor<32x4x!tt.ptr<i8>>
+    %initial = arith.constant dense<17> : tensor<2x4xi32>
+    %dot = tt.dot %a, %b, %initial : tensor<2x32xi8> * tensor<32x4xi8> -> tensor<2x4xi32>
+    %c4 = arith.constant dense<4> : tensor<2x1xi32>
+    %co = arith.muli %rm, %c4 : tensor<2x1xi32>
+    %cp = tt.splat %C : !tt.ptr<i32> -> tensor<2x1x!tt.ptr<i32>>
+    %cp0 = tt.addptr %cp, %co : tensor<2x1x!tt.ptr<i32>>, tensor<2x1xi32>
+    %cp1 = tt.broadcast %cp0 : tensor<2x1x!tt.ptr<i32>> -> tensor<2x4x!tt.ptr<i32>>
+    %cn = tt.broadcast %nn : tensor<1x4xi32> -> tensor<2x4xi32>
+    %cp2 = tt.addptr %cp1, %cn : tensor<2x4x!tt.ptr<i32>>, tensor<2x4xi32>
+    %cr = tt.broadcast %rm : tensor<2x1xi32> -> tensor<2x4xi32>
+    %c1 = arith.constant dense<1> : tensor<2x4xi32>
+    %c2 = arith.constant dense<2> : tensor<2x4xi32>
+    %cm = arith.cmpi slt, %cr, %c1 : tensor<2x4xi32>
+    %nm = arith.cmpi slt, %cn, %c2 : tensor<2x4xi32>
+    %mask = arith.andi %cm, %nm : tensor<2x4xi1>
+    %zero = arith.constant dense<0> : tensor<2x4xi32>
+    %previous = tt.load %cp2, %mask, %zero : tensor<2x4x!tt.ptr<i32>>
+    %sum = arith.addi %dot, %previous : tensor<2x4xi32>
+    tt.store %cp2, %sum, %mask : tensor<2x4x!tt.ptr<i32>>
+    tt.return
+  }
+}

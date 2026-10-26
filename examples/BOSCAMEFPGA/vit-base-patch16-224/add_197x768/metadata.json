@@ -1,0 +1,10 @@
+{
+  "name": "add_197x768",
+  "kind": "add",
+  "shape": [
+    197,
+    768
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224"
+}

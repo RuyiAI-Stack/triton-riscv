@@ -1,0 +1,19 @@
+{
+  "model_id": "google/vit-base-patch16-224",
+  "source": "https://hf-mirror.com/google/vit-base-patch16-224",
+  "task": "image-classification",
+  "batch": 1,
+  "image_size": [224, 224],
+  "patch_size": [16, 16],
+  "num_patches": 196,
+  "sequence_length": 197,
+  "hidden_size": 768,
+  "heads": 12,
+  "head_dim": 64,
+  "layers": 12,
+  "intermediate_size": 3072,
+  "num_labels": 1000,
+  "dtype": "float32",
+  "layer_norm_eps": 1e-12,
+  "operators": ["patch_embed", "add", "bias_add", "linear", "attention_qk", "softmax", "attention_pv", "layernorm", "gelu"]
+}

@@ -1,0 +1,43 @@
+// A 64x64x64 i8 dot whose A rows are 128 bytes apart with only 63 valid
+// columns, and whose B rows have 63 valid reduction elements.  The bytes the
+// masks exclude are DDR garbage: the pass must not read them, and the
+// materialized lanes must be `other` (= 0).
+module {
+  tt.func public @masked_dot(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
+    %c64 = arith.constant dense<64> : tensor<64x1xi32>
+    %c128 = arith.constant dense<128> : tensor<64x1xi32>
+    %c64n = arith.constant dense<64> : tensor<1x64xi32>
+    %c63 = arith.constant dense<63> : tensor<64x64xi32>
+    %zero = arith.constant dense<0> : tensor<64x64xi8>
+    %acc0 = arith.constant dense<0> : tensor<64x64xi32>
+    %r = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %m = tt.expand_dims %r {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+    %n = tt.expand_dims %r {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+    %kb = tt.broadcast %n : tensor<1x64xi32> -> tensor<64x64xi32>
+    %nb = tt.broadcast %m : tensor<64x1xi32> -> tensor<64x64xi32>
+    %valid_a = arith.cmpi slt, %kb, %c63 : tensor<64x64xi32>
+    %valid_b = arith.cmpi slt, %nb, %c63 : tensor<64x64xi32>
+    // A: [M=64, K=64], address = A + m*128 + k, mask = k < 63
+    %aoff = arith.muli %m, %c128 : tensor<64x1xi32>
+    %pa = tt.splat %A : !tt.ptr<i8> -> tensor<64x1x!tt.ptr<i8>>
+    %pa1 = tt.addptr %pa, %aoff : tensor<64x1x!tt.ptr<i8>>, tensor<64x1xi32>
+    %pa2 = tt.broadcast %pa1 : tensor<64x1x!tt.ptr<i8>> -> tensor<64x64x!tt.ptr<i8>>
+    %pa3 = tt.addptr %pa2, %kb : tensor<64x64x!tt.ptr<i8>>, tensor<64x64xi32>
+    %a = tt.load %pa3, %valid_a, %zero : tensor<64x64x!tt.ptr<i8>>
+    // B: [K=64, N=64] with K contiguous inside one physical N row, row pitch 64
+    %boff = arith.muli %n, %c64n : tensor<1x64xi32>
+    %pb = tt.splat %B : !tt.ptr<i8> -> tensor<1x64x!tt.ptr<i8>>
+    %pb1 = tt.addptr %pb, %boff : tensor<1x64x!tt.ptr<i8>>, tensor<1x64xi32>
+    %pb2 = tt.broadcast %pb1 : tensor<1x64x!tt.ptr<i8>> -> tensor<64x64x!tt.ptr<i8>>
+    %pb3 = tt.addptr %pb2, %nb : tensor<64x64x!tt.ptr<i8>>, tensor<64x64xi32>
+    %b = tt.load %pb3, %valid_b, %zero : tensor<64x64x!tt.ptr<i8>>
+    %dot = tt.dot %a, %b, %acc0 : tensor<64x64xi8> * tensor<64x64xi8> -> tensor<64x64xi32>
+    %coff = arith.muli %m, %c64 : tensor<64x1xi32>
+    %pc = tt.splat %C : !tt.ptr<i32> -> tensor<64x1x!tt.ptr<i32>>
+    %pc1 = tt.addptr %pc, %coff : tensor<64x1x!tt.ptr<i32>>, tensor<64x1xi32>
+    %pc2 = tt.broadcast %pc1 : tensor<64x1x!tt.ptr<i32>> -> tensor<64x64x!tt.ptr<i32>>
+    %pc3 = tt.addptr %pc2, %kb : tensor<64x64x!tt.ptr<i32>>, tensor<64x64xi32>
+    tt.store %pc3, %dot : tensor<64x64x!tt.ptr<i32>>
+    tt.return
+  }
+}

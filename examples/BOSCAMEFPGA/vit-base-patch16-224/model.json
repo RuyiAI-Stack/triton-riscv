@@ -1,0 +1,52 @@
+{
+  "model_id": "google/vit-base-patch16-224",
+  "revision": "3f49326eb077187dfe1c2a2bb15fbd74e6ab91e3",
+  "checkpoint_sha256": "1cea07110a4a47edc51420b2dda6f3b8b58e7256e8f44b4ea6aa9696162ccb5d",
+  "input": {
+    "name": "pixel_values",
+    "shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "dtype": "f32"
+  },
+  "output": {
+    "name": "logits",
+    "shape": [
+      1,
+      1000
+    ],
+    "dtype": "f32"
+  },
+  "patches": {
+    "grid": [
+      14,
+      14
+    ],
+    "count": 196,
+    "size": 16
+  },
+  "encoder": {
+    "layers": 12,
+    "hidden": 768,
+    "heads": 12,
+    "head_dim": 64,
+    "mlp": 3072
+  },
+  "operators": [
+    "patch_embed",
+    "linear",
+    "bias_add",
+    "layernorm",
+    "attention_qk",
+    "softmax",
+    "attention_pv",
+    "gelu",
+    "add"
+  ],
+  "linear_mode": "w8a8",
+  "fp32_reference_option": "--fp32-reference",
+  "accumulator_semantics": "compiled overwrite kernel; no old C input"
+}

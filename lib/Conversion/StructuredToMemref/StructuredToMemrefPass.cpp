@@ -10,7 +10,6 @@
 #include "triton-shared/Conversion/StructuredToMemref/StructuredToMemref.h"
 #include "triton-shared/Dialect/TPtr/IR/TPtrDialect.h"
 #include "triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.h"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -90,12 +89,13 @@ public:
                     memref::MemRefDialect, vector::VectorDialect>();
   }
 
+  TritonLoweringConfig config;
+
   void runOnOperation() override {
     auto moduleOp = getOperation();
-
     RewritePatternSet prePatterns(&getContext());
     triton::populateStructuredToMemrefPreConversionPatterns(
-        prePatterns, enableTensorFirstVectorCpu);
+        prePatterns, enableTensorFirstVectorCpu && !config.emitContract);
     if (failed(applyPatternsGreedily(moduleOp, std::move(prePatterns)))) {
       signalPassFailure();
       return;
@@ -104,13 +104,12 @@ public:
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
 
-    target.addLegalDialect<
-        func::FuncDialect, arith::ArithDialect, math::MathDialect,
-        linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
-        cf::ControlFlowDialect, tensor::TensorDialect,
-        bufferization::BufferizationDialect, ttx::TritonTilingExtDialect,
-        memref::MemRefDialect, vector::VectorDialect>();
-
+    target.addLegalDialect<func::FuncDialect, arith::ArithDialect,
+                           math::MathDialect, linalg::LinalgDialect,
+                           affine::AffineDialect, scf::SCFDialect,
+                           cf::ControlFlowDialect, tensor::TensorDialect,
+                           bufferization::BufferizationDialect,
+                           memref::MemRefDialect, vector::VectorDialect>();
     target.addIllegalOp<tts::LoadOp, tts::StoreOp, tts::MakeTensorPtrOp>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
@@ -118,18 +117,22 @@ public:
     PtrToUnrankedMemrefConverter typeConverter;
 
     triton::populateStructuredToMemrefConversionPatterns(
-        patterns, typeConverter, enableTensorFirstVectorCpu);
+        patterns, typeConverter, enableTensorFirstVectorCpu, config);
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
+      return;
     }
   }
 };
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-triton::createStructuredToMemrefPass(bool enableTensorFirstVectorCpu) {
+triton::createStructuredToMemrefPass(bool enableTensorFirstVectorCpu,
+                                     TritonLoweringConfig config) {
   StructuredToMemrefOptions options;
   options.enableTensorFirstVectorCpu = enableTensorFirstVectorCpu;
-  return std::make_unique<StructuredToMemrefPass>(options);
+  auto pass = std::make_unique<StructuredToMemrefPass>(options);
+  pass->config = std::move(config);
+  return pass;
 }

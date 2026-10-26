@@ -1,0 +1,10 @@
+{
+  "name": "layernorm_197x768",
+  "kind": "layernorm",
+  "shape": [
+    197,
+    768
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224"
+}

@@ -2,6 +2,7 @@
 # ruff: noqa: F821
 
 import os
+import subprocess
 
 import lit.formats
 import lit.util
@@ -19,7 +20,7 @@ config.name = "TRITON-SHARED"
 config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
-config.suffixes = [".mlir", ".ll"]
+config.suffixes = [".mlir", ".ll", ".py"]
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
@@ -31,7 +32,9 @@ config.triton_shared_sanitizer_lib_dir = os.path.join(
 )
 
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
-config.substitutions.append(("%sanitizer_dir", config.triton_shared_sanitizer_dir))
+config.substitutions.append(
+    ("%sanitizer_dir", config.triton_shared_sanitizer_dir)
+)
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%toolsdir", config.llvm_tools_dir))
 
@@ -42,7 +45,15 @@ llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 # excludes: A list of directories to exclude from the testsuite. The 'Inputs'
 # subdirectories contain auxiliary inputs for various tests in their parent
 # directories.
-config.excludes = ["Inputs", "Examples", "CMakeLists.txt", "README.txt", "LICENSE.txt"]
+config.excludes = [
+    "Inputs",
+    "Examples",
+    "Integration",
+    "CMakeLists.txt",
+    "README.txt",
+    "LICENSE.txt",
+    "lit.cfg.py",
+]
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
@@ -54,7 +65,11 @@ config.triton_tools_dir = os.path.join(
 )
 config.filecheck_dir = os.path.join(config.triton_obj_root, "bin", "FileCheck")
 
-tool_dirs = [config.triton_tools_dir, config.llvm_tools_dir, config.filecheck_dir]
+tool_dirs = [
+    config.triton_tools_dir,
+    config.llvm_tools_dir,
+    config.filecheck_dir,
+]
 
 # Tweak the PATH to include the tools dir.
 for d in tool_dirs:
@@ -66,6 +81,22 @@ tools = [
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+llvm_config.with_environment(
+    "TRITON_SHARED_OPT_PATH",
+    os.path.join(config.triton_tools_dir, "triton-shared-opt"),
+)
+# Migrated semantic tests are executable Python tests, not imported helpers.
+
+if (
+    subprocess.call(
+        [config.python_executable, "-c", "import numpy"],
+        stdout=subprocess.DEVNULL,
+    )
+    != 0
+):
+    lit_config.fatal(
+        "frontend Python tests require NumPy in the configured Python"
+    )
 
 # TODO: what's this?
 llvm_config.with_environment(

@@ -1,0 +1,31 @@
+module {
+  tt.func public @single_dot64(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
+    %c64 = arith.constant dense<64> : tensor<64x1xi32>
+    %c64n = arith.constant dense<64> : tensor<1x64xi32>
+    %r = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %m = tt.expand_dims %r {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+    %n = tt.expand_dims %r {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+    %mb = tt.broadcast %m : tensor<64x1xi32> -> tensor<64x64xi32>
+    %nb = tt.broadcast %n : tensor<1x64xi32> -> tensor<64x64xi32>
+    %aoff = arith.muli %m, %c64 : tensor<64x1xi32>
+    %pa = tt.splat %A : !tt.ptr<i8> -> tensor<64x1x!tt.ptr<i8>>
+    %pa1 = tt.addptr %pa, %aoff : tensor<64x1x!tt.ptr<i8>>, tensor<64x1xi32>
+    %pa2 = tt.broadcast %pa1 : tensor<64x1x!tt.ptr<i8>> -> tensor<64x64x!tt.ptr<i8>>
+    %pa3 = tt.addptr %pa2, %nb : tensor<64x64x!tt.ptr<i8>>, tensor<64x64xi32>
+    %a = tt.load %pa3 : tensor<64x64x!tt.ptr<i8>>
+    %boff = arith.muli %n, %c64n : tensor<1x64xi32>
+    %pb = tt.splat %B : !tt.ptr<i8> -> tensor<1x64x!tt.ptr<i8>>
+    %pb1 = tt.addptr %pb, %boff : tensor<1x64x!tt.ptr<i8>>, tensor<1x64xi32>
+    %pb2 = tt.broadcast %pb1 : tensor<1x64x!tt.ptr<i8>> -> tensor<64x64x!tt.ptr<i8>>
+    %pb3 = tt.addptr %pb2, %mb : tensor<64x64x!tt.ptr<i8>>, tensor<64x64xi32>
+    %b = tt.load %pb3 : tensor<64x64x!tt.ptr<i8>>
+    %acc0 = arith.constant dense<0> : tensor<64x64xi32>
+    %dot = tt.dot %a, %b, %acc0 : tensor<64x64xi8> * tensor<64x64xi8> -> tensor<64x64xi32>
+    %pc = tt.splat %C : !tt.ptr<i32> -> tensor<64x1x!tt.ptr<i32>>
+    %pc1 = tt.addptr %pc, %aoff : tensor<64x1x!tt.ptr<i32>>, tensor<64x1xi32>
+    %pc2 = tt.broadcast %pc1 : tensor<64x1x!tt.ptr<i32>> -> tensor<64x64x!tt.ptr<i32>>
+    %pc3 = tt.addptr %pc2, %nb : tensor<64x64x!tt.ptr<i32>>, tensor<64x64xi32>
+    tt.store %pc3, %dot : tensor<64x64x!tt.ptr<i32>>
+    tt.return
+  }
+}

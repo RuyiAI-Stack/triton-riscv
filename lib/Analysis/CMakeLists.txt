@@ -1,4 +1,5 @@
 add_triton_library(TritonSharedAnalysis
+  KernelContract.cpp
   MaskAnalysis.cpp
   OpFoldResultUtils.cpp
   PtrAnalysis.cpp
@@ -10,4 +11,13 @@ add_triton_library(TritonSharedAnalysis
 
   LINK_LIBS PUBLIC
   MLIRAnalysis
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRIR
+  MLIRLinalgDialect
+  MLIRMemRefDialect
+  MLIRPass
+  MLIRSCFDialect
+  MLIRSideEffectInterfaces
+  MLIRViewLikeInterface
 )

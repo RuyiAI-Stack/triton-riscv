@@ -467,6 +467,10 @@ LogicalResult MaskState::parseCmp(arith::CmpIOp cmpOp, const Location loc,
                                   OpBuilder &builder) {
   assert(this->isEmpty());
   int cmpOpDim = -1;
+  // The 1-D collapse created for the unstructured-mask candidate, if any.  It
+  // is erased again when the structured parse succeeds (see the end of this
+  // function); on failure it stays in the IR as the fallback mask.
+  tensor::CollapseShapeOp collapsedMask;
   if (auto shapedType = dyn_cast<ShapedType>(cmpOp.getType())) {
     for (unsigned r = 0; r < shapedType.getRank(); r++) {
       if (shapedType.getShape()[r] != 1) {
@@ -498,9 +502,14 @@ LogicalResult MaskState::parseCmp(arith::CmpIOp cmpOp, const Location loc,
             getReassociationIndicesForReshape(shapedType, flatType);
         SmallVector<ReassociationIndices> reassociation =
             *maybeReassociationMap;
-        // Set masks.
-        unstructuredMask = tensor::CollapseShapeOp::create(
+        // Set masks.  This collapse is a *candidate* for the unstructured-mask
+        // fallback; `collapsedMask` remembers it so that a successful parse can
+        // drop it again.  Leaving it in the IR would keep a use of the compared
+        // value alive after the mask itself has been consumed as metadata, and
+        // an erased metadata producer would then strand an unrealized cast.
+        collapsedMask = tensor::CollapseShapeOp::create(
             builder, loc, flatType, cmpOp, reassociation);
+        unstructuredMask = collapsedMask;
       }
       masks[cmpOpDim] = unstructuredMask;
     }
@@ -601,7 +610,12 @@ LogicalResult MaskState::parseCmp(arith::CmpIOp cmpOp, const Location loc,
       this->dims.push_back(lhsState.dims[i]);
   }
   if (cmpOpDim != -1) {
-    // Clear masks when success.
+    // Clear masks when success.  The collapsed candidate is not part of the
+    // result, so drop it: a structured mask is consumed as metadata by the
+    // caller, and keeping the collapse alive would leave a use of the compared
+    // value after its defining operation has been erased.
+    if (collapsedMask && collapsedMask.use_empty())
+      collapsedMask.erase();
     masks[cmpOpDim] = nullptr;
   }
   return success();

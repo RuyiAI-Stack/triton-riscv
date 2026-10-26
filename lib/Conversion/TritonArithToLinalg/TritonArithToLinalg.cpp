@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "triton-shared/Conversion/TritonArithToLinalg/TritonArithToLinalg.h"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -47,7 +46,8 @@ void mlir::triton::populateTritonTensorPtrConversionPatterns(
 
 void mlir::triton::populateTritonArithToLinalgConversionPatterns(
     bool pidsToFuncArgs, bool addptrToLinalg, bool assertToCf,
-    bool transposeReduceToRank0, RewritePatternSet &patterns) {
+    bool transposeReduceToRank0, RewritePatternSet &patterns,
+    TritonLoweringConfig config) {
 
   if (pidsToFuncArgs) {
     patterns.add<GetProgramIDConverter, GetNumProgramsConverter>(
@@ -72,7 +72,7 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
   patterns.add<JoinConverter>(patterns.getContext());
   patterns.add<FpToFpConverter>(patterns.getContext());
   patterns.add<ClampConverter>(patterns.getContext());
-  patterns.add<MatmulConverter>(patterns.getContext());
+  patterns.add<MatmulConverter>(patterns.getContext(), config);
   patterns.add<SplatConverter>(patterns.getContext());
   patterns.add<UnsplatConverter>(patterns.getContext());
   patterns.add<DenseConstantConverter>(patterns.getContext());

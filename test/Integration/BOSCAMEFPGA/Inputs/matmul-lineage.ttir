@@ -1,0 +1,43 @@
+module {
+  tt.func public @matmul_load_lineage(%a_ptr: !tt.ptr<i8>, %b_ptr: !tt.ptr<i8>) -> tensor<16x16xi32> {
+    %acc_zero = arith.constant dense<0> : tensor<16x16xi32>
+    %r16 = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+    %r64 = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %rm = tt.expand_dims %r16 {axis = 1 : i32} : tensor<16xi32> -> tensor<16x1xi32>
+    %kn = tt.expand_dims %r16 {axis = 0 : i32} : tensor<16xi32> -> tensor<1x16xi32>
+    %ka = tt.expand_dims %r64 {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+    %kb = tt.expand_dims %r64 {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+    %stride_a = arith.constant dense<64> : tensor<16x1xi32>
+    %stride_b = arith.constant dense<16> : tensor<64x1xi32>
+    %a_row_offset = arith.muli %rm, %stride_a : tensor<16x1xi32>
+    %a_base = tt.splat %a_ptr : !tt.ptr<i8> -> tensor<16x1x!tt.ptr<i8>>
+    %a_row_ptr = tt.addptr %a_base, %a_row_offset : tensor<16x1x!tt.ptr<i8>>, tensor<16x1xi32>
+    %a_row_ptrs = tt.broadcast %a_row_ptr : tensor<16x1x!tt.ptr<i8>> -> tensor<16x64x!tt.ptr<i8>>
+    %a_k_offset = tt.broadcast %ka : tensor<1x64xi32> -> tensor<16x64xi32>
+    %a_ptrs = tt.addptr %a_row_ptrs, %a_k_offset : tensor<16x64x!tt.ptr<i8>>, tensor<16x64xi32>
+    %a_load = tt.load %a_ptrs : tensor<16x64x!tt.ptr<i8>>
+    %b_base = tt.splat %b_ptr : !tt.ptr<i8> -> tensor<1x16x!tt.ptr<i8>>
+    %b_col_ptr = tt.addptr %b_base, %kn : tensor<1x16x!tt.ptr<i8>>, tensor<1x16xi32>
+    %b_col_ptrs = tt.broadcast %b_col_ptr : tensor<1x16x!tt.ptr<i8>> -> tensor<64x16x!tt.ptr<i8>>
+    %b_k_row_stride = arith.muli %kb, %stride_b : tensor<64x1xi32>
+    %b_k_offset = tt.broadcast %b_k_row_stride : tensor<64x1xi32> -> tensor<64x16xi32>
+    %b_ptrs = tt.addptr %b_col_ptrs, %b_k_offset : tensor<64x16x!tt.ptr<i8>>, tensor<64x16xi32>
+    %b_load = tt.load %b_ptrs : tensor<64x16x!tt.ptr<i8>>
+    %a = arith.addi %a_load, %a_load : tensor<16x64xi8>
+    %b = arith.addi %b_load, %b_load : tensor<64x16xi8>
+    %dot = tt.dot %a, %b, %acc_zero : tensor<16x64xi8> * tensor<64x16xi8> -> tensor<16x16xi32>
+    tt.return %dot : tensor<16x16xi32>
+  }
+
+  tt.func public @matmul_chained_regions(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32>) -> tensor<16x16xf32> {
+    %one = arith.constant 1.0 : f32
+    %generated = tensor.generate {
+    ^bb0(%i: index, %j: index):
+      tensor.yield %one : f32
+    } : tensor<16x16xf32>
+    %zero = arith.constant dense<0.0> : tensor<16x16xf32>
+    %first = tt.dot %generated, %arg0, %zero : tensor<16x16xf32> * tensor<16x16xf32> -> tensor<16x16xf32>
+    %second = tt.dot %first, %arg1, %zero : tensor<16x16xf32> * tensor<16x16xf32> -> tensor<16x16xf32>
+    tt.return %second : tensor<16x16xf32>
+  }
+}

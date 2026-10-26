@@ -1,0 +1,12 @@
+{
+  "name": "attention_qk_12x197x197x64",
+  "kind": "attention_qk",
+  "shape": [
+    12,
+    197,
+    197,
+    64
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224"
+}

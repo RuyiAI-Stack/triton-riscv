@@ -1,0 +1,10 @@
+{
+  "name": "bias_add_1x1000",
+  "kind": "bias_add",
+  "shape": [
+    1,
+    1000
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224"
+}

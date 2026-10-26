@@ -1,0 +1,11 @@
+{
+  "name": "softmax_12x197x197",
+  "kind": "softmax",
+  "shape": [
+    12,
+    197,
+    197
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224"
+}

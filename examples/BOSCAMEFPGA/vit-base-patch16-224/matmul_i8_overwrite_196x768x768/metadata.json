@@ -1,0 +1,14 @@
+{
+  "kind": "matmul_i8_overwrite",
+  "shape": [
+    196,
+    768,
+    768
+  ],
+  "dtype": "i8 x i8 -> i32",
+  "target": "nr-fpga",
+  "checked_elements": 150528,
+  "roles": [
+    "model_pure_product"
+  ]
+}

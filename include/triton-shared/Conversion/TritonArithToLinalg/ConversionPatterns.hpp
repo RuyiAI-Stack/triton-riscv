@@ -12,7 +12,7 @@
 #include "triton-shared/Analysis/OpFoldResultUtils.h"
 #include "triton-shared/Analysis/PtrAnalysis.h"
 #include "triton-shared/Conversion/TritonArithToLinalg/ConversionTools.h"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
+#include "triton-shared/Conversion/TritonLoweringConfig.h"
 #include "triton-shared/Utils/Utils.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -22,8 +22,12 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
@@ -1023,7 +1027,9 @@ struct MulHiUIOpConverter : public OpConversionPattern<triton::MulhiUIOp> {
 };
 
 struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
-  using OpConversionPattern<triton::DotOp>::OpConversionPattern;
+  MatmulConverter(MLIRContext *context, TritonLoweringConfig config = {})
+      : OpConversionPattern(context), emitContract(config.emitContract) {}
+  bool emitContract;
 
   // true means tensor elements are zeros
   // false means not zero or it cannot be determined
@@ -1053,6 +1059,252 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
     return false;
   }
 
+  static Attribute findOriginId(Value value) {
+    SmallPtrSet<Operation *, 8> visited;
+    while (Operation *def = value.getDefiningOp()) {
+      if (!visited.insert(def).second)
+        return {};
+      auto eventKind = def->getAttrOfType<StringAttr>("contract.event_kind");
+      if (eventKind && eventKind.getValue() == "load")
+        return def->getAttr("contract.origin_id");
+      StringRef name = def->getName().getStringRef();
+      if (def->getNumOperands() != 1 ||
+          (name != "tensor.cast" && name != "tensor.expand_shape" &&
+           name != "tensor.collapse_shape" && name != "arith.extsi" &&
+           name != "arith.trunci" && name != "arith.extf" &&
+           name != "arith.truncf" && name != "tt.splat"))
+        return {};
+      value = def->getOperand(0);
+    }
+    return {};
+  }
+
+  struct SourceLoadLineage {
+    SmallVector<int64_t, 4> origins;
+    bool complete = true;
+  };
+
+  static void collectSourceLoadOrigins(Value value, DenseSet<Value> &visited,
+                                       SourceLoadLineage &lineage) {
+    if (!visited.insert(value).second)
+      return;
+
+    if (auto argument = dyn_cast<BlockArgument>(value)) {
+      Region *parentRegion = argument.getOwner()->getParent();
+      auto whileOp = dyn_cast_or_null<scf::WhileOp>(
+          parentRegion ? parentRegion->getParentOp() : nullptr);
+      if (whileOp) {
+        unsigned slot = argument.getArgNumber();
+        if (parentRegion == &whileOp.getBefore()) {
+          if (slot < whileOp.getInits().size())
+            collectSourceLoadOrigins(whileOp.getInits()[slot], visited,
+                                     lineage);
+          else
+            lineage.complete = false;
+
+          Region &after = whileOp.getAfter();
+          auto yieldOp =
+              after.empty()
+                  ? scf::YieldOp()
+                  : dyn_cast<scf::YieldOp>(after.front().getTerminator());
+          if (yieldOp && slot < yieldOp.getNumOperands())
+            collectSourceLoadOrigins(yieldOp.getOperand(slot), visited,
+                                     lineage);
+          else
+            lineage.complete = false;
+          return;
+        }
+
+        if (parentRegion == &whileOp.getAfter()) {
+          Region &before = whileOp.getBefore();
+          auto conditionOp =
+              before.empty()
+                  ? scf::ConditionOp()
+                  : dyn_cast<scf::ConditionOp>(before.front().getTerminator());
+          if (conditionOp && slot < conditionOp.getArgs().size())
+            collectSourceLoadOrigins(conditionOp.getArgs()[slot], visited,
+                                     lineage);
+          else
+            lineage.complete = false;
+          return;
+        }
+
+        lineage.complete = false;
+        return;
+      }
+
+      auto forOp =
+          dyn_cast_or_null<scf::ForOp>(argument.getOwner()->getParentOp());
+      if (!forOp) {
+        lineage.complete = false;
+        return;
+      }
+      for (auto [index, iterArg] : llvm::enumerate(forOp.getRegionIterArgs())) {
+        if (iterArg != value)
+          continue;
+        if (index >= forOp.getInitArgs().size() ||
+            index >= forOp.getYieldedValues().size()) {
+          lineage.complete = false;
+          return;
+        }
+        collectSourceLoadOrigins(forOp.getInitArgs()[index], visited, lineage);
+        collectSourceLoadOrigins(forOp.getYieldedValues()[index], visited,
+                                 lineage);
+        return;
+      }
+      lineage.complete = false;
+      return;
+    }
+
+    Operation *def = value.getDefiningOp();
+    if (!def)
+      return;
+    auto eventKind = def->getAttrOfType<StringAttr>("contract.event_kind");
+    if (eventKind && eventKind.getValue() == "load") {
+      auto origin = def->getAttrOfType<IntegerAttr>("contract.origin_id");
+      if (origin && origin.getInt() >= 0)
+        lineage.origins.push_back(origin.getInt());
+      else
+        lineage.complete = false;
+      return;
+    }
+
+    if (auto ifOp = dyn_cast<scf::IfOp>(def)) {
+      auto result = dyn_cast<OpResult>(value);
+      if (!result) {
+        lineage.complete = false;
+        return;
+      }
+      unsigned resultIndex = result.getResultNumber();
+      for (Region &region : ifOp->getRegions()) {
+        if (region.empty()) {
+          lineage.complete = false;
+          continue;
+        }
+        Operation *terminator = region.front().getTerminator();
+        if (!isa<scf::YieldOp>(terminator) ||
+            resultIndex >= terminator->getNumOperands()) {
+          lineage.complete = false;
+          continue;
+        }
+        collectSourceLoadOrigins(terminator->getOperand(resultIndex), visited,
+                                 lineage);
+      }
+      return;
+    }
+
+    if (auto forOp = dyn_cast<scf::ForOp>(def)) {
+      auto result = dyn_cast<OpResult>(value);
+      if (!result) {
+        lineage.complete = false;
+        return;
+      }
+      unsigned resultIndex = result.getResultNumber();
+      if (resultIndex >= forOp.getInitArgs().size() ||
+          resultIndex >= forOp.getYieldedValues().size()) {
+        lineage.complete = false;
+        return;
+      }
+      collectSourceLoadOrigins(forOp.getInitArgs()[resultIndex], visited,
+                               lineage);
+      collectSourceLoadOrigins(forOp.getYieldedValues()[resultIndex], visited,
+                               lineage);
+      return;
+    }
+
+    if (auto whileOp = dyn_cast<scf::WhileOp>(def)) {
+      auto result = dyn_cast<OpResult>(value);
+      if (!result) {
+        lineage.complete = false;
+        return;
+      }
+      Region &before = whileOp.getBefore();
+      auto conditionOp =
+          before.empty()
+              ? scf::ConditionOp()
+              : dyn_cast<scf::ConditionOp>(before.front().getTerminator());
+      unsigned slot = result.getResultNumber();
+      if (conditionOp && slot < conditionOp.getArgs().size())
+        collectSourceLoadOrigins(conditionOp.getArgs()[slot], visited, lineage);
+      else
+        lineage.complete = false;
+      return;
+    }
+
+    if (auto switchOp = dyn_cast<scf::IndexSwitchOp>(def)) {
+      auto result = dyn_cast<OpResult>(value);
+      if (!result) {
+        lineage.complete = false;
+        return;
+      }
+      unsigned resultIndex = result.getResultNumber();
+      auto visitRegion = [&](Region &region) {
+        if (region.empty()) {
+          lineage.complete = false;
+          return;
+        }
+        Operation *terminator = region.front().getTerminator();
+        if (!isa<scf::YieldOp>(terminator) ||
+            resultIndex >= terminator->getNumOperands()) {
+          lineage.complete = false;
+          return;
+        }
+        collectSourceLoadOrigins(terminator->getOperand(resultIndex), visited,
+                                 lineage);
+      };
+      visitRegion(switchOp.getDefaultRegion());
+      for (Region &region : switchOp.getCaseRegions())
+        visitRegion(region);
+      return;
+    }
+
+    if (!isMemoryEffectFree(def)) {
+      lineage.complete = false;
+      return;
+    }
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(def)) {
+      for (OpOperand *input : linalgOp.getDpsInputOperands())
+        collectSourceLoadOrigins(input->get(), visited, lineage);
+      for (OpOperand &init : linalgOp.getDpsInitsMutable())
+        if (linalgOp.payloadUsesValueFromOperand(&init))
+          collectSourceLoadOrigins(init.get(), visited, lineage);
+      return;
+    }
+    if (!def->getRegions().empty()) {
+      lineage.complete = false;
+      for (Value operand : def->getOperands())
+        collectSourceLoadOrigins(operand, visited, lineage);
+      return;
+    }
+    for (Value operand : def->getOperands())
+      collectSourceLoadOrigins(operand, visited, lineage);
+  }
+
+  static SourceLoadLineage findSourceLoadLineage(Value value) {
+    SourceLoadLineage lineage;
+    DenseSet<Value> visited;
+    collectSourceLoadOrigins(value, visited, lineage);
+    llvm::sort(lineage.origins);
+    lineage.origins.erase(
+        std::unique(lineage.origins.begin(), lineage.origins.end()),
+        lineage.origins.end());
+    return lineage;
+  }
+
+  static void attachSourceLoadLineage(Operation *matmul, StringRef operand,
+                                      Value value) {
+    SourceLoadLineage lineage = findSourceLoadLineage(value);
+    MLIRContext *context = matmul->getContext();
+    Builder builder(context);
+    std::string originsName = (operand + "_source_load_origin_ids").str();
+    std::string completeName = (operand + "_source_lineage_complete").str();
+    matmul->setAttr(originsName,
+                    DenseI64ArrayAttr::get(context, lineage.origins));
+    matmul->setAttr(
+        completeName,
+        builder.getBoolAttr(lineage.complete && !lineage.origins.empty()));
+  }
+
   LogicalResult
   matchAndRewrite(triton::DotOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -1064,62 +1316,106 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
     auto dstType = cast<RankedTensorType>(op.getType());
     auto elementType = dstType.getElementType();
     bool integers = elementType.isInteger();
-    bool skipC = isZeroTensor(opc, integers);
-    auto init =
-        tensor::EmptyOp::create(rewriter, loc, dstType.getShape(), elementType);
-    TypedAttr constantAttr =
-        integers
-            ? static_cast<TypedAttr>(rewriter.getIntegerAttr(elementType, 0))
-            : static_cast<TypedAttr>(rewriter.getFloatAttr(elementType, 0));
-
-    auto zero = mlir::arith::ConstantOp::create(rewriter, op.getLoc(),
-                                                elementType, constantAttr);
-
-    auto zeroes = linalg::FillOp::create(rewriter, loc, ValueRange{zero},
-                                         ValueRange{init})
-                      .result();
-
     // For mixed-precision integer matmul (e.g. i8 x i8 -> i32), linalg.matmul
     // requires a cast attribute so the inner multiply can promote i8 operands
     // to the i32 accumulator type.  Without it the op verifier rejects the IR.
     Value res;
+    bool skipC = false;
     auto aElemType = cast<RankedTensorType>(opa.getType()).getElementType();
 
-    if (!integers && aElemType != elementType) {
-      // Promote float operands to accumulator type
-      auto opaType = cast<RankedTensorType>(opa.getType());
-      auto promotedAType =
-          RankedTensorType::get(opaType.getShape(), elementType);
-      opa = arith::ExtFOp::create(rewriter, loc, promotedAType, opa,
-                                  arith::FastMathFlagsAttr());
-
-      auto opbType = cast<RankedTensorType>(opb.getType());
-      auto promotedBType =
-          RankedTensorType::get(opbType.getShape(), elementType);
-      opb = arith::ExtFOp::create(rewriter, loc, promotedBType, opb,
-                                  arith::FastMathFlagsAttr());
-    }
-
-    bool isMixedIntPrecision = integers && (aElemType != elementType);
-    if (isMixedIntPrecision) {
-      auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
-                                              linalg::TypeFn::cast_signed);
-      res = linalg::MatmulOp::create(rewriter, loc, TypeRange{zeroes.getType()},
-                                     ValueRange{opa, opb}, ValueRange{zeroes},
-                                     castAttr)
-                .getResult(0);
-    } else {
-      res = linalg::MatmulOp::create(rewriter, loc, ValueRange{opa, opb},
-                                     ValueRange{zeroes})
-                .getResult(0);
-    }
-
-    if (!skipC) {
-      if (integers) {
-        res = arith::AddIOp::create(rewriter, loc, opc, res);
+    // Integer contraction consumes the dot's accumulator directly.  Keeping the
+    // incoming C tensor as the linalg output makes the reduction order explicit
+    // and prevents a separate product tensor followed by a tensor add.  The
+    // ordinary Triton lowering below retains its historical zero-product
+    // expansion for integer and floating point dots outside contract mode.
+    if (emitContract && integers) {
+      bool isMixedIntPrecision = aElemType != elementType;
+      if (isMixedIntPrecision) {
+        auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
+                                                linalg::TypeFn::cast_signed);
+        res = rewriter
+                  .create<linalg::MatmulOp>(loc, TypeRange{opc.getType()},
+                                            ValueRange{opa, opb},
+                                            ValueRange{opc}, castAttr)
+                  .getResult(0);
       } else {
-        res = arith::AddFOp::create(rewriter, loc, opc, res);
+        res = rewriter
+                  .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
+                                            ValueRange{opc})
+                  .getResult(0);
       }
+    } else {
+      skipC = isZeroTensor(opc, integers);
+      auto init = rewriter.create<tensor::EmptyOp>(loc, dstType.getShape(),
+                                                   elementType);
+      TypedAttr constantAttr =
+          integers
+              ? static_cast<TypedAttr>(rewriter.getIntegerAttr(elementType, 0))
+              : static_cast<TypedAttr>(rewriter.getFloatAttr(elementType, 0));
+
+      auto zero = rewriter.create<mlir::arith::ConstantOp>(
+          op.getLoc(), elementType, constantAttr);
+
+      auto zeroes =
+          rewriter
+              .create<linalg::FillOp>(loc, ValueRange{zero}, ValueRange{init})
+              .result();
+
+      if (!integers && aElemType != elementType) {
+        // Promote float operands to accumulator type
+        auto opaType = cast<RankedTensorType>(opa.getType());
+        auto promotedAType =
+            RankedTensorType::get(opaType.getShape(), elementType);
+        opa = rewriter.create<arith::ExtFOp>(loc, promotedAType, opa);
+
+        auto opbType = cast<RankedTensorType>(opb.getType());
+        auto promotedBType =
+            RankedTensorType::get(opbType.getShape(), elementType);
+        opb = rewriter.create<arith::ExtFOp>(loc, promotedBType, opb);
+      }
+
+      if (integers && (aElemType != elementType)) {
+        auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
+                                                linalg::TypeFn::cast_signed);
+        res = rewriter
+                  .create<linalg::MatmulOp>(loc, TypeRange{zeroes.getType()},
+                                            ValueRange{opa, opb},
+                                            ValueRange{zeroes}, castAttr)
+                  .getResult(0);
+      } else {
+        res = rewriter
+                  .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
+                                            ValueRange{zeroes})
+                  .getResult(0);
+      }
+    }
+
+    if (emitContract) {
+      Operation *matmul = res.getDefiningOp();
+      if (Attribute id = op->getAttr("contract.origin_id"))
+        matmul->setAttr("contract.origin_id", id);
+      if (Attribute eventKind = op->getAttr("contract.event_kind"))
+        matmul->setAttr("contract.event_kind", eventKind);
+      attachSourceLoadLineage(matmul, "contract.a", op.getA());
+      attachSourceLoadLineage(matmul, "contract.b", op.getB());
+      attachSourceLoadLineage(matmul, "contract.accumulator", op.getC());
+      if (Attribute id = findOriginId(op.getA());
+          id && !matmul->hasAttr("contract.a_origin_id"))
+        matmul->setAttr("contract.a_origin_id", id);
+      if (Attribute id = findOriginId(op.getB());
+          id && !matmul->hasAttr("contract.b_origin_id"))
+        matmul->setAttr("contract.b_origin_id", id);
+      if (!skipC)
+        if (Attribute id = findOriginId(op.getC());
+            id && !matmul->hasAttr("contract.accumulator_origin_id"))
+          matmul->setAttr("contract.accumulator_origin_id", id);
+    }
+
+    if (!(emitContract && integers) && !skipC) {
+      if (integers)
+        res = rewriter.create<arith::AddIOp>(loc, opc, res);
+      else
+        res = rewriter.create<arith::AddFOp>(loc, opc, res);
     }
 
     rewriter.replaceOp(op, res);

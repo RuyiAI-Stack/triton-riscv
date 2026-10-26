@@ -1,0 +1,72 @@
+// Export of examples/FPGA-BOSCAME/matmul_i8_196x768x768/kernels.py, without locations.
+module {
+  tt.func public @triton_matmul_i8_196x768x768(%arg0: !tt.ptr<i8>, %arg1: !tt.ptr<i8>, %arg2: !tt.ptr<i32>) attributes {noinline = false} {
+    %cst = arith.constant dense<0> : tensor<128x128xi8>
+    %cst_0 = arith.constant dense<0> : tensor<32x128xi8>
+    %c1_i32 = arith.constant 1 : i32
+    %c6_i32 = arith.constant 6 : i32
+    %c0_i32 = arith.constant 0 : i32
+    %cst_1 = arith.constant dense<768> : tensor<128x1xi32>
+    %cst_2 = arith.constant dense<0> : tensor<32x128xi32>
+    %cst_3 = arith.constant dense<768> : tensor<32x1xi32>
+    %cst_4 = arith.constant dense<768> : tensor<1x128xi32>
+    %cst_5 = arith.constant dense<196> : tensor<32x1xi32>
+    %c128_i32 = arith.constant 128 : i32
+    %c32_i32 = arith.constant 32 : i32
+    %0 = tt.get_program_id x : i32
+    %1 = arith.muli %0, %c32_i32 : i32
+    %2 = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
+    %3 = tt.splat %1 : i32 -> tensor<32xi32>
+    %4 = arith.addi %3, %2 : tensor<32xi32>
+    %5 = tt.get_program_id y : i32
+    %6 = arith.muli %5, %c128_i32 : i32
+    %7 = tt.make_range {end = 128 : i32, start = 0 : i32} : tensor<128xi32>
+    %8 = tt.splat %6 : i32 -> tensor<128xi32>
+    %9 = arith.addi %8, %7 : tensor<128xi32>
+    %10 = tt.expand_dims %4 {axis = 1 : i32} : tensor<32xi32> -> tensor<32x1xi32>
+    %11 = arith.cmpi slt, %10, %cst_5 : tensor<32x1xi32>
+    %12 = tt.expand_dims %9 {axis = 0 : i32} : tensor<128xi32> -> tensor<1x128xi32>
+    %13 = arith.cmpi slt, %12, %cst_4 : tensor<1x128xi32>
+    %14 = tt.broadcast %11 : tensor<32x1xi1> -> tensor<32x128xi1>
+    %15 = tt.broadcast %13 : tensor<1x128xi1> -> tensor<32x128xi1>
+    %16 = arith.andi %14, %15 : tensor<32x128xi1>
+    %17 = arith.muli %10, %cst_3 : tensor<32x1xi32>
+    %18 = tt.splat %arg2 : !tt.ptr<i32> -> tensor<32x1x!tt.ptr<i32>>
+    %19 = tt.addptr %18, %17 : tensor<32x1x!tt.ptr<i32>>, tensor<32x1xi32>
+    %20 = tt.broadcast %19 : tensor<32x1x!tt.ptr<i32>> -> tensor<32x128x!tt.ptr<i32>>
+    %21 = tt.broadcast %12 : tensor<1x128xi32> -> tensor<32x128xi32>
+    %22 = tt.addptr %20, %21 : tensor<32x128x!tt.ptr<i32>>, tensor<32x128xi32>
+    %23 = tt.load %22, %16, %cst_2 : tensor<32x128x!tt.ptr<i32>>
+    %24 = tt.broadcast %13 : tensor<1x128xi1> -> tensor<128x128xi1>
+    %25 = tt.splat %arg0 : !tt.ptr<i8> -> tensor<32x1x!tt.ptr<i8>>
+    %26 = tt.addptr %25, %17 : tensor<32x1x!tt.ptr<i8>>, tensor<32x1xi32>
+    %27 = tt.broadcast %26 : tensor<32x1x!tt.ptr<i8>> -> tensor<32x128x!tt.ptr<i8>>
+    %28 = arith.muli %12, %cst_4 : tensor<1x128xi32>
+    %29 = tt.splat %arg1 : !tt.ptr<i8> -> tensor<1x128x!tt.ptr<i8>>
+    %30 = tt.addptr %29, %28 : tensor<1x128x!tt.ptr<i8>>, tensor<1x128xi32>
+    %31 = tt.broadcast %30 : tensor<1x128x!tt.ptr<i8>> -> tensor<128x128x!tt.ptr<i8>>
+    %32 = scf.for %arg3 = %c0_i32 to %c6_i32 step %c1_i32 iter_args(%arg4 = %23) -> (tensor<32x128xi32>)  : i32 {
+      %33 = arith.muli %arg3, %c128_i32 : i32
+      %34 = tt.splat %33 : i32 -> tensor<128xi32>
+      %35 = arith.addi %34, %7 : tensor<128xi32>
+      %36 = tt.expand_dims %35 {axis = 0 : i32} : tensor<128xi32> -> tensor<1x128xi32>
+      %37 = arith.cmpi slt, %36, %cst_4 : tensor<1x128xi32>
+      %38 = tt.broadcast %37 : tensor<1x128xi1> -> tensor<32x128xi1>
+      %39 = arith.andi %14, %38 : tensor<32x128xi1>
+      %40 = tt.expand_dims %35 {axis = 1 : i32} : tensor<128xi32> -> tensor<128x1xi32>
+      %41 = arith.cmpi slt, %40, %cst_1 : tensor<128x1xi32>
+      %42 = tt.broadcast %41 : tensor<128x1xi1> -> tensor<128x128xi1>
+      %43 = arith.andi %24, %42 : tensor<128x128xi1>
+      %44 = tt.broadcast %36 : tensor<1x128xi32> -> tensor<32x128xi32>
+      %45 = tt.addptr %27, %44 : tensor<32x128x!tt.ptr<i8>>, tensor<32x128xi32>
+      %46 = tt.load %45, %39, %cst_0 : tensor<32x128x!tt.ptr<i8>>
+      %47 = tt.broadcast %40 : tensor<128x1xi32> -> tensor<128x128xi32>
+      %48 = tt.addptr %31, %47 : tensor<128x128x!tt.ptr<i8>>, tensor<128x128xi32>
+      %49 = tt.load %48, %43, %cst : tensor<128x128x!tt.ptr<i8>>
+      %50 = tt.dot %46, %49, %arg4 : tensor<32x128xi8> * tensor<128x128xi8> -> tensor<32x128xi32>
+      scf.yield %50 : tensor<32x128xi32>
+    }
+    tt.store %22, %32, %16 : tensor<32x128x!tt.ptr<i32>>
+    tt.return
+  }
+}

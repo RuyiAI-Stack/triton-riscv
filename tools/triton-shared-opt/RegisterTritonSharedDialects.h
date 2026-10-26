@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Ptr/IR/PtrDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "triton-shared/Analysis/KernelContract.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
@@ -30,6 +31,7 @@
 #include "mlir/InitAllPasses.h"
 
 inline void registerTritonSharedDialects(mlir::DialectRegistry &registry) {
+  mlir::triton::contract::registerKernelContractPasses();
   mlir::registerAllPasses();
   mlir::registerLinalgPasses();
   mlir::triton::registerTritonPasses();

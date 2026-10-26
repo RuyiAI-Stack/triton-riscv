@@ -1,0 +1,42 @@
+// A dense 64x64x256 i8 dot: the reduction is wider than the 64-wide AME tile,
+// so the pass has to emit a real 64-step `scf.for` that carries the
+// accumulator and loads A/B from SPM.
+module {
+  tt.func public @k_blocked(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
+    %c256 = arith.constant dense<256> : tensor<64x1xi32>
+    %c256n = arith.constant dense<256> : tensor<1x64xi32>
+    %c64 = arith.constant dense<64> : tensor<64x1xi32>
+    %acc0 = arith.constant dense<0> : tensor<64x64xi32>
+    %r256 = tt.make_range {end = 256 : i32, start = 0 : i32} : tensor<256xi32>
+    %r64 = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+    %m = tt.expand_dims %r64 {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+    %n = tt.expand_dims %r64 {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+    %k = tt.expand_dims %r256 {axis = 1 : i32} : tensor<256xi32> -> tensor<256x1xi32>
+    %kn = tt.expand_dims %r256 {axis = 0 : i32} : tensor<256xi32> -> tensor<1x256xi32>
+    // A: [M=64, K=256], row-major
+    %aoff = arith.muli %m, %c256 : tensor<64x1xi32>
+    %pa = tt.splat %A : !tt.ptr<i8> -> tensor<64x1x!tt.ptr<i8>>
+    %pa1 = tt.addptr %pa, %aoff : tensor<64x1x!tt.ptr<i8>>, tensor<64x1xi32>
+    %pa2 = tt.broadcast %pa1 : tensor<64x1x!tt.ptr<i8>> -> tensor<64x256x!tt.ptr<i8>>
+    %ak = tt.broadcast %kn : tensor<1x256xi32> -> tensor<64x256xi32>
+    %pa3 = tt.addptr %pa2, %ak : tensor<64x256x!tt.ptr<i8>>, tensor<64x256xi32>
+    %a = tt.load %pa3 : tensor<64x256x!tt.ptr<i8>>
+    // B: [K=256, N=64] with K contiguous inside one physical N row (pitch 256)
+    %boff = arith.muli %n, %c256n : tensor<1x64xi32>
+    %pb = tt.splat %B : !tt.ptr<i8> -> tensor<1x64x!tt.ptr<i8>>
+    %pb1 = tt.addptr %pb, %boff : tensor<1x64x!tt.ptr<i8>>, tensor<1x64xi32>
+    %pb2 = tt.broadcast %pb1 : tensor<1x64x!tt.ptr<i8>> -> tensor<256x64x!tt.ptr<i8>>
+    %bk = tt.broadcast %k : tensor<256x1xi32> -> tensor<256x64xi32>
+    %pb3 = tt.addptr %pb2, %bk : tensor<256x64x!tt.ptr<i8>>, tensor<256x64xi32>
+    %b = tt.load %pb3 : tensor<256x64x!tt.ptr<i8>>
+    %dot = tt.dot %a, %b, %acc0 : tensor<64x256xi8> * tensor<256x64xi8> -> tensor<64x64xi32>
+    %coff = arith.muli %m, %c64 : tensor<64x1xi32>
+    %pc = tt.splat %C : !tt.ptr<i32> -> tensor<64x1x!tt.ptr<i32>>
+    %pc1 = tt.addptr %pc, %coff : tensor<64x1x!tt.ptr<i32>>, tensor<64x1xi32>
+    %pc2 = tt.broadcast %pc1 : tensor<64x1x!tt.ptr<i32>> -> tensor<64x64x!tt.ptr<i32>>
+    %cn = tt.broadcast %n : tensor<1x64xi32> -> tensor<64x64xi32>
+    %pc3 = tt.addptr %pc2, %cn : tensor<64x64x!tt.ptr<i32>>, tensor<64x64xi32>
+    tt.store %pc3, %dot : tensor<64x64x!tt.ptr<i32>>
+    tt.return
+  }
+}

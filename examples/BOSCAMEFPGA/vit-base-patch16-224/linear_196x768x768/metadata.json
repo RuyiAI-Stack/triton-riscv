@@ -1,0 +1,12 @@
+{
+  "name": "linear_196x768x768",
+  "kind": "linear",
+  "shape": [
+    196,
+    768,
+    768
+  ],
+  "dtype": "f32",
+  "model": "google/vit-base-patch16-224",
+  "role": "patch_embed_im2col_gemm"
+}

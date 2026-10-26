@@ -1,0 +1,13 @@
+{
+  "kind": "per_token_quantization",
+  "shape": [
+    1000,
+    768
+  ],
+  "rounding": "nearest, ties away from zero",
+  "zero_row_scale": 1,
+  "target": "scalar",
+  "roles": [
+    "classifier_weight_validation"
+  ]
+}
