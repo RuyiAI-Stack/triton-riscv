@@ -23,3 +23,24 @@ def quantize(X, Q, Scale, WIDTH: tl.constexpr, BLOCK: tl.constexpr):
     integer = (base + adjustment).to(tl.int8)
     tl.store(Scale + row, scale)
     tl.store(Q + row * WIDTH + channel, integer, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "per_token_quantization",
+    "kernel": "quantize",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "f32"},
+        {"name": "Q", "rank": 2, "dtype": "i8"},
+        {"name": "Scale", "rank": 1, "dtype": "f32"},
+    ],
+    "shape": [197, 3072],
+    "constexprs": {"WIDTH": 3072, "BLOCK": 4096},
+    "grid": [197, 1, 1],
+    "roles": [],
+    "metadata": {
+        "rounding": "nearest, ties away from zero",
+        "zero_row_scale": 1,
+        "target": "scalar",
+    },
+}

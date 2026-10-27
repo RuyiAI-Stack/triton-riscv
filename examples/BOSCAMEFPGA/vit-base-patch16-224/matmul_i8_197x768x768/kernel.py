@@ -37,3 +37,20 @@ def matmul_i8(
     address = C + rows[:, None] * N + cols[None, :]
     previous = tl.load(address, valid, other=0)
     tl.store(address, acc + previous, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "matmul_i8",
+    "kernel": "matmul_i8",
+    "arguments": [
+        {"name": "A", "rank": 2, "dtype": "i8"},
+        {"name": "B", "rank": 2, "dtype": "i8"},
+        {"name": "C", "rank": 2, "dtype": "i32"},
+    ],
+    "shape": [197, 768, 768],
+    "constexprs": {"M": 197, "VALID_M": 197, "N": 768, "K": 768, "BM": 32, "BN": 64, "BK": 128},
+    "grid": [7, 12, 1],
+    "roles": [],
+    "metadata": {"dtype": "i8 x i8 -> i32", "target": "nr-fpga", "checked_elements": 151296},
+}

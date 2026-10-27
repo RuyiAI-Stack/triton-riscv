@@ -31,7 +31,7 @@ from oracles import (  # noqa: E402
     reference,
 )
 
-from build import argument_shapes, describe  # noqa: E402
+from export import argument_shapes, describe  # noqa: E402
 
 
 def rejects(function, *args):

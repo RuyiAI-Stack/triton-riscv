@@ -9,7 +9,10 @@ Dense/sampled observations are not a formal approximation error bound.
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import mpmath
 import numpy as np
@@ -23,7 +26,7 @@ from oracles import (
 )
 from simcheck import scenarios_for
 
-from build import ROOT, argument_shapes, describe, digest
+from export import ROOT, argument_shapes, describe, digest
 
 
 def sample_round(case, arrays, actual):

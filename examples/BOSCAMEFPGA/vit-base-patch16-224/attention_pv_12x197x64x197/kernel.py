@@ -41,3 +41,29 @@ def attention_dot(
     tl.store(
         C + head * M * N + rows[:, None] * N + cols[None, :], acc * SCALE, valid
     )
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "attention_pv",
+    "kernel": "attention_dot",
+    "arguments": [
+        {"name": "A", "rank": 3, "dtype": "f32"},
+        {"name": "B", "rank": 3, "dtype": "f32"},
+        {"name": "C", "rank": 3, "dtype": "f32"},
+    ],
+    "shape": [12, 197, 64, 197],
+    "constexprs": {
+        "HEADS": 12,
+        "M": 197,
+        "N": 64,
+        "K": 197,
+        "BM": 16,
+        "BN": 16,
+        "BK": 64,
+        "SCALE": 1.0,
+    },
+    "grid": [13, 4, 12],
+    "roles": [],
+    "metadata": {"dtype": "f32", "model": "google/vit-base-patch16-224"},
+}

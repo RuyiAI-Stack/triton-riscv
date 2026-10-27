@@ -8,11 +8,14 @@ graph surgery and descriptors, and makes no numerical or model accuracy claim.
 import argparse
 import json
 import tempfile
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import replace_triton as rewrite
 
-from build import ROOT, inventory
+from export import ROOT, inventory
 
 
 def fixture(shapes):

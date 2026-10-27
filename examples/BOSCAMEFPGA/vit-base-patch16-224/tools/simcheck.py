@@ -13,6 +13,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import numpy as np
 from boscame_paths import buddy_tools
 from nonlinear_simcheck import (
@@ -24,7 +26,7 @@ from nonlinear_simcheck import (
 )
 from oracles import DTYPES, compare, make_inputs, output_names, reference
 
-from build import (
+from export import (
     ROOT,
     argument_shapes,
     describe,

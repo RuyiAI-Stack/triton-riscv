@@ -3,7 +3,8 @@
 The model sources were ported from branch `vit-base-patch16-224`, commit
 `478766cfddb11e61560c44d68320ee21279b90ae` of `CBalaa/buddy-mlir-for-fpga`.
 The original 34 operator sources and six added validation/model entries live in their individual case directories. Shared
-metadata is in `../cases.py`; compiler orchestration is in `../tools/build.py`.
+configuration lives in each `kernel.py`; `../cases.py` enumerates it without
+importing Triton. Compiler stages and dependencies live in `../common.mk`.
 The original monolithic `triton/kernels.py` is not used.
 
 Run from the repository root with a Python environment that contains PyTorch,
@@ -11,12 +12,12 @@ Transformers, SafeTensors and the matching built Buddy bindings:
 
 ```bash
 VIT=examples/BOSCAMEFPGA/vit-base-patch16-224
-export PYTHONPATH="$PWD/build/python_packages${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$PWD/buddy-mlir/build/python_packages${PYTHONPATH:+:$PYTHONPATH}"
 python "$VIT/tools/fetch_assets.py" --output "$VIT/assets"
 python "$VIT/tools/import_model.py" --assets "$VIT/assets" \
   --checkpoint "$VIT/assets/model.safetensors" \
   --output "$VIT/build/import" --save-mlir
-python "$VIT/tools/build.py" --all --stage boscame
+make -C "$VIT" boscame PYTHON=python
 python "$VIT/tools/simcheck.py" --all
 python "$VIT/tools/replace_triton.py" --import-dir "$VIT/build/import" \
   --triton-build "$VIT/build/kernels" --output "$VIT/build/replacement-w8a8" \

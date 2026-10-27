@@ -39,3 +39,20 @@ def linear(
     # residual.  The normal linear cases initialize C to zero in their launch.
     previous = tl.load(C + rows[:, None] * N + cols[None, :], valid, other=0.0)
     tl.store(C + rows[:, None] * N + cols[None, :], acc + previous, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "linear",
+    "kernel": "linear",
+    "arguments": [
+        {"name": "A", "rank": 2, "dtype": "f32"},
+        {"name": "B", "rank": 2, "dtype": "f32"},
+        {"name": "C", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [197, 768, 3072],
+    "constexprs": {"M": 197, "N": 768, "K": 3072, "BM": 16, "BN": 16, "BK": 64},
+    "grid": [13, 48, 1],
+    "roles": [],
+    "metadata": {"dtype": "f32", "model": "google/vit-base-patch16-224"},
+}

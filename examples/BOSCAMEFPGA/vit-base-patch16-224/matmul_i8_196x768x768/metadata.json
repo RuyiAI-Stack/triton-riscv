@@ -1,7 +1,0 @@
-{
-  "kind": "matmul_i8",
-  "shape": [196, 768, 768],
-  "dtype": "i8 x i8 -> i32",
-  "target": "nr-fpga",
-  "checked_elements": 150528
-}

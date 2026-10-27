@@ -16,3 +16,20 @@ def bias_add(
     x = tl.load(X + index, valid, other=0.0)
     bias = tl.load(Bias + channel, channel < WIDTH, other=0.0)
     tl.store(Out + index, x + bias, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "bias_add",
+    "kernel": "bias_add",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [197, 768],
+    "constexprs": {"ROWS": 197, "WIDTH": 768, "BLOCK": 1024},
+    "grid": [197, 1, 1],
+    "roles": [],
+    "metadata": {"dtype": "f32", "target": "nr-fpga", "checked_elements": 151296},
+}

@@ -37,3 +37,21 @@ def matmul_i8_overwrite(
     address = C + rows[:, None] * N + cols[None, :]
     # The zero initial value is part of this compiled kernel, not a caller promise.
     tl.store(address, acc, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "matmul_i8_overwrite",
+    "kernel": "matmul_i8_overwrite",
+    "arguments": [
+        {"name": "A", "rank": 2, "dtype": "i8"},
+        {"name": "B", "rank": 2, "dtype": "i8"},
+        {"name": "C", "rank": 2, "dtype": "i32"},
+    ],
+    "shape": [197, 768, 768],
+    "constexprs": {"M": 197, "VALID_M": 197, "N": 768, "K": 768, "BM": 32, "BN": 64, "BK": 128},
+    "grid": [7, 12, 1],
+    "roles": ["model_pure_product"],
+    "accumulation": "overwrite",
+    "metadata": {"dtype": "i8 x i8 -> i32", "target": "nr-fpga", "checked_elements": 151296},
+}

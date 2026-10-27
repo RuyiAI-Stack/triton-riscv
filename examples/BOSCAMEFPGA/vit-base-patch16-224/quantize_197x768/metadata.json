@@ -1,7 +1,0 @@
-{
-  "kind": "per_token_quantization",
-  "shape": [197, 768],
-  "rounding": "nearest, ties away from zero",
-  "zero_row_scale": 1,
-  "target": "scalar"
-}

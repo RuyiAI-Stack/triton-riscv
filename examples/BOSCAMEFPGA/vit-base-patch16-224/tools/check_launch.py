@@ -15,7 +15,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from build import argument_shapes
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from export import argument_shapes
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))

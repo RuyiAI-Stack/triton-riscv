@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lower the captured graph plumbing around separately compiled ViT kernels.
 
-Numerical kernels use tools/build.py's contract -> plan -> verify -> emit
+Numerical kernels use common.mk's contract -> plan -> verify -> emit
 pipeline. This script only lowers the saved Buddy graph, whose numerical
 operations have already become external kernel calls. It is not a kernel
 compiler, simulator, or numerical acceptance check.

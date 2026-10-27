@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""Export independent ViT operators and run the neutral contract pipeline.
+"""Export one local Triton kernel and its typed ABI adapter.
 
-Every numerical operation comes from its case's real Triton kernel. A failed
-case is recorded and the remaining cases are still attempted. No legacy
-shared-Linalg export, global store policy, or handwritten replacement IR is
-used as a fallback.
+Compiler commands and their file dependencies live in ../common.mk.
 """
 
 import argparse
@@ -13,19 +10,14 @@ import importlib.util
 import json
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[2]
-from boscame_paths import buddy_tools  # noqa: E402
 
 sys.path.insert(0, str(ROOT))
 from cases import describe, inventory  # noqa: E402
-
-STAGES = ("ttir", "boscame", "llvm", "asm")
-
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -220,148 +212,6 @@ def export_case(case, output):
     (output / "frontend.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
-def command(argv, output, input_text=None, stdout_path=None):
-    process = subprocess.run(
-        list(map(str, argv)),
-        input=input_text,
-        text=True,
-        capture_output=True,
-    )
-    with (output / "build.log").open("a") as log:
-        log.write("$ " + " ".join(map(str, argv)) + "\n" + process.stderr)
-        if stdout_path is None:
-            log.write(process.stdout)
-    if process.returncode:
-        raise RuntimeError(
-            (process.stderr + process.stdout).strip()
-            or f"command exited {process.returncode}"
-        )
-    if stdout_path is not None:
-        stdout_path.write_text(process.stdout)
-
-
-def build_case(case, output_root, stop="boscame"):
-    output = output_root / case["name"]
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "build.log").write_text("")
-    record = {
-        "name": case["name"],
-        "status": "BLOCKED",
-        "stage": "ttir",
-        "artifact_dir": str(output),
-    }
-    try:
-        export_case(case, output)
-        if stop != "ttir":
-            opt = tool("buddy-opt")
-            stages = [
-                ("bufferized", "frontend.mlir", ["--kernel-contract-verify"]),
-                (
-                    "planned",
-                    "bufferized.mlir",
-                    ["--bosc-ame-plan", "--bosc-ame-plan-verify"],
-                ),
-                ("boscame", "planned.mlir", ["--bosc-ame-emit"]),
-            ]
-            if stop in ("llvm", "asm"):
-                stages.append(("llvm", "boscame.mlir", ["--lower-bosc-ame"]))
-            for stage, source, flags in stages:
-                record["stage"] = stage
-                command(
-                    [
-                        opt,
-                        output / f"kernel.{source}",
-                        *flags,
-                        "-o",
-                        output / f"kernel.{stage}.mlir",
-                    ],
-                    output,
-                )
-            if stop in ("llvm", "asm"):
-                record["stage"] = "llvm-ir"
-                command(
-                    [
-                        tool("buddy-translate"),
-                        "--buddy-to-llvmir",
-                        output / "kernel.llvm.mlir",
-                        "-o",
-                        output / "kernel.ll",
-                    ],
-                    output,
-                )
-            if stop == "asm":
-                record["stage"] = "asm"
-                command(
-                    [
-                        tool("llc"),
-                        output / "kernel.ll",
-                        "-O2",
-                        "-filetype=asm",
-                        "-mtriple=riscv64",
-                        "-target-abi=lp64d",
-                        "-mattr=+m,+a,+f,+d,+c,+v,+xboscame",
-                        "-code-model=medium",
-                        "-o",
-                        output / "kernel.s",
-                    ],
-                    output,
-                )
-                common_tools = buddy_tools()
-                command(
-                    [
-                        sys.executable,
-                        common_tools / "ame_to_word.py",
-                        "--gpr-mode=fixed",
-                        "--preserve-matrix-registers",
-                    ],
-                    output,
-                    input_text=(output / "kernel.s").read_text(),
-                    stdout_path=output / "kernel.encoded.s",
-                )
-                command(
-                    [
-                        sys.executable,
-                        common_tools / "restrict_fpga_assembly.py",
-                        # The FPGA whitelist omits vfsub.vf; preserve its f32
-                        # semantics with the existing bit-exact expansion.
-                        "--expand-f32-sub",
-                        "--expand-vector-merges",
-                        "--order-vector-copies",
-                    ],
-                    output,
-                    input_text=(output / "kernel.encoded.s").read_text(),
-                    stdout_path=output / "kernel.nr.s",
-                )
-                command(
-                    [
-                        tool("clang"),
-                        "--target=riscv64-unknown-elf",
-                        "-march=rv64imafdcv_zicsr_zifencei",
-                        "-mabi=lp64d",
-                        "-mno-relax",
-                        "-c",
-                        output / "kernel.nr.s",
-                        "-o",
-                        output / "kernel.o",
-                    ],
-                    output,
-                )
-        record.update(status="PASS", stage=stop)
-        record["artifacts"] = {
-            p.name: digest(p) for p in output.glob("kernel.*") if p.is_file()
-        }
-        record["kernel_module_sha256"] = digest(case["kernel_source"])
-    except Exception as error:
-        record["reason"] = str(error)
-        with (output / "build.log").open("a") as log:
-            log.write("\nBLOCKED: " + str(error) + "\n")
-    (output / "build-result.json").write_text(
-        json.dumps(record, indent=2) + "\n"
-    )
-    print(f"{record['status']}: {case['name']} ({record['stage']})", flush=True)
-    return record
-
-
 def summary_report_path(output_root, case_names, kind):
     """Keep independent case reports separate from complete-suite evidence."""
     if case_names is None:
@@ -374,36 +224,13 @@ def summary_report_path(output_root, case_names, kind):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", action="append", dest="cases")
-    parser.add_argument("--all", action="store_true")
-    parser.add_argument("--list", action="store_true")
-    parser.add_argument("--stage", choices=STAGES, default="boscame")
-    parser.add_argument("--output", type=Path, default=ROOT / "build/kernels")
-    parser.add_argument("--report", type=Path)
+    parser.add_argument("--case", required=True)
+    parser.add_argument("--output", type=Path, required=True,
+                        help="this case's output directory")
     args = parser.parse_args()
-    if args.all and args.cases:
-        parser.error("use --all or --case, not both")
-    cases = (
-        [describe(name) for name in dict.fromkeys(args.cases)]
-        if args.cases
-        else inventory()
-    )
-    if args.list:
-        print(json.dumps(cases, indent=2))
-        return 0
-    if args.report is None:
-        args.report = summary_report_path(args.output, args.cases, "build")
-    results = [build_case(case, args.output, args.stage) for case in cases]
-    report = {
-        "schema": 1,
-        "status": "PASS"
-        if all(r["status"] == "PASS" for r in results)
-        else "PARTIAL",
-        "cases": results,
-    }
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(json.dumps(report, indent=2) + "\n")
-    return 0 if report["status"] == "PASS" else 1
+    args.output.mkdir(parents=True, exist_ok=True)
+    export_case(describe(args.case), args.output)
+    return 0
 
 
 if __name__ == "__main__":

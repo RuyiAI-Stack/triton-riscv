@@ -49,3 +49,29 @@ def patch_embed(
                 tl.store(
                     Out + patch * HIDDEN + column, tl.load(X + input_index)
                 )
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "patch_embed",
+    "kernel": "patch_embed",
+    "arguments": [
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Weight", "rank": 4, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 4, "dtype": "f32"},
+    ],
+    "shape": [1, 768, 14, 14],
+    "constexprs": {
+        "HEIGHT": 224,
+        "WIDTH": 224,
+        "CHANNELS": 3,
+        "PATCH": 16,
+        "HIDDEN": 768,
+        "GRID": 14,
+        "BLOCK": 1024,
+    },
+    "grid": [196, 1, 1],
+    "roles": [],
+    "metadata": {"dtype": "f32", "model": "google/vit-base-patch16-224"},
+}

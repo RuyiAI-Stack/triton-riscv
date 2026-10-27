@@ -30,18 +30,21 @@ Each operator is independent:
 
 ```text
 add_197x768/
-    kernel.py       # This operator's real @triton.jit body
-    metadata.json   # Fixed logical shape and family
+    kernel.py       # Real @triton.jit body and literal KERNEL_CONFIG
     launch.c        # Independent int launch(void), input generation and oracle
-    build.py        # Standalone entry to the common compilation driver
-    simcheck.py     # Standalone entry to the real emitted-IR simulator
-    makefile
+    makefile        # Includes ../common.mk's file-based compiler stages
 ```
 
-The same layout applies to all 40 cases. `cases.py` contains specialization
-metadata, not shared kernel bodies. `tools/build.py` loads the selected local
-`kernel.py` through Triton's actual `ASTSource`/BOSCAME AOT backend. There is no
-monolithic kernel implementation or synthesized Linalg fallback.
+The same layout applies to all 40 cases. Each `kernel.py` owns its shape,
+arguments, constexprs (including tile sizes), launch grid and numerical
+contracts in `KERNEL_CONFIG`. Keep this dictionary a Python literal:
+`cases.py` reads it with `ast.literal_eval`, so enumerating cases needs neither
+Triton nor PyTorch. `tools/export.py` loads the selected local kernel through
+Triton's actual `ASTSource`/BOSCAME AOT backend and generates the ABI adapter.
+`common.mk` owns the external compiler commands and file dependencies;
+`tools/report.py` records and collects their results.
+Each case's `make simcheck` target builds its BOSCAME module and calls the
+shared `tools/simcheck.py` directly.
 
 The generated typed descriptor adapter follows the standalone
 `../matmul_i8_128x1024x128` example: fixed shape/stride, 64-byte alignment,
@@ -57,16 +60,14 @@ complete execution is tracked separately from the emitted Linear chain.
 
 ## Build and simulate
 
-Activate the Python environment used by the standalone Triton examples
-(Python 3.12 with Triton/triton-riscv and NumPy), then run from the repository
-root. The exporter locates the in-tree plugin; `BUDDY_OPT`,
+Activate the `boscame` conda environment configured in the repository README,
+then run from the repository root. The exporter locates the in-tree plugin; `BUDDY_OPT`,
 `BUDDY_TRANSLATE`, `LLC` and `CLANG` can override individual tools.
 
 ```bash
-export BUDDY_ROOT=/path/to/buddy-mlir
-export BUDDY_MLIR_BINARY_DIR=/path/to/buddy-build/bin
-export LLVM_BIN=/path/to/llvm-build/bin
-export PATH="$BUDDY_MLIR_BINARY_DIR:$LLVM_BIN:$PATH"
+conda activate boscame
+source scripts/triton-riscv-env.sh
+export BUDDY_ROOT="$PWD/buddy-mlir"
 VIT=examples/BOSCAMEFPGA/vit-base-patch16-224
 
 # One independently launchable operator:
@@ -76,6 +77,10 @@ make -C "$VIT/matmul_i8_197x768x768" simcheck PYTHON=python3
 # Attempt every operator, recording failures and continuing to the next:
 make -C "$VIT" asm PYTHON=python3
 make -C "$VIT" simcheck PYTHON=python3
+
+# Select cases or redirect all generated kernel artifacts:
+make -C "$VIT" asm CASES='add_197x768 layernorm_1x768'
+make -C "$VIT" -j4 asm KERNELS="$PWD/.cache/vit-kernels"
 
 # Reuse simulation results only after checking current hashes and full coverage:
 make -C "$VIT" simcheck PYTHON=python3 COLLECT=1
@@ -98,12 +103,18 @@ make -C "$VIT" model-simcheck PYTHON=python3 MODE=w8a8
 
 Suite commands attempt every selected case and return nonzero when a case is
 blocked or fails; compilation and complete execution are recorded separately.
-Per-case wrappers also accept the common driver's
-`--stage ttir|boscame|llvm|asm`, `--output` and `--report` arguments.
+Use Make targets `ttir|boscame|llvm|asm`, `KERNELS=/absolute/output/path` and
+`REPORT=/absolute/report.json` for compilation. Repeating an unchanged build
+checks frontend/command identity and reports cached results without running
+the exporter or compilers. Changes to a kernel rebuild that case; compiler
+tools and flags also participate in dependency tracking. Failed rebuilds
+invalidate the previous successful result before modifying artifacts.
 Single-case summaries are written inside `build/kernels/<case>/`; an explicit
 multi-case subset uses `build/kernels/*-subset-report.json`. These commands
 preserve the complete-suite reports in `build/`. An explicit `--report` path
-overrides the default destination.
+overrides the default destination (`REPORT=` for Make; `--report` for simulator
+tools). Use `make simcheck` in a case directory for independent simulation;
+the shared `tools/simcheck.py` accepts advanced simulator CLI arguments.
 
 Artifacts live in `build/kernels/<case>/`:
 
@@ -123,8 +134,9 @@ assembly to an object. It does not link a boot image or run the board.
 The C oracle support is host-only; this port does not claim a board runtime.
 
 `build/build-report.json`, `build/simcheck-report.json` and per-case result
-files preserve the actual stage and diagnostic. Simulation executes emitted
-BOSCAME operations in the strict DMA/SPM/REG interpreter, keeps poisoned SPM
+files preserve the actual stage and diagnostic. Compiler stdout/stderr is
+retained in per-stage `*.log` files beside the artifacts. Simulation executes
+emitted BOSCAME operations in the strict DMA/SPM/REG interpreter, keeps poisoned SPM
 between programs, checks guards/access ranges/unchanged inputs, and compares
 every output. i8 cases run three complete grids, including signed extremes,
 nonzero C, i32 wrap and tail-first/reverse scheduling. ABI smoke checks use

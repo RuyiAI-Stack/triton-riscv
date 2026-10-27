@@ -10,7 +10,10 @@ import itertools
 import json
 import math
 import multiprocessing
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 from boscame_paths import buddy_tools, source_identity
@@ -22,7 +25,7 @@ from oracles import (
     reference,
 )
 
-from build import ROOT, argument_shapes, digest
+from export import ROOT, argument_shapes, digest
 
 
 def _hash(value):

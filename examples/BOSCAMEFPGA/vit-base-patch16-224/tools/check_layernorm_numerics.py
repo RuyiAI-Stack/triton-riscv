@@ -18,12 +18,14 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import numpy as np
 from boscame_paths import buddy_tools
 from oracles import make_inputs, reference
 from simcheck import SimulationBlocked, check_artifacts
 
-from build import ROOT, argument_shapes, describe, digest, tool
+from export import ROOT, argument_shapes, describe, digest, tool
 
 sys.path.insert(0, str(buddy_tools()))
 from boscame_buffer_sim import Machine  # noqa: E402

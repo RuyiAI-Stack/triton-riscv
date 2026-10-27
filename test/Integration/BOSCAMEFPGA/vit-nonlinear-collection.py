@@ -29,7 +29,7 @@ from oracles import (  # noqa: E402
 )
 from simcheck import scenarios_for  # noqa: E402
 
-from build import argument_shapes, describe, digest  # noqa: E402
+from export import argument_shapes, describe, digest  # noqa: E402
 
 
 def sha(value):

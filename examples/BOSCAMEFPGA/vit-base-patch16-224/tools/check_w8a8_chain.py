@@ -12,12 +12,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 from simcheck import SimulationBlocked, check_artifacts, simulate_case
 
-from build import ROOT, describe, digest
+from export import ROOT, describe, digest
 
 CASES = (
     "quantize_1x768",

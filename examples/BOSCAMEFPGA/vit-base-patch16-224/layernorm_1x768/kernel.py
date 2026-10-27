@@ -28,3 +28,21 @@ def layernorm(
     variance = tl.sum(centered * centered, axis=0) / WIDTH
     out = centered * tl.rsqrt(variance + EPS) * weight + bias
     tl.store(Out + row * WIDTH + channel, out, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "layernorm",
+    "kernel": "layernorm",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "f32"},
+        {"name": "Weight", "rank": 1, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [1, 768],
+    "constexprs": {"ROWS": 1, "WIDTH": 768, "BLOCK": 1024, "EPS": 1e-12},
+    "grid": [1, 1, 1],
+    "roles": [],
+    "metadata": {"dtype": "f32", "target": "nr-fpga", "checked_elements": 768},
+}

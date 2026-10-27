@@ -33,3 +33,21 @@ def dequantize(
     value = tl.load(X + index, valid, other=0).to(tl.float32)
     row = tl.load(Row + row_index)
     tl.store(Out + index, (value * row) * column, valid)
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "dequantization",
+    "kernel": "dequantize",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "i32"},
+        {"name": "Row", "rank": 1, "dtype": "f32"},
+        {"name": "Column", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [197, 768],
+    "constexprs": {"ROWS": 197, "COLS": 768, "BLOCK": 128},
+    "grid": [1182, 1, 1],
+    "roles": [],
+    "metadata": {"dtype": "i32 -> f32", "target": "scalar"},
+}

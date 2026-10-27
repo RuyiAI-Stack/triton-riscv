@@ -30,7 +30,7 @@ from simcheck import (  # noqa: E402
     validate_pv_shard_evidence,
 )
 
-from build import argument_shapes, describe, digest  # noqa: E402
+from export import argument_shapes, describe, digest  # noqa: E402
 
 
 def test_block_order():

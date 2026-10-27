@@ -6,6 +6,40 @@ Compiler baseline: `cd164388` plus the rectangular-clamp specialization,
 segmented boundary-transfer, QK storage-normalization and internal-copy fixes
 in this change. No FPGA run or hardware performance measurement is made.
 
+## Operator layout refactor, 2026-10-27
+
+All 40 operators now keep their fixed specialization and former JSON
+annotations in the literal `KERNEL_CONFIG` in their own `kernel.py`.
+The 40 per-case `metadata.json` and `build.py` files are removed. `cases.py`
+reads the literals without importing Triton; `tools/export.py` exports Triton
+and generates adapters; `common.mk` runs the external compiler stages.
+The normalized case descriptors and all original kernel function ASTs match
+the pre-refactor snapshot exactly.
+
+A fresh build in the `boscame` conda environment, using this repository's
+`buddy-mlir`, passes **40/40 through restricted assembly and object generation**.
+Of the 440 `kernel.*` artifacts compared with a fresh pre-refactor build,
+400 are byte-identical. The remaining 40 TTIR files differ only in generated
+`/tmp/triton-contract-*/prepared.ttir` location paths; their normalized contents
+are identical. All 40 C launcher/descriptor smoke checks and the four ViT
+integration scripts (model adapters, nonlinear oracle, nonlinear collection,
+and PV oracle) pass. The W8A8 graph rewrite fixture also passes.
+
+Actual Make invocations verify that an unchanged complete-suite rebuild
+modifies no compiler artifacts or stage logs. Changing the block/grid config
+for one of two selected cases rebuilds only that case. Removing a grouped
+frontend output regenerates it and the dependent object. An injected assembler
+failure replaces the old PASS, retains its diagnostic, allows the other case
+to finish, and returns a partial/nonzero suite result. An injected assembly
+filter failure leaves the previous complete assembly intact, removes the
+temporary output, and records BLOCKED. Both failures recover on the next valid
+build. Explicit subset builds preserve the complete-suite report.
+
+Local strict-simulator smoke checks pass for `add_1x1000` (8 programs),
+`quantize_1x768` (1 program), and `matmul_i8_overwrite_1x1000x768` (all 16
+programs in each of three rounds). This refactor does not add a complete-model
+execution result. No FPGA upload or board run was performed.
+
 ## Current 40-case build
 
 The fresh `build/build-report.json` records **40/40 PASS through restricted NR
