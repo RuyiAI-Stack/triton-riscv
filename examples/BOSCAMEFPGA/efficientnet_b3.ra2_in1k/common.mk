@@ -34,7 +34,7 @@ TRANSLATE_FILE := $(shell command -v "$(BUDDY_TRANSLATE)" 2>/dev/null)
 LLC_FILE := $(shell command -v "$(LLC)" 2>/dev/null)
 CLANG_FILE := $(shell command -v "$(CLANG)" 2>/dev/null)
 
-.PHONY: all ttir boscame llvm asm simcheck clean FORCE
+.PHONY: all ttir boscame llvm asm bin simcheck clean FORCE
 all: asm
 FORCE:
 
@@ -104,3 +104,7 @@ simcheck: boscame
 	$(PYTHON) -B "$(VIT_ROOT)/tools/simcheck.py" --case "$(CASE)" --output "$(KERNELS)" $(if $(COLLECT),--collect,)
 clean:
 	rm -rf "$(OUT)"
+
+# asm compiles kernel.o. board.mk links that object into the NH/E6 image.
+bin: asm
+	$(MAKE) -f $(VIT_ROOT)/board.mk bin
