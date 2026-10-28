@@ -256,6 +256,12 @@ LogicalResult MaskState::minStateScalar(const MaskState &lhsState,
   //   ... = tl.load(some_ptr, mask=scalar & mask, other=0)
   auto &scalarState = lhsState.scalar ? lhsState : rhsState;
   auto &nonScalarState = lhsState.scalar ? rhsState : lhsState;
+  // A failed tensor analysis can retain unstructured masks without bounds.
+  // Do not turn that incomplete state into a successful empty mask: callers
+  // would fill in full dimensions and discard part of the original condition.
+  if (!nonScalarState.isMask())
+    return failure();
+
   for (uint32_t i = 0; i < nonScalarState.getRank(); i++) {
     auto nonScalarDim = nonScalarState.dims[i];
     dims.push_back(selectOFRs(scalarState.scalar, nonScalarDim,
