@@ -1,0 +1,88 @@
+"""Standalone Triton source for dwconv2d_72x72x192_k5_s2."""
+
+import triton
+import triton.language as tl
+
+@triton.jit
+def dwconv2d_nchw(
+    X, Weight, Bias, Out,
+    H: tl.constexpr, W: tl.constexpr, C: tl.constexpr,
+    KH: tl.constexpr, KW: tl.constexpr, SH: tl.constexpr, SW: tl.constexpr,
+    PH: tl.constexpr, PW: tl.constexpr, OH: tl.constexpr, OW: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Depthwise NCHW convolution. One program owns one output pixel."""
+    tl.static_assert(BLOCK > 0)
+    tl.static_assert(C > 0)
+    ch = tl.program_id(0)
+    oh = tl.program_id(1)
+    ow = tl.program_id(2)
+    acc = 0.0
+    for kh in range(KH):
+        ih = oh * SH - PH + kh
+        for kw in range(KW):
+            iw = ow * SW - PW + kw
+            if (ih >= 0) & (ih < H) & (iw >= 0) & (iw < W):
+                x = tl.load(X + ch * H * W + ih * W + iw)
+                wt = tl.load(Weight + (ch * KH + kh) * KW + kw)
+                acc += x * wt
+    tl.store(Out + (ch * OH + oh) * OW + ow, acc + tl.load(Bias + ch))
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "dwconv2d_f32",
+    "kernel": "dwconv2d_nchw",
+    "arguments": [
+        {
+            "name": "X",
+            "rank": 4,
+            "dtype": "f32"
+        },
+        {
+            "name": "Weight",
+            "rank": 4,
+            "dtype": "f32"
+        },
+        {
+            "name": "Bias",
+            "rank": 1,
+            "dtype": "f32"
+        },
+        {
+            "name": "Out",
+            "rank": 4,
+            "dtype": "f32"
+        }
+    ],
+    "shape": [
+        1,
+        192,
+        72,
+        72
+    ],
+    "constexprs": {
+        "H": 72,
+        "W": 72,
+        "C": 192,
+        "KH": 5,
+        "KW": 5,
+        "SH": 2,
+        "SW": 2,
+        "PH": 2,
+        "PW": 2,
+        "OH": 36,
+        "OW": 36,
+        "BLOCK": 16
+    },
+    "grid": [
+        192,
+        36,
+        36
+    ],
+    "roles": [],
+    "metadata": {
+        "dtype": "efficientnet-b3",
+        "model": "timm/efficientnet_b3.ra2_in1k"
+    }
+}
