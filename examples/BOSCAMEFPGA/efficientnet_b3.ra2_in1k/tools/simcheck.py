@@ -63,7 +63,24 @@ def scenarios_for(case):
             ("ordered-blocks-tail-first", True, "tail-first"),
             ("ordered-blocks-reverse", True, "reverse"),
         ]
+    if case["family"] == "per_token_quantization" and case["shape"][0] == 1:
+        return [
+            ("all-zero", False, "forward"),
+            ("nonzero-random", False, "reverse"),
+            ("rounding-boundaries", True, "forward"),
+        ]
     return [("normal", False, "reverse")]
+
+
+def quantize_pattern(case, name):
+    """Single-row quantization needs a separate input set for each scenario."""
+    if case["family"] != "per_token_quantization" or case["shape"][0] != 1:
+        return None
+    return {
+        "all-zero": "zeros",
+        "nonzero-random": "random",
+        "rounding-boundaries": "ties",
+    }[name]
 
 
 def pv_program_mask(case, programs):
@@ -810,7 +827,12 @@ def check_case(case, output_root):
         runs = []
         machines = {} if case["family"] == "attention_pv" else None
         for name, stress, order in scenarios:
-            arrays = make_inputs(case, argument_shapes(case), stress=stress)
+            arrays = make_inputs(
+                case,
+                argument_shapes(case),
+                stress=stress,
+                pattern=quantize_pattern(case, name),
+            )
             _, metrics = simulate_case(
                 case, arrays, output_root, order=order, machines=machines
             )
@@ -818,8 +840,13 @@ def check_case(case, output_root):
             record["programs"] += metrics["programs"]
             record["outputs"] += metrics["outputs"]
             record["max_abs"] = max(record["max_abs"] or 0, metrics["max_abs"])
+        repeated = (
+            len(scenarios) > 2
+            and scenarios[1][1]
+            and scenarios[1][1] == scenarios[2][1]
+        )
         if (
-            len(runs) > 2
+            repeated
             and runs[1]["output_sha256"] != runs[2]["output_sha256"]
         ):
             raise AssertionError(

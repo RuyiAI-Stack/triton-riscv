@@ -2,7 +2,9 @@
 # Usage, from a case directory: make -f ../board.mk bin
 CASE := $(notdir $(CURDIR))
 MODEL := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-REPO := /home/caihanyi/work/fpga-spm/buddy-mlir
+REPO_ROOT := $(abspath $(MODEL)/../../..)
+BUDDY_ROOT ?= $(abspath $(REPO_ROOT)/buddy-mlir)
+REPO := $(BUDDY_ROOT)
 LLVM := $(REPO)/llvm/build/bin
 RUNTIME := $(REPO)/runtime/boscame
 PYTHON ?= python3

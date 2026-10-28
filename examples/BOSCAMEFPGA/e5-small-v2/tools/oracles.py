@@ -117,7 +117,7 @@ def output_names(case):
     return ("Out",)
 
 
-def make_inputs(case, shapes, stress=False):
+def make_inputs(case, shapes, stress=False, pattern=None):
     """Deterministic inputs, including zero rows and signed integer extremes."""
     rng = np.random.default_rng(107 if stress else 71)
     outputs = output_names(case)
@@ -156,17 +156,26 @@ def make_inputs(case, shapes, stress=False):
             )
         arrays[name] = np.ascontiguousarray(value, dtype=dtype)
     if case["family"] == "per_token_quantization":
-        arrays["X"][0] = 0.0
-        if arrays["X"].shape[0] > 1:
-            width = arrays["X"].shape[-1]
-            ties = np.resize(
-                np.array(
-                    [-127, -2.5, -1.5, -0.5, 0, 0.5, 1.5, 2.5, 127],
-                    dtype=np.float32,
-                ),
-                width,
-            )
+        width = arrays["X"].shape[-1]
+        ties = np.resize(
+            np.array(
+                [-127, -2.5, -1.5, -0.5, 0, 0.5, 1.5, 2.5, 127],
+                dtype=np.float32,
+            ),
+            width,
+        )
+        rows = arrays["X"].shape[0]
+        if rows > 1:
+            arrays["X"][0] = 0.0
             arrays["X"][1] = ties
+        else:
+            # One row cannot hold the zero-scale case and the rounding
+            # boundaries at the same time. Callers select one pattern per run.
+            selected = pattern or ("ties" if stress else "random")
+            if selected == "zeros":
+                arrays["X"][0] = 0.0
+            elif selected == "ties":
+                arrays["X"][0] = ties
     if stress and case["family"] == "attention_pv":
         # Distinguish block-local accumulation from reassociation across K
         # blocks. The unit term is rounded away inside the second block.
@@ -461,24 +470,26 @@ def reference(case, arrays):
         scaled = np.multiply(normalized, arrays["Weight"], dtype=np.float32)
         return {"Out": np.add(scaled, arrays["Bias"], dtype=np.float32)}
     if family == "per_token_quantization":
-        # The exported EfficientNet kernel adds ±0.5 and truncates toward zero.
+        # Matches the kernel: truncate toward zero, then ties away from zero.
         x = arrays["X"]
-        maximum = np.max(np.abs(x), axis=-1).astype(np.float32)
+        maximum = np.max(np.abs(x), axis=-1)
         scale = np.where(
             maximum == 0,
             np.float32(1),
             np.divide(maximum, np.float32(127), dtype=np.float32),
         ).astype(np.float32)
         value = np.divide(x, scale[:, None], dtype=np.float32)
-        half = np.where(value >= 0, np.float32(0.5), np.float32(-0.5))
-        rounded = np.add(value, half, dtype=np.float32)
-        saturated = np.clip(rounded, np.float32(-127), np.float32(127)).astype(
-            np.float32
+        saturated = np.clip(value, np.float32(-127), np.float32(127))
+        base = saturated.astype(np.int32)
+        fraction = np.subtract(
+            saturated, base.astype(np.float32), dtype=np.float32
         )
-        return {
-            "Q": saturated.astype(np.int32).astype(np.int8),
-            "Scale": scale,
-        }
+        adjustment = np.where(
+            np.abs(fraction) >= np.float32(0.5),
+            np.where(saturated >= 0, 1, -1),
+            0,
+        )
+        return {"Q": (base + adjustment).astype(np.int8), "Scale": scale}
     if family == "dequantization":
         first = np.multiply(
             arrays["X"].astype(np.float32),

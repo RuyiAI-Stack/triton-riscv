@@ -1,5 +1,4 @@
 #include "support.h"
-#include <math.h>
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
   if (actual == expected)
