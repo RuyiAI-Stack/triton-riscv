@@ -1624,6 +1624,7 @@ LogicalResult PtrAnalysis::rewriteLoadOp(triton::LoadOp op,
   ArrayRef<OpFoldResult> dims;
   mlir::triton::MaskState mstate(useUnsafeMask);
   Value scalarOther;
+  Value tensorOther;
 
   OpBuilder builder(op);
   // Analyze the mask operand to determine at runtime the size of the data we
@@ -1645,9 +1646,16 @@ LogicalResult PtrAnalysis::rewriteLoadOp(triton::LoadOp op,
 
     scalarOther = utils::getScalarValue(other, loc, builder);
     if (!scalarOther) {
-      LLVM_DEBUG(op->emitRemark("other value used in masked load produced by "
-                                "unsupported instruction"));
-      return failure();
+      auto otherType = dyn_cast<RankedTensorType>(other.getType());
+      if (!mask || !otherType || otherType != op.getType()) {
+        return failure();
+      }
+      auto zero = builder.getZeroAttr(otherType.getElementType());
+      if (!zero) {
+        return failure();
+      }
+      scalarOther = builder.create<arith::ConstantOp>(loc, zero);
+      tensorOther = other;
     }
   }
 
@@ -1658,7 +1666,14 @@ LogicalResult PtrAnalysis::rewriteLoadOp(triton::LoadOp op,
     loadOp->dump();
   });
 
-  op.replaceAllUsesWith(loadOp.getResult());
+  Value result = loadOp.getResult();
+  if (tensorOther) {
+    // Keep the masked memory access. Only its inactive lanes need the original
+    // per-element fill values, which cannot be represented by tts.load's scalar
+    // other operand.
+    result = builder.create<arith::SelectOp>(loc, mask, result, tensorOther);
+  }
+  op.replaceAllUsesWith(result);
   op->erase();
   return success();
 }
