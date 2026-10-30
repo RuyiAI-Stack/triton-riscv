@@ -93,6 +93,7 @@ from .cummax import cummax
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
+from .cumsum_ import cumsum_
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -495,6 +496,7 @@ __all__ = [
     "cumprod",
     "cumprod_",
     "cumsum",
+    "cumsum_",
     "cumsum_out",
     "diag",
     "diag_embed",

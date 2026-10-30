@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-
 Tensor = torch.Tensor
 
 
@@ -28,19 +27,9 @@ def scan_part_sum_kernel(
     pid = program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
-
-    inp_vals = tl.load(inp + offset, mask=mask, other=0)
-    if tl.constexpr(
-        inp_vals.dtype.is_int64()
-        or inp_vals.dtype.is_uint64()
-        or inp_vals.dtype.is_fp64()
-    ):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
-
+    inp_vals = tl.load(inp + offset, mask=mask, other=0).to(
+        partial_sum.dtype.element_ty
+    )
     result = tl.cumsum(inp_vals, axis=0)
     part_sum = tl.sum(inp_vals)
 
@@ -59,11 +48,11 @@ def add_base_sum_kernel(
     pid = program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
-
     out_vals = tl.load(out + offset, mask=mask, other=0)
 
     if pid > 0:
         last_part_sum = tl.load(partial_sum + pid - 1)
+
         final_vals = out_vals + last_part_sum
         tl.store(out + offset, final_vals.to(out_vals.dtype), mask=mask)
 
@@ -92,20 +81,11 @@ def scan_part_sum_abc_kernel(
     offset = a_idx * B * C + b_idx * C + c_idx
     base_part_offset = a_idx * part_num * C + c_idx
     part_offset = base_part_offset + pid_b * C
+
     mask = b_idx < B
-
-    inp_vals = tl.load(inp + offset, mask=mask, other=0)
-    if tl.constexpr(
-        inp_vals.dtype.is_int64()
-        or inp_vals.dtype.is_uint64()
-        or inp_vals.dtype.is_fp64()
-    ):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
-
+    inp_vals = tl.load(inp + offset, mask=mask, other=0).to(
+        partial_sum.dtype.element_ty
+    )
     result = tl.cumsum(inp_vals, axis=0)
     part_sum = tl.sum(inp_vals)
 
@@ -129,16 +109,16 @@ def add_base_sum_abc_kernel(
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     c_idx = pid_c
-
     offset = a_idx * B * C + b_idx * C + c_idx
     base_part_offset = a_idx * part_num * C + c_idx
     last_part_offset = base_part_offset + (pid_b - 1) * C
-    mask = b_idx < B
 
+    mask = b_idx < B
     out_vals = tl.load(out + offset, mask=mask, other=0)
 
     if pid_b > 0:
         last_part_sum = tl.load(partial_sum + last_part_offset)
+
         final_vals = out_vals + last_part_sum
         tl.store(out + offset, final_vals.to(out_vals.dtype), mask=mask)
 
@@ -159,12 +139,11 @@ def reduce_then_scan_block_sum_kernel_row(
     num_programs_n = tl.num_programs(1)
     block_offset = pid_n * (tiles_per_cta * TILE_SIZE)
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
-
-    acc = tl.zeros((TILE_SIZE,), dtype=tl.float32)
+    acc = tl.zeros((TILE_SIZE,), dtype=block_sum_ptr.dtype.element_ty)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N, other=0).to(
-            tl.float32
+            block_sum_ptr.dtype.element_ty
         )
         acc += x
     block_sum = tl.sum(acc, 0)
@@ -176,7 +155,9 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
     pid = program_id(0)
     offsets = tl.arange(0, TILE_SIZE)
     mask = offsets < N
-    x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=0).to(tl.float32)
+    x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=0).to(
+        out_ptr.dtype.element_ty
+    )
     out = tl.cumsum(x, 0)
     tl.store(out_ptr + pid * N + offsets, out, mask=mask)
 
@@ -200,11 +181,13 @@ def reduce_then_scan_block_scan_kernel_row(
         previous_sum_ptr + pid_m * num_tiles_n + pid_n - 1,
         mask=pid_n > 0,
         other=0,
-    ).to(tl.float32)
+    )
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask, other=0).to(tl.float32)
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask, other=0).to(
+            previous_sum_ptr.dtype.element_ty
+        )
         tile_scan = prefix + tl.cumsum(x, 0)
         prefix += tl.sum(x, 0)
         tl.store(out_ptr + pid_m * N + offsets, tile_scan, mask=mask)
@@ -235,7 +218,7 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
     block_sums = torch.empty((M, num_ctas), dtype=compute_dtype, device=x.device)
     block_inclusive_prefix = torch.empty_like(block_sums)
 
-    reduce_then_scan_block_sum_kernel_row[(M, num_ctas, 1, 1)](
+    reduce_then_scan_block_sum_kernel_row[(M, num_ctas, 1)](
         x,
         block_sums,
         N,
@@ -323,34 +306,72 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
 
 def cumsum_wrapper(inp, dim=0, *, dtype=None, out=None):
+    if inp.ndim == 0:
+        if dim not in (-1, 0):
+            raise IndexError("dimension out of range")
+        if dtype is None:
+            dtype = (
+                out.dtype
+                if out is not None
+                else (
+                    inp.dtype
+                    if inp.is_floating_point() or inp.is_complex()
+                    else torch.int64
+                )
+            )
+        if out is not None and out.dtype != dtype:
+            raise RuntimeError("cumsum: out dtype must match the requested dtype")
+        result = inp.to(dtype).clone()
+        if out is None:
+            return result
+        if out.shape != result.shape:
+            out.resize_(result.shape)
+        out.copy_(result)
+        return out
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
     inp = inp.contiguous()
 
     if dtype is None:
-        dtype = torch.int64 if not inp.dtype.is_floating_point else inp.dtype
-    if out is None:
-        out = torch.empty_like(inp, dtype=dtype)
-
-    if inp.numel() == 0:
-        return out
-
-    shape = inp.shape
-    M = math.prod(shape[:dim])
-    N = shape[dim]
-    K = inp.numel() // M // N
-
-    compute_dtype = (
-        torch.float32 if inp.dtype in (torch.float16, torch.bfloat16) else dtype
-    )
-    if not inp.dtype.is_floating_point:
-        compute_dtype = torch.int64
-
-    if K == 1:
-        reduce_then_scan_row(inp, out, M, N, compute_dtype)
+        dtype = (
+            out.dtype
+            if out is not None
+            else (
+                inp.dtype
+                if inp.is_floating_point() or inp.is_complex()
+                else torch.int64
+            )
+        )
+    if out is not None and out.dtype != dtype:
+        raise RuntimeError("cumsum: out dtype must match the requested dtype")
+    # Match torch.cumsum's conversion before accumulation, including explicit
+    # float-to-integer and float64-to-float32 dtype requests.
+    inp = inp.to(dtype)
+    if dtype in (torch.float16, torch.bfloat16):
+        compute_dtype = torch.float32
+    elif dtype in (torch.int8, torch.int16, torch.uint8):
+        # Use int32 consistently for narrow-integer block prefixes and
+        # loop-carried accumulators.
+        compute_dtype = torch.int32
     else:
-        scan_then_fan(inp, out, M, N, K, compute_dtype)
+        compute_dtype = dtype
+    result = torch.empty(inp.shape, dtype=compute_dtype, device=inp.device)
 
+    if inp.numel():
+        shape = inp.shape
+        M = math.prod(shape[:dim])
+        N = shape[dim]
+        K = inp.numel() // M // N
+        if K == 1:
+            reduce_then_scan_row(inp, result, M, N, compute_dtype)
+        else:
+            scan_then_fan(inp, result, M, N, K, compute_dtype)
+    result = result.to(dtype)
+    if out is None:
+        return result
+    if out.shape != result.shape:
+        out.resize_(result.shape)
+    out.copy_(result)
     return out
 
 
@@ -363,18 +384,12 @@ def cumsum_out(inp, dim=0, *, dtype=None, out):
 
 
 def normed_cumsum(inp, dim=-1):
-    assert inp.dtype in (
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-        torch.float64,
-    )
+    assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     shape = inp.shape
     dim = dim % inp.ndim
     N = shape[dim]
     M = inp.numel() // N
     inp = inp.contiguous()
-
     out = torch.empty_like(inp)
 
     BLOCK = triton.next_power_of_2(N) if N <= 1024 * 4 else 1024
