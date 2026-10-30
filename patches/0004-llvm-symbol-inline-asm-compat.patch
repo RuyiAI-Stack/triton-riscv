@@ -1,8 +1,8 @@
 diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dialect/Triton/IR/TritonOps.td
-index bdab1bd33c..7de82e9a8c 100644
+index 556489b089..313e68889a 100644
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1227,6 +1227,38 @@ def FuncOp : TT_Op<"func", [
+@@ -1190,6 +1190,38 @@ def FuncOp : TT_Op<"func", [
      //===------------------------------------------------------------------===//
  
      bool isDeclaration() { return isExternal(); }
@@ -42,10 +42,10 @@ index bdab1bd33c..7de82e9a8c 100644
    let hasCustomAssemblyFormat = 1;
  }
 diff --git a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-index b0f1f92bf0..92e07b9c0b 100644
+index 0eaa081d50..e6c7b8cd3a 100644
 --- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -194,6 +194,45 @@ struct ExternElementwiseOpConversion
+@@ -205,6 +205,45 @@ struct ExternElementwiseOpConversion
    }
  };
  
@@ -91,7 +91,7 @@ index b0f1f92bf0..92e07b9c0b 100644
  struct ElementwiseInlineAsmOpConversion
      : public ConvertOpToLLVMPattern<ElementwiseInlineAsmOp> {
    using Base = ConvertOpToLLVMPattern<ElementwiseInlineAsmOp>;
-@@ -269,7 +308,7 @@ struct ElementwiseInlineAsmOpConversion
+@@ -280,7 +319,7 @@ struct ElementwiseInlineAsmOpConversion
      Type asmRetType =
          asmRetTypes.size() > 1 ? struct_ty(asmRetTypes) : asmRetTypes[0];
  
@@ -100,7 +100,7 @@ index b0f1f92bf0..92e07b9c0b 100644
                             rewriter, loc, asmRetType,
                             /*operands=*/packedOperands,
                             /*asm_string=*/op.getAsmString(),
-@@ -280,7 +319,7 @@ struct ElementwiseInlineAsmOpConversion
+@@ -291,7 +330,7 @@ struct ElementwiseInlineAsmOpConversion
                             LLVM::AsmDialectAttr::get(rewriter.getContext(),
                                                       LLVM::AsmDialect::AD_ATT),
                             /*operand_attrs=*/ArrayAttr())

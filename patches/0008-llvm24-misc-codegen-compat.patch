@@ -1,0 +1,78 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 44496c59e8..08075a9601 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -400,6 +400,14 @@ if(TRITON_BUILD_PYTHON_MODULE)
+     list(APPEND TRITON_LIBRARIES LLVMAMDGPUCodeGen LLVMAMDGPUAsmParser)
+     add_compile_definitions(TRITON_ENABLE_AMDGPU_TARGET)
+   endif()
++  # init_targets initializes every target the LLVM build provides, so link all
++  # of them (e.g. RISCV components on an x86_64 host using a cross-capable
++  # toolchain LLVM). NVPTX/AMDGPU are handled above.
++  foreach(LLVM_TARGET ${LLVM_TARGETS_TO_BUILD})
++    if(NOT "${LLVM_TARGET}" STREQUAL "NVPTX" AND NOT "${LLVM_TARGET}" STREQUAL "AMDGPU")
++      list(APPEND TRITON_LIBRARIES LLVM${LLVM_TARGET}CodeGen LLVM${LLVM_TARGET}AsmParser)
++    endif()
++  endforeach()
+ 
+   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR # Linux arm64
+      CMAKE_SYSTEM_PROCESSOR MATCHES "arm64" OR # macOS arm64
+diff --git a/lib/Target/LLVMIR/LLVMDILocalVariable.cpp b/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
+index d7e6aec287..48f7b9627e 100644
+--- a/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
++++ b/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
+@@ -199,7 +199,8 @@ struct LLVMDILocalVariablePass
+     auto subprogramAttr = LLVM::DISubprogramAttr::get(
+         context, recId, /*isRecSelf=*/true, id, compileUnitAttr, fileAttr,
+         funcNameAttr, funcNameAttr, fileAttr, /*line=*/line, /*scopeline=*/line,
+-        subprogramFlags, subroutineTypeAttr, /*retainNodes=*/{},
++        subprogramFlags, subroutineTypeAttr,
++        /*retainNodes=*/llvm::ArrayRef<Attribute>{},
+         /*annotations=*/{});
+ 
+     return subprogramAttr;
+@@ -242,7 +243,7 @@ struct LLVMDILocalVariablePass
+       LLVM::DITypeAttr typeAttr;
+     };
+     llvm::SmallVector<ArgInfo> argInfos;
+-    llvm::SmallVector<mlir::LLVM::DINodeAttr> retainedNodes;
++    llvm::SmallVector<Attribute> retainedNodes;
+ 
+     for (unsigned idx = resNum; idx < argTypeAttrs.size(); idx++) {
+       LLVM::DITypeAttr argTypeAttr = argTypeAttrs[idx];
+diff --git a/lib/Target/LLVMIR/LLVMPasses.h b/lib/Target/LLVMIR/LLVMPasses.h
+index 1dcdb2992c..8859b0f6c0 100644
+--- a/lib/Target/LLVMIR/LLVMPasses.h
++++ b/lib/Target/LLVMIR/LLVMPasses.h
+@@ -7,7 +7,8 @@ namespace llvm {
+ // Pass to pre-process LLVM IR before optimization and break up phi of struct.
+ // Breaking up those phis into elementary types allows better optimizations
+ // downstream.
+-struct BreakStructPhiNodesPass : PassInfoMixin<BreakStructPhiNodesPass> {
++struct BreakStructPhiNodesPass
++    : OptionalPassInfoMixin<BreakStructPhiNodesPass> {
+   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+ 
+   static StringRef name() { return "BreakStructPhiNodesPass"; }
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+index e64887c401..f6e14ef114 100644
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -12,6 +12,7 @@
+ #include "llvm/IR/LLVMContext.h"
+ #include "llvm/IR/LegacyPassManager.h"
+ #include "llvm/IR/Module.h"
++#include "llvm/IR/Operator.h"
+ #include "llvm/IR/PassManager.h"
+ #include "llvm/IR/Verifier.h"
+ #include "llvm/IRReader/IRReader.h"
+@@ -44,7 +45,8 @@
+ namespace py = pybind11;
+ 
+ namespace llvm {
+-struct BreakStructPhiNodesPass : PassInfoMixin<BreakStructPhiNodesPass> {
++struct BreakStructPhiNodesPass
++    : OptionalPassInfoMixin<BreakStructPhiNodesPass> {
+   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+   static StringRef name() { return "BreakStructPhiNodesPass"; }
+ };

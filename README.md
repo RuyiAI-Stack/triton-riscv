@@ -73,10 +73,10 @@ When a conda environment is active, `scripts/triton-riscv-env.sh` automatically 
 2. Install triton-riscv Python dependencies in the active environment:
 
    ```sh
-   pip install cmake ninja pytest-xdist nanobind==2.10.2 setuptools
+   pip install cmake ninja pytest-xdist "pybind11>=2.13.1" setuptools
    ```
 
-   `cmake`, `ninja`, and `nanobind` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
+   `cmake`, `ninja`, and `pybind11` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
 
 3. Build the pinned Buddy Compiler checkout — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
 

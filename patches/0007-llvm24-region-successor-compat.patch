@@ -1,0 +1,63 @@
+diff --git a/lib/Analysis/Membar.cpp b/lib/Analysis/Membar.cpp
+index dd69648182..8890e28119 100644
+--- a/lib/Analysis/Membar.cpp
++++ b/lib/Analysis/Membar.cpp
+@@ -201,7 +201,7 @@ void MembarOrFenceAnalysis::visitTerminator(
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         successors.emplace_back(br->getBlock(), br->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+@@ -221,7 +221,7 @@ void MembarOrFenceAnalysis::visitTerminator(
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(operands, regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         Operation *parent = br->getParentOp();
+         successors.emplace_back(parent->getBlock(), parent->getIterator());
+       } else {
+diff --git a/lib/Dialect/TritonGPU/IR/Ops.cpp b/lib/Dialect/TritonGPU/IR/Ops.cpp
+index adc9c7a3d1..6728fb8e8f 100644
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
+@@ -1205,12 +1205,12 @@ void WarpSpecializeOp::getSuccessorRegions(
+   // And the default region branches transparently back to the parent.
+   if (src.getTerminatorPredecessorOrNull()->getParentRegion() ==
+       &getDefaultRegion())
+-    successors.push_back(RegionSuccessor::parent());
++    successors.push_back(RegionSuccessor(getOperation()));
+ }
+ 
+ ValueRange WarpSpecializeOp::getSuccessorInputs(RegionSuccessor successor) {
+   // When returning to parent, the successor inputs are the op results.
+-  return successor.isParent() ? getResults() : ValueRange();
++  return successor.isOperation() ? getResults() : ValueRange();
+ }
+ 
+ void WarpSpecializePartitionsOp::getSuccessorRegions(
+diff --git a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp b/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
+index 94a0a62df7..3f7fced378 100644
+--- a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
++++ b/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
+@@ -297,7 +297,7 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         successors.emplace_back(br->getBlock(), br->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+@@ -317,7 +317,7 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(operands, regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         Operation *parent = br->getParentOp();
+         successors.emplace_back(parent->getBlock(), parent->getIterator());
+       } else {
