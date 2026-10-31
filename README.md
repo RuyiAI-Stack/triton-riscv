@@ -220,7 +220,7 @@ cmake --build "$TRITON_DIR/build/cmake.linux-$(uname -m)-cpython-<python-version
 For example, on an x86_64 host with Python 3.12:
 `triton/build/cmake.linux-x86_64-cpython-3.12`.
 
-Reference result on x86_64 at the current pins: 301 tests — 292 passed, 9
+Reference result on x86_64 at the current pins: 302 tests — 293 passed, 9
 expected failures.
 
 ### Example suite (end-to-end compilation + CPU execution)
