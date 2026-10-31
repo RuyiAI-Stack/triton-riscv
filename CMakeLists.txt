@@ -23,7 +23,7 @@ add_subdirectory(tools/triton-shared-opt)
 
 if (TRITON_SHARED_BUILD_CPU_BACKEND)
     add_triton_plugin(TritonShared ${CMAKE_CURRENT_SOURCE_DIR}/triton_shared.cc LINK_LIBS TritonSharedAnalysis TritonToLinalg TritonTilingExtIR)
-    target_link_libraries(TritonShared PRIVATE Python3::Module nanobind-static)
+    target_link_libraries(TritonShared PRIVATE Python3::Module pybind11::headers)
 endif()
 
 # Add symlinks to selected pytest files in triton. The tests are imported into triton-shared’s test folder to

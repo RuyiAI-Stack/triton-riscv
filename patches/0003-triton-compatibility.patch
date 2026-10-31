@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 957d542936799321b7b4087b9e08a6607d632767..b3ef5f95df8ec194b0b9b4310620ffaaf6e3bedd 100644
+index 39fa73d8b0..44496c59e8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -282,7 +282,7 @@ if(NOT MSVC)
@@ -11,7 +11,7 @@ index 957d542936799321b7b4087b9e08a6607d632767..b3ef5f95df8ec194b0b9b4310620ffaa
  else()
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
  endif()
-@@ -405,6 +405,8 @@ if(TRITON_BUILD_PYTHON_MODULE)
+@@ -385,6 +385,8 @@ if(TRITON_BUILD_PYTHON_MODULE)
  
      # LLVM
      LLVMPasses
@@ -19,12 +19,12 @@ index 957d542936799321b7b4087b9e08a6607d632767..b3ef5f95df8ec194b0b9b4310620ffaa
 +    LLVMPlugins
  
      Python3::Module
-     nanobind-static
+     pybind11::headers
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 16cf6fb90f10015e9a89c0e6e602afcb06e87d3c..a6ac9bc3f802131506c0e9a3ee4c2e1ab1596ed3 100644
+index 026a05e32a..9084d40f58 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -1764,6 +1764,22 @@ void init_triton_ir(py::module_ &m) {
+@@ -1723,6 +1723,22 @@ void init_triton_ir(py::module &&m) {
             [](TritonOpBuilder &self, Value &val) -> Value {
               return self.create<math::SinOp>(val);
             })
@@ -48,10 +48,10 @@ index 16cf6fb90f10015e9a89c0e6e602afcb06e87d3c..a6ac9bc3f802131506c0e9a3ee4c2e1a
             [](TritonOpBuilder &self, Value &val) -> Value {
               return self.create<math::LogOp>(val);
 diff --git a/python/src/llvm.cc b/python/src/llvm.cc
-index 0bc98405ec879e2cc58063eb7e7177f04ff4d705..0a48c8880857c591cf32ce4037cdaf59bf2d24ab 100644
+index 9100f3b7e8..7148f0b860 100644
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -807,7 +807,7 @@ void init_triton_llvm(py::module_ &m) {
+@@ -709,7 +709,7 @@ void init_triton_llvm(py::module &&m) {
            // registry name "vector-combine".
            const StringRef kVectorCombinePassName = "VectorCombinePass";
            passInstrCb.registerShouldRunOptionalPassCallback(
@@ -61,7 +61,7 @@ index 0bc98405ec879e2cc58063eb7e7177f04ff4d705..0a48c8880857c591cf32ce4037cdaf59
                });
            enablePassInstrumentation = true;
 diff --git a/python/triton/language/math.py b/python/triton/language/math.py
-index dd29febfcf04cb048d67c237ffbadf4ffe327f4f..2ad208980964bd801a02123119e5a30a0f4c732c 100644
+index 582cd876cb..d810453325 100644
 --- a/python/triton/language/math.py
 +++ b/python/triton/language/math.py
 @@ -247,3 +247,40 @@ def fma(x, y, z, _semantic=None):

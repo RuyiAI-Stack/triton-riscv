@@ -42,10 +42,35 @@ The script is idempotent: re-running it on an already-patched tree prints `SKIPP
 The patch set also preserves Triton's existing `attr-dict` textual IR format
 when building against LLVM revisions that enable strict properties by default.
 It opts Triton's dialects into MLIR's legacy assembly-format behavior without
-changing the LLVM checkout. LLVM 24 compatibility also uses instruction
-`contract` flags for floating-point fusion and the renamed pass-plugin loader.
+changing the LLVM checkout. LLVM 24 compatibility covers the instruction
+`contract` flags for floating-point fusion, the renamed pass-plugin loader, the
+`RegionSuccessor` control-flow API, the `OptionalPassInfoMixin` pass base
+class, debug-info attribute signatures, and linking every target provided by
+the toolchain LLVM so `init_targets` resolves on any host.
 Re-run `scripts/apply_patches.sh` before rebuilding an existing Triton checkout
 after updating this repository's patches.
+
+## Supported dependencies
+
+| Component | Version | Authoritative pin |
+|---|---|---|
+| Triton | official `v3.8.0` release tag | `triton-hash.txt` |
+| Buddy MLIR | `nightly/v0.1.3.dev20261027` | `buddy-hash.txt` |
+| LLVM toolchain | `24.0.0git` (Buddy prebuilt packages) | Buddy release tag |
+| Python | 3.12, 3.13, or 3.14 | — |
+| pybind11 | `>=2.13.1` | build environment |
+| torch | 2.x CPU wheel (x86_64); third-party RISC-V builds | — |
+
+Notes:
+
+- Triton is integrated at the official `v3.8.0` release revision — not a
+  mainline development commit — and the integration patches under `patches/`
+  are written against that revision.
+- Triton 3.8.0 predates the upstream nanobind migration, so both Triton and
+  the triton-riscv plugin bind with **pybind11**; `nanobind` is not needed.
+- Buddy ships `cp312-abi3` wheels and prebuilt tarballs, so Python 3.12 or
+  newer is required. The third-party RISC-V torch builds support Python
+  3.12/3.13.
 
 ## Prerequisites
 
@@ -73,10 +98,10 @@ When a conda environment is active, `scripts/triton-riscv-env.sh` automatically 
 2. Install triton-riscv Python dependencies in the active environment:
 
    ```sh
-   pip install cmake ninja pytest-xdist nanobind==2.10.2 setuptools
+   pip install cmake ninja pytest-xdist "pybind11>=2.13.1" setuptools
    ```
 
-   `cmake`, `ninja`, and `nanobind` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
+   `cmake`, `ninja`, and `pybind11` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
 
 3. Build the pinned Buddy Compiler checkout — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
 
@@ -112,6 +137,17 @@ export BUDDY_DIR=/path/to/buddy-mlir
 source /path/to/triton-riscv/scripts/triton-riscv-env.sh
 ```
 
+When using the prebuilt toolchain packages fetched by
+[`scripts/build.sh`](scripts/build.sh) (`.cache/llvm`, `.cache/buddy`), point
+the helper at them before sourcing — its defaults assume a source-built Buddy
+checkout layout:
+
+```sh
+export BUDDY_MLIR_BINARY_DIR=$TRITON_RISCV_DIR/.cache/buddy/bin
+export LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm
+source scripts/triton-riscv-env.sh
+```
+
 This helper removes most of the repetitive local environment setup from the README, but it does not replace the external prerequisites themselves: Buddy/LLVM dependencies, a built `buddy-mlir`, a checked-out Triton tree, the virtual environment, and the patch step are still required.
 
 ## Build and rebuild
@@ -142,6 +178,18 @@ rm -rf "$TRITON_CACHE_DIR"
 
 Build artifacts are placed under `triton/build/{current_cmake_version}/third_party/triton_shared`.
 
+[`scripts/build.sh`](scripts/build.sh) is the automated one-click path used by
+CI: it clones/updates the pinned Triton checkout, applies the patch stack,
+downloads the prebuilt Buddy/LLVM packages into `.cache/`, and builds and
+installs Triton into `.venv` (override the interpreter with `PYTHON=` and the
+parallelism with `MAX_JOBS=`). On a fresh machine it is the fastest
+reproducible path and needs no manual clone/patch steps.
+
+The editable Triton install keeps a single `libtriton.so` in the source tree,
+shared by every virtual environment pointing at that checkout. After building
+with a different Python interpreter, rebuild before running tests from another
+environment.
+
 ## Verify the build
 
 ```sh
@@ -152,7 +200,30 @@ python -c "import triton; import triton.backends.triton_shared.compiler as c; pr
 "$TRITON_SHARED_OPT_PATH" --version
 ```
 
-## Run the example test suite
+## Run the test suites
+
+All suites expect the environment from `scripts/triton-riscv-env.sh` to be
+sourced (see the prebuilt-toolchain note above when `.cache` packages are
+used). Clear the compilation cache before comparing runs:
+
+```sh
+rm -rf "$TRITON_CACHE_DIR"
+```
+
+### lit tests (MLIR middle layer)
+
+```sh
+cmake --build "$TRITON_DIR/build/cmake.linux-$(uname -m)-cpython-<python-version>" \
+      --target check-triton-shared-lit-tests
+```
+
+For example, on an x86_64 host with Python 3.12:
+`triton/build/cmake.linux-x86_64-cpython-3.12`.
+
+Reference result on x86_64 at the current pins: 302 tests — 293 passed, 9
+expected failures.
+
+### Example suite (end-to-end compilation + CPU execution)
 
 ```sh
 pytest python/examples/ \
@@ -166,6 +237,30 @@ To run a single test:
 
 ```sh
 pytest python/examples/test_vec_add.py -v
+```
+
+On hosts without native RISC-V execution, the runtime-execution variants
+(`*_matches_torch`, tail-shape cases, and similar) are skipped; only the
+cross-compilation checks run.
+
+### FlagGems operator suite
+
+Run the FlagGems directory separately from the common suite. A few files
+crash the whole test process — these are known, pre-existing issues tracked
+separately from the Triton integration:
+
+- `test_affine_grid_generator.py` — segfault in the kernel launch path
+- `test_avg_pool2d.py`, `test_avg_pool3d.py` — heap-corruption aborts
+
+Because the crashes are process-level, run the suite file-by-file so one
+crash does not kill the whole run:
+
+```sh
+cd "$TRITON_RISCV_DIR"
+for f in python/examples/flaggems/test_*.py; do
+    ( cd triton && ../.venv/bin/python -m pytest "../$f" -q ) \
+        || echo "FAILED: $f"
+done
 ```
 
 ## Generate and run RVV ELF files with QEMU

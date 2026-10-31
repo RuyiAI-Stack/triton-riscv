@@ -1,7 +1,8 @@
 diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+index 7148f0b860..e64887c401 100644
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -222,8 +222,18 @@
+@@ -136,8 +136,18 @@ createTargetMachine(llvm::Module *module, std::string proc,
        llvm::TargetRegistry::lookupTarget(module->getTargetTriple(), error);
    llvm::TargetOptions opt;
    bool disableLLVMOpt = mlir::triton::tools::getBoolEnv("DISABLE_LLVM_OPT");
@@ -20,7 +21,7 @@ diff --git a/python/src/llvm.cc b/python/src/llvm.cc
    opt.TrapUnreachable = true;
    opt.MCOptions.AsmVerbose = true;
    opt.MCOptions.PreserveAsmComments = true;
-@@ -855,7 +865,11 @@
+@@ -757,7 +767,11 @@ void init_triton_llvm(py::module &&m) {
          if (!pluginFile.empty()) {
            // TODO: Add some logging here that we inserted a pass into the LLVM
            // pass pipeline

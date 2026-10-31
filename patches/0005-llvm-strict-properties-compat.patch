@@ -69,7 +69,7 @@ index 25d1a0ffb1..9be6e5bd06 100644
  
    let cppNamespace = "::mlir::triton::nvidia_gpu";
 diff --git a/test/Triton/ops.mlir b/test/Triton/ops.mlir
-index fa0f60d287..bdba3038d4 100644
+index e026c6b040..e690cfd00e 100644
 --- a/test/Triton/ops.mlir
 +++ b/test/Triton/ops.mlir
 @@ -1,4 +1,5 @@
@@ -78,9 +78,9 @@ index fa0f60d287..bdba3038d4 100644
  
  // CHECK-LABEL: @cast_ops
  tt.func @cast_ops(%scalar_ptr: !tt.ptr<f32>, %scalar_f32: f32, %scalar_i64: i64) {
-@@ -292,3 +293,13 @@ tt.func @ptr_addr_space(%arg0: !tt.ptr<i8, "descriptor">, %arg1: !tt.ptr<f32>) {
-   // CHECK-SAME: %arg1: !tt.ptr<f32>
-   tt.return
+@@ -285,3 +286,13 @@ tt.func @unsplat(%arg0: tensor<1x1xf32>) -> f32 {
+   %0 = tt.unsplat %arg0 : tensor<1x1xf32>
+   tt.return %0 : f32
  }
 +
 +// Keep inherent attributes in attr-dict when using LLVM's strict-properties API.
