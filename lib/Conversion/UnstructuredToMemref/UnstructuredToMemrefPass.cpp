@@ -303,12 +303,20 @@ struct ScalarLoadConverter : public OpConversionPattern<tts::GatherOp> {
         ArrayRef<OpFoldResult>{rewriter.getIndexAttr(1)} /*sizes*/,
         ArrayRef<OpFoldResult>{rewriter.getIndexAttr(1)} /*strides*/);
 
-    auto zeroMap = AffineMap::getConstantMap(0, rewriter.getContext());
-
-    auto scalarLoadOp = rewriter.create<affine::AffineLoadOp>(
-        loc, memref, zeroMap, ValueRange{});
-
-    rewriter.replaceOp(gatherOp, scalarLoadOp.getResult());
+    Value loaded;
+    if (adaptor.getMask()) {
+      Value other = adaptor.getOther();
+      if (!other)
+        other = createZeroValue(loc, gatherOp.getType(), rewriter);
+      Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+      loaded = createMaskedLoadOrFallback(loc, adaptor.getMask(), other, memref,
+                                          zero, rewriter);
+    } else {
+      auto zeroMap = AffineMap::getConstantMap(0, rewriter.getContext());
+      loaded = rewriter.create<affine::AffineLoadOp>(loc, memref, zeroMap,
+                                                     ValueRange{});
+    }
+    rewriter.replaceOp(gatherOp, loaded);
 
     return success();
   }
@@ -351,8 +359,13 @@ struct ScalarStoreConverter : public OpConversionPattern<tts::ScatterOp> {
     auto storeVal = scatterOp.getValue();
     auto zeroMap = AffineMap::getConstantMap(0, rewriter.getContext());
 
-    rewriter.create<affine::AffineStoreOp>(loc, storeVal, memref, zeroMap,
-                                           ValueRange{});
+    createOptionalMaskedStore(
+        loc, adaptor.getMask(),
+        [&](OpBuilder &builder) {
+          builder.create<affine::AffineStoreOp>(loc, storeVal, memref, zeroMap,
+                                                ValueRange{});
+        },
+        rewriter);
     rewriter.eraseOp(scatterOp);
 
     return success();
