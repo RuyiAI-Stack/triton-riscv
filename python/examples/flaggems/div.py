@@ -304,7 +304,7 @@ def rem_kernel_tt(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask, other=1)
     res = _remainder(x, y)
     tl.store(out_ptr + offsets, res, mask=mask)
 
@@ -336,7 +336,7 @@ def rem_kernel_st(
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    y = tl.load(y_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask, other=1)
     res = _remainder(x_val, y)
     tl.store(out_ptr + offsets, res, mask=mask)
 
