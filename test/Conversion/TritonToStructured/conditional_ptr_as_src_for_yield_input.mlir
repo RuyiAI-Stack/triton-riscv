@@ -34,25 +34,25 @@
 // CHECK:           %[[VAL_0:.*]] = "tts.load"(%[[MAKE_TPTR_0]], %[[MAXSI_0]]) <{operandSegmentSizes = array<i32: 1, 1, 0>, static_mask_dims = array<i64: -9223372036854775808>}> : (tensor<512x!tt.ptr<i64>>, index) -> tensor<512xi64>
 // CHECK:           %[[CMPI_1:.*]] = arith.cmpi eq, %[[ARG4]], %[[CONSTANT_2]] : i32
 // CHECK:           %[[IF_0:.*]] = scf.if %[[CMPI_1]] -> (tensor<512x!tt.ptr<i64>>) {
-// CHECK:             %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG5]] : i32 to index
-// CHECK:             %[[INDEX_CAST_4:.*]] = arith.index_cast %[[INDEX_CAST_3]] : index to i64
-// CHECK:             %[[SPLAT_1:.*]] = tt.splat %[[INDEX_CAST_4]] : i64 -> tensor<512xi64>
+// CHECK:             %[[EXTSI_0:.*]] = arith.extsi %[[ARG5]] : i32 to i64
+// CHECK:             %[[SPLAT_1:.*]] = tt.splat %[[EXTSI_0]] : i64 -> tensor<512xi64>
 // CHECK:             %[[MULI_1:.*]] = arith.muli %[[VAL_0]], %[[SPLAT_1]] : tensor<512xi64>
-// CHECK:             %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [512] gather_scatter_dim: 0 gather_scatter_offset: %[[MULI_1]], strides: [1], offsets: [0] : tensor<512xi64>  <i64> to tensor<512x!tt.ptr<i64>>
+// CHECK:             %[[EXTSI_1:.*]] = arith.extsi %[[MAKE_RANGE_0]] : tensor<512xi32> to tensor<512xi64>
+// CHECK:             %[[ADDI_0:.*]] = arith.addi %[[MULI_1]], %[[EXTSI_1]] : tensor<512xi64>
+// CHECK:             %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [512] gather_scatter_dim: 0 gather_scatter_offset: %[[ADDI_0]], strides: [1], offsets: [0] : tensor<512xi64>  <i64> to tensor<512x!tt.ptr<i64>>
 // CHECK:             scf.yield %[[MAKE_GATHER_SCATTER_TPTR_0]] : tensor<512x!tt.ptr<i64>>
 // CHECK:           } else {
 // CHECK:             %[[MULI_2:.*]] = arith.muli %[[GET_PROGRAM_ID_0]], %[[ARG5]] : i32
-// CHECK:             %[[INDEX_CAST_5:.*]] = arith.index_cast %[[MULI_2]] : i32 to index
-// CHECK:             %[[INDEX_CAST_6:.*]] = arith.index_cast %[[INDEX_CAST_5]] : index to i64
-// CHECK:             %[[SPLAT_2:.*]] = tt.splat %[[INDEX_CAST_6]] : i64 -> tensor<512xi64>
-// CHECK:             %[[ADDI_0:.*]] = arith.addi %[[SPLAT_2]], %[[VAL_0]] : tensor<512xi64>
-// CHECK:             %[[MAKE_GATHER_SCATTER_TPTR_1:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [512] gather_scatter_dim: 0 gather_scatter_offset: %[[ADDI_0]], strides: [1], offsets: [0] : tensor<512xi64>  <i64> to tensor<512x!tt.ptr<i64>>
+// CHECK:             %[[EXTSI_2:.*]] = arith.extsi %[[MULI_2]] : i32 to i64
+// CHECK:             %[[SPLAT_2:.*]] = tt.splat %[[EXTSI_2]] : i64 -> tensor<512xi64>
+// CHECK:             %[[ADDI_1:.*]] = arith.addi %[[SPLAT_2]], %[[VAL_0]] : tensor<512xi64>
+// CHECK:             %[[MAKE_GATHER_SCATTER_TPTR_1:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [512] gather_scatter_dim: 0 gather_scatter_offset: %[[ADDI_1]], strides: [1], offsets: [0] : tensor<512xi64>  <i64> to tensor<512x!tt.ptr<i64>>
 // CHECK:             scf.yield %[[MAKE_GATHER_SCATTER_TPTR_1]] : tensor<512x!tt.ptr<i64>>
 // CHECK:           }
 // CHECK:           %[[LOAD_0:.*]] = tt.load %[[IF_0]], %[[CMPI_0]] : tensor<512x!tt.ptr<i64>>
 // CHECK:           %[[MAKE_TPTR_1:.*]] = tts.make_tptr %[[ARG2]] to sizes: [512], strides: [1], offsets: {{\[}}%[[INDEX_CAST_0]]], shape: [0], order: [] : <i64> to tensor<512x!tt.ptr<i64>>
-// CHECK:           %[[INDEX_CAST_7:.*]] = arith.index_cast %[[ARG3]] : i32 to index
-// CHECK:           %[[MINSI_1:.*]] = arith.minsi %[[INDEX_CAST_7]], %[[CONSTANT_1]] : index
+// CHECK:           %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG3]] : i32 to index
+// CHECK:           %[[MINSI_1:.*]] = arith.minsi %[[INDEX_CAST_3]], %[[CONSTANT_1]] : index
 // CHECK:           %[[MAXSI_1:.*]] = arith.maxsi %[[MINSI_1]], %[[CONSTANT_0]] : index
 // CHECK:           "tts.store"(%[[MAKE_TPTR_1]], %[[LOAD_0]], %[[MAXSI_1]]) <{static_mask_dims = array<i64: -9223372036854775808>}> : (tensor<512x!tt.ptr<i64>>, tensor<512xi64>, index) -> ()
 // CHECK:           tt.return

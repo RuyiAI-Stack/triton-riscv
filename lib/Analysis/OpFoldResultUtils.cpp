@@ -135,8 +135,6 @@ OpFoldResult expandOFRIndex(OpFoldResult ofr, OpFoldResult targetForTy,
     Type targetEltTy = targetShapedTy.getElementType();
     Type eltTy = shapedTy.getElementType();
     if (targetShapedTy.getShape() != shapedTy.getShape()) {
-      assert(targetEltTy == eltTy &&
-             "Only cast between same element type shaped types");
       // This path is for case like:
       // input_ptr + (row_indices[:, None] + row_offsets[:,None] % mod_offset) *
       //   stride_m + col_offsets[None, :] * stride_n
@@ -157,8 +155,13 @@ OpFoldResult expandOFRIndex(OpFoldResult ofr, OpFoldResult targetForTy,
           targetShapedTy.getShape().size(), b.getIndexType());
       auto shapeTensor = b.create<tensor::FromElementsOp>(
           loc, targetShapeTensorTy, shapeValues);
-      return b.create<triton::ReshapeOp>(loc, targetTy, v, shapeTensor)
-          .getResult();
+      // Reshape cannot change the element type. Normalize the shape first,
+      // then use the integer conversion below if the element types differ.
+      auto reshapedTy = cast<RankedTensorType>(targetTy).clone(eltTy);
+      v = b.create<triton::ReshapeOp>(loc, reshapedTy, v, shapeTensor)
+              .getResult();
+      if (targetEltTy == eltTy)
+        return v;
     }
     if (isa<IndexType>(targetEltTy) || isa<IndexType>(eltTy)) {
       assert((isa<IntegerType>(targetEltTy) || isa<IntegerType>(eltTy)) &&

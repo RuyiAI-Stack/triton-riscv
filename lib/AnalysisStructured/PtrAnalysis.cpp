@@ -771,6 +771,29 @@ LogicalResult PtrAnalysis::visitOperandAdd(arith::AddIOp addOp, PtrState &state,
     assert(enableMakeGatherScatterTensorPtr &&
            "isAnalysisingUnstructured should not be true when "
            "enableMakeGatherScatterTensorPtr is false");
+    if (lhsState.isStructured() != rhsState.isStructured()) {
+      bool lhsIsStructured = lhsState.isStructured();
+      PtrState &structuredState = lhsIsStructured ? lhsState : rhsState;
+      const PtrState &unstructuredState = lhsIsStructured ? rhsState : lhsState;
+      int dim = unstructuredState.getNonStructuredDim();
+      // Preserve the complete structured tensor, including lane * stride,
+      // when combining it with explicit gather/scatter indices. Scalar
+      // broadcasts need no rebuild. Fall back for tensors varying in several
+      // dimensions instead of dropping any lane contribution.
+      if (!hasConstZero(structuredState.strides[dim])) {
+        // The complete tensor also includes offsets tracked in other
+        // dimensions. mergeUnstructuredState only replaces the gather
+        // dimension, so those offsets would otherwise be counted twice.
+        for (int i = 0; i < structuredState.getRank(); ++i)
+          if (i != dim && !hasConstZero(structuredState.offsets[i]))
+            return failure();
+        if (structuredState
+                .rebuildAsGatherScatter(
+                    lhsIsStructured ? addOp.getLhs() : addOp.getRhs(), dim)
+                .failed())
+          return failure();
+      }
+    }
   }
   return state.addState(lhsState, rhsState, isAnalysisingUnstructured, addOp,
                         builder);
@@ -1070,6 +1093,78 @@ LogicalResult PtrAnalysis::visitOperandAddptr(triton::AddPtrOp addptrOp,
     assert(enableMakeGatherScatterTensorPtr &&
            "isAnalysisingUnstructured should not be true when "
            "enableMakeGatherScatterTensorPtr is false");
+    if (ptrState.isStructured() != offsetState.isStructured()) {
+      const PtrState &structured =
+          ptrState.isStructured() ? ptrState : offsetState;
+      const PtrState &unstructured =
+          ptrState.isStructured() ? offsetState : ptrState;
+      int dim = unstructured.getNonStructuredDim();
+      if (!hasConstZero(structured.offsets[dim]) ||
+          !hasConstZero(structured.strides[dim])) {
+        // Keep each original offset expression, including its integer wrap,
+        // before extending it for pointer arithmetic. Rebuilding lane * stride
+        // in i64 would lose overflow in an earlier i32 offset expression.
+        if (isNotSingleDim(addptrOp.getOffset()))
+          return failure();
+        // Only the gather dimension is replaced by mergeUnstructuredState.
+        // Do not fold offsets that would also remain in another dimension.
+        for (int i = 0; i < ptrState.getRank(); ++i)
+          if (i != dim && (!hasConstZero(ptrState.offsets[i]) ||
+                           !hasConstZero(offsetState.offsets[i])))
+            return failure();
+        SmallVector<Value> offsets;
+        Value pointer = addptrOp.getResult();
+        while (pointer != ptrState.source) {
+          if (auto previous = pointer.getDefiningOp<triton::AddPtrOp>()) {
+            offsets.push_back(previous.getOffset());
+            pointer = previous.getPtr();
+          } else if (auto splat = pointer.getDefiningOp<triton::SplatOp>()) {
+            pointer = splat.getSrc();
+          } else {
+            return failure();
+          }
+        }
+        auto offsetType =
+            cast<RankedTensorType>(addptrOp.getOffset().getType());
+        auto addressType =
+            RankedTensorType::get(offsetType.getShape(), builder.getI64Type());
+        for (Value offset : offsets) {
+          Type type = offset.getType();
+          if (auto tensorType = dyn_cast<RankedTensorType>(type)) {
+            if (tensorType.getShape() != offsetType.getShape())
+              return failure();
+            type = tensorType.getElementType();
+          }
+          if (!type.isIntOrIndex() ||
+              (isa<IntegerType>(type) && type.getIntOrFloatBitWidth() > 64))
+            return failure();
+        }
+        Value combined;
+        for (Value offset : llvm::reverse(offsets)) {
+          Type elementType = offset.getType();
+          Type wideType = builder.getI64Type();
+          bool isTensor = isa<RankedTensorType>(elementType);
+          if (isTensor) {
+            elementType = cast<RankedTensorType>(elementType).getElementType();
+            wideType = addressType;
+          }
+          if (elementType.isIndex())
+            offset = builder.create<arith::IndexCastOp>(loc, wideType, offset);
+          else if (elementType.getIntOrFloatBitWidth() < 64)
+            offset = builder.create<arith::ExtSIOp>(loc, wideType, offset);
+          if (!isTensor)
+            offset = builder.create<triton::SplatOp>(loc, addressType, offset);
+          combined = combined
+                         ? builder.create<arith::AddIOp>(loc, combined, offset)
+                               .getResult()
+                         : offset;
+        }
+        if (failed(state.rebuildAsUnsupportedOp(combined)))
+          return failure();
+        state.source = ptrState.source;
+        return success();
+      }
+    }
   }
   return state.addState(ptrState, offsetState, isAnalysisingUnstructured,
                         addptrOp, builder);

@@ -21,3 +21,12 @@ def test_median_dim(shape, dim):
     tri_vals, tri_idxs = median_dim(x, dim=dim)
     torch.testing.assert_close(tri_vals, ref_vals, rtol=1e-3, atol=1e-3)
     torch.testing.assert_close(tri_idxs, ref_idxs)
+
+
+@pytest.mark.parametrize("rows,dtype", [(16, torch.float16), (17, torch.float32)])
+def test_median_dim_strided_row_offsets(rows, dtype):
+    x = torch.arange(rows * 4, dtype=dtype).reshape(rows, 4, 1)
+    ref_values, ref_indices = torch.median(x, dim=1)
+    tri_values, tri_indices = median_dim(x, dim=1)
+    torch.testing.assert_close(tri_values, ref_values, rtol=0, atol=0)
+    torch.testing.assert_close(tri_indices, ref_indices)
