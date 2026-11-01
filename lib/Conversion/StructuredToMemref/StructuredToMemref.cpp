@@ -477,13 +477,29 @@ static FailureOr<Value> materializeSplitTPtrMemRef(tts::MakeTensorPtrOp op,
     Value strideCol = ofrToIndexValue(op.getMixedStrides()[1], loc, rewriter);
     Value modRow = ofrToIndexValue(op.getMixedShape()[0], loc, rewriter);
 
+    // A broadcast row has no wraparound. Keep its memory stride zero, but
+    // guard the divisor even when the arithmetic result is later selected out.
+    Value safeStrideRow = strideRow;
+    Value isZeroStride;
+    auto strideRowConst = getConstantIntValue(strideRow);
+    if (!strideRowConst || *strideRowConst == 0) {
+      Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+      Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+      isZeroStride = rewriter.create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::eq, strideRow, zero);
+      safeStrideRow =
+          rewriter.create<arith::SelectOp>(loc, isZeroStride, one, strideRow);
+    }
     Value wrappedAroundOff =
-        rewriter.create<arith::RemSIOp>(loc, targetOffset, strideRow);
+        rewriter.create<arith::RemSIOp>(loc, targetOffset, safeStrideRow);
     Value clampedOff =
         rewriter.create<arith::AddIOp>(loc, modRow, wrappedAroundOff);
     Value d1 = rewriter.create<arith::SubIOp>(loc, clampedOff, targetOffset);
-    d1 = rewriter.create<arith::DivSIOp>(loc, d1, strideRow);
+    d1 = rewriter.create<arith::DivSIOp>(loc, d1, safeStrideRow);
     d1 = rewriter.create<arith::MinSIOp>(loc, d1, rowSize);
+    if (isZeroStride) {
+      d1 = rewriter.create<arith::SelectOp>(loc, isZeroStride, rowSize, d1);
+    }
     Value d2 = rewriter.create<arith::SubIOp>(loc, rowSize, d1);
 
     casts.push_back(rewriter
@@ -1506,13 +1522,29 @@ private:
     Value modRow = ofrToIndexValue(op.getMixedShape()[0], loc, rewriter);
 
     // First chunk
+    // A broadcast row has no wraparound. Keep its memory stride zero, but
+    // guard the divisor even when the arithmetic result is later selected out.
+    Value safeStrideRow = strideRow;
+    Value isZeroStride;
+    auto strideRowConst = getConstantIntValue(strideRow);
+    if (!strideRowConst || *strideRowConst == 0) {
+      Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+      Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+      isZeroStride = rewriter.create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::eq, strideRow, zero);
+      safeStrideRow =
+          rewriter.create<arith::SelectOp>(loc, isZeroStride, one, strideRow);
+    }
     Value wrappedAroundOff =
-        rewriter.create<arith::RemSIOp>(loc, targetOffset, strideRow);
+        rewriter.create<arith::RemSIOp>(loc, targetOffset, safeStrideRow);
     Value clampedOff =
         rewriter.create<arith::AddIOp>(loc, modRow, wrappedAroundOff);
     Value d1 = rewriter.create<arith::SubIOp>(loc, clampedOff, targetOffset);
-    d1 = rewriter.create<arith::DivSIOp>(loc, d1, strideRow);
+    d1 = rewriter.create<arith::DivSIOp>(loc, d1, safeStrideRow);
     d1 = rewriter.create<arith::MinSIOp>(loc, d1, rowSize);
+    if (isZeroStride) {
+      d1 = rewriter.create<arith::SelectOp>(loc, isZeroStride, rowSize, d1);
+    }
 
     SmallVector<Value> sizes1{d1, colSize};
     memref::ReinterpretCastOp cast1 =

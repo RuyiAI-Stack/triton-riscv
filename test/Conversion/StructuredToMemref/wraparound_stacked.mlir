@@ -25,39 +25,43 @@
 // CHECK-SAME:      %[[ARG11:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG12:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32,
 // CHECK-SAME:      %[[ARG13:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: i32) {
-// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 4 : index
-// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 4 : i32
-// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 2 : i32
-// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 1 : i32
-// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 2 : index
-// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 3 : index
-// CHECK:           %[[CONSTANT_6:.*]] = arith.constant 0 : index
-// CHECK:           %[[CONSTANT_7:.*]] = arith.constant -9.900000e+01 : f32
-// CHECK:           %[[CONSTANT_8:.*]] = arith.constant 0 : i32
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 1 : index
+// CHECK:           %[[CONSTANT_1:.*]] = arith.constant 4 : index
+// CHECK:           %[[CONSTANT_2:.*]] = arith.constant 4 : i32
+// CHECK:           %[[CONSTANT_3:.*]] = arith.constant 2 : i32
+// CHECK:           %[[CONSTANT_4:.*]] = arith.constant 1 : i32
+// CHECK:           %[[CONSTANT_5:.*]] = arith.constant 2 : index
+// CHECK:           %[[CONSTANT_6:.*]] = arith.constant 3 : index
+// CHECK:           %[[CONSTANT_7:.*]] = arith.constant 0 : index
+// CHECK:           %[[CONSTANT_8:.*]] = arith.constant -9.900000e+01 : f32
+// CHECK:           %[[CONSTANT_9:.*]] = arith.constant 0 : i32
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG2]] : i32 to index
 // CHECK:           %[[INDEX_CAST_1:.*]] = arith.index_cast %[[ARG4]] : i32 to index
-// CHECK:           %[[MULI_0:.*]] = arith.muli %[[INDEX_CAST_1]], %[[CONSTANT_4]] : index
+// CHECK:           %[[MULI_0:.*]] = arith.muli %[[INDEX_CAST_1]], %[[CONSTANT_5]] : index
 // CHECK:           %[[MULI_1:.*]] = arith.muli %[[INDEX_CAST_0]], %[[INDEX_CAST_1]] : index
 // CHECK:           %[[INDEX_CAST_2:.*]] = arith.index_cast %[[ARG5]] : i32 to index
-// CHECK:           %[[MULI_2:.*]] = arith.muli %[[INDEX_CAST_2]], %[[CONSTANT_5]] : index
+// CHECK:           %[[MULI_2:.*]] = arith.muli %[[INDEX_CAST_2]], %[[CONSTANT_6]] : index
 // CHECK:           %[[INDEX_CAST_3:.*]] = arith.index_cast %[[ARG6]] : i32 to index
 // CHECK:           %[[INDEX_CAST_4:.*]] = arith.index_cast %[[ARG7]] : i32 to index
-// CHECK:           %[[MULI_3:.*]] = arith.muli %[[ARG5]], %[[CONSTANT_1]] : i32
+// CHECK:           %[[MULI_3:.*]] = arith.muli %[[ARG5]], %[[CONSTANT_2]] : i32
 // CHECK:           %[[INDEX_CAST_5:.*]] = arith.index_cast %[[MULI_3]] : i32 to index
-// CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_8]] to %[[CONSTANT_2]] step %[[CONSTANT_3]] iter_args(%[[VAL_1:.*]] = %[[MULI_0]], %[[VAL_2:.*]] = %[[CONSTANT_6]]) -> (index, index)  : i32 {
+// CHECK:           %[[FOR_0:.*]]:2 = scf.for %[[VAL_0:.*]] = %[[CONSTANT_9]] to %[[CONSTANT_3]] step %[[CONSTANT_4]] iter_args(%[[VAL_1:.*]] = %[[MULI_0]], %[[VAL_2:.*]] = %[[CONSTANT_7]]) -> (index, index)  : i32 {
 // CHECK:             %[[ADDI_0:.*]] = arith.addi %[[VAL_1]], %[[MULI_2]] : index
-// CHECK:             %[[REMSI_0:.*]] = arith.remsi %[[ADDI_0]], %[[INDEX_CAST_1]] : index
+// CHECK:             %[[CMPI_0:.*]] = arith.cmpi eq, %[[INDEX_CAST_1]], %[[CONSTANT_7]] : index
+// CHECK:             %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[CONSTANT_0]], %[[INDEX_CAST_1]] : index
+// CHECK:             %[[REMSI_0:.*]] = arith.remsi %[[ADDI_0]], %[[SELECT_0]] : index
 // CHECK:             %[[ADDI_1:.*]] = arith.addi %[[MULI_1]], %[[REMSI_0]] : index
 // CHECK:             %[[SUBI_0:.*]] = arith.subi %[[ADDI_1]], %[[ADDI_0]] : index
-// CHECK:             %[[DIVSI_0:.*]] = arith.divsi %[[SUBI_0]], %[[INDEX_CAST_1]] : index
-// CHECK:             %[[MINSI_0:.*]] = arith.minsi %[[DIVSI_0]], %[[CONSTANT_0]] : index
-// CHECK:             %[[SUBI_1:.*]] = arith.subi %[[CONSTANT_0]], %[[MINSI_0]] : index
-// CHECK:             %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[ADDI_0]]], sizes: {{\[}}%[[MINSI_0]], 4], strides: {{\[}}%[[INDEX_CAST_1]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<?x4xf32, strided<[?, ?], offset: ?>>
+// CHECK:             %[[DIVSI_0:.*]] = arith.divsi %[[SUBI_0]], %[[SELECT_0]] : index
+// CHECK:             %[[MINSI_0:.*]] = arith.minsi %[[DIVSI_0]], %[[CONSTANT_1]] : index
+// CHECK:             %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[CONSTANT_1]], %[[MINSI_0]] : index
+// CHECK:             %[[SUBI_1:.*]] = arith.subi %[[CONSTANT_1]], %[[SELECT_1]] : index
+// CHECK:             %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[ADDI_0]]], sizes: {{\[}}%[[SELECT_1]], 4], strides: {{\[}}%[[INDEX_CAST_1]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<?x4xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[REINTERPRET_CAST_1:.*]] = memref.reinterpret_cast %[[ARG0]] to offset: {{\[}}%[[REMSI_0]]], sizes: {{\[}}%[[SUBI_1]], 4], strides: {{\[}}%[[INDEX_CAST_1]], %[[INDEX_CAST_2]]] : memref<*xf32> to memref<?x4xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[EMPTY_0:.*]] = tensor.empty() : tensor<4x4xf32>
-// CHECK:             %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_7]] : f32) outs(%[[EMPTY_0]] : tensor<4x4xf32>) -> tensor<4x4xf32>
-// CHECK:             %[[DIM_0:.*]] = memref.dim %[[REINTERPRET_CAST_0]], %[[CONSTANT_6]] : memref<?x4xf32, strided<[?, ?], offset: ?>>
-// CHECK:             %[[DIM_1:.*]] = memref.dim %[[REINTERPRET_CAST_1]], %[[CONSTANT_6]] : memref<?x4xf32, strided<[?, ?], offset: ?>>
+// CHECK:             %[[FILL_0:.*]] = linalg.fill ins(%[[CONSTANT_8]] : f32) outs(%[[EMPTY_0]] : tensor<4x4xf32>) -> tensor<4x4xf32>
+// CHECK:             %[[DIM_0:.*]] = memref.dim %[[REINTERPRET_CAST_0]], %[[CONSTANT_7]] : memref<?x4xf32, strided<[?, ?], offset: ?>>
+// CHECK:             %[[DIM_1:.*]] = memref.dim %[[REINTERPRET_CAST_1]], %[[CONSTANT_7]] : memref<?x4xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[SUBVIEW_0:.*]] = memref.subview %[[REINTERPRET_CAST_0]][0, 0] {{\[}}%[[DIM_0]], 3] [1, 1] : memref<?x4xf32, strided<[?, ?], offset: ?>> to memref<?x3xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[SUBVIEW_1:.*]] = memref.subview %[[REINTERPRET_CAST_1]][0, 0] {{\[}}%[[DIM_1]], 3] [1, 1] : memref<?x4xf32, strided<[?, ?], offset: ?>> to memref<?x3xf32, strided<[?, ?], offset: ?>>
 // CHECK:             %[[TO_TENSOR_0:.*]] = bufferization.to_tensor %[[SUBVIEW_0]] restrict : memref<?x3xf32, strided<[?, ?], offset: ?>> to tensor<?x3xf32>
