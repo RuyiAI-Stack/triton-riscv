@@ -243,6 +243,9 @@ On hosts without native RISC-V execution, the runtime-execution variants
 (`*_matches_torch`, tail-shape cases, and similar) are skipped; only the
 cross-compilation checks run.
 
+Reference result on x86_64 at the current pins: 229 passed / 14 skipped
+(all skips in the RISC-V-only runtime-execution class).
+
 ### FlagGems operator suite
 
 Run the FlagGems directory separately from the common suite. A few files
