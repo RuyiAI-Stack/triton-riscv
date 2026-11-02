@@ -43,14 +43,10 @@ def _run_case(dtype):
     atan_out = torch.empty_like(x)
     atan2_out = torch.empty_like(x)
     grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]),)
-    math_acos_atan_kernel[grid](
-        x, y, acos_out, atan_out, atan2_out, n, BLOCK_SIZE=256
-    )
+    math_acos_atan_kernel[grid](x, y, acos_out, atan_out, atan2_out, n, BLOCK_SIZE=256)
     torch.testing.assert_close(acos_out, torch.acos(x), rtol=1e-5, atol=1e-6)
     torch.testing.assert_close(atan_out, torch.atan(x), rtol=1e-5, atol=1e-6)
-    torch.testing.assert_close(
-        atan2_out, torch.atan2(x, y), rtol=1e-5, atol=1e-6
-    )
+    torch.testing.assert_close(atan2_out, torch.atan2(x, y), rtol=1e-5, atol=1e-6)
 
 
 def test_math_acos_atan_atan2_fp32():
