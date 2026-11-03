@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "name": "tanh_and_mul",
+  "semantics": "Broadcast x and y to a common shape, then compute tanh(x) multiplied elementwise by y.",
+  "pytorch_reference": "torch.tanh(x) * y",
+  "inputs": [
+    {
+      "name": "x",
+      "description": "Floating-point input tensor passed through tanh."
+    },
+    {
+      "name": "y",
+      "description": "Floating-point tensor multiplied with tanh(x); broadcasting is allowed."
+    }
+  ],
+  "output": "A tensor with the broadcast shape of x and y and values equal to torch.tanh(x) * y.",
+  "shape_cases": [
+    [512],
+    [1023],
+    [1024]
+  ],
+  "input_shape_cases": [
+    {
+      "x": [4, 1],
+      "y": [1, 8]
+    },
+    {
+      "x": [1, 17],
+      "y": [3, 1]
+    }
+  ],
+  "dtypes": [
+    "torch.float32",
+    "torch.float16"
+  ],
+  "tolerances": {
+    "rtol": 0.01,
+    "atol": 0.01
+  },
+  "backward": true,
+  "implementation_file": "python/examples/flaggems/tanh_and_mul.py",
+  "test_file": "python/examples/flaggems/test_tanh_and_mul.py",
+  "reference_operators": [
+    "tanh",
+    "sigmoid_and_mul",
+    "relu_and_mul"
+  ],
+  "notes": "Start with a simple one-dimensional block-based implementation and explicit masks."
+}
