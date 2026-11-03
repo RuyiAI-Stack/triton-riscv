@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "name": "square_and_mul",
+  "semantics": "Broadcast x and y to a common shape, square x elementwise, then multiply the squared values by y.",
+  "pytorch_reference": "torch.square(x) * y",
+  "inputs": [
+    {
+      "name": "x",
+      "description": "Floating-point input tensor whose values are squared."
+    },
+    {
+      "name": "y",
+      "description": "Floating-point multiplier tensor; broadcasting is allowed."
+    }
+  ],
+  "output": "A tensor with the broadcast shape of x and y and values equal to torch.square(x) * y.",
+  "shape_cases": [
+    [512],
+    [1023],
+    [1024]
+  ],
+  "input_shape_cases": [
+    {
+      "x": [4, 1],
+      "y": [1, 8]
+    },
+    {
+      "x": [1, 17],
+      "y": [3, 1]
+    }
+  ],
+  "dtypes": [
+    "torch.float32",
+    "torch.float16"
+  ],
+  "tolerances": {
+    "rtol": 0.01,
+    "atol": 0.01
+  },
+  "backward": true,
+  "implementation_file": "python/examples/flaggems/square_and_mul.py",
+  "test_file": "python/examples/flaggems/test_square_and_mul.py",
+  "reference_operators": [
+    "relu_and_mul",
+    "sigmoid_and_mul",
+    "tanh_and_mul"
+  ],
+  "notes": "Use direct multiplication for the square and preserve broadcast-gradient reduction in backward."
+}
