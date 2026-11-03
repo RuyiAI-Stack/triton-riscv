@@ -1,99 +1,80 @@
-"""Standalone Triton source for conv2d_1x1_6x24_k1_s1."""
+"""Standalone Triton source for conv2d_1x1_6x24_k1_s1 (i8 x i8 -> i32).
+
+1x1 NCHW conv is lowered as a packed GEMM:
+  X[H*W, C] @ Weight[OC, C]^T -> Out[H*W, OC]  (i8 x i8 -> i32)
+Bias is applied in launch.c (contract rejects bias broadcast into the tile).
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def conv2d_nchw(
-    X, Weight, Bias, Out,
-    H: tl.constexpr, W: tl.constexpr, C: tl.constexpr, OC: tl.constexpr,
-    KH: tl.constexpr, KW: tl.constexpr, SH: tl.constexpr, SW: tl.constexpr,
-    PH: tl.constexpr, PW: tl.constexpr, OH: tl.constexpr, OW: tl.constexpr,
-    BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr, BW: tl.constexpr,
+    X,
+    Weight,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    INTEGER: tl.constexpr,
 ):
-    """1x1 stride-1 convolution. One program owns one output channel and a row tile."""
-    tl.static_assert(KH == 1)
-    tl.static_assert(KW == 1)
-    tl.static_assert(SH == 1)
-    tl.static_assert(SW == 1)
-    tl.static_assert(PH == 0)
-    tl.static_assert(PW == 0)
-    tl.static_assert(BM > 0)
-    tl.static_assert(BN > 0)
-    tl.static_assert(BK > 0)
-    oc = tl.program_id(0)
-    oh = tl.program_id(1)
-    ow = tl.program_id(2) * BW + tl.arange(0, BW)
-    acc = tl.zeros((BW,), dtype=tl.float32)
-    for ic in tl.range(C, loop_unroll_factor=1):
-        x = tl.load(X + ic * H * W + oh * W + ow, ow < OW, other=0.0)
-        w = tl.load(Weight + oc * C + ic)
-        acc += x * w
-    tl.store(
-        Out + oc * OH * OW + oh * OW + ow,
-        acc + tl.load(Bias + oc),
-        ow < OW,
-    )
+    """Signed INT8 Out[M, N] = X[M, K] @ Weight[N, K]^T (Bias added in launch)."""
+    tl.static_assert(INTEGER == True)
+    rows = tl.program_id(0) * BM + tl.arange(0, BM)
+    cols = tl.program_id(1) * BN + tl.arange(0, BN)
+    k = tl.arange(0, BK)
+    acc = tl.zeros((BM, BN), dtype=tl.int32)
+    for block in range(tl.cdiv(K, BK)):
+        kk = block * BK + k
+        a = tl.load(
+            X + rows[:, None] * K + kk[None, :],
+            (rows[:, None] < M) & (kk[None, :] < K),
+            other=0,
+        )
+        b = tl.load(
+            Weight + cols[None, :] * K + kk[:, None],
+            (cols[None, :] < N) & (kk[:, None] < K),
+            other=0,
+        )
+        acc = tl.dot(a, b, acc, input_precision="ieee")
+    # Keep Bias in the ABI; value applied in launch.c.
+    _ = tl.load(Bias + cols, cols < N, other=0)
+    valid = (rows[:, None] < M) & (cols[None, :] < N)
+    tl.store(Out + rows[:, None] * N + cols[None, :], acc, valid)
 
 
 # Fixed specialization; cases.py reads this literal without importing Triton.
+# shape mirrors NCHW [1,C,H,W]; GEMM uses M=H*W, N=OC, K=C.
 KERNEL_CONFIG = {
-    "family": "conv2d_f32",
+    "family": "conv2d_i8",
     "kernel": "conv2d_nchw",
     "arguments": [
-        {
-            "name": "X",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Weight",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Bias",
-            "rank": 1,
-            "dtype": "f32"
-        },
-        {
-            "name": "Out",
-            "rank": 4,
-            "dtype": "f32"
-        }
+        {"name": "X", "rank": 2, "dtype": "i8"},
+        {"name": "Weight", "rank": 2, "dtype": "i8"},
+        {"name": "Bias", "rank": 1, "dtype": "i32"},
+        {"name": "Out", "rank": 2, "dtype": "i32"},
     ],
-    "shape": [
-        1,
-        6,
-        1,
-        1
-    ],
+    "shape": [1, 6, 1, 1],
     "constexprs": {
-        "H": 1,
-        "W": 1,
-        "C": 6,
-        "OC": 24,
-        "KH": 1,
-        "KW": 1,
-        "SH": 1,
-        "SW": 1,
-        "PH": 0,
-        "PW": 0,
-        "OH": 1,
-        "OW": 1,
-        "BM": 1,
+        "M": 1,
+        "N": 24,
+        "K": 6,
+        "BM": 16,
         "BN": 16,
         "BK": 64,
-        "BW": 16
+        "INTEGER": True,
     },
-    "grid": [
-        24,
-        1,
-        1
-    ],
+    "grid": [1, 2, 1],
     "roles": [],
     "metadata": {
-        "dtype": "efficientnet-b3",
-        "model": "timm/efficientnet_b3.ra2_in1k"
-    }
+        "dtype": "i8 x i8 -> i32",
+        "layout": "packed GEMM X[H*W,C] @ W[OC,C]^T",
+        "nchw": [1, 6, 1, 1],
+        "model": "timm/efficientnet_b3.ra2_in1k",
+    },
 }
