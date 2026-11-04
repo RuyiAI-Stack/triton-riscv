@@ -14,24 +14,23 @@ import functools
 import triton
 from pathlib import Path
 
-from .paths import _get_buddy_opt_path, _get_llvm_bin_path, _get_triton_shared_opt_path
+from .paths import (
+    _get_buddy_bin_path,
+    _get_buddy_opt_path,
+    _get_llvm_bin_path,
+    _get_triton_shared_opt_path,
+)
 from .riscv import DEFAULT_LLC_FEATURES, RiscvToolchain
 
 
 def _get_buddy_translate_path() -> str:
-    """Path to buddy-translate (from buddy-mlir build)."""
-    path = os.getenv("BUDDY_MLIR_BINARY_DIR", "")
-    if path == "":
-        raise Exception("BUDDY_MLIR_BINARY_DIR is not set.")
-    return os.path.join(path, "buddy-translate")
+    """Path to buddy-translate (bundled in the `buddy` package or a build tree)."""
+    return _get_buddy_bin_path("buddy-translate")
 
 
 def _get_buddy_llc_path() -> str:
-    """Path to buddy-llc (from buddy-mlir build)."""
-    path = os.getenv("BUDDY_MLIR_BINARY_DIR", "")
-    if path == "":
-        raise Exception("BUDDY_MLIR_BINARY_DIR is not set.")
-    return os.path.join(path, "buddy-llc")
+    """Path to buddy-llc (bundled in the `buddy` package or a build tree)."""
+    return _get_buddy_bin_path("buddy-llc")
 
 
 def _use_ime_pipeline() -> bool:
@@ -791,6 +790,16 @@ def _llir_to_bin(llir: str, metadata, options=None):
 class CPUOptions:
     debug: bool = False
     arch: str = None
+    # Triton 3.9 reads options.warp_size into the kernel metadata; the value is
+    # only used for the num_warps * warp_size thread-count sanity check, which
+    # the CPU launcher never trips (n_max_threads = sys.maxsize).
+    warp_size: int = 32
+    # Triton 3.9's frontend reads these off the backend options: backend_name in
+    # the atomic type-checking path (it branches on "hip"), the other two when
+    # dot's input precision or fp8 operands are defaulted.
+    backend_name: str = "triton_riscv"
+    default_dot_input_precision: str = "ieee"
+    deprecated_fp8_dot_operand_dtypes: Tuple[str] = ()
     num_warps: int = 0
     num_ctas: int = 0
     num_stages: int = 1
@@ -902,6 +911,12 @@ class CPUBackend(BaseBackend):
     def hash(self):
         return self.target
 
-    # The CPU backend does not use any extra python modules, return an empty dictionary
     def get_module_map(self) -> Dict[str, ModuleType]:
-        return {}
+        # `triton.language.extra.libdevice` only declares the libdevice surface;
+        # a backend has to supply a concrete implementation. The CUDA one emits
+        # __nv_* extern_elementwise calls, which triton-shared lowers to MLIR
+        # math ops (asin/acos/atan/atan2, pow, log, exp, ...). It is always
+        # available: Triton's build includes the NVIDIA backend.
+        from triton.language.extra.cuda import libdevice
+
+        return {"triton.language.extra.libdevice": libdevice}
