@@ -306,8 +306,8 @@ public:
     if (offsetInfo.ptr.getType() == scalarPtrType) {
       return offsetInfo.ptr;
     }
-    return builder.create<triton::BitcastOp>(loc, scalarPtrType,
-                                             offsetInfo.ptr);
+    return triton::BitcastOp::create(builder, loc, scalarPtrType,
+                                     offsetInfo.ptr);
   }
 
   static Type getOffsetElementType(Type type) {
@@ -326,21 +326,21 @@ public:
     Type sourceElementType = getOffsetElementType(offset.getType());
     Type targetElementType = getOffsetElementType(targetType);
     if (targetElementType.isIndex()) {
-      return builder.create<arith::IndexCastOp>(loc, targetType, offset);
+      return arith::IndexCastOp::create(builder, loc, targetType, offset);
     }
 
     if (sourceElementType.isIndex()) {
-      return builder.create<arith::IndexCastOp>(loc, targetType, offset);
+      return arith::IndexCastOp::create(builder, loc, targetType, offset);
     }
 
     auto srcInt = dyn_cast<IntegerType>(sourceElementType);
     auto dstInt = dyn_cast<IntegerType>(targetElementType);
     if (srcInt && dstInt) {
       if (srcInt.getWidth() < dstInt.getWidth()) {
-        return builder.create<arith::ExtSIOp>(loc, targetType, offset);
+        return arith::ExtSIOp::create(builder, loc, targetType, offset);
       }
       if (srcInt.getWidth() > dstInt.getWidth()) {
-        return builder.create<arith::TruncIOp>(loc, targetType, offset);
+        return arith::TruncIOp::create(builder, loc, targetType, offset);
       }
     }
 
@@ -360,8 +360,8 @@ public:
       }
       auto elementType = targetTensorType.getElementType();
       Value scalarOffset = castOffset(offset, elementType, loc, builder);
-      return builder.create<triton::SplatOp>(loc, targetTensorType,
-                                             scalarOffset);
+      return triton::SplatOp::create(builder, loc, targetTensorType,
+                                     scalarOffset);
     }
 
     return castOffset(offset, targetType, loc, builder);
@@ -380,8 +380,8 @@ public:
         }
 
         OpBuilder b(func->getRegion(0));
-        Value zero = b.create<arith::ConstantOp>(
-            arg.getLoc(),
+        Value zero = arith::ConstantOp::create(
+            b, arg.getLoc(),
             b.getIntegerAttr(IntegerType::get(&getContext(), defaultBitWidth),
                              0));
 
@@ -399,8 +399,8 @@ public:
       }
       auto res = op.getResult();
       OpBuilder b(op);
-      Value zero = b.create<arith::ConstantOp>(
-          op.getLoc(),
+      Value zero = arith::ConstantOp::create(
+          b, op.getLoc(),
           b.getIntegerAttr(IntegerType::get(&getContext(), defaultBitWidth),
                            0));
 
@@ -435,8 +435,8 @@ public:
                   // that we have stored so far.
                   Value basePtr =
                       materializeBasePtr(offsetInfo, op->getLoc(), b);
-                  auto materializedAddPtr = b.create<triton::AddPtrOp>(
-                      op->getLoc(), offsetInfo.ptrType, basePtr,
+                  auto materializedAddPtr = triton::AddPtrOp::create(
+                      b, op->getLoc(), offsetInfo.ptrType, basePtr,
                       offsetInfo.offset);
 
                   // Change the op to use the "simplified" pointer above.
@@ -468,19 +468,19 @@ public:
                   auto resWidth = std::max(lhsWidth, rhsWidth);
 
                   if (lhsWidth < resWidth) {
-                    prevOff = b.create<arith::ExtSIOp>(
-                        loc, getPtrOffsetType(offsetInfo.ptrType, resWidth),
+                    prevOff = arith::ExtSIOp::create(
+                        b, loc, getPtrOffsetType(offsetInfo.ptrType, resWidth),
                         prevOff);
                   }
 
                   if (rhsWidth < resWidth) {
-                    off = b.create<arith::ExtSIOp>(
-                        loc, getPtrOffsetType(offsetInfo.ptrType, resWidth),
+                    off = arith::ExtSIOp::create(
+                        b, loc, getPtrOffsetType(offsetInfo.ptrType, resWidth),
                         off);
                   }
 
-                  auto accumulatedOff = b.create<arith::AddIOp>(
-                      loc,
+                  auto accumulatedOff = arith::AddIOp::create(
+                      b, loc,
                       getPtrOffsetType(addptr.getResult().getType(), resWidth),
                       prevOff, off);
 
@@ -549,13 +549,14 @@ public:
                     OpBuilder b{bitcast};
                     Location loc = bitcast.getLoc();
                     Value sourceBase = materializeBasePtr(offsetInfo, loc, b);
-                    Value sourceAddress = b.create<triton::AddPtrOp>(
-                        loc, offsetInfo.ptrType, sourceBase, offsetInfo.offset);
+                    Value sourceAddress =
+                        triton::AddPtrOp::create(b, loc, offsetInfo.ptrType,
+                                                 sourceBase, offsetInfo.offset);
                     bitcast->setOperand(0, sourceAddress);
                     Type zeroType =
                         getPtrOffsetType(resType, offsetInfo.bitWidth);
-                    Value zero = b.create<arith::ConstantOp>(
-                        loc, b.getIntegerAttr(zeroType, 0));
+                    Value zero = arith::ConstantOp::create(
+                        b, loc, b.getIntegerAttr(zeroType, 0));
                     offsetMap.insert(
                         {res, {res, resType, offsetInfo.bitWidth, zero}});
                     workList.push(res);
@@ -775,20 +776,20 @@ public:
                           "cannot materialize zero for load `other`");
                       return failure();
                     }
-                    scalarOther = b.create<arith::ConstantOp>(loc, zero);
+                    scalarOther = arith::ConstantOp::create(b, loc, zero);
                     tensorOther = other;
                   }
                   other = scalarOther;
                 }
 
-                auto gather = b.create<tts::GatherOp>(loc, load.getType(), ptr,
-                                                      offsetInfo.offset,
-                                                      load.getMask(), other);
+                auto gather = tts::GatherOp::create(b, loc, load.getType(), ptr,
+                                                    offsetInfo.offset,
+                                                    load.getMask(), other);
 
                 Value result = gather.getResult();
                 if (tensorOther) {
-                  result = b.create<arith::SelectOp>(loc, load.getMask(),
-                                                     result, tensorOther);
+                  result = arith::SelectOp::create(b, loc, load.getMask(),
+                                                   result, tensorOther);
                 }
                 load->replaceAllUsesWith(ValueRange{result});
                 load->erase();
@@ -797,16 +798,16 @@ public:
               .Case<triton::StoreOp>([&](triton::StoreOp store) {
                 auto offsetInfo = offsetMap.at(store.getPtr());
                 Value ptr = materializeBasePtr(offsetInfo, loc, b);
-                b.create<tts::ScatterOp>(loc, ptr, offsetInfo.offset,
-                                         store.getValue(), store.getMask());
+                tts::ScatterOp::create(b, loc, ptr, offsetInfo.offset,
+                                       store.getValue(), store.getMask());
                 store->erase();
                 return success();
               })
               .Case<triton::AtomicRMWOp>([&](triton::AtomicRMWOp atomic) {
                 auto offsetInfo = offsetMap.at(atomic.getPtr());
                 Value ptr = materializeBasePtr(offsetInfo, loc, b);
-                auto rmw = b.create<tts::AtomicRMWOp>(
-                    loc, atomic.getResult().getType(),
+                auto rmw = tts::AtomicRMWOp::create(
+                    b, loc, atomic.getResult().getType(),
                     atomic.getAtomicRmwOpAttr(), ptr, offsetInfo.offset,
                     atomic.getVal(), atomic.getMask(), atomic.getSemAttr(),
                     atomic.getScopeAttr());
@@ -817,10 +818,10 @@ public:
               .Case<triton::AtomicCASOp>([&](triton::AtomicCASOp atomic) {
                 auto offsetInfo = offsetMap.at(atomic.getPtr());
                 Value ptr = materializeBasePtr(offsetInfo, loc, b);
-                auto cas = b.create<tts::AtomicCASOp>(
-                    loc, atomic.getResult().getType(), ptr, offsetInfo.offset,
-                    atomic.getCmp(), atomic.getVal(), atomic.getSemAttr(),
-                    atomic.getScopeAttr());
+                auto cas = tts::AtomicCASOp::create(
+                    b, loc, atomic.getResult().getType(), ptr,
+                    offsetInfo.offset, atomic.getCmp(), atomic.getVal(),
+                    atomic.getSemAttr(), atomic.getScopeAttr());
                 atomic->replaceAllUsesWith(cas->getResults());
                 atomic->erase();
                 return success();
@@ -847,8 +848,8 @@ public:
                         castOffset(gatherOffset, targetOffsetType, loc, b);
                     Value baseOffset = castOrSplatOffset(
                         offsetInfo.offset, targetOffsetType, loc, b);
-                    Value accumulatedOffset = b.create<arith::AddIOp>(
-                        loc, targetOffsetType, baseOffset, gatherOffset);
+                    Value accumulatedOffset = arith::AddIOp::create(
+                        b, loc, targetOffsetType, baseOffset, gatherOffset);
 
                     makeGatherScatter->setOperand(0, ptr);
                     makeGatherScatter->setOperand(1, accumulatedOffset);
@@ -874,26 +875,26 @@ public:
 
                 if (baseOffType != currOffType) {
                   if (currOffType.isIndex()) {
-                    baseOffset = b.create<arith::IndexCastOp>(
-                        loc, b.getIndexType(), baseOffset);
+                    baseOffset = arith::IndexCastOp::create(
+                        b, loc, b.getIndexType(), baseOffset);
                   } else if (currOffType.isInteger()) {
                     if (baseOffType.getIntOrFloatBitWidth() <
                         currOffType.getIntOrFloatBitWidth()) {
-                      baseOffset = b.create<arith::ExtSIOp>(loc, currOffType,
-                                                            baseOffset);
+                      baseOffset = arith::ExtSIOp::create(b, loc, currOffType,
+                                                          baseOffset);
                     } else {
                       // MakeTensorPtrOp only takes i32 offsets, so we need
                       // to truncate if the offsets were already in i64
                       makeTensorPtr.emitWarning(
                           "truncating offsets which may result in data loss");
-                      baseOffset = b.create<arith::TruncIOp>(loc, currOffType,
-                                                             baseOffset);
+                      baseOffset = arith::TruncIOp::create(b, loc, currOffType,
+                                                           baseOffset);
                     }
                   }
                 }
 
-                auto accumulatedOffset = b.create<arith::AddIOp>(
-                    loc, currOffset.getType(), baseOffset, currOffset);
+                auto accumulatedOffset = arith::AddIOp::create(
+                    b, loc, currOffset.getType(), baseOffset, currOffset);
 
                 offsetOpnd.set(accumulatedOffset);
 

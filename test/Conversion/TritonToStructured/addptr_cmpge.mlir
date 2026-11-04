@@ -40,7 +40,7 @@ tt.func public @test_masked_load(%arg0: !tt.ptr<f16>) -> tensor<16x16xf16> {
   %13 = tt.expand_dims %12 {axis = 0 : i32} : tensor<16xi64> -> tensor<1x16xi64>
   %14 = arith.cmpi sge, %13, %cst : tensor<1x16xi64>
   %15 = tt.broadcast %14 : tensor<1x16xi1> -> tensor<16x16xi1>
-  %16 = tt.load %8, %15 evictionPolicy = evict_last : tensor<16x16x!tt.ptr<f16>>
+  %16 = tt.load %8, %15 : tensor<16x16x!tt.ptr<f16>>
   tt.return %16 : tensor<16x16xf16>
 }
 

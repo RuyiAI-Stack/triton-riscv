@@ -28,7 +28,7 @@
 // CHECK:           %[[SPLAT_0:.*]] = tt.splat %[[ARG5]] : i32 -> tensor<4x1xi32>
 // CHECK:           %[[REMSI_0:.*]] = arith.remsi %[[EXPAND_DIMS_0]], %[[SPLAT_0]] : tensor<4x1xi32>
 // CHECK:           %[[ADDI_0:.*]] = arith.addi %[[REMSI_0]], %[[CONSTANT_0]] : tensor<4x1xi32>
-// CHECK:           %[[RESHAPE_0:.*]] = tt.reshape %[[ADDI_0]] allow_reorder : tensor<4x1xi32> -> tensor<4xi32>
+// CHECK:           %[[RESHAPE_0:.*]] = tt.reshape %[[ADDI_0]] efficient_layout : tensor<4x1xi32> -> tensor<4xi32>
 // CHECK:           %[[ADDI_1:.*]] = arith.addi %[[VAL_0]], %[[RESHAPE_0]] : tensor<4xi32>
 // CHECK:           %[[INDEX_CAST_0:.*]] = arith.index_cast %[[ARG3]] : i32 to index
 // CHECK:           %[[MAKE_GATHER_SCATTER_TPTR_0:.*]] = tts.make_gather_scatter_tptr %[[ARG0]] to sizes: [4, 16] gather_scatter_dim: 0 gather_scatter_offset: %[[ADDI_1]], strides: {{\[}}%[[INDEX_CAST_0]], 1], offsets: [0, 0] : tensor<4xi32>  <f32> to tensor<4x16x!tt.ptr<f32>>
