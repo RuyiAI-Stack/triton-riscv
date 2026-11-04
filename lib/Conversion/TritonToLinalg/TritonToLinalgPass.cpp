@@ -205,7 +205,7 @@ public:
       func.getAllArgAttrs(argAttrs);
       func.getAllResultAttrs(resAttrs);
 
-      auto funcFunc = builder.create<func::FuncOp>(func.getLoc(), name, type);
+      auto funcFunc = func::FuncOp::create(builder, func.getLoc(), name, type);
       funcFunc.setAllArgAttrs(argAttrs);
       funcFunc.setAllResultAttrs(resAttrs);
 
@@ -218,7 +218,7 @@ public:
       for (Block &block : funcFuncBody.getBlocks()) {
         auto term = block.getTerminator();
         builder.setInsertionPoint(term);
-        builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
+        func::ReturnOp::create(builder, func.getLoc(), term->getOperands());
         term->erase();
       }
       func.erase();

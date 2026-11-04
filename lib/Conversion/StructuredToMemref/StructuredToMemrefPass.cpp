@@ -62,13 +62,15 @@ public:
     addTargetMaterialization([&](OpBuilder &builder,
                                  UnrankedMemRefType resultType,
                                  ValueRange inputs, Location loc) -> Value {
-      return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
+      return UnrealizedConversionCastOp::create(builder, loc, resultType,
+                                                inputs)
           .getResult(0);
     });
 
     addSourceMaterialization([&](OpBuilder &builder, Type resultType,
                                  ValueRange inputs, Location loc) -> Value {
-      return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
+      return UnrealizedConversionCastOp::create(builder, loc, resultType,
+                                                inputs)
           .getResult(0);
     });
   }
@@ -80,13 +82,12 @@ class StructuredToMemrefPass
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<tptr::TPtrDialect, func::FuncDialect, arith::ArithDialect,
-                math::MathDialect, linalg::LinalgDialect, affine::AffineDialect,
-                scf::SCFDialect, tensor::TensorDialect,
-                bufferization::BufferizationDialect, triton::TritonDialect,
-                ttx::TritonTilingExtDialect, memref::MemRefDialect,
-                vector::VectorDialect>();
+    registry.insert<tptr::TPtrDialect, func::FuncDialect, arith::ArithDialect,
+                    math::MathDialect, linalg::LinalgDialect,
+                    affine::AffineDialect, scf::SCFDialect,
+                    tensor::TensorDialect, bufferization::BufferizationDialect,
+                    triton::TritonDialect, ttx::TritonTilingExtDialect,
+                    memref::MemRefDialect, vector::VectorDialect>();
   }
 
   void runOnOperation() override {

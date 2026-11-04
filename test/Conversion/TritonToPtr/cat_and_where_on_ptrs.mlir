@@ -26,7 +26,7 @@ module {
     %5 = tt.addptr %4, %1 : tensor<8x!tt.ptr<i32>>, tensor<8xi32>
     %cat_join = tt.join %3, %5 : tensor<8x!tt.ptr<i32>> -> tensor<8x2x!tt.ptr<i32>>
     %cat_trans = tt.trans %cat_join {order = array<i32: 1, 0>} : tensor<8x2x!tt.ptr<i32>> -> tensor<2x8x!tt.ptr<i32>>
-    %6 = tt.reshape %cat_trans allow_reorder : tensor<2x8x!tt.ptr<i32>> -> tensor<16x!tt.ptr<i32>>
+    %6 = tt.reshape %cat_trans efficient_layout : tensor<2x8x!tt.ptr<i32>> -> tensor<16x!tt.ptr<i32>>
     %7 = tt.addptr %6, %0 : tensor<16x!tt.ptr<i32>>, tensor<16xi32>
     %8 = tt.load %7 : tensor<16x!tt.ptr<i32>>
     %9 = arith.muli %8, %cst_1 : tensor<16xi32>

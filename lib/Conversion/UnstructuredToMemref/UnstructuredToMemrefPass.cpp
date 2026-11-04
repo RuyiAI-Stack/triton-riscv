@@ -67,7 +67,8 @@ public:
     addTargetMaterialization([&](OpBuilder &builder,
                                  UnrankedMemRefType resultType,
                                  ValueRange inputs, Location loc) -> Value {
-      return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
+      return UnrealizedConversionCastOp::create(builder, loc, resultType,
+                                                inputs)
           .getResult(0);
     });
   }
@@ -84,9 +85,9 @@ static MemRefType getMemrefTypeForScalarPtr(triton::PointerType ptrType,
 
 static Value getFlatMemref(Location loc, Value ptr, Type elementType,
                            ConversionPatternRewriter &rewriter) {
-  return rewriter
-      .create<memref::CastOp>(
-          loc, MemRefType::get({ShapedType::kDynamic}, elementType), ptr)
+  return memref::CastOp::create(
+             rewriter, loc,
+             MemRefType::get({ShapedType::kDynamic}, elementType), ptr)
       .getResult();
 }
 
@@ -125,9 +126,8 @@ static Value createAtomicRMWOp(Location loc, triton::RMWOp rmwOp, Value memref,
                                OpBuilder &builder) {
   auto kind = getAtomicRMWKind(rmwOp, newValue.getType());
   assert(succeeded(kind) && "unexpected atomic rmw op");
-  return builder
-      .create<memref::AtomicRMWOp>(loc, *kind, newValue, memref,
-                                   ValueRange{index})
+  return memref::AtomicRMWOp::create(builder, loc, *kind, newValue, memref,
+                                     ValueRange{index})
       .getResult();
 }
 
@@ -153,7 +153,7 @@ getOrCreateAtomicCASHelper(ModuleOp module, triton::MemSemantic semantic,
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(module.getBody());
     auto func =
-        builder.create<func::FuncOp>(module.getLoc(), name, functionType);
+        func::FuncOp::create(builder, module.getLoc(), name, functionType);
     func.setPrivate();
     return SymbolRefAttr::get(builder.getContext(), name);
   }
@@ -166,16 +166,16 @@ static Value createAtomicCASCall(Location loc, ModuleOp module, Value memref,
   Type valueType = cmpValue.getType();
   unsigned byteWidth = (valueType.getIntOrFloatBitWidth() + 7) / 8;
   Value baseAddress =
-      builder.create<memref::ExtractAlignedPointerAsIndexOp>(loc, memref);
-  Value byteWidthValue = builder.create<arith::ConstantIndexOp>(loc, byteWidth);
-  Value byteOffset = builder.create<arith::MulIOp>(loc, index, byteWidthValue);
-  Value address = builder.create<arith::AddIOp>(loc, baseAddress, byteOffset);
+      memref::ExtractAlignedPointerAsIndexOp::create(builder, loc, memref);
+  Value byteWidthValue =
+      arith::ConstantIndexOp::create(builder, loc, byteWidth);
+  Value byteOffset = arith::MulIOp::create(builder, loc, index, byteWidthValue);
+  Value address = arith::AddIOp::create(builder, loc, baseAddress, byteOffset);
 
   auto helper = getOrCreateAtomicCASHelper(module, semantic, address.getType(),
                                            valueType, builder);
-  return builder
-      .create<func::CallOp>(loc, helper, valueType,
-                            ValueRange{address, cmpValue, newValue})
+  return func::CallOp::create(builder, loc, helper, valueType,
+                              ValueRange{address, cmpValue, newValue})
       .getResult(0);
 }
 
@@ -184,16 +184,17 @@ static Value createLLVMAtomicCASOp(Location loc, Value address, Value cmpValue,
                                    OpBuilder &builder) {
   Type valueType = cmpValue.getType();
   Value addressI64 =
-      builder.create<arith::IndexCastOp>(loc, builder.getI64Type(), address);
-  Value pointer = builder.create<LLVM::IntToPtrOp>(
-      loc, LLVM::LLVMPointerType::get(builder.getContext()), addressI64);
+      arith::IndexCastOp::create(builder, loc, builder.getI64Type(), address);
+  Value pointer = LLVM::IntToPtrOp::create(
+      builder, loc, LLVM::LLVMPointerType::get(builder.getContext()),
+      addressI64);
 
   Value cmpBits = cmpValue;
   Value newBits = newValue;
   if (auto floatType = dyn_cast<FloatType>(valueType)) {
     Type integerType = builder.getIntegerType(floatType.getWidth());
-    cmpBits = builder.create<LLVM::BitcastOp>(loc, integerType, cmpValue);
-    newBits = builder.create<LLVM::BitcastOp>(loc, integerType, newValue);
+    cmpBits = LLVM::BitcastOp::create(builder, loc, integerType, cmpValue);
+    newBits = LLVM::BitcastOp::create(builder, loc, integerType, newValue);
   }
 
   LLVM::AtomicOrdering successOrdering;
@@ -217,40 +218,41 @@ static Value createLLVMAtomicCASOp(Location loc, Value address, Value cmpValue,
     break;
   }
 
-  auto cmpxchg = builder.create<LLVM::AtomicCmpXchgOp>(
-      loc, pointer, cmpBits, newBits, successOrdering, failureOrdering);
-  Value oldBits = builder.create<LLVM::ExtractValueOp>(loc, cmpxchg, 0);
+  auto cmpxchg =
+      LLVM::AtomicCmpXchgOp::create(builder, loc, pointer, cmpBits, newBits,
+                                    successOrdering, failureOrdering);
+  Value oldBits = LLVM::ExtractValueOp::create(builder, loc, cmpxchg, 0);
   if (isa<FloatType>(valueType))
-    return builder.create<LLVM::BitcastOp>(loc, valueType, oldBits);
+    return LLVM::BitcastOp::create(builder, loc, valueType, oldBits);
   return oldBits;
 }
 
 static Value createZeroValue(Location loc, Type type, OpBuilder &builder) {
   auto zeroAttr = builder.getZeroAttr(type);
   assert(zeroAttr && "unexpected element type");
-  return builder.create<arith::ConstantOp>(loc, zeroAttr);
+  return arith::ConstantOp::create(builder, loc, zeroAttr);
 }
 
 static Value createMaskedLoadOrFallback(Location loc, Value mask,
                                         Value fallback, Value memref,
                                         Value index, OpBuilder &builder) {
   if (!mask) {
-    return builder.create<memref::LoadOp>(loc, memref, ValueRange{index});
+    return memref::LoadOp::create(builder, loc, memref, ValueRange{index});
   }
 
-  auto ifOp = builder.create<scf::IfOp>(loc, fallback.getType(), mask,
-                                        /*withElseRegion=*/true);
+  auto ifOp = scf::IfOp::create(builder, loc, fallback.getType(), mask,
+                                /*withElseRegion=*/true);
   {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&ifOp.getThenRegion().front());
     Value loaded =
-        builder.create<memref::LoadOp>(loc, memref, ValueRange{index});
-    builder.create<scf::YieldOp>(loc, loaded);
+        memref::LoadOp::create(builder, loc, memref, ValueRange{index});
+    scf::YieldOp::create(builder, loc, loaded);
   }
   {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&ifOp.getElseRegion().front());
-    builder.create<scf::YieldOp>(loc, fallback);
+    scf::YieldOp::create(builder, loc, fallback);
   }
   return ifOp.getResult(0);
 }
@@ -265,7 +267,7 @@ static void createOptionalMaskedStore(Location loc, Value mask,
   }
 
   OpBuilder::InsertionGuard guard(builder);
-  auto ifOp = builder.create<scf::IfOp>(loc, mask);
+  auto ifOp = scf::IfOp::create(builder, loc, mask);
   builder.setInsertionPointToStart(&ifOp.getThenRegion().front());
   storeBuilder(builder);
 }
@@ -291,11 +293,11 @@ struct ScalarLoadConverter : public OpConversionPattern<tts::GatherOp> {
     auto basePtr = adaptor.getPtr();
     auto offset = adaptor.getOffset();
 
-    Value loadIndex = rewriter.create<arith::IndexCastOp>(
-        loc, rewriter.getIndexType(), offset);
+    Value loadIndex = arith::IndexCastOp::create(
+        rewriter, loc, rewriter.getIndexType(), offset);
 
-    auto memref = rewriter.create<memref::ReinterpretCastOp>(
-        loc,
+    auto memref = memref::ReinterpretCastOp::create(
+        rewriter, loc,
         getMemrefTypeForScalarPtr(
             cast<triton::PointerType>(gatherOp.getPtr().getType()),
             rewriter.getContext()),
@@ -305,8 +307,8 @@ struct ScalarLoadConverter : public OpConversionPattern<tts::GatherOp> {
 
     auto zeroMap = AffineMap::getConstantMap(0, rewriter.getContext());
 
-    auto scalarLoadOp = rewriter.create<affine::AffineLoadOp>(
-        loc, memref, zeroMap, ValueRange{});
+    auto scalarLoadOp = affine::AffineLoadOp::create(rewriter, loc, memref,
+                                                     zeroMap, ValueRange{});
 
     rewriter.replaceOp(gatherOp, scalarLoadOp.getResult());
 
@@ -336,11 +338,11 @@ struct ScalarStoreConverter : public OpConversionPattern<tts::ScatterOp> {
     auto basePtr = adaptor.getPtr();
     auto offset = adaptor.getOffset();
 
-    Value storeIndex = rewriter.create<arith::IndexCastOp>(
-        loc, rewriter.getIndexType(), offset);
+    Value storeIndex = arith::IndexCastOp::create(
+        rewriter, loc, rewriter.getIndexType(), offset);
 
-    auto memref = rewriter.create<memref::ReinterpretCastOp>(
-        loc,
+    auto memref = memref::ReinterpretCastOp::create(
+        rewriter, loc,
         getMemrefTypeForScalarPtr(
             cast<triton::PointerType>(scatterOp.getPtr().getType()),
             rewriter.getContext()),
@@ -351,8 +353,8 @@ struct ScalarStoreConverter : public OpConversionPattern<tts::ScatterOp> {
     auto storeVal = scatterOp.getValue();
     auto zeroMap = AffineMap::getConstantMap(0, rewriter.getContext());
 
-    rewriter.create<affine::AffineStoreOp>(loc, storeVal, memref, zeroMap,
-                                           ValueRange{});
+    affine::AffineStoreOp::create(rewriter, loc, storeVal, memref, zeroMap,
+                                  ValueRange{});
     rewriter.eraseOp(scatterOp);
 
     return success();
@@ -388,25 +390,24 @@ struct GatherConverter : public OpConversionPattern<tts::GatherOp> {
 
     // Treat the base pointer (memref) as 1D because the offsets are all
     // relative to a single base pointer (already collapsed).
-    auto baseMemref = rewriter
-                          .create<memref::CastOp>(
-                              loc,
-                              MemRefType::get({ShapedType::kDynamic},
-                                              resultType.getElementType()),
-                              ptr)
-                          .getResult();
+    auto baseMemref =
+        memref::CastOp::create(rewriter, loc,
+                               MemRefType::get({ShapedType::kDynamic},
+                                               resultType.getElementType()),
+                               ptr)
+            .getResult();
 
-    Value resultTensor = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType());
+    Value resultTensor = tensor::EmptyOp::create(
+        rewriter, loc, resultType.getShape(), resultType.getElementType());
     SmallVector<Value> loopBounds;
     loopBounds.reserve(resultType.getRank());
     for (int64_t i = 0, e = resultType.getRank(); i < e; ++i) {
       if (resultType.isDynamicDim(i)) {
         loopBounds.push_back(
-            rewriter.create<tensor::DimOp>(loc, offsetTensor, i));
+            tensor::DimOp::create(rewriter, loc, offsetTensor, i));
       } else {
-        loopBounds.push_back(rewriter.create<arith::ConstantIndexOp>(
-            loc, resultType.getShape()[i]));
+        loopBounds.push_back(arith::ConstantIndexOp::create(
+            rewriter, loc, resultType.getShape()[i]));
       }
     }
 
@@ -415,41 +416,41 @@ struct GatherConverter : public OpConversionPattern<tts::GatherOp> {
       fallback = createZeroValue(loc, resultType.getElementType(), rewriter);
     }
 
-    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    auto loop = rewriter.create<scf::ForOp>(loc, c0, loopBounds[0], c1,
-                                            ValueRange{resultTensor});
+    auto c0 = arith::ConstantIndexOp::create(rewriter, loc, 0);
+    auto c1 = arith::ConstantIndexOp::create(rewriter, loc, 1);
+    auto loop = scf::ForOp::create(rewriter, loc, c0, loopBounds[0], c1,
+                                   ValueRange{resultTensor});
     auto buildLoopNest = [&](auto &&self, OpBuilder &b, Location nestedLoc,
                              int64_t dim, SmallVector<Value> &indices,
                              Value tensorAcc) -> Value {
       if (dim == resultType.getRank()) {
         auto offset =
-            b.create<tensor::ExtractOp>(nestedLoc, offsetTensor, indices);
+            tensor::ExtractOp::create(b, nestedLoc, offsetTensor, indices);
         Value index0 =
-            b.create<arith::IndexCastOp>(nestedLoc, b.getIndexType(), offset);
+            arith::IndexCastOp::create(b, nestedLoc, b.getIndexType(), offset);
         Value value;
         if (gatherOp.getMask()) {
-          Value mask = b.create<tensor::ExtractOp>(nestedLoc,
-                                                   gatherOp.getMask(), indices);
+          Value mask = tensor::ExtractOp::create(b, nestedLoc,
+                                                 gatherOp.getMask(), indices);
           value = createMaskedLoadOrFallback(nestedLoc, mask, fallback,
                                              baseMemref, index0, b);
         } else {
-          value = b.create<memref::LoadOp>(nestedLoc, baseMemref,
-                                           ValueRange{index0});
+          value = memref::LoadOp::create(b, nestedLoc, baseMemref,
+                                         ValueRange{index0});
         }
-        return b.create<tensor::InsertOp>(nestedLoc, value, tensorAcc, indices)
+        return tensor::InsertOp::create(b, nestedLoc, value, tensorAcc, indices)
             .getResult();
       }
 
-      auto nestedLoop = b.create<scf::ForOp>(nestedLoc, c0, loopBounds[dim], c1,
-                                             ValueRange{tensorAcc});
+      auto nestedLoop = scf::ForOp::create(b, nestedLoc, c0, loopBounds[dim],
+                                           c1, ValueRange{tensorAcc});
       auto *body = nestedLoop.getBody();
       OpBuilder nestedBuilder = OpBuilder::atBlockBegin(body);
       indices.push_back(nestedLoop.getInductionVar());
       Value nextTensor = self(self, nestedBuilder, nestedLoc, dim + 1, indices,
                               nestedLoop.getRegionIterArgs()[0]);
       indices.pop_back();
-      nestedBuilder.create<scf::YieldOp>(nestedLoc, nextTensor);
+      scf::YieldOp::create(nestedBuilder, nestedLoc, nextTensor);
       return nestedLoop.getResult(0);
     };
 
@@ -457,7 +458,7 @@ struct GatherConverter : public OpConversionPattern<tts::GatherOp> {
     SmallVector<Value> indices{loop.getInductionVar()};
     Value nextTensor = buildLoopNest(buildLoopNest, rewriter, loc, 1, indices,
                                      loop.getRegionIterArgs()[0]);
-    rewriter.create<scf::YieldOp>(loc, nextTensor);
+    scf::YieldOp::create(rewriter, loc, nextTensor);
 
     rewriter.replaceOp(gatherOp, loop.getResult(0));
 
@@ -500,11 +501,10 @@ struct ScatterConverter : public OpConversionPattern<tts::ScatterOp> {
     // Treat the base pointer (memref) as 1D because the offsets are all
     // relative to a single base pointer (already collapsed).
     auto baseMemref =
-        rewriter
-            .create<memref::CastOp>(loc,
-                                    MemRefType::get({ShapedType::kDynamic},
-                                                    valueType.getElementType()),
-                                    ptr)
+        memref::CastOp::create(
+            rewriter, loc,
+            MemRefType::get({ShapedType::kDynamic}, valueType.getElementType()),
+            ptr)
             .getResult();
 
     Value maskTensor = scatterOp.getMask() ? adaptor.getMask() : Value();
@@ -519,41 +519,41 @@ struct ScatterConverter : public OpConversionPattern<tts::ScatterOp> {
     for (int64_t i = 0, e = offsetRankedType.getRank(); i < e; ++i) {
       if (offsetRankedType.isDynamicDim(i)) {
         loopBounds.push_back(
-            rewriter.create<tensor::DimOp>(loc, offsetTensor, i));
+            tensor::DimOp::create(rewriter, loc, offsetTensor, i));
       } else {
-        loopBounds.push_back(rewriter.create<arith::ConstantIndexOp>(
-            loc, offsetRankedType.getShape()[i]));
+        loopBounds.push_back(arith::ConstantIndexOp::create(
+            rewriter, loc, offsetRankedType.getShape()[i]));
       }
     }
 
-    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+    auto c0 = arith::ConstantIndexOp::create(rewriter, loc, 0);
+    auto c1 = arith::ConstantIndexOp::create(rewriter, loc, 1);
 
     auto buildLoopNest = [&](auto &&self, OpBuilder &b, Location nestedLoc,
                              int64_t dim, SmallVector<Value> &indices) -> void {
       if (dim == offsetRankedType.getRank()) {
         Value offsetValue =
-            b.create<tensor::ExtractOp>(nestedLoc, offsetTensor, indices);
-        Value index = b.create<arith::IndexCastOp>(nestedLoc, b.getIndexType(),
-                                                   offsetValue);
+            tensor::ExtractOp::create(b, nestedLoc, offsetTensor, indices);
+        Value index = arith::IndexCastOp::create(b, nestedLoc, b.getIndexType(),
+                                                 offsetValue);
         Value value =
-            b.create<tensor::ExtractOp>(nestedLoc, valueTensor, indices);
+            tensor::ExtractOp::create(b, nestedLoc, valueTensor, indices);
         Value maskValue =
             maskTensor
-                ? b.create<tensor::ExtractOp>(nestedLoc, maskTensor, indices)
+                ? tensor::ExtractOp::create(b, nestedLoc, maskTensor, indices)
                       .getResult()
                 : Value();
         createOptionalMaskedStore(
             nestedLoc, maskValue,
             [&](OpBuilder &storeBuilder) {
-              storeBuilder.create<memref::StoreOp>(nestedLoc, value, baseMemref,
-                                                   ValueRange{index});
+              memref::StoreOp::create(storeBuilder, nestedLoc, value,
+                                      baseMemref, ValueRange{index});
             },
             b);
         return;
       }
 
-      auto loop = b.create<scf::ForOp>(nestedLoc, c0, loopBounds[dim], c1);
+      auto loop = scf::ForOp::create(b, nestedLoc, c0, loopBounds[dim], c1);
       OpBuilder nestedBuilder = OpBuilder::atBlockBegin(loop.getBody());
       indices.push_back(loop.getInductionVar());
       self(self, nestedBuilder, nestedLoc, dim + 1, indices);
@@ -588,28 +588,28 @@ struct AtomicRMWConverter : public OpConversionPattern<tts::AtomicRMWOp> {
     if (!offsetType) {
       auto resultType = atomicOp.getResult().getType();
       Value baseMemref = getFlatMemref(loc, ptr, resultType, rewriter);
-      Value index = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(), offset);
+      Value index = arith::IndexCastOp::create(rewriter, loc,
+                                               rewriter.getIndexType(), offset);
       Value fallback = createZeroValue(loc, resultType, rewriter);
       Value result;
       if (!mask) {
         result = createAtomicRMWOp(loc, atomicOp.getAtomicRmwOp(), baseMemref,
                                    index, value, rewriter);
       } else {
-        auto ifOp = rewriter.create<scf::IfOp>(loc, resultType, mask,
-                                               /*withElseRegion=*/true);
+        auto ifOp = scf::IfOp::create(rewriter, loc, resultType, mask,
+                                      /*withElseRegion=*/true);
         {
           OpBuilder::InsertionGuard guard(rewriter);
           rewriter.setInsertionPointToStart(&ifOp.getThenRegion().front());
           Value thenResult =
               createAtomicRMWOp(loc, atomicOp.getAtomicRmwOp(), baseMemref,
                                 index, value, rewriter);
-          rewriter.create<scf::YieldOp>(loc, thenResult);
+          scf::YieldOp::create(rewriter, loc, thenResult);
         }
         {
           OpBuilder::InsertionGuard guard(rewriter);
           rewriter.setInsertionPointToStart(&ifOp.getElseRegion().front());
-          rewriter.create<scf::YieldOp>(loc, fallback);
+          scf::YieldOp::create(rewriter, loc, fallback);
         }
         result = ifOp.getResult(0);
       }
@@ -633,34 +633,35 @@ struct AtomicRMWConverter : public OpConversionPattern<tts::AtomicRMWOp> {
     dynamicResultDims.reserve(resultType.getNumDynamicDims());
     for (int64_t i = 0, e = resultType.getRank(); i < e; ++i) {
       if (resultType.isDynamicDim(i)) {
-        Value dim = rewriter.create<tensor::DimOp>(loc, value, i);
+        Value dim = tensor::DimOp::create(rewriter, loc, value, i);
         loopBounds.push_back(dim);
         dynamicResultDims.push_back(dim);
       } else {
-        loopBounds.push_back(rewriter.create<arith::ConstantIndexOp>(
-            loc, resultType.getShape()[i]));
+        loopBounds.push_back(arith::ConstantIndexOp::create(
+            rewriter, loc, resultType.getShape()[i]));
       }
     }
-    Value resultTensor = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType(),
-        dynamicResultDims);
+    Value resultTensor =
+        tensor::EmptyOp::create(rewriter, loc, resultType.getShape(),
+                                resultType.getElementType(), dynamicResultDims);
 
-    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+    auto c0 = arith::ConstantIndexOp::create(rewriter, loc, 0);
+    auto c1 = arith::ConstantIndexOp::create(rewriter, loc, 1);
 
     auto buildLoopNest = [&](auto &&self, OpBuilder &b, Location nestedLoc,
                              int64_t dim, SmallVector<Value> &indices,
                              Value tensorAcc) -> Value {
       if (dim == resultType.getRank()) {
         Value offsetValue =
-            b.create<tensor::ExtractOp>(nestedLoc, offset, indices);
-        Value index = b.create<arith::IndexCastOp>(nestedLoc, b.getIndexType(),
-                                                   offsetValue);
+            tensor::ExtractOp::create(b, nestedLoc, offset, indices);
+        Value index = arith::IndexCastOp::create(b, nestedLoc, b.getIndexType(),
+                                                 offsetValue);
         Value maskValue =
-            mask ? b.create<tensor::ExtractOp>(nestedLoc, mask, indices)
+            mask ? tensor::ExtractOp::create(b, nestedLoc, mask, indices)
                        .getResult()
                  : Value();
-        Value newValue = b.create<tensor::ExtractOp>(nestedLoc, value, indices);
+        Value newValue =
+            tensor::ExtractOp::create(b, nestedLoc, value, indices);
         Value oldValue;
         if (!maskValue) {
           oldValue = createAtomicRMWOp(nestedLoc, atomicOp.getAtomicRmwOp(),
@@ -668,37 +669,37 @@ struct AtomicRMWConverter : public OpConversionPattern<tts::AtomicRMWOp> {
         } else {
           Type elementType = resultType.getElementType();
           Value fallback = createZeroValue(nestedLoc, elementType, b);
-          auto ifOp = b.create<scf::IfOp>(nestedLoc, elementType, maskValue,
-                                          /*withElseRegion=*/true);
+          auto ifOp = scf::IfOp::create(b, nestedLoc, elementType, maskValue,
+                                        /*withElseRegion=*/true);
           {
             OpBuilder::InsertionGuard guard(b);
             b.setInsertionPointToStart(&ifOp.getThenRegion().front());
             Value thenResult =
                 createAtomicRMWOp(nestedLoc, atomicOp.getAtomicRmwOp(),
                                   baseMemref, index, newValue, b);
-            b.create<scf::YieldOp>(nestedLoc, thenResult);
+            scf::YieldOp::create(b, nestedLoc, thenResult);
           }
           {
             OpBuilder::InsertionGuard guard(b);
             b.setInsertionPointToStart(&ifOp.getElseRegion().front());
-            b.create<scf::YieldOp>(nestedLoc, fallback);
+            scf::YieldOp::create(b, nestedLoc, fallback);
           }
           oldValue = ifOp.getResult(0);
         }
-        return b
-            .create<tensor::InsertOp>(nestedLoc, oldValue, tensorAcc, indices)
+        return tensor::InsertOp::create(b, nestedLoc, oldValue, tensorAcc,
+                                        indices)
             .getResult();
       }
 
-      auto loop = b.create<scf::ForOp>(nestedLoc, c0, loopBounds[dim], c1,
-                                       ValueRange{tensorAcc});
+      auto loop = scf::ForOp::create(b, nestedLoc, c0, loopBounds[dim], c1,
+                                     ValueRange{tensorAcc});
       auto *body = loop.getBody();
       OpBuilder nestedBuilder = OpBuilder::atBlockBegin(body);
       indices.push_back(loop.getInductionVar());
       Value nextTensor = self(self, nestedBuilder, nestedLoc, dim + 1, indices,
                               loop.getRegionIterArgs()[0]);
       indices.pop_back();
-      nestedBuilder.create<scf::YieldOp>(nestedLoc, nextTensor);
+      scf::YieldOp::create(nestedBuilder, nestedLoc, nextTensor);
       return loop.getResult(0);
     };
 
@@ -730,8 +731,8 @@ struct AtomicCASConverter : public OpConversionPattern<tts::AtomicCASOp> {
     if (!offsetType) {
       auto resultType = atomicOp.getResult().getType();
       Value baseMemref = getFlatMemref(loc, ptr, resultType, rewriter);
-      Value index = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(), offset);
+      Value index = arith::IndexCastOp::create(rewriter, loc,
+                                               rewriter.getIndexType(), offset);
       Value oldValue = createAtomicCASCall(loc, module, baseMemref, index, cmp,
                                            value, atomicOp.getSem(), rewriter);
       rewriter.replaceOp(atomicOp, oldValue);
@@ -754,48 +755,49 @@ struct AtomicCASConverter : public OpConversionPattern<tts::AtomicCASOp> {
     dynamicResultDims.reserve(resultType.getNumDynamicDims());
     for (int64_t i = 0, e = resultType.getRank(); i < e; ++i) {
       if (resultType.isDynamicDim(i)) {
-        Value dim = rewriter.create<tensor::DimOp>(loc, value, i);
+        Value dim = tensor::DimOp::create(rewriter, loc, value, i);
         loopBounds.push_back(dim);
         dynamicResultDims.push_back(dim);
       } else {
-        loopBounds.push_back(rewriter.create<arith::ConstantIndexOp>(
-            loc, resultType.getShape()[i]));
+        loopBounds.push_back(arith::ConstantIndexOp::create(
+            rewriter, loc, resultType.getShape()[i]));
       }
     }
-    Value resultTensor = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType(),
-        dynamicResultDims);
+    Value resultTensor =
+        tensor::EmptyOp::create(rewriter, loc, resultType.getShape(),
+                                resultType.getElementType(), dynamicResultDims);
 
-    auto c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    auto c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+    auto c0 = arith::ConstantIndexOp::create(rewriter, loc, 0);
+    auto c1 = arith::ConstantIndexOp::create(rewriter, loc, 1);
 
     auto buildLoopNest = [&](auto &&self, OpBuilder &b, Location nestedLoc,
                              int64_t dim, SmallVector<Value> &indices,
                              Value tensorAcc) -> Value {
       if (dim == resultType.getRank()) {
         Value offsetValue =
-            b.create<tensor::ExtractOp>(nestedLoc, offset, indices);
-        Value index = b.create<arith::IndexCastOp>(nestedLoc, b.getIndexType(),
-                                                   offsetValue);
-        Value cmpValue = b.create<tensor::ExtractOp>(nestedLoc, cmp, indices);
-        Value newValue = b.create<tensor::ExtractOp>(nestedLoc, value, indices);
+            tensor::ExtractOp::create(b, nestedLoc, offset, indices);
+        Value index = arith::IndexCastOp::create(b, nestedLoc, b.getIndexType(),
+                                                 offsetValue);
+        Value cmpValue = tensor::ExtractOp::create(b, nestedLoc, cmp, indices);
+        Value newValue =
+            tensor::ExtractOp::create(b, nestedLoc, value, indices);
         Value oldValue =
             createAtomicCASCall(nestedLoc, module, baseMemref, index, cmpValue,
                                 newValue, atomicOp.getSem(), b);
-        return b
-            .create<tensor::InsertOp>(nestedLoc, oldValue, tensorAcc, indices)
+        return tensor::InsertOp::create(b, nestedLoc, oldValue, tensorAcc,
+                                        indices)
             .getResult();
       }
 
-      auto loop = b.create<scf::ForOp>(nestedLoc, c0, loopBounds[dim], c1,
-                                       ValueRange{tensorAcc});
+      auto loop = scf::ForOp::create(b, nestedLoc, c0, loopBounds[dim], c1,
+                                     ValueRange{tensorAcc});
       auto *body = loop.getBody();
       OpBuilder nestedBuilder = OpBuilder::atBlockBegin(body);
       indices.push_back(loop.getInductionVar());
       Value nextTensor = self(self, nestedBuilder, nestedLoc, dim + 1, indices,
                               loop.getRegionIterArgs()[0]);
       indices.pop_back();
-      nestedBuilder.create<scf::YieldOp>(nestedLoc, nextTensor);
+      scf::YieldOp::create(nestedBuilder, nestedLoc, nextTensor);
       return loop.getResult(0);
     };
 

@@ -168,7 +168,7 @@ module {
 // CHECK:             [[VAR_49_10_:%.+]] = tt.addptr [[in_]], [[in_1]] : !tt.ptr<bf16>, i32
 // CHECK:             linalg.yield [[VAR_49_10_]] : !tt.ptr<bf16>
 // CHECK:           } -> tensor<128x64x!tt.ptr<bf16>>
-// CHECK-DAG:       [[LOAD_VAR_34_MEM_:%.+]] = tt.load [[VAR_34_]] : tensor<128x64x!tt.ptr<bf16>>
+// CHECK-DAG:       [[LOAD_VAR_34_MEM_:%.+]] = tt.load [[VAR_34_]] {cache = 1 : i32, evict = 1 : i32} : tensor<128x64x!tt.ptr<bf16>>
 // CHECK-DAG:       [[VAR_36_:%.+]] = tensor.empty() : tensor<256x64x!tt.ptr<bf16>>
 // CHECK:           [[VAR_37_:%.+]] = linalg.fill ins([[PARAM_1_]] : !tt.ptr<bf16>) outs([[VAR_36_]] : tensor<256x64x!tt.ptr<bf16>>) -> tensor<256x64x!tt.ptr<bf16>>
 // CHECK:           [[VAR_38_:%.+]] = linalg.generic {indexing_maps = [#map2, #map2, #map2], iterator_types = ["parallel", "parallel"]} ins([[VAR_37_]], [[VAR_25_]] : tensor<256x64x!tt.ptr<bf16>>, tensor<256x64xi32>) outs([[VAR_37_]] : tensor<256x64x!tt.ptr<bf16>>) {
@@ -176,7 +176,7 @@ module {
 // CHECK:             [[VAR_49_11_:%.+]] = tt.addptr [[in_]], [[in_1]] : !tt.ptr<bf16>, i32
 // CHECK:             linalg.yield [[VAR_49_11_]] : !tt.ptr<bf16>
 // CHECK:           } -> tensor<256x64x!tt.ptr<bf16>>
-// CHECK-DAG:       [[LOAD_VAR_38_MEM_:%.+]] = tt.load [[VAR_38_]] : tensor<256x64x!tt.ptr<bf16>>
+// CHECK-DAG:       [[LOAD_VAR_38_MEM_:%.+]] = tt.load [[VAR_38_]] {cache = 1 : i32, evict = 1 : i32} : tensor<256x64x!tt.ptr<bf16>>
 // CHECK-DAG:       [[VAR_40_:%.+]] = tensor.empty() : tensor<64x256xbf16>
 // CHECK-NOT: separator of consecutive DAGs
 // CHECK-DAG:       [[VAR_transposed_:%.+]] = linalg.transpose ins([[LOAD_VAR_38_MEM_]] : tensor<256x64xbf16>) outs([[VAR_40_]] : tensor<64x256xbf16>) permutation = [1, 0]
@@ -187,7 +187,7 @@ module {
 // CHECK:             [[VAR_49_12_:%.+]] = tt.addptr [[in_]], [[in_1]] : !tt.ptr<bf16>, i32
 // CHECK:             linalg.yield [[VAR_49_12_]] : !tt.ptr<bf16>
 // CHECK:           } -> tensor<128x256x!tt.ptr<bf16>>
-// CHECK-DAG:       [[LOAD_VAR_43_MEM_:%.+]] = tt.load [[VAR_43_]] : tensor<128x256x!tt.ptr<bf16>>
+// CHECK-DAG:       [[LOAD_VAR_43_MEM_:%.+]] = tt.load [[VAR_43_]] {cache = 1 : i32, evict = 1 : i32} : tensor<128x256x!tt.ptr<bf16>>
 // CHECK-DAG:       [[VAR_45_:%.+]] = tensor.empty() : tensor<128x256xbf16>
 // CHECK:           [[VAR_46_:%.+]] = linalg.fill ins([[CST_0_]] : bf16) outs([[VAR_45_]] : tensor<128x256xbf16>) -> tensor<128x256xbf16>
 // CHECK:           [[VAR_47_:%.+]] = linalg.matmul ins([[LOAD_VAR_34_MEM_]], [[VAR_transposed_]] : tensor<128x64xbf16>, tensor<64x256xbf16>) outs([[VAR_46_]] : tensor<128x256xbf16>) -> tensor<128x256xbf16>
