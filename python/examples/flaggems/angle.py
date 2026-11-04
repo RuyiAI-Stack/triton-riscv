@@ -3,6 +3,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice
 
 
 @triton.jit
@@ -21,7 +22,7 @@ def angle_complex_kernel(
     real = tl.load(ri_ptr + base, mask=mask).to(tl.float32)
     imag = tl.load(ri_ptr + base + 1, mask=mask).to(tl.float32)
 
-    result = tl.math.atan2(imag, real)
+    result = libdevice.atan2(imag, real)
     tl.store(out_ptr + offsets, result, mask=mask)
 
 

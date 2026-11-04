@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice
 
 
 @triton.jit
@@ -16,7 +17,7 @@ def atan_kernel(
     mask = offsets < n_elements
 
     x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.math.atan(x.to(tl.float32))
+    y = libdevice.atan(x.to(tl.float32))
 
     tl.store(out_ptr + offsets, y, mask=mask)
 
