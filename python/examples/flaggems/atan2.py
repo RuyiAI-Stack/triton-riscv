@@ -3,6 +3,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice
 
 
 @triton.jit
@@ -19,7 +20,7 @@ def atan2_kernel_tt(
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.load(y_ptr + offsets, mask=mask)
-    res = tl.math.atan2(x.to(tl.float32), y.to(tl.float32))
+    res = libdevice.atan2(x.to(tl.float32), y.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -36,7 +37,7 @@ def atan2_kernel_ts(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    res = tl.math.atan2(x.to(tl.float32), y_val.to(tl.float32))
+    res = libdevice.atan2(x.to(tl.float32), y_val.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
 
@@ -53,7 +54,7 @@ def atan2_kernel_st(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     y = tl.load(y_ptr + offsets, mask=mask)
-    res = tl.math.atan2(x_val.to(tl.float32), y.to(tl.float32))
+    res = libdevice.atan2(x_val.to(tl.float32), y.to(tl.float32))
     tl.store(out_ptr + offsets, res, mask=mask)
 
 

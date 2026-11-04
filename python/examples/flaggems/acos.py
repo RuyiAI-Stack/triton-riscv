@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice
 
 
 @triton.jit
@@ -15,7 +16,7 @@ def acos_kernel(
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.math.acos(x.to(tl.float32))
+    y = libdevice.acos(x.to(tl.float32))
     tl.store(y_ptr + offsets, y, mask=mask)
 
 
