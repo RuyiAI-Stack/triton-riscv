@@ -89,4 +89,5 @@ echo "Installing build dependencies into ${PYTHON}..."
     "setuptools>=40.8.0" \
     "ninja>=1.11.1" \
     "nanobind==2.10.2" \
-    "pytest"
+    "pytest" \
+    "lit"

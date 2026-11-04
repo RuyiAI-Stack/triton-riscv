@@ -90,11 +90,11 @@ The prototype was tested on the following triton kernel examples:
 4. layer normalization
 5. fused attention
 
-The Python tests are setup to run with Pytest and you will need to set the following environment variables to run them:
-```
-export BUDDY_MLIR_BINARY_DIR=<path-to-buddy-mlir-build/bin>
-export LLVM_BINARY_DIR=<path-to-llvm-binaries>
+The Python tests are setup to run with Pytest. `scripts/env.sh` exports the tool
+locations the backend needs; source it first (see the README):
+```sh
+source scripts/env.sh
 
-pytest <path-to-triton-shared>/python/examples
+pytest python/examples
 ```
 In addition to testing on the tutorial kernels, there are many lit tests covering various scenarios.

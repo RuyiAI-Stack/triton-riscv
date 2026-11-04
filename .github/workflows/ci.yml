@@ -34,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang lld ninja-build ccache
 
-      - name: Build Triton with triton-riscv
+      - name: Build Triton with the triton-shared backend
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -48,7 +48,7 @@ jobs:
               echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
             } >> "$GITHUB_ENV"
           fi
-          ./scripts/build.sh
+          make all
 
       - name: Install test dependencies (riscv64)
         if: matrix.arch == 'riscv64'
@@ -69,16 +69,6 @@ jobs:
 
       - name: Run lit test
         run: |
-          ./.venv/bin/python - <<'PY'
-          from pathlib import Path
-
-          lit = Path(".cache/llvm/bin/llvm-lit")
-          text = lit.read_text()
-          old = "\nfrom lit.main import main\n\nmain()\n"
-          new = "\nfrom lit.main import main\n\nif __name__ == \"__main__\":\n    main()\n"
-          if old in text:
-              lit.write_text(text.replace(old, new))
-          PY
           cmake --build "triton/build/cmake.linux-${{ matrix.target_arch }}-cpython-${{ matrix.python }}" --target check-triton-shared-lit-tests
 
       - name: Run common example test suite

@@ -22,30 +22,25 @@ Python @triton.jit
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git triton-riscv
 TRITON_RISCV_DIR="$(pwd)/triton-riscv"
-git clone https://github.com/triton-lang/triton.git triton
-cd triton && git checkout "$(cat "${TRITON_RISCV_DIR}/triton-hash.txt")"
-cd "${TRITON_RISCV_DIR}/.."
-git clone https://github.com/buddy-compiler/buddy-mlir.git buddy-mlir
-cd buddy-mlir && git checkout "$(head -n 1 "${TRITON_RISCV_DIR}/buddy-hash.txt")"
 ```
+
+`make setup` clones the Triton revision pinned in `triton-hash.txt` and
+downloads the LLVM and buddy tools published under `buddy-hash.txt`, so neither
+needs a manual checkout.
 
 > Note: Ensure PyTorch is available in your virtual environment. For RISC-V, since PyTorch does not officially support RISC-V yet, you can build from source or use third-party builds: https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch . To use the third-party builds, python 3.12 or 3.13 are required.
 
-Apply the rebased Triton integration patch using the helper script. It configures Triton as a frontend-only build, keeps GPU-specific dependencies conditional, and adds the small frontend APIs required by triton-riscv.
+Triton is used **unpatched**. Building the stock Triton checkout on RISC-V
+requires the LLVM it links against to provide the NVPTX and AMDGPU codegen
+libraries plus `lld` (upstream Triton hard-codes them), and it requires skipping
+the host-specific GPU toolchains Triton downloads at build time (nvcc, AMD
+codegen, proton), which do not exist for `riscv64`:
 
-```sh
-"${TRITON_RISCV_DIR}/scripts/apply_patches.sh" "${TRITON_RISCV_DIR}/../triton"
-```
-
-The script is idempotent: re-running it on an already-patched tree prints `SKIPPED (patch already applied)` per patch and exits cleanly.
-
-The patch set also preserves Triton's existing `attr-dict` textual IR format
-when building against LLVM revisions that enable strict properties by default.
-It opts Triton's dialects into MLIR's legacy assembly-format behavior without
-changing the LLVM checkout. LLVM 24 compatibility also uses instruction
-`contract` flags for floating-point fusion and the renamed pass-plugin loader.
-Re-run `scripts/apply_patches.sh` before rebuilding an existing Triton checkout
-after updating this repository's patches.
+- The buddy-mlir LLVM release published under `buddy-hash.txt` is built with
+  those extra targets; `make setup` downloads it into `.cache/llvm` (set
+  `LLVM_SYSPATH` to use an existing LLVM instead).
+- `scripts/_gpu-stub-env.sh` points every GPU download location at an
+  empty stub directory and disables the components that need CUDA/ROCm headers.
 
 ## Prerequisites
 
@@ -64,77 +59,79 @@ Or with conda:
 conda activate ruyiai
 ```
 
-When a conda environment is active, `scripts/triton-riscv-env.sh` automatically uses `CONDA_PREFIX` as `TRITON_VENV`.
+When a conda environment is active, `scripts/env.sh` automatically uses `CONDA_PREFIX` as `TRITON_VENV`.
 
 ### Install dependencies
 
-1. Install the [dependencies](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#llvmmlir-dependencies) required by the Ruyi Buddy Compiler.
-
-2. Install triton-riscv Python dependencies in the active environment:
-
-   ```sh
-   pip install cmake ninja pytest-xdist nanobind==2.10.2 setuptools
-   ```
-
-   `cmake`, `ninja`, and `nanobind` are needed because the rebuild script uses `pip install --no-build-isolation` to reuse the active environment instead of creating an isolated build environment.
-
-3. Build the pinned Buddy Compiler checkout — [Getting started](https://github.com/buddy-compiler/buddy-mlir?tab=readme-ov-file#getting-started)
+Nothing to install: `make setup` brings up the virtualenv's build
+dependencies (cmake, ninja, nanobind, setuptools, pytest) and downloads the LLVM
+and buddy tools Triton's build links against. The only system requirement is a
+Python 3.10+ interpreter. The one thing you may have to provide yourself is the
+RVV cross toolchain and QEMU used by `scripts/build-riscv-gnu-toolchain.sh`
+(see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md)).
 
 ## Environment helper
 
-[`scripts/triton-riscv-env.sh`](scripts/triton-riscv-env.sh) centralizes the local environment variables needed by `triton-riscv`.
+[`scripts/env.sh`](scripts/env.sh) centralizes the local environment variables needed by `triton-riscv`.
 
 By default it assumes:
 
 - `TRITON_RISCV_DIR=/path/to/triton-riscv`
-- `TRITON_DIR=$TRITON_RISCV_DIR/../triton`
+- `TRITON_DIR=$TRITON_RISCV_DIR/triton` (where `make setup` clones Triton)
 - `TRITON_VENV=$CONDA_PREFIX` when a conda environment is active, otherwise `$TRITON_RISCV_DIR/.venv`
-- `BUDDY_DIR=$TRITON_RISCV_DIR/../buddy-mlir`
-- `BUILD_DIR` is auto-detected from `$TRITON_DIR/build/cmake.linux-*-cpython-*`
-- runtime cache, dump, and JSON dependency directories default to `~/.triton`
+- `LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm`, the LLVM `scripts/build.sh` downloaded; override it to use another multi-target LLVM
+- `BUDDY_MLIR_BINARY_DIR=$TRITON_RISCV_DIR/.cache/buddy/bin`, likewise
+- `TRITON_SHARED_OPT_PATH` (optional) overrides where the backend looks for the tool; by default it uses the copy bundled in the package, which `scripts/build.sh` stages from the build tree just like `scripts/release.sh` does for the wheel
+- Triton's cache, dump and override directories default to `~/.triton`
 
 It exports:
 
-- `TRITON_PLUGIN_DIRS`
-- `LLVM_SYSPATH`
-- `JSON_SYSPATH`
-- `LLVM_BINARY_DIR`
-- `BUDDY_MLIR_BINARY_DIR`
-- `TRITON_SHARED_OPT_PATH`
+- `TRITON_RISCV_DIR`, `TRITON_DIR`, `TRITON_VENV`
+- `LLVM_SYSPATH`, `LLVM_BINARY_DIR`, `BUDDY_MLIR_BINARY_DIR`
 - `TRITON_HOME`, `TRITON_CACHE_DIR`, `TRITON_DUMP_DIR`, `TRITON_OVERRIDE_DIR`
+- `TRITON_SHARED_DUMP_PATH`
+
+It also prepends the venv, LLVM and buddy `bin` directories to `PATH`, sets
+`PYTHONSAFEPATH=1` so the in-tree `triton/` checkout cannot shadow the installed
+package, and disables the host-specific GPU toolchain downloads Triton would
+otherwise attempt.
 
 If your local layout differs, override variables before sourcing:
 
 ```sh
 export TRITON_DIR=/path/to/triton
 export TRITON_VENV=/path/to/triton-venv   # or rely on active conda env
-export BUDDY_DIR=/path/to/buddy-mlir
-source /path/to/triton-riscv/scripts/triton-riscv-env.sh
+source /path/to/triton-riscv/scripts/env.sh
 ```
 
-This helper removes most of the repetitive local environment setup from the README, but it does not replace the external prerequisites themselves: Buddy/LLVM dependencies, a built `buddy-mlir`, a checked-out Triton tree, the virtual environment, and the patch step are still required.
+This helper removes most of the repetitive local environment setup from the README, but it does not replace the external prerequisites themselves: a virtual environment, a Triton checkout, and the LLVM/buddy toolchains (`make setup` fetches all three).
 
 ## Build and rebuild
 
-For both the initial build and later source-only rebuilds:
+`make` bootstraps a fresh checkout and builds it; afterwards `make build`
+rebuilds after a change:
 
 ```sh
-conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
 cd /path/to/triton-riscv
-source scripts/triton-riscv-env.sh
-scripts/rebuild-triton-riscv.sh
+make
 ```
 
-[`scripts/rebuild-triton-riscv.sh`](scripts/rebuild-triton-riscv.sh) does the following:
+What the targets do:
 
-- reuses the environment from `triton-riscv-env.sh`
-- removes a stale Triton build directory when it was created under an old path or with a different Python version
-- runs `python -m pip install --no-build-isolation -vvv .` in `$TRITON_DIR`, which configures and builds Triton with the current `LLVM_SYSPATH`, `JSON_SYSPATH`, and plugin settings
-- syncs `backend/compiler.py` and `backend/driver.py` into the installed `triton_shared` backend package
-- verifies the rebuilt install with Python import and `triton-shared-opt --version`
+| Target | |
+|---|---|
+| `make` | `make setup` then `make build` |
+| `make setup` | Virtualenv, Python build dependencies, the pinned Triton checkout, and the LLVM and buddy toolchains |
+| `make build` | Builds Triton with the triton-shared plugin and installs the `triton.backends.triton_shared` backend |
+| `make test` | Runs the example suite (see below) |
+| `make clean` | Removes the Triton build tree |
 
-Use the same command sequence after changing the backend, lowering pipeline, or C++ sources.
-If you change the buddy-opt pass pipeline or cached compilation behavior, clear Triton's cache after sourcing the environment and before rerunning tests:
+`make setup` is idempotent, so running it again only picks up changes to
+`buddy-hash.txt` or `triton-hash.txt`; `make build` never touches the Triton
+checkout, so a rebuild is cheap.
+
+If you change the buddy-opt pass pipeline or cached compilation behavior, clear
+Triton's cache before rerunning tests:
 
 ```sh
 rm -rf "$TRITON_CACHE_DIR"
@@ -144,28 +141,32 @@ Build artifacts are placed under `triton/build/{current_cmake_version}/third_par
 
 ## Verify the build
 
+`make build` ends by printing the installed Triton version, the
+`triton.backends.triton_shared` module it loaded and the version of the
+`triton-shared-opt` executable the backend shells out to. To check by hand:
+
 ```sh
-conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
-cd /path/to/triton-riscv
-source scripts/triton-riscv-env.sh
+source scripts/env.sh
 python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-"$TRITON_SHARED_OPT_PATH" --version
+python -c "from triton.backends.triton_shared.paths import _get_triton_shared_opt_path as f; print(f())"
 ```
+
+`triton-shared-opt` has no console script: the backend runs the copy bundled in
+the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
 
 ## Run the example test suite
 
 ```sh
-pytest python/examples/ \
-    --ignore=python/examples/test_core.py \
-    --ignore=python/examples/test_annotations.py \
-    --ignore=python/examples/flaggems \
-    -v
+make test   # the example suite, plus the flaggems suite on riscv64
+make lit    # the plugin's lit tests
 ```
 
-To run a single test:
+`make test` runs `pytest python/examples`, skipping `test_core.py`,
+`test_annotations.py` and `flaggems`; on riscv64 it then runs the flaggems suite,
+which is ~3835 tests. To run a single test:
 
 ```sh
-pytest python/examples/test_vec_add.py -v
+bash -c 'source scripts/env.sh && pytest python/examples/test_vec_add.py -v'
 ```
 
 ## Generate and run RVV ELF files with QEMU
@@ -173,7 +174,7 @@ pytest python/examples/test_vec_add.py -v
 The backend can compile a Python Triton kernel directly to a self-contained RISC-V Linux ELF, automatically generate its runner, execute it with QEMU, and verify outputs. No user-written C runner is required.
 
 ```sh
-source scripts/triton-riscv-env.sh
+source scripts/env.sh
 python python/examples/rvv_vec_add_elf.py
 ```
 
