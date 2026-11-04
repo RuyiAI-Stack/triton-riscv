@@ -15,7 +15,7 @@ source the repository environment helper:
 ```sh
 conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
 cd /path/to/triton-riscv
-source scripts/triton-riscv-env.sh
+source scripts/env.sh
 ```
 
 The helper sets paths for the Triton plugin, Buddy/LLVM tools, and Triton's
@@ -23,13 +23,13 @@ runtime cache directories. If you changed backend Python code, lowering passes,
 or C++ sources, rebuild and clear stale kernel cache entries before measuring:
 
 ```sh
-scripts/rebuild-triton-riscv.sh
+make build
 rm -rf "$TRITON_CACHE_DIR"
 ```
 
 The Buddy column needs Buddy's Python packages. The benchmark helper first uses
 `BUDDY_MLIR_PYTHON_PACKAGES_DIR` when set, then tries
-`$BUDDY_DIR/build/python_packages`, and finally the common sibling checkout
+`$BUDDY_DIR/build/python_packages` when that is set, and finally the common sibling checkout
 path `../buddy-mlir/build/python_packages`.
 
 ## 2. Run All Benchmarks
@@ -94,7 +94,7 @@ this repository import the local file:
 python/performance/benchmark.py
 ```
 
-`scripts/triton-riscv-env.sh` sets `PYTHONSAFEPATH=1`, so relying on Python's
+`scripts/env.sh` sets `PYTHONSAFEPATH=1`, so relying on Python's
 implicit script-directory import behavior is not portable. Use `run_all.py` or
 set `PYTHONPATH` explicitly.
 
@@ -205,7 +205,7 @@ python python/performance/test_performance_matmul.py
 Source the environment helper before running benchmarks:
 
 ```sh
-source scripts/triton-riscv-env.sh
+source scripts/env.sh
 ```
 
 If your Buddy build is not in the default location, set `BUDDY_DIR` or
@@ -216,7 +216,7 @@ If your Buddy build is not in the default location, set `BUDDY_DIR` or
 Rebuild the backend and remove cached kernels:
 
 ```sh
-scripts/rebuild-triton-riscv.sh
+make build
 rm -rf "$TRITON_CACHE_DIR"
 ```
 

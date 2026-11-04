@@ -113,23 +113,34 @@ fi
 dnf install -y clang lld git
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
-export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
-export TRITON_BUILD_WITH_CLANG_LLD=1
-export LLVM_BINARY_DIR="${CONTAINER_PLUGIN_DIR}/.cache/llvm/bin"
-export LLVM_SYSPATH="${CONTAINER_PLUGIN_DIR}/.cache/llvm"
-export BUDDY_MLIR_BINARY_DIR="${CONTAINER_PLUGIN_DIR}/.cache/buddy/bin"
 
-# scripts/build.sh does an editable install to verify the patched Triton tree.
+# shellcheck source=scripts/_gpu-stub-env.sh
+source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
+
+# setup.sh fetches the toolchains and the pinned Triton checkout; build.sh builds
+# Triton with the triton-shared plugin, which also produces the triton-shared-opt
+# executable the backend invokes at compile time.
 rm -rf "${CONTAINER_TRITON_DIR}/build"
+"${CONTAINER_PLUGIN_DIR}/scripts/setup.sh"
 "${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
 
-# Build the release wheel from a fresh CMake tree and empty output directory.
-rm -rf "${CONTAINER_OUTPUT_DIR}" "${CONTAINER_TRITON_DIR}/build"
+# Statically linked against MLIR/LLVM with debug info: stripping takes the tool
+# from hundreds of MB down to well under a hundred. It is bundled in the wheel,
+# so strip through the staged symlink before packaging.
+strip --strip-unneeded "${CONTAINER_PLUGIN_DIR}/backend/bin/triton-shared-opt" 2>/dev/null || true
+
+# The wheel carries Triton, the plugin built into libtriton.so, and the backend
+# under triton/backends/triton_shared -- all of it from the tree build.sh just
+# populated, so nothing is rebuilt here.
+rm -rf "${CONTAINER_OUTPUT_DIR}"
 mkdir -p "${CONTAINER_OUTPUT_DIR}"
-RAW_WHEEL_DIR=""
 RAW_WHEEL_DIR="$(mktemp -d)"
 
 cd "${CONTAINER_TRITON_DIR}"
 "${PYTHON}" setup.py bdist_wheel -d "${RAW_WHEEL_DIR}"
-auditwheel repair "${RAW_WHEEL_DIR}"/*.whl -w "${CONTAINER_OUTPUT_DIR}"
+if [[ "${TRITON_RISCV_SKIP_REPAIR:-0}" == "1" ]]; then
+    cp "${RAW_WHEEL_DIR}"/*.whl "${CONTAINER_OUTPUT_DIR}/"
+else
+    auditwheel repair "${RAW_WHEEL_DIR}"/*.whl -w "${CONTAINER_OUTPUT_DIR}"
+fi
 rm -rf "${RAW_WHEEL_DIR}"

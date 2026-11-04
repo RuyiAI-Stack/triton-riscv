@@ -13,3 +13,8 @@ build/*
 .omx/
 triton
 /artifacts/
+*.egg-info/
+dist/
+*.whl
+__pycache__/
+wheelhouse/
