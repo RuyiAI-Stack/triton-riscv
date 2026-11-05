@@ -106,25 +106,26 @@ trap cleanup EXIT INT TERM
 export PYTHON="/opt/python/${PY_TAG}/bin/python"
 export PATH="/opt/python/${PY_TAG}/bin:$PATH"
 
-dnf install -y clang lld git gcc gcc-c++
+dnf install -y clang lld git libstdc++-devel
 
-# clang links against the GCC runtime and needs libstdc++'s headers, which come
-# from the gcc-toolset that clang's dependency chain installs -- a version that
-# moves with the image (a rolling :latest tag): it was -14, current images pull
-# in -15. Enable every toolset that is present, newest last, and point clang at
-# it explicitly: deriving the toolchain from PATH is not reliable on these
-# images, and without it linking fails on crtbeginS.o / -lstdc++ / -lgcc.
+# clang needs a GCC installation to find crtbeginS.o, libgcc and libstdc++ when
+# it links, and on this image it does not detect the riscv64 layout by itself --
+# the whole link is handed to ld with bare -lstdc++ / -lgcc, which fails. Ask gcc
+# where it lives and pass that on explicitly. Images that ship the compiler as an
+# SCL toolset under /opt/rh (which is also where clang's dependency chain used to
+# land it) are enabled first, so `gcc` below is the right one either way.
 toolset_root=""
 for enable in $(ls -1 /opt/rh/gcc-toolset-*/enable 2>/dev/null | sort -V); do
     # shellcheck disable=SC1090
     source "${enable}"
     toolset_root="$(dirname "${enable}")/root/usr"
 done
-if [ -n "${toolset_root}" ]; then
-    export CFLAGS="${CFLAGS:+${CFLAGS} }--gcc-toolchain=${toolset_root}"
-    export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }--gcc-toolchain=${toolset_root}"
+gcc_install_dir="$(dirname "$(gcc -print-libgcc-file-name 2>/dev/null)" 2>/dev/null || true)"
+if [ -n "${gcc_install_dir}" ] && [ -d "${gcc_install_dir}" ]; then
+    export TRITON_APPEND_CMAKE_ARGS="${TRITON_APPEND_CMAKE_ARGS:-} -DCMAKE_CXX_FLAGS=--gcc-install-dir=${gcc_install_dir} -DCMAKE_C_FLAGS=--gcc-install-dir=${gcc_install_dir}"
 fi
-echo "[release] toolset=${toolset_root:-<none>} g++=$(command -v g++ || echo none) ld=$(command -v ld || echo none)"
+ls -d /usr/lib/gcc/*/* 2>/dev/null | sed 's/^/[release] gccdir /'
+echo "[release] toolset=${toolset_root:-<none>} gcc-install-dir=${gcc_install_dir:-<none>} g++=$(command -v g++ || echo none)"
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
 # Same stable-ABI build as an ordinary `make build`, so the released wheel is
