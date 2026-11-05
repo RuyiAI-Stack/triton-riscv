@@ -78,11 +78,11 @@ jobs:
             --ignore=../python/examples/test_core.py \
             --ignore=../python/examples/test_annotations.py \
             --ignore=../python/examples/flaggems \
-            -v
+            -v -n 16
 
       - name: Run flaggems example test suite
         if: matrix.arch == 'riscv64'
         run: |
           cd triton
           ../.venv/bin/python -m pytest ../python/examples/flaggems \
-            -v
+            -v -n 16
