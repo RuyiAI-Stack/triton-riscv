@@ -17,6 +17,20 @@ Python @triton.jit
                           └─► native .o  (llc -filetype=obj)
 ```
 
+## Quick start
+
+```sh
+git clone https://github.com/RuyiAI-Stack/triton-riscv.git
+cd triton-riscv
+make            # virtualenv, toolchains, Triton and the backend; ~15 minutes the first time
+make test       # the example suite, the plugin's lit tests and the tutorials
+```
+
+What you end up with is an editable Triton whose backend is
+`triton.backends.triton_shared`. It takes over when no GPU backend is present,
+so `import triton` behaves as usual, and the tutorials in
+[`python/tutorials/`](python/tutorials) run anywhere a CPU does.
+
 ## Clone
 
 ```sh
@@ -123,7 +137,7 @@ What the targets do:
 | `make` | `make setup` then `make build` |
 | `make setup` | Virtualenv, Python build dependencies, the pinned Triton checkout, and the LLVM and buddy toolchains |
 | `make build` | Builds Triton with the triton-shared plugin and installs the `triton.backends.triton_shared` backend |
-| `make test` | Runs the example suite (see below) |
+| `make test` | Runs every suite below |
 | `make clean` | Removes the Triton build tree |
 
 `make setup` is idempotent, so running it again only picks up changes to
@@ -158,7 +172,7 @@ the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
 
 ```sh
 make test   # the example suite, plus the flaggems suite on riscv64
-make lit    # the plugin's lit tests
+make test-lit    # the plugin's lit tests
 ```
 
 `make test` runs `pytest python/examples`, skipping `test_core.py`,
@@ -167,6 +181,23 @@ which is ~3835 tests. To run a single test:
 
 ```sh
 bash -c 'source scripts/env.sh && pytest python/examples/test_vec_add.py -v'
+```
+
+## Tutorials
+
+[`python/tutorials/`](python/tutorials) holds the notebooks, one per RISC-V
+feature:
+
+- `02-rvv-vectorization` compiles one kernel twice -- once with the RISC-V vector
+extension and once without -- and disassembles both, so you can see the
+`vle32.v` / `vfadd.vv` / `vse32.v` the backend emits;
+- `03-ime-matmul` lowers `tl.dot` to the integrated matrix extension's `vmadot`
+and `vfmadot` when `TRITON_RISCV_USE_IME=1`.
+
+Both compile RISC-V code on any host and are executed by CI. To run them locally:
+
+```sh
+make test-tutorials
 ```
 
 ## Generate and run RVV ELF files with QEMU
