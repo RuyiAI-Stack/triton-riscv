@@ -123,7 +123,10 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x64, riscv64]
-        python: ["3.12", "3.13", "3.14"]
+        # The wheel is built against the stable ABI (see scripts/release.sh), so
+        # it is tagged cp312-abi3 and a single build covers every Python from
+        # 3.12 on; one build per interpreter would only repeat the same wheel.
+        python: ["3.12"]
         include:
           - arch: x64
             target_arch: x86_64
