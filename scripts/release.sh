@@ -106,11 +106,17 @@ trap cleanup EXIT INT TERM
 export PYTHON="/opt/python/${PY_TAG}/bin/python"
 export PATH="/opt/python/${PY_TAG}/bin:$PATH"
 
-if [ -f /opt/rh/gcc-toolset-14/enable ]; then
-    source /opt/rh/gcc-toolset-14/enable
-fi
-
 dnf install -y clang lld git
+
+# clang links against the GCC runtime and needs libstdc++'s headers, and both
+# come from the gcc-toolset that clang's dependency chain installs. That version
+# moves with the image (a rolling :latest tag): it was -14, current images pull
+# in -15. Enable every toolset that is present, newest last, so neither the
+# version nor the order of the install can break the build.
+for enable in $(ls -1 /opt/rh/gcc-toolset-*/enable 2>/dev/null | sort -V); do
+    # shellcheck disable=SC1090
+    source "${enable}"
+done
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
 # Same stable-ABI build as an ordinary `make build`, so the released wheel is
