@@ -133,7 +133,10 @@ jobs:
             runner: ubuntu-24.04
           - arch: riscv64
             target_arch: riscv64
-            runner: ubuntu-24.04-riscv
+            # Same labels as .github/workflows/ci.yml: the bare ubuntu-24.04-riscv
+            # label matches any machine that carries it, and a build that got one
+            # of the slow ones took hours.
+            runner: [ubuntu-24.04-riscv, rva23, xlarge]
 
     runs-on: ${{ matrix.runner }}
 
