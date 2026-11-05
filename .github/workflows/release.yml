@@ -2,8 +2,17 @@ name: Release Wheels
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "Release type for a manual run"
+        type: choice
+        default: dev
+        options:
+          - dev
+          - patch
   schedule:
-    - cron: "30 18 * * 0"
+    # Every night publishes a prerelease; the weekend run publishes a release.
+    - cron: "30 18 * * *"
 
 permissions:
   contents: write
@@ -18,9 +27,10 @@ jobs:
     outputs:
       tag_name: ${{ steps.vars.outputs.tag_name }}
       name: ${{ steps.vars.outputs.name }}
-      draft: ${{ steps.vars.outputs.draft }}
-      prerelease: ${{ steps.vars.outputs.prerelease }}
+      is_prerelease: ${{ steps.vars.outputs.is_prerelease }}
       make_latest: ${{ steps.vars.outputs.make_latest }}
+      should_release: ${{ steps.vars.outputs.should_release }}
+      release_id: ${{ steps.create_release.outputs.id }}
 
     steps:
       - name: Checkout
@@ -32,49 +42,75 @@ jobs:
         id: vars
         run: |
           set -euo pipefail
+          git fetch --tags --force origin
 
           DATE="$(date -u +'%Y%m%d')"
           DISPLAY_DATE="$(date -u +'%Y-%m-%d')"
           SHA="$(git rev-parse --short=7 HEAD)"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            NAME="triton-riscv ${DISPLAY_DATE}-${SHA}"
-            TAG_NAME="release/${DATE}-${SHA}"
-            DRAFT="true"
-            PRERELEASE="false"
-            MAKE_LATEST="true"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            BUMP="${{ inputs.bump }}"
+          elif [ "$(date -u +%u)" = "7" ]; then
+            BUMP="patch"
           else
-            NAME="Nightly ${DISPLAY_DATE}-${SHA}"
+            BUMP="dev"
+          fi
+
+          if [ "${BUMP}" = "dev" ]; then
+            # One nightly per commit is enough, and a commit that already went
+            # out as a release does not need one either.
+            if [ -n "$(git tag --points-at HEAD --list 'nightly/*' 'release/*')" ]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "The commit is already released; skipping the nightly."
+              exit 0
+            fi
             TAG_NAME="nightly/${DATE}-${SHA}"
-            DRAFT="false"
-            PRERELEASE="true"
+            NAME="Nightly ${DISPLAY_DATE}-${SHA}"
+            IS_PRERELEASE="true"
             MAKE_LATEST="false"
+          else
+            # A release with nothing new in it is noise.
+            LATEST_TAG="$(git tag --list 'release/*' --sort=-creatordate | head -n 1)"
+            if [ -n "${LATEST_TAG}" ] && [ -z "$(git log --oneline "${LATEST_TAG}"..HEAD)" ]; then
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "No commits since ${LATEST_TAG}; skipping."
+              exit 0
+            fi
+            TAG_NAME="release/${DATE}-${SHA}"
+            NAME="triton-riscv ${DISPLAY_DATE}-${SHA}"
+            IS_PRERELEASE="false"
+            MAKE_LATEST="true"
           fi
 
           {
+            echo "should_release=true"
             echo "tag_name=${TAG_NAME}"
             echo "name=${NAME}"
-            echo "draft=${DRAFT}"
-            echo "prerelease=${PRERELEASE}"
+            echo "is_prerelease=${IS_PRERELEASE}"
             echo "make_latest=${MAKE_LATEST}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create or update release page
+      # The release stays a draft until every wheel has been uploaded, so nobody
+      # sees a release without assets.
+      - name: Create or update draft release
+        id: create_release
+        if: ${{ steps.vars.outputs.should_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           name: ${{ steps.vars.outputs.name }}
-          draft: ${{ steps.vars.outputs.draft }}
+          draft: true
           append_body: false
           overwrite_files: true
-          prerelease: ${{ steps.vars.outputs.prerelease }}
-          make_latest: ${{ steps.vars.outputs.make_latest }}
+          prerelease: ${{ steps.vars.outputs.is_prerelease }}
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   wheel:
     needs: prepare_release
+    if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
     name: Build (${{ matrix.arch }}, py${{ matrix.python }})
     timeout-minutes: 360
     continue-on-error: false
@@ -143,3 +179,21 @@ jobs:
           fi
 
           gh release upload "${TAG_NAME}" "${wheels[@]}" --clobber
+
+  publish_release:
+    needs: [prepare_release, wheel]
+    if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare_release.outputs.release_id }}
+          IS_PRERELEASE: ${{ needs.prepare_release.outputs.is_prerelease }}
+          MAKE_LATEST: ${{ needs.prepare_release.outputs.make_latest }}
+        run: |
+          set -euo pipefail
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false \
+            -F prerelease="${IS_PRERELEASE}" \
+            -F make_latest="${MAKE_LATEST}"
