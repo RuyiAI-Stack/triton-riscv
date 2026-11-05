@@ -106,17 +106,25 @@ trap cleanup EXIT INT TERM
 export PYTHON="/opt/python/${PY_TAG}/bin/python"
 export PATH="/opt/python/${PY_TAG}/bin:$PATH"
 
-dnf install -y clang lld git
+dnf install -y clang lld git gcc gcc-c++
 
-# clang links against the GCC runtime and needs libstdc++'s headers, and both
-# come from the gcc-toolset that clang's dependency chain installs. That version
+# clang links against the GCC runtime and needs libstdc++'s headers, which come
+# from the gcc-toolset that clang's dependency chain installs -- a version that
 # moves with the image (a rolling :latest tag): it was -14, current images pull
-# in -15. Enable every toolset that is present, newest last, so neither the
-# version nor the order of the install can break the build.
+# in -15. Enable every toolset that is present, newest last, and point clang at
+# it explicitly: deriving the toolchain from PATH is not reliable on these
+# images, and without it linking fails on crtbeginS.o / -lstdc++ / -lgcc.
+toolset_root=""
 for enable in $(ls -1 /opt/rh/gcc-toolset-*/enable 2>/dev/null | sort -V); do
     # shellcheck disable=SC1090
     source "${enable}"
+    toolset_root="$(dirname "${enable}")/root/usr"
 done
+if [ -n "${toolset_root}" ]; then
+    export CFLAGS="${CFLAGS:+${CFLAGS} }--gcc-toolchain=${toolset_root}"
+    export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }--gcc-toolchain=${toolset_root}"
+fi
+echo "[release] toolset=${toolset_root:-<none>} g++=$(command -v g++ || echo none) ld=$(command -v ld || echo none)"
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
 # Same stable-ABI build as an ordinary `make build`, so the released wheel is
