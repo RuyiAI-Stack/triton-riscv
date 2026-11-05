@@ -36,6 +36,11 @@ source "${TRITON_RISCV_DIR}/scripts/_gpu-stub-env.sh" "${TRITON_RISCV_DIR}/.cach
 # Triton's plugin support, which packages backend/ as
 # triton.backends.triton_shared and builds the C++ plugin into libtriton.so.
 export TRITON_PLUGIN_DIRS="${TRITON_RISCV_DIR}"
+# Build against the Python stable ABI (abi3), which is how upstream builds its
+# abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged
+# cp312-abi3, so it covers Python 3.12 and later instead of only the interpreter
+# it was built with. Upstream ships no abi3 wheel for free-threaded builds.
+export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
 
 # ---------------------------------------------------------------------------
 # Run time

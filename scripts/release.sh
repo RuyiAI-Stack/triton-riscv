@@ -113,6 +113,9 @@ fi
 dnf install -y clang lld git
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
+# Same stable-ABI build as an ordinary `make build`, so the released wheel is
+# tagged cp312-abi3 and covers Python 3.12 and later.
+export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
 
 # shellcheck source=scripts/_gpu-stub-env.sh
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
