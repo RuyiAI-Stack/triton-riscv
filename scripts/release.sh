@@ -106,13 +106,31 @@ trap cleanup EXIT INT TERM
 export PYTHON="/opt/python/${PY_TAG}/bin/python"
 export PATH="/opt/python/${PY_TAG}/bin:$PATH"
 
-if [ -f /opt/rh/gcc-toolset-14/enable ]; then
-    source /opt/rh/gcc-toolset-14/enable
-fi
+dnf install -y clang lld git libstdc++-devel
 
-dnf install -y clang lld git
+# clang needs a GCC installation to find crtbeginS.o, libgcc and libstdc++ when
+# it links, and on this image it does not detect the riscv64 layout by itself --
+# the whole link is handed to ld with bare -lstdc++ / -lgcc, which fails. Ask gcc
+# where it lives and pass that on explicitly. Images that ship the compiler as an
+# SCL toolset under /opt/rh (which is also where clang's dependency chain used to
+# land it) are enabled first, so `gcc` below is the right one either way.
+toolset_root=""
+for enable in $(ls -1 /opt/rh/gcc-toolset-*/enable 2>/dev/null | sort -V); do
+    # shellcheck disable=SC1090
+    source "${enable}"
+    toolset_root="$(dirname "${enable}")/root/usr"
+done
+gcc_install_dir="$(dirname "$(gcc -print-libgcc-file-name 2>/dev/null)" 2>/dev/null || true)"
+if [ -n "${gcc_install_dir}" ] && [ -d "${gcc_install_dir}" ]; then
+    export TRITON_APPEND_CMAKE_ARGS="${TRITON_APPEND_CMAKE_ARGS:-} -DCMAKE_CXX_FLAGS=--gcc-install-dir=${gcc_install_dir} -DCMAKE_C_FLAGS=--gcc-install-dir=${gcc_install_dir}"
+fi
+ls -d /usr/lib/gcc/*/* 2>/dev/null | sed 's/^/[release] gccdir /'
+echo "[release] toolset=${toolset_root:-<none>} gcc-install-dir=${gcc_install_dir:-<none>} g++=$(command -v g++ || echo none)"
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
+# Same stable-ABI build as an ordinary `make build`, so the released wheel is
+# tagged cp312-abi3 and covers Python 3.12 and later.
+export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
 
 # shellcheck source=scripts/_gpu-stub-env.sh
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"

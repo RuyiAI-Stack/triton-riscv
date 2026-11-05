@@ -6,6 +6,13 @@ on:
     branches:
       - main
 
+concurrency:
+  # A new push to the same PR (or branch) replaces the previous run: its build is
+  # stale the moment it is superseded, and the jobs need the single riscv64 host,
+  # so spending hours on the old revision helps nobody.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ${{ matrix.runner }}
