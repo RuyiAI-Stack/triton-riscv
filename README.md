@@ -85,8 +85,8 @@ The instructions it prints are the RVV ones:
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
 cd triton-riscv
-make            # virtualenv, toolchains, Triton and the backend; ~15 minutes the first time
-make test       # the example suite, the plugin's lit tests and the tutorials
+make
+make test
 ```
 
 What you end up with is an editable Triton whose backend is
