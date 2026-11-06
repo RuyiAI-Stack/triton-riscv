@@ -33,6 +33,11 @@ BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${TRITON_RISCV_DIR}/.cache/buddy
 # builds for; disable them for every build started from this shell.
 # shellcheck source=scripts/_gpu-stub-env.sh
 source "${TRITON_RISCV_DIR}/scripts/_gpu-stub-env.sh" "${TRITON_RISCV_DIR}/.cache/gpu-deps-stub"
+# That stub points every GPU download at an empty directory, which is also what
+# skips upstream's AMD codegen fetch during the build. The backend reads this one
+# again when it compiles, though, so point it at the library scripts/setup.sh
+# builds -- the same file get_amd_codegen_path() falls back to by default.
+export TRITON_AMD_CODEGEN_PATH="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 # Triton's plugin support, which packages backend/ as
 # triton.backends.triton_shared and builds the C++ plugin into libtriton.so.
 export TRITON_PLUGIN_DIRS="${TRITON_RISCV_DIR}"
