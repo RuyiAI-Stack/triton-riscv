@@ -10,8 +10,8 @@ Triton acts as a frontend (Python AST → TTIR); triton-riscv handles the rest o
 
 ```
 Python @triton.jit
-  └─► TTIR          (triton: ast_to_ttir + make_ttir passes)
-        └─► Linalg MLIR   (triton-shared-opt --triton-to-linalg-experimental)
+  └─► TTIR  (triton: ast_to_ttir + make_ttir passes)
+        └─► Linalg MLIR  (triton-shared-opt --triton-to-linalg-experimental)
               └─► LLVM MLIR  (Buddy Compiler lowering passes)
                     └─► LLVM IR  (mlir-translate --mlir-to-llvmir)
                           └─► native .o  (llc -filetype=obj)
