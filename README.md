@@ -27,12 +27,10 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install --index-url https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/simple/ triton buddy
 pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch  # optional
 
-# LLVM ships only as an archive (no wheel): it provides opt, mlir-translate and
-# llc. The buddy tools are already on the PATH after the install above, so
-# BUDDY_MLIR_BINARY_DIR is only needed if you unpack that archive instead.
+# Get prebuilt LLVM from https://github.com/buddy-compiler/buddy-mlir/releases
 mkdir -p /path/to/llvm
 tar xf llvm-*.tar.gz -C /path/to/llvm
-export LLVM_BINARY_DIR=/path/to/llvm/bin          # its tools are also found on PATH
+export LLVM_BINARY_DIR=/path/to/llvm/bin
 ```
 
 ```py
