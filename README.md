@@ -19,16 +19,18 @@ Python @triton.jit
 
 ## Install a wheel
 
-Every release publishes `cp312-abi3` wheels for `riscv64` and `x86_64`: install
-the `riscv64` one on the machine that runs the kernels, or the `x86_64` one to
-try the backend out on a normal CPU. The wheel carries the backend, its
-`triton.backends` entry point and `triton-shared-opt`; the LLVM and buddy
-executables it compiles with are **not** bundled.
+Every release publishes `cp312-abi3` wheels for `riscv64` and `x86_64` and
+uploads them to our package index: install the `riscv64` one on the machine that
+runs the kernels, or the `x86_64` one to try the backend out on a normal CPU. The
+wheel carries the backend, its `triton.backends` entry point and
+`triton-shared-opt`; the LLVM and buddy executables it compiles with are **not**
+bundled.
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-# Wheels live on the releases page: https://github.com/RuyiAI-Stack/triton-riscv/releases
-pip install triton-<version>-cp312-abi3-manylinux_2_39_riscv64.whl
+# The name is just `triton`, but it has to come from the index that carries it:
+# PyPI only holds upstream Triton. Every release attaches the wheels as well.
+pip install --index-url https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/simple/ triton
 pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch  # optional
 
 # Unpack both archives of the buddy-mlir release pinned in buddy-hash.txt; they
