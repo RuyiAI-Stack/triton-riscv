@@ -23,23 +23,23 @@ Every release publishes `cp312-abi3` wheels for `riscv64` and `x86_64` and
 uploads them to our package index: install the `riscv64` one on the machine that
 runs the kernels, or the `x86_64` one to try the backend out on a normal CPU. The
 wheel carries the backend, its `triton.backends` entry point and
-`triton-shared-opt`; the LLVM and buddy executables it compiles with are **not**
-bundled.
+`triton-shared-opt` in one wheel; the LLVM and buddy tools it compiles with are
+separate packages.
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-# The name is just `triton`, but it has to come from the index that carries it:
-# PyPI only holds upstream Triton. Every release attaches the wheels as well.
-pip install --index-url https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/simple/ triton
+# `triton` and the buddy tools come from the index that carries them; PyPI only
+# holds upstream Triton. Until that index has them, both projects attach the same
+# wheels to their GitHub releases.
+pip install --index-url https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/simple/ triton buddy
 pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch  # optional
 
-# Unpack both archives of the buddy-mlir release pinned in buddy-hash.txt; they
-# expand to <dir>/bin, which is the layout the backend expects.
-mkdir -p /path/to/llvm /path/to/buddy
-tar xf llvm-*.tar.gz  -C /path/to/llvm     # opt, mlir-translate, llc
-tar xf buddy-*.tar.gz -C /path/to/buddy    # buddy-opt, buddy-llc, buddy-translate
-export LLVM_BINARY_DIR=/path/to/llvm/bin          # tools are also found on PATH
-export BUDDY_MLIR_BINARY_DIR=/path/to/buddy/bin   # only needed for the IME path
+# LLVM ships only as an archive (no wheel): it provides opt, mlir-translate and
+# llc. The buddy tools are already on the PATH after the install above, so
+# BUDDY_MLIR_BINARY_DIR is only needed if you unpack that archive instead.
+mkdir -p /path/to/llvm
+tar xf llvm-*.tar.gz -C /path/to/llvm
+export LLVM_BINARY_DIR=/path/to/llvm/bin          # its tools are also found on PATH
 ```
 
 ```py
@@ -276,8 +276,8 @@ See [docs/07-Optimization.md](docs/07-Optimization.md) for the current code-gene
 
 ## Limitations
 
-- The wheels are not self-contained: they need an external LLVM, and the buddy
-tools for the IME path (see [Install](#install)).
+- The wheels are not self-contained: they need an external LLVM (published only
+as an archive) and the `buddy` wheel (see [Install](#install)).
 - IME kernels compile to `vmadot` / `vfmadot` (`TRITON_RISCV_USE_IME=1`), but they
 only run on a CPU that implements the `xsmtime` extension. Elsewhere the process
 dies with `Illegal instruction`.
