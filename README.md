@@ -57,18 +57,30 @@ x, y = torch.randn(n), torch.randn(n)
 out = torch.empty_like(x)
 add[(triton.cdiv(n, 1024),)](x, y, out, n, BLOCK=1024)
 print("ok:", torch.allclose(out, x + y))
+
+# The backend targets the host by default; ask for RISC-V and keep the object so
+# the instructions it emitted can be inspected.
+compiled = add.warmup(
+    x, y, out, n, BLOCK=1024, grid=(triton.cdiv(n, 1024),),
+    target_triple="riscv64-unknown-linux-gnu",
+)
+open("add.o", "wb").write(compiled.asm["obj"])
 ```
 
 ```sh
-python add.py     # ok: True
+python add.py
+llvm-objdump -d add.o | grep -E "vset|vle32|vse32|vfadd"   # or "$LLVM_BINARY_DIR/llvm-objdump"
 ```
 
-`triton.jit` reads the kernel's source, so the kernel has to live in a file -- a
-heredoc or a REPL will not work. On `riscv64` the CPU backend selects itself; no
-`set_active` call or extra environment variable is needed.
+The instructions it prints are the RVV ones:
 
-Requires Python 3.12 to 3.15, in a regular (GIL) build: free-threaded builds
-cannot load an `abi3` wheel. Python 3.11 has no wheel.
+```
+      42: cd287057      vsetivli    zero, 0x10, e32, m4, ta, ma
+      46: 020ee407      vle32.v     v8, (t4)
+      4e: 020ee607      vle32.v     v12, (t4)
+      52: 02861457      vfadd.vv    v8, v8, v12
+      60: 020ee427      vse32.v     v8, (t4)
+```
 
 ## Quick start (from source)
 
@@ -120,38 +132,14 @@ Its defaults follow the layout `make` creates -- `triton/`, `.venv`,
 directories to `PATH`. Override `TRITON_DIR`, `TRITON_VENV`, `LLVM_SYSPATH` or
 `BUDDY_MLIR_BINARY_DIR` before sourcing to point it somewhere else.
 
-## Build and rebuild
-
-`make` bootstraps a fresh checkout and builds it; afterwards `make build`
-rebuilds after a change:
+## Build
 
 ```sh
 cd /path/to/triton-riscv
-make
+make setup
+make build
+make test
 ```
-
-What the targets do:
-
-| Target | |
-|---|---|
-| `make` | `make setup` then `make build` |
-| `make setup` | Virtualenv, Python build dependencies, the pinned Triton checkout, and the LLVM and buddy toolchains |
-| `make build` | Builds Triton with the triton-shared plugin and installs the `triton.backends.triton_shared` backend |
-| `make test` | Runs every suite below |
-| `make clean` | Removes the Triton build tree |
-
-`make setup` is idempotent, so running it again only picks up changes to
-`buddy-hash.txt` or `triton-hash.txt`; `make build` never touches the Triton
-checkout, so a rebuild is cheap.
-
-If you change the buddy-opt pass pipeline or cached compilation behavior, clear
-Triton's cache before rerunning tests:
-
-```sh
-rm -rf "$TRITON_CACHE_DIR"
-```
-
-Build artifacts are placed under `triton/build/{current_cmake_version}/third_party/triton_shared`.
 
 ## Verify the build
 
@@ -167,18 +155,6 @@ python -c "from triton.backends.triton_shared.paths import _get_triton_shared_op
 
 `triton-shared-opt` has no console script: the backend runs the copy bundled in
 the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
-
-## Run the example test suite
-
-```sh
-make test        # everything: the examples, the plugin's lit tests and the tutorials
-make test-lit    # only the plugin's lit tests
-```
-
-The examples compare against PyTorch, so it has to be installed in the venv;
-on RISC-V the third-party builds work:
-`pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch`
-(Python 3.12+).
 
 ## Tutorials
 
