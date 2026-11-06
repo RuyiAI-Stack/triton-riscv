@@ -92,3 +92,21 @@ echo "Installing build dependencies into ${PYTHON}..."
     "pytest" \
     "pytest-xdist" \
     "lit"
+
+# The AMD codegen library. Upstream either downloads a prebuilt copy or builds one
+# against a separately pinned LLVM, and there is no riscv64 build of either; the
+# library itself is small and builds against the LLVM already here, in seconds.
+# Without it the AMD backend refuses to compile anything. scripts/_gpu-stub-env.sh
+# points TRITON_AMD_CODEGEN_PATH at exactly this path.
+amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
+llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
+if [ ! -e "${amd_codegen_lib}" ] && [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
+    echo "Building the AMD codegen library..."
+    cmake -G Ninja -S "${TRITON_DIR}/third_party/amd/backend/codegen" \
+        -B "${ROOT_DIR}/.cache/amd-codegen" \
+        -DLLVM_DIR="${llvm_cmake}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DTRITON_AMD_LLVM_REVISION=local >/dev/null
+    cmake --build "${ROOT_DIR}/.cache/amd-codegen" --target triton_amd_codegen >/dev/null
+    cp "${ROOT_DIR}/.cache/amd-codegen/libtriton_amd_codegen.so" "${amd_codegen_lib}"
+fi
