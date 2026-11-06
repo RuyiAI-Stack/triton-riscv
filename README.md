@@ -17,7 +17,64 @@ Python @triton.jit
                           └─► native .o  (llc -filetype=obj)
 ```
 
-## Quick start
+## Install a wheel
+
+Every release publishes `cp312-abi3` wheels for `riscv64` and `x86_64`: install
+the `riscv64` one on the machine that runs the kernels, or the `x86_64` one to
+try the backend out on a normal CPU. The wheel carries the backend, its
+`triton.backends` entry point and `triton-shared-opt`; the LLVM and buddy
+executables it compiles with are **not** bundled.
+
+```sh
+python3 -m venv .venv && . .venv/bin/activate
+# Wheels live on the releases page: https://github.com/RuyiAI-Stack/triton-riscv/releases
+pip install triton-<version>-cp312-abi3-manylinux_2_39_riscv64.whl
+pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch  # optional
+
+# Unpack both archives of the buddy-mlir release pinned in buddy-hash.txt; they
+# expand to <dir>/bin, which is the layout the backend expects.
+mkdir -p /path/to/llvm /path/to/buddy
+tar xf llvm-*.tar.gz  -C /path/to/llvm     # opt, mlir-translate, llc
+tar xf buddy-*.tar.gz -C /path/to/buddy    # buddy-opt, buddy-llc, buddy-translate
+export LLVM_BINARY_DIR=/path/to/llvm/bin          # tools are also found on PATH
+export BUDDY_MLIR_BINARY_DIR=/path/to/buddy/bin   # only needed for the IME path
+```
+
+```py
+# add.py
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def add(x_ptr, y_ptr, out_ptr, n, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+    tl.store(out_ptr + offsets, x + y, mask=mask)
+
+
+n = 4096
+x, y = torch.randn(n), torch.randn(n)
+out = torch.empty_like(x)
+add[(triton.cdiv(n, 1024),)](x, y, out, n, BLOCK=1024)
+print("ok:", torch.allclose(out, x + y))
+```
+
+```sh
+python add.py     # ok: True
+```
+
+`triton.jit` reads the kernel's source, so the kernel has to live in a file -- a
+heredoc or a REPL will not work. On `riscv64` the CPU backend selects itself; no
+`set_active` call or extra environment variable is needed.
+
+Requires Python 3.12 to 3.15, in a regular (GIL) build: free-threaded builds
+cannot load an `abi3` wheel. Python 3.11 has no wheel.
+## Quick start (from source)
 
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
@@ -32,6 +89,8 @@ so `import triton` behaves as usual, and the tutorials in
 [`python/tutorials/`](python/tutorials) run anywhere a CPU does.
 
 ## Clone
+
+To build from source instead, continue here:
 
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git triton-riscv
@@ -212,6 +271,23 @@ python python/examples/rvv_vec_add_elf.py
 See [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) for toolchain setup, the end-to-end API, output verification, and troubleshooting.
 
 See [docs/07-Optimization.md](docs/07-Optimization.md) for the current code-generation bottlenecks, correctness gaps, and optimization priorities identified from the RVV and bufferization analysis.
+
+## Limitations
+
+- The wheels are not self-contained: they need an external LLVM, and the buddy
+tools for the IME path (see [Install a wheel](#install-a-wheel)).
+- IME kernels compile to `vmadot` / `vfmadot` (`TRITON_RISCV_USE_IME=1`), but they
+only run on a CPU that implements the `xsmtime` extension. Elsewhere the process
+dies with `Illegal instruction`.
+- The generated RVV code assumes `VLEN=128`: the backend vectorizes with a fixed
+width (`-riscv-v-vector-bits-min/max=128` in `backend/compiler.py`, matching
+`--lower-vir-to-vector=vector-width=4`). That is correct on any `VLEN >= 128`
+machine, but a wider one only gets part of the available vector width -- the
+RVA23 board used for testing is `VLEN=256`.
+- The wheels register upstream's `nvidia` and `amd` backends too, but the
+CUDA/ROCm toolchains do not exist for `riscv64`, so only the CPU backend can
+activate there.
+- The examples and tests live in this repository, not in the wheel.
 
 ## FAQ
 
