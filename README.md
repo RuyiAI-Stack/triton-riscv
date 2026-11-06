@@ -17,7 +17,7 @@ Python @triton.jit
                           └─► native .o  (llc -filetype=obj)
 ```
 
-## Install
+## Quick start (from binary)
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
