@@ -86,84 +86,39 @@ so `import triton` behaves as usual, and the tutorials in
 
 ## Clone
 
-The rest of this file builds from source. Clone the repository:
-
 ```sh
-git clone https://github.com/RuyiAI-Stack/triton-riscv.git triton-riscv
-TRITON_RISCV_DIR="$(pwd)/triton-riscv"
+git clone https://github.com/RuyiAI-Stack/triton-riscv.git
+cd triton-riscv
+make
 ```
 
-`make setup` clones the Triton revision pinned in `triton-hash.txt` and
-downloads the LLVM and buddy tools published under `buddy-hash.txt`, so neither
-needs a manual checkout.
-
-> Note: Ensure PyTorch is available in your virtual environment. For RISC-V, since PyTorch does not officially support RISC-V yet, you can build from source or use third-party builds: https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch . To use the third-party builds, python 3.12 or 3.13 are required.
-
-Triton is used **unpatched**. Building the stock Triton checkout on RISC-V
-requires the LLVM it links against to provide the NVPTX and AMDGPU codegen
-libraries plus `lld` (upstream Triton hard-codes them), and it requires skipping
-the host-specific GPU toolchains Triton downloads at build time (nvcc, AMD
-codegen, proton), which do not exist for `riscv64`:
-
-- The buddy-mlir LLVM release published under `buddy-hash.txt` is built with
-  those extra targets; `make setup` downloads it into `.cache/llvm` (set
-  `LLVM_SYSPATH` to use an existing LLVM instead).
-- `scripts/_gpu-stub-env.sh` points every GPU download location at an
-  empty stub directory and disables the components that need CUDA/ROCm headers.
+`make setup` creates `.venv`, clones the Triton revision pinned in
+`triton-hash.txt`, and downloads the LLVM and buddy build pinned in
+`buddy-hash.txt`; `make build` then builds and installs the backend into it.
+Triton itself is used **unpatched**: the pinned LLVM is simply built with the
+NVPTX and AMDGPU targets upstream Triton expects.
 
 ## Prerequisites
 
-### Create a virtual environment
-
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### Install dependencies
-
-Nothing to install: `make setup` brings up the virtualenv's build dependencies
-(cmake, ninja, nanobind, setuptools, pytest) and downloads the LLVM and buddy
-tools Triton's build links against. A Python 3.11+ interpreter is the only system
-requirement; the RVV cross toolchain and QEMU that
-`scripts/build-riscv-gnu-toolchain.sh` builds are only needed by the
-[QEMU example](docs/06-RISCV-QEMU.md).
+`make setup` handles the rest: virtualenv, Python build dependencies and
+toolchains. A Python 3.11+ interpreter is the only system requirement; the RVV
+cross toolchain and QEMU that `scripts/build-riscv-gnu-toolchain.sh` builds are
+only needed by the [QEMU example](docs/06-RISCV-QEMU.md).
 
 ## Environment helper
 
-[`scripts/env.sh`](scripts/env.sh) centralizes the local environment variables needed by `triton-riscv`.
-
-By default it assumes:
-
-- `TRITON_RISCV_DIR=/path/to/triton-riscv`
-- `TRITON_DIR=$TRITON_RISCV_DIR/triton` (where `make setup` clones Triton)
-- `TRITON_VENV=$TRITON_RISCV_DIR/.venv` (override it to build into another environment)
-- `LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm`, the LLVM `scripts/setup.sh` downloaded; override it to use another multi-target LLVM
-- `BUDDY_MLIR_BINARY_DIR=$TRITON_RISCV_DIR/.cache/buddy/bin`, likewise
-- `TRITON_SHARED_OPT_PATH` (optional) overrides where the backend looks for the tool; by default it uses the copy bundled in the package, which `scripts/build.sh` stages from the build tree just like `scripts/release.sh` does for the wheel
-- Triton's cache, dump and override directories default to `~/.triton`
-
-It exports:
-
-- `TRITON_RISCV_DIR`, `TRITON_DIR`, `TRITON_VENV`
-- `LLVM_SYSPATH`, `LLVM_BINARY_DIR`, `BUDDY_MLIR_BINARY_DIR`
-- `TRITON_HOME`, `TRITON_CACHE_DIR`, `TRITON_DUMP_DIR`, `TRITON_OVERRIDE_DIR`
-- `TRITON_SHARED_DUMP_PATH`
-
-It also prepends the venv, LLVM and buddy `bin` directories to `PATH`, sets
-`PYTHONSAFEPATH=1` so the in-tree `triton/` checkout cannot shadow the installed
-package, and disables the host-specific GPU toolchain downloads Triton would
-otherwise attempt.
-
-If your local layout differs, override variables before sourcing:
+`scripts/env.sh` exports what the backend and the lit tests need in order to find
+the toolchains and the staged `triton-shared-opt`, so source it before running
+anything by hand:
 
 ```sh
-export TRITON_DIR=/path/to/triton
-export TRITON_VENV=/path/to/triton-venv
-source /path/to/triton-riscv/scripts/env.sh
+source scripts/env.sh
 ```
 
-This helper removes most of the repetitive local environment setup from the README, but it does not replace the external prerequisites themselves: a virtual environment, a Triton checkout, and the LLVM/buddy toolchains (`make setup` fetches all three).
+Its defaults follow the layout `make` creates -- `triton/`, `.venv`,
+`.cache/llvm`, `.cache/buddy` -- and it prepends the venv, LLVM and buddy `bin`
+directories to `PATH`. Override `TRITON_DIR`, `TRITON_VENV`, `LLVM_SYSPATH` or
+`BUDDY_MLIR_BINARY_DIR` before sourcing to point it somewhere else.
 
 ## Build and rebuild
 
@@ -219,6 +174,11 @@ the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
 make test        # everything: the examples, the plugin's lit tests and the tutorials
 make test-lit    # only the plugin's lit tests
 ```
+
+The examples compare against PyTorch, so it has to be installed in the venv;
+on RISC-V the third-party builds work:
+`pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch`
+(Python 3.12+).
 
 ## Tutorials
 
