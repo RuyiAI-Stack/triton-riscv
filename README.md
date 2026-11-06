@@ -19,13 +19,6 @@ Python @triton.jit
 
 ## Install
 
-Every release publishes `cp312-abi3` wheels for `riscv64` and `x86_64` and
-uploads them to our package index: install the `riscv64` one on the machine that
-runs the kernels, or the `x86_64` one to try the backend out on a normal CPU. The
-wheel carries the backend, its `triton.backends` entry point and
-`triton-shared-opt` in one wheel; the LLVM and buddy tools it compiles with are
-separate packages.
-
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 # `triton` and the buddy tools come from the index that carries them; PyPI only
@@ -122,29 +115,19 @@ codegen, proton), which do not exist for `riscv64`:
 
 ### Create a virtual environment
 
-Use either a Python venv or an existing conda environment:
-
 ```sh
-python -m venv "${TRITON_RISCV_DIR}/.venv" --prompt triton-riscv
-source "${TRITON_RISCV_DIR}/.venv/bin/activate"
+python3 -m venv .venv
+source .venv/bin/activate
 ```
-
-Or with conda:
-
-```sh
-conda activate ruyiai
-```
-
-When a conda environment is active, `scripts/env.sh` automatically uses `CONDA_PREFIX` as `TRITON_VENV`.
 
 ### Install dependencies
 
-Nothing to install: `make setup` brings up the virtualenv's build
-dependencies (cmake, ninja, nanobind, setuptools, pytest) and downloads the LLVM
-and buddy tools Triton's build links against. The only system requirement is a
-Python 3.11+ interpreter. The one thing you may have to provide yourself is the
-RVV cross toolchain and QEMU used by `scripts/build-riscv-gnu-toolchain.sh`
-(see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md)).
+Nothing to install: `make setup` brings up the virtualenv's build dependencies
+(cmake, ninja, nanobind, setuptools, pytest) and downloads the LLVM and buddy
+tools Triton's build links against. A Python 3.11+ interpreter is the only system
+requirement; the RVV cross toolchain and QEMU that
+`scripts/build-riscv-gnu-toolchain.sh` builds are only needed by the
+[QEMU example](docs/06-RISCV-QEMU.md).
 
 ## Environment helper
 
@@ -154,7 +137,7 @@ By default it assumes:
 
 - `TRITON_RISCV_DIR=/path/to/triton-riscv`
 - `TRITON_DIR=$TRITON_RISCV_DIR/triton` (where `make setup` clones Triton)
-- `TRITON_VENV=$CONDA_PREFIX` when a conda environment is active, otherwise `$TRITON_RISCV_DIR/.venv`
+- `TRITON_VENV=$TRITON_RISCV_DIR/.venv` (override it to build into another environment)
 - `LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm`, the LLVM `scripts/setup.sh` downloaded; override it to use another multi-target LLVM
 - `BUDDY_MLIR_BINARY_DIR=$TRITON_RISCV_DIR/.cache/buddy/bin`, likewise
 - `TRITON_SHARED_OPT_PATH` (optional) overrides where the backend looks for the tool; by default it uses the copy bundled in the package, which `scripts/build.sh` stages from the build tree just like `scripts/release.sh` does for the wheel
@@ -176,7 +159,7 @@ If your local layout differs, override variables before sourcing:
 
 ```sh
 export TRITON_DIR=/path/to/triton
-export TRITON_VENV=/path/to/triton-venv   # or rely on active conda env
+export TRITON_VENV=/path/to/triton-venv
 source /path/to/triton-riscv/scripts/env.sh
 ```
 
@@ -233,16 +216,8 @@ the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
 ## Run the example test suite
 
 ```sh
-make test   # the example suite, plus the flaggems suite on riscv64
-make test-lit    # the plugin's lit tests
-```
-
-`make test` runs `pytest python/examples`, skipping `test_core.py`,
-`test_annotations.py` and `flaggems`; on riscv64 it then runs the flaggems suite,
-which is ~3835 tests. To run a single test:
-
-```sh
-bash -c 'source scripts/env.sh && pytest python/examples/test_vec_add.py -v'
+make test        # everything: the examples, the plugin's lit tests and the tutorials
+make test-lit    # only the plugin's lit tests
 ```
 
 ## Tutorials
@@ -274,23 +249,6 @@ python python/examples/rvv_vec_add_elf.py
 See [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) for toolchain setup, the end-to-end API, output verification, and troubleshooting.
 
 See [docs/07-Optimization.md](docs/07-Optimization.md) for the current code-generation bottlenecks, correctness gaps, and optimization priorities identified from the RVV and bufferization analysis.
-
-## Limitations
-
-- The wheels are not self-contained: they need an external LLVM (published only
-as an archive) and the `buddy` wheel (see [Install](#install)).
-- IME kernels compile to `vmadot` / `vfmadot` (`TRITON_RISCV_USE_IME=1`), but they
-only run on a CPU that implements the `xsmtime` extension. Elsewhere the process
-dies with `Illegal instruction`.
-- The generated RVV code assumes `VLEN=128`: the backend vectorizes with a fixed
-width (`-riscv-v-vector-bits-min/max=128` in `backend/compiler.py`, matching
-`--lower-vir-to-vector=vector-width=4`). That is correct on any `VLEN >= 128`
-machine, but a wider one only gets part of the available vector width -- the
-RVA23 board used for testing is `VLEN=256`.
-- The wheels register upstream's `nvidia` and `amd` backends too, but the
-CUDA/ROCm toolchains do not exist for `riscv64`, so only the CPU backend can
-activate there.
-- The examples and tests live in this repository, not in the wheel.
 
 ## FAQ
 
