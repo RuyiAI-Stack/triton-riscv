@@ -191,16 +191,30 @@ jobs:
 
           gh release upload "${TAG_NAME}" "${wheels[@]}" --clobber
 
+      # The same wheels go to the package index too, straight from the build tree.
+      # Skipped until the secrets exist, and non-fatal for now so a broken index
+      # cannot block a release: the GitHub release stays the primary channel.
+      - name: Publish the wheels to the package index
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ secrets.PYPI_URL }}" ] || [ -z "${{ secrets.PYPI_USERNAME }}" ] || [ -z "${{ secrets.PYPI_PASSWORD }}" ]; then
+            echo "PYPI_URL / PYPI_USERNAME / PYPI_PASSWORD are not set; skipping the package index upload."
+            exit 0
+          fi
+
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="${HOME}/.local/bin:${PATH}"
+          UV_PUBLISH_URL="${{ secrets.PYPI_URL }}" \
+          UV_PUBLISH_USERNAME="${{ secrets.PYPI_USERNAME }}" \
+          UV_PUBLISH_PASSWORD="${{ secrets.PYPI_PASSWORD }}" \
+            uv publish --no-attestations "${{ steps.vars.outputs.wheel_dir }}"/*.whl
+
   publish_release:
     needs: [prepare_release, wheel]
     if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
-    # Mapped at job level so the step below can test it in `if:`; a step's own
-    # env is not available there.
-    env:
-      UV_PUBLISH_URL: ${{ secrets.PYPI_URL || 'https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/' }}
-      UV_PUBLISH_USERNAME: ${{ secrets.PYPI_USERNAME || 'admin' }}
-      UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
     steps:
       - name: Publish the release
         env:
@@ -214,20 +228,3 @@ jobs:
             -F draft=false \
             -F prerelease="${IS_PRERELEASE}" \
             -F make_latest="${MAKE_LATEST}"
-
-      # The same wheels also go to the package index. Skipped until credentials
-      # exist, and non-fatal for now so a broken index cannot block a release:
-      # the GitHub release stays the primary channel.
-      - name: Publish the wheels to the package index
-        if: env.UV_PUBLISH_PASSWORD != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.prepare_release.outputs.tag_name }}
-        run: |
-          set -euo pipefail
-          python -m pip install --quiet --upgrade uv
-          mkdir -p dist
-          gh release download "${TAG_NAME}" --pattern '*.whl' --dir dist
-          # The same index, asked which versions it already holds.
-          uv publish --no-attestations --check-url "${UV_PUBLISH_URL%/}/simple/" dist/*.whl
