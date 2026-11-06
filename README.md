@@ -76,6 +76,7 @@ heredoc or a REPL will not work. On `riscv64` the CPU backend selects itself; no
 
 Requires Python 3.12 to 3.15, in a regular (GIL) build: free-threaded builds
 cannot load an `abi3` wheel. Python 3.11 has no wheel.
+
 ## Quick start (from source)
 
 ```sh
@@ -92,7 +93,7 @@ so `import triton` behaves as usual, and the tutorials in
 
 ## Clone
 
-To build from source instead, continue here:
+The rest of this file builds from source. Clone the repository:
 
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git triton-riscv
@@ -141,7 +142,7 @@ When a conda environment is active, `scripts/env.sh` automatically uses `CONDA_P
 Nothing to install: `make setup` brings up the virtualenv's build
 dependencies (cmake, ninja, nanobind, setuptools, pytest) and downloads the LLVM
 and buddy tools Triton's build links against. The only system requirement is a
-Python 3.10+ interpreter. The one thing you may have to provide yourself is the
+Python 3.11+ interpreter. The one thing you may have to provide yourself is the
 RVV cross toolchain and QEMU used by `scripts/build-riscv-gnu-toolchain.sh`
 (see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md)).
 
@@ -154,7 +155,7 @@ By default it assumes:
 - `TRITON_RISCV_DIR=/path/to/triton-riscv`
 - `TRITON_DIR=$TRITON_RISCV_DIR/triton` (where `make setup` clones Triton)
 - `TRITON_VENV=$CONDA_PREFIX` when a conda environment is active, otherwise `$TRITON_RISCV_DIR/.venv`
-- `LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm`, the LLVM `scripts/build.sh` downloaded; override it to use another multi-target LLVM
+- `LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm`, the LLVM `scripts/setup.sh` downloaded; override it to use another multi-target LLVM
 - `BUDDY_MLIR_BINARY_DIR=$TRITON_RISCV_DIR/.cache/buddy/bin`, likewise
 - `TRITON_SHARED_OPT_PATH` (optional) overrides where the backend looks for the tool; by default it uses the copy bundled in the package, which `scripts/build.sh` stages from the build tree just like `scripts/release.sh` does for the wheel
 - Triton's cache, dump and override directories default to `~/.triton`
