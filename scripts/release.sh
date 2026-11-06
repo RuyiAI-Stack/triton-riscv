@@ -67,6 +67,10 @@ if [ -z "${IN_DOCKER:-}" ]; then
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         DOCKER_ENV_ARGS+=(-e GITHUB_TOKEN)
     fi
+    # Forwarded only when set: gives a nightly build a unique wheel version.
+    if [ -n "${TRITON_WHEEL_VERSION_SUFFIX:-}" ]; then
+        DOCKER_ENV_ARGS+=(-e TRITON_WHEEL_VERSION_SUFFIX)
+    fi
 
     docker "${DOCKER_RUN_ARGS[@]}" \
         "${DOCKER_ENV_ARGS[@]}" \

@@ -166,6 +166,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Every build shares Triton's version, and an index refuses a version
+          # it already holds, so give each nightly a unique one.
+          if [ "${{ needs.prepare_release.outputs.is_prerelease }}" = "true" ]; then
+            export TRITON_WHEEL_VERSION_SUFFIX=".dev$(date -u +%Y%m%d)"
+          fi
           ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
 
       - name: Upload release assets
@@ -190,6 +195,12 @@ jobs:
     needs: [prepare_release, wheel]
     if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
+    # Mapped at job level so the step below can test it in `if:`; a step's own
+    # env is not available there.
+    env:
+      UV_PUBLISH_URL: ${{ secrets.PYPI_URL || 'https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/' }}
+      UV_PUBLISH_USERNAME: ${{ secrets.PYPI_USERNAME || 'admin' }}
+      UV_PUBLISH_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
     steps:
       - name: Publish the release
         env:
@@ -203,3 +214,20 @@ jobs:
             -F draft=false \
             -F prerelease="${IS_PRERELEASE}" \
             -F make_latest="${MAKE_LATEST}"
+
+      # The same wheels also go to the package index. Skipped until credentials
+      # exist, and non-fatal for now so a broken index cannot block a release:
+      # the GitHub release stays the primary channel.
+      - name: Publish the wheels to the package index
+        if: env.UV_PUBLISH_PASSWORD != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare_release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade uv
+          mkdir -p dist
+          gh release download "${TAG_NAME}" --pattern '*.whl' --dir dist
+          # The same index, asked which versions it already holds.
+          uv publish --no-attestations --check-url "${UV_PUBLISH_URL%/}/simple/" dist/*.whl
