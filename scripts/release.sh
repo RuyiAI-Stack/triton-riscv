@@ -131,6 +131,9 @@ export TRITON_PYTHON_TAG="${PY_TAG}"
 # Same stable-ABI build as an ordinary `make build`, so the released wheel is
 # tagged cp312-abi3 and covers Python 3.12 and later.
 export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
+# Makes setup.py package backend/ into the wheel and register its
+# triton.backends entry point, which is how Triton discovers backends.
+export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 
 # shellcheck source=scripts/_gpu-stub-env.sh
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
@@ -156,6 +159,18 @@ RAW_WHEEL_DIR="$(mktemp -d)"
 
 cd "${CONTAINER_TRITON_DIR}"
 "${PYTHON}" setup.py bdist_wheel -d "${RAW_WHEEL_DIR}"
+# A wheel that does not register the backend installs fine and then fails on the
+# first kernel, so check it here rather than in a bug report.
+"${PYTHON}" - "${RAW_WHEEL_DIR}"/*.whl <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    entries = [name for name in wheel.namelist() if name.endswith("dist-info/entry_points.txt")]
+    text = wheel.read(entries[0]).decode() if entries else ""
+if "triton_shared = triton.backends.triton_shared" not in text:
+    sys.exit(f"{sys.argv[1]} does not register the triton_shared backend")
+PY
 if [[ "${TRITON_RISCV_SKIP_REPAIR:-0}" == "1" ]]; then
     cp "${RAW_WHEEL_DIR}"/*.whl "${CONTAINER_OUTPUT_DIR}/"
 else
