@@ -17,7 +17,7 @@ Python @triton.jit
                           └─► native .o  (llc -filetype=obj)
 ```
 
-## Install a wheel
+## Install
 
 Every release publishes `cp312-abi3` wheels for `riscv64` and `x86_64` and
 uploads them to our package index: install the `riscv64` one on the machine that
@@ -277,7 +277,7 @@ See [docs/07-Optimization.md](docs/07-Optimization.md) for the current code-gene
 ## Limitations
 
 - The wheels are not self-contained: they need an external LLVM, and the buddy
-tools for the IME path (see [Install a wheel](#install-a-wheel)).
+tools for the IME path (see [Install](#install)).
 - IME kernels compile to `vmadot` / `vfmadot` (`TRITON_RISCV_USE_IME=1`), but they
 only run on a CPU that implements the `xsmtime` extension. Elsewhere the process
 dies with `Illegal instruction`.
