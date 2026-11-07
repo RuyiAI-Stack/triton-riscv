@@ -3,6 +3,7 @@ import torch
 
 from .div import (
     div,
+    div_mode,
     div_mode_,
     floor_divide,
     floor_divide_,
@@ -31,7 +32,7 @@ def test_div_mode_tt(shape, rounding_mode, dtype):
     y = torch.rand(shape, dtype=dtype, device="cpu") * 5 + 1
 
     ref_out = torch.div(x, y, rounding_mode=rounding_mode)
-    tri_out = div(x, y, rounding_mode=rounding_mode)
+    tri_out = div_mode(x, y, rounding_mode=rounding_mode)
 
     if dtype == torch.float16 and rounding_mode == "trunc":
         rtol, atol = 1e-2, 1.0

@@ -3,7 +3,13 @@ import math
 import pytest
 import torch
 
-from .hadamard_transform import hadamard_transform
+from .hadamard_transform import (
+    hadamard_transform,
+    hadamard_transform_12N,
+    hadamard_transform_20N,
+    hadamard_transform_28N,
+    hadamard_transform_40N,
+)
 
 
 def _hadamard_matrix(n):
@@ -39,6 +45,29 @@ def test_hadamard_transform_scaled(dim):
     ref = torch.mul(torch.matmul(x_padded, h.T), scale)
     ref = ref[:, :dim]
     tri = hadamard_transform(x, scale=scale)
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "implementation, dim",
+    [
+        (hadamard_transform_12N, 12),
+        (hadamard_transform_20N, 20),
+        (hadamard_transform_28N, 28),
+        (hadamard_transform_40N, 40),
+    ],
+)
+def test_hadamard_transform_specialized_entrypoints(implementation, dim):
+    torch.manual_seed(0)
+    x = torch.randn(2, dim, dtype=torch.float32)
+    n = 1 << math.ceil(math.log2(dim))
+    h = _hadamard_matrix(n)
+    x_padded = torch.zeros(2, n, dtype=torch.float32)
+    x_padded[:, :dim] = x
+    ref = torch.matmul(x_padded, h.T)[:, :dim]
+
+    tri = implementation(x)
+
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
 
