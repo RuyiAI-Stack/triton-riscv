@@ -76,6 +76,7 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .coalesce import coalesce
 from .col2im import col2im
 from .concatenate import concatenate
 from .conj_physical import conj_physical
@@ -171,6 +172,7 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .inverse import inverse
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -183,6 +185,7 @@ from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linalg_lu_solve import linalg_lu_solve
 from .linspace import linspace
 from .log import log
 from .log1p_ import log1p_
@@ -472,6 +475,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "coalesce",
     "col2im",
     "concatenate",
     "conj_physical",
@@ -592,6 +596,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "inverse",
     "isclose",
     "isfinite",
     "isin",
@@ -613,6 +618,7 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_lu_solve",
     "linspace",
     "log",
     "log1p_",
