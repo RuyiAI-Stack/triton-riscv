@@ -38,6 +38,17 @@ def test_cat_three_tensors():
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
 
+def test_cat_four_tensors_dim1():
+    torch.manual_seed(0)
+    a = torch.randn(3, 2, dtype=torch.float32, device="cpu")
+    b = torch.randn(3, 5, dtype=torch.float32, device="cpu")
+    c = torch.randn(3, 1, dtype=torch.float32, device="cpu")
+    d = torch.randn(3, 4, dtype=torch.float32, device="cpu")
+    ref = torch.cat([a, b, c, d], dim=1)
+    tri = cat([a, b, c, d], dim=1)
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
 def test_cat_single():
     a = torch.randn(4, 4, dtype=torch.float32, device="cpu")
     ref = torch.cat([a])
@@ -48,6 +59,14 @@ def test_cat_single():
 def test_cat_empty():
     a = torch.randn(0, 4, dtype=torch.float32, device="cpu")
     b = torch.randn(3, 4, dtype=torch.float32, device="cpu")
+    ref = torch.cat([a, b])
+    tri = cat([a, b])
+    torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
+
+
+def test_cat_empty_output():
+    a = torch.randn(2, 0, dtype=torch.float32, device="cpu")
+    b = torch.randn(3, 0, dtype=torch.float32, device="cpu")
     ref = torch.cat([a, b])
     tri = cat([a, b])
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
