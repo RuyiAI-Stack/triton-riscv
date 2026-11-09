@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'relu_count32' (model
+// 'mobilenetv3_small_100.lamb_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Capture ViT again and replace shape-checked nodes with Triton calls.
+"""BOSCAME FPGA example 'replace_triton.py' under model 'vit-base-patch16-224'.
 
-The graph is captured with the same trace-friendly wrapper as import_model.py,
-then edited as a Buddy graph.  Matching uses tensor rank/shape and dataflow,
-never module names.  Every call is recorded with the kernel manifest and the
-adapter generator emits only ABI glue; numerical work remains in Triton.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -153,9 +154,7 @@ def load_index(directory, rejected=None):
                 "llvm",
                 "asm",
             ):
-                raise ValueError(
-                    result.get("reason", "kernel lowering is incomplete")
-                )
+                raise ValueError(result.get("reason", "kernel lowering is incomplete"))
             current = describe(data["name"])
             for key in (
                 "name",
@@ -177,30 +176,22 @@ def load_index(directory, rejected=None):
                 adapter_source(current).encode()
             ).hexdigest()
             if data.get("adapter_sha256") != expected_adapter:
-                raise ValueError(
-                    "compiled adapter differs from current graph ABI"
-                )
+                raise ValueError("compiled adapter differs from current graph ABI")
             source_digest = digest(current["kernel_source"])
             if (
                 data.get("kernel_module_sha256") != source_digest
                 or result.get("kernel_module_sha256") != source_digest
             ):
-                raise ValueError(
-                    "current Triton source differs from successful build"
-                )
+                raise ValueError("current Triton source differs from successful build")
             module = path.parent / "kernel.boscame.mlir"
             if result.get("artifacts", {}).get(module.name) != digest(module):
-                raise ValueError(
-                    "current emitted module differs from successful build"
-                )
+                raise ValueError("current emitted module differs from successful build")
             for name, field in (
                 ("kernel.ttir", "ttir_sha256"),
                 ("adapter.c", "adapter_sha256"),
             ):
                 if data.get(field) != digest(path.parent / name):
-                    raise ValueError(
-                        "current " + name + " differs from manifest"
-                    )
+                    raise ValueError("current " + name + " differs from manifest")
         except (OSError, ValueError, KeyError) as error:
             rejected.append({"name": data["name"], "reason": str(error)})
             continue
@@ -210,9 +201,7 @@ def load_index(directory, rejected=None):
     # projection. Its adapter's dependencies must also have current builds.
     while True:
         missing = {
-            name: [
-                dep for dep in case.get("dependencies", []) if dep not in index
-            ]
+            name: [dep for dep in case.get("dependencies", []) if dep not in index]
             for name, case in index.items()
         }
         missing = {name: deps for name, deps in missing.items() if deps}
@@ -222,8 +211,7 @@ def load_index(directory, rejected=None):
             rejected.append(
                 {
                     "name": name,
-                    "reason": "missing compiled dependencies: "
-                    + ", ".join(deps),
+                    "reason": "missing compiled dependencies: " + ", ".join(deps),
                 }
             )
             del index[name]
@@ -265,11 +253,7 @@ def match_layernorm_add(graph, op):
         return None
     aps = parents(graph, affine)
     weight = next(
-        (
-            p
-            for p in aps
-            if len(shape_of(p) or []) == 1 and shape_of(p) == [768]
-        ),
+        (p for p in aps if len(shape_of(p) or []) == 1 and shape_of(p) == [768]),
         None,
     )
     scaled = next((p for p in aps if p is not weight), None)
@@ -332,9 +316,7 @@ def match_gelu_mul(graph, op):
         (
             p
             for p in ps
-            if type(p).__name__ == "AddOp"
-            and len(p.args) == 2
-            and p.args[1] == 1
+            if type(p).__name__ == "AddOp" and len(p.args) == 2 and p.args[1] == 1
         ),
         None,
     )
@@ -357,11 +339,7 @@ def match_gelu_mul(graph, op):
         return None
     source = parents(graph, half)
     source_scaled = parents(graph, scaled[0])
-    if (
-        len(source) != 1
-        or len(source_scaled) != 1
-        or source[0] is not source_scaled[0]
-    ):
+    if len(source) != 1 or len(source_scaled) != 1 or source[0] is not source_scaled[0]:
         return None
     return {
         "operands": source,
@@ -424,10 +402,7 @@ def match_linear(graph, op, ps):
     if list(permutation or []) != [1, 0]:
         return None
     weight_parents = parents(graph, transposed_weight)
-    if (
-        len(weight_parents) != 1
-        or type(weight_parents[0]).__name__ != "PlaceholderOp"
-    ):
+    if len(weight_parents) != 1 or type(weight_parents[0]).__name__ != "PlaceholderOp":
         return None
     weight = weight_parents[0]
     m, n = out
@@ -596,9 +571,7 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
             added_inputs.append(node)
         quantized, a_scale, accumulator, result = workspace
 
-        def emit(
-            case, operands, suffix, destination_indices=(), prefix=prefix, op=op
-        ):
+        def emit(case, operands, suffix, destination_indices=(), prefix=prefix, op=op):
             name = f"{prefix}_{suffix}"
             node = CallExternalOp(
                 call_func_name=name,
@@ -665,9 +638,7 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
         # FP32 weight placeholder is pruned later once every linear is covered.
         graph.delete_node(op, parents(graph, op))
         transposed = graph.node_table.get(ps[1].name)
-        if transposed is not None and not getattr(
-            transposed, "_children", None
-        ):
+        if transposed is not None and not getattr(transposed, "_children", None):
             delete_detached(graph, transposed)
         report.setdefault("w8a8_linears", []).append(
             {
@@ -827,21 +798,15 @@ def generate_adapters(calls, output):
         symbol, case = call["symbol"], call["case"]
         graph_ranks = call["graph_ranks"]
         if call.get("void"):
-            params = ", ".join(
-                f"MemRef{r} *a{i}" for i, r in enumerate(graph_ranks)
-            )
+            params = ", ".join(f"MemRef{r} *a{i}" for i, r in enumerate(graph_ranks))
             lines.append(f"void _mlir_ciface_{symbol}({params}) {{")
             marker = f"[vit-op] {ordinal:03d}/{len(calls):03d} symbol={symbol} case={case['name']}"
             lines.append("#ifdef VIT_TRACE_TIMING")
             lines.append("  uint64_t vit_cycle_begin = nr_cycles();")
             lines.append("#endif")
-            lines.append(
-                "  VIT_TRACE_MARK(" + json.dumps(marker + " BEGIN\r\n") + ");"
-            )
+            lines.append("  VIT_TRACE_MARK(" + json.dumps(marker + " BEGIN\r\n") + ");")
             lines.append("#ifdef VIT_TRACE_TIMING")
-            lines.append(
-                '  nr_puts("[vit-op-cycle] ' + marker + ' BEGIN cycles=0x");'
-            )
+            lines.append('  nr_puts("[vit-op-cycle] ' + marker + ' BEGIN cycles=0x");')
             lines.append('  nr_hex64(vit_cycle_begin); nr_puts("\\r\\n");')
             lines.append("#endif")
             args = normalized_arguments(
@@ -871,13 +836,9 @@ def generate_adapters(calls, output):
             lines.append("#ifdef VIT_TRACE_TIMING")
             lines.append("  uint64_t vit_cycle_end = nr_cycles();")
             lines.append("#endif")
-            lines.append(
-                "  VIT_TRACE_MARK(" + json.dumps(marker + " END\r\n") + ");"
-            )
+            lines.append("  VIT_TRACE_MARK(" + json.dumps(marker + " END\r\n") + ");")
             lines.append("#ifdef VIT_TRACE_TIMING")
-            lines.append(
-                '  nr_puts("[vit-op-cycle] ' + marker + ' END cycles=0x");'
-            )
+            lines.append('  nr_puts("[vit-op-cycle] ' + marker + ' END cycles=0x");')
             lines.append('  nr_hex64(vit_cycle_end); nr_puts("\\r\\n");')
             lines.append("#endif")
             lines.append("}")
@@ -892,13 +853,9 @@ def generate_adapters(calls, output):
         lines.append("#ifdef VIT_TRACE_TIMING")
         lines.append("  uint64_t vit_cycle_begin = nr_cycles();")
         lines.append("#endif")
-        lines.append(
-            "  VIT_TRACE_MARK(" + json.dumps(marker + " BEGIN\r\n") + ");"
-        )
+        lines.append("  VIT_TRACE_MARK(" + json.dumps(marker + " BEGIN\r\n") + ");")
         lines.append("#ifdef VIT_TRACE_TIMING")
-        lines.append(
-            '  nr_puts("[vit-op-cycle] ' + marker + ' BEGIN cycles=0x");'
-        )
+        lines.append('  nr_puts("[vit-op-cycle] ' + marker + ' BEGIN cycles=0x");')
         lines.append('  nr_hex64(vit_cycle_begin); nr_puts("\\r\\n");')
         lines.append("#endif")
         lines.append(f"  init_{call['storage']}(a0);")
@@ -933,13 +890,9 @@ def generate_adapters(calls, output):
         lines.append("#ifdef VIT_TRACE_TIMING")
         lines.append("  uint64_t vit_cycle_end = nr_cycles();")
         lines.append("#endif")
-        lines.append(
-            "  VIT_TRACE_MARK(" + json.dumps(marker + " END\r\n") + ");"
-        )
+        lines.append("  VIT_TRACE_MARK(" + json.dumps(marker + " END\r\n") + ");")
         lines.append("#ifdef VIT_TRACE_TIMING")
-        lines.append(
-            '  nr_puts("[vit-op-cycle] ' + marker + ' END cycles=0x");'
-        )
+        lines.append('  nr_puts("[vit-op-cycle] ' + marker + ' END cycles=0x");')
         lines.append('  nr_hex64(vit_cycle_end); nr_puts("\\r\\n");')
         lines.append("#endif")
         lines.append("}")
@@ -1012,9 +965,7 @@ def main():
     rejected_kernels = []
     index = load_index(args.triton_build, rejected_kernels)
     if not index:
-        raise SystemExit(
-            "no frontend.json files found; build Triton cases first"
-        )
+        raise SystemExit("no frontend.json files found; build Triton cases first")
     # The raw graph is useful even when an environment lacks Buddy bindings.
     raw_path = args.import_dir / "raw-ops.json"
     raw = json.loads(raw_path.read_text()) if raw_path.is_file() else []
@@ -1070,9 +1021,7 @@ def main():
         # W8A8 surgery must precede the generic replacement loop: each original
         # Matmul is consumed by this pass and replaced by three void calls.
         if args.w8a8:
-            rewrite_linears_to_w8a8(
-                graph, index, calls, report, only=args.w8a8_only
-            )
+            rewrite_linears_to_w8a8(graph, index, calls, report, only=args.w8a8_only)
         for op in list(graph.body):
             # A previous pattern (currently scaled QK) may prune producers
             # while this stable snapshot is being visited.
@@ -1110,9 +1059,7 @@ def main():
                 14,
                 14,
             ]:
-                patch_inputs = [
-                    p for p in ps if len(shape_of(p) or []) in (1, 4)
-                ]
+                patch_inputs = [p for p in ps if len(shape_of(p) or []) in (1, 4)]
                 if len(patch_inputs) >= 3:
                     case_name = "patch_embed_196x768"
                     family = "patch_embed"
@@ -1149,8 +1096,7 @@ def main():
                     scaled_view = ps[0] if ps else None
                     qk = (
                         parents(graph, scaled_view)[0]
-                        if scaled_view is not None
-                        and parents(graph, scaled_view)
+                        if scaled_view is not None and parents(graph, scaled_view)
                         else None
                     )
                     qk_parents = parents(graph, qk) if qk is not None else []
@@ -1173,11 +1119,7 @@ def main():
                     family = "attention_pv"
                 if case_name and len(ps) >= 2:
                     operands = ps[:2]
-            if (
-                case_name is None
-                and "Softmax" in typ
-                and shape[-2:] == [197, 197]
-            ):
+            if case_name is None and "Softmax" in typ and shape[-2:] == [197, 197]:
                 case_name = "softmax_12x197x197"
                 family = "softmax"
                 operands = ps[:1]
@@ -1225,16 +1167,13 @@ def main():
                 and flat_shape(shape)
                 in ([196, 768], [197, 768], [197, 3072], [1, 768], [1, 1000])
             ):
-                bias = next(
-                    (p for p in ps if len(shape_of(p) or []) == 1), None
-                )
+                bias = next((p for p in ps if len(shape_of(p) or []) == 1), None)
                 matrix = next((p for p in ps if p is not bias), None)
                 if (
                     bias is not None
                     and matrix is not None
                     and shape_of(bias) == [flat_shape(shape)[1]]
-                    and shape_of(matrix)
-                    in (flat_shape(shape), [1] + flat_shape(shape))
+                    and shape_of(matrix) in (flat_shape(shape), [1] + flat_shape(shape))
                 ):
                     case_name = "bias_add_%dx%d" % tuple(flat_shape(shape))
                     family = "bias_add"
@@ -1275,12 +1214,9 @@ def main():
                         {
                             "node": op.name,
                             "shape": shape,
-                            "reason": "unsupported numerical graph node: "
-                            + typ,
+                            "reason": "unsupported numerical graph node: " + typ,
                             "parents": list(getattr(op, "_parents", []) or []),
-                            "children": list(
-                                getattr(op, "_children", []) or []
-                            ),
+                            "children": list(getattr(op, "_children", []) or []),
                         }
                     )
                 continue
@@ -1339,10 +1275,7 @@ def main():
             if family == "attention_qk":
                 dead = [p for p in ps if p.name in graph.node_table]
                 for candidate in dead:
-                    if (
-                        candidate is call
-                        or candidate.name not in graph.node_table
-                    ):
+                    if candidate is call or candidate.name not in graph.node_table:
                         continue
                     if (
                         getattr(candidate, "_children", None)
@@ -1390,8 +1323,7 @@ def main():
                     "graph_shapes": [shape_of(p) for p in operands],
                     "result_rank": len(shape),
                     "result_shape": shape,
-                    "storage": "vit_out_"
-                    + re.sub(r"[^A-Za-z0-9_]", "_", op.name),
+                    "storage": "vit_out_" + re.sub(r"[^A-Za-z0-9_]", "_", op.name),
                 }
             )
             report["replaced"].append(
@@ -1420,14 +1352,10 @@ def main():
                 for n in getattr(stale, "_children", [])
                 if n in graph.node_table
             ]
-            if children and all(
-                type(child).__name__ == "ViewOp" for child in children
-            ):
+            if children and all(type(child).__name__ == "ViewOp" for child in children):
                 for child in children:
                     delete_detached(graph, child)
-            if stale.name in graph.node_table and not getattr(
-                stale, "_children", None
-            ):
+            if stale.name in graph.node_table and not getattr(stale, "_children", None):
                 delete_detached(graph, stale)
         if args.w8a8:
             before_params = list(graph.params)
@@ -1440,9 +1368,7 @@ def main():
                     "index": i,
                     "name": p.name,
                     "shape": list(shape_of(p) or []),
-                    "dtype": str(
-                        (getattr(p, "tensor_meta", {}) or {}).get("dtype")
-                    ),
+                    "dtype": str((getattr(p, "tensor_meta", {}) or {}).get("dtype")),
                 }
                 for i, p in enumerate(graph.params)
             ]
@@ -1458,9 +1384,7 @@ def main():
                         "name": node.name,
                         "shape": list(shape_of(node) or []),
                         "dtype": str(
-                            (getattr(node, "tensor_meta", {}) or {}).get(
-                                "dtype"
-                            )
+                            (getattr(node, "tensor_meta", {}) or {}).get("dtype")
                         ),
                         "role": getattr(node, "workspace_role", "parameter"),
                     }
@@ -1473,14 +1397,10 @@ def main():
                 [node for node in graph.body if isinstance(node, PlaceholderOp)]
             )
         report["uncovered"] = [
-            entry
-            for entry in report["uncovered"]
-            if entry["node"] in graph.node_table
+            entry for entry in report["uncovered"] if entry["node"] in graph.node_table
         ]
         graph.op_groups = {
-            "vit": [
-                op for op in graph.body if not isinstance(op, PlaceholderOp)
-            ]
+            "vit": [op for op in graph.body if not isinstance(op, PlaceholderOp)]
         }
         graph.group_map_device = {"vit": DeviceType.CPU}
         driver = GraphDriver(graph)
@@ -1513,9 +1433,7 @@ def main():
         # graph, while W8A8 emits three void calls per linear before that walk.
         # Rebuild one canonical, ordinal-ordered list so the UART trace
         # summarizer can validate all 391 adapter boundaries.
-        previous = {
-            entry.get("symbol"): entry for entry in report.get("replaced", [])
-        }
+        previous = {entry.get("symbol"): entry for entry in report.get("replaced", [])}
         records = []
         for ordinal, call in enumerate(calls, 1):
             record = dict(previous.get(call["symbol"], {}))
@@ -1545,11 +1463,7 @@ def main():
         (args.output / "vit_triton_adapters.c").write_text(
             "/* no graph calls were replaced */\n"
         )
-    if (
-        args.w8a8
-        and args.w8a8_only is None
-        and report.get("w8a8_linear_count") != 73
-    ):
+    if args.w8a8 and args.w8a8_only is None and report.get("w8a8_linear_count") != 73:
         report["uncovered"].append(
             {
                 "node": "model_dense_coverage",

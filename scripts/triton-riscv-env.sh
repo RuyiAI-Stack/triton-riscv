@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+#
+# Environment script for triton-riscv development paths.
+#
+# Inputs: this repo layout; must be sourced, not executed.
+#
+# Outputs: TRITON_DIR, LLVM, buddy-opt, PYTHONPATH, and related variables for
+# compile and tests.
+#
+# When used: before rebuild-triton-riscv.sh, lit, or FPGA export from a
+# developer shell.
+#
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   echo "Source this script instead of executing it: source scripts/triton-riscv-env.sh" >&2

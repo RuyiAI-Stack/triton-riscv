@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Export one local Triton kernel and its typed ABI adapter.
+"""AOT export helper for BOSCAME FPGA model 'xlnet-base-cased'.
 
-Compiler commands and their file dependencies live in ../common.mk.
+Inputs: cases.py plus each case kernel.py; optional contract flags for
+triton-riscv.
+
+Outputs: TTIR/MLIR/objects consumed by Make and buddy-opt.
+
+When used: model batch export before building board images or running simcheck.
 """
 
 import argparse
@@ -17,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[2]
 
 sys.path.insert(0, str(ROOT))
-from cases import describe, inventory  # noqa: E402
+from cases import describe  # noqa: E402
+
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -29,9 +35,7 @@ def tool(name):
         return override
     found = shutil.which(name)
     if not found:
-        raise RuntimeError(
-            f"missing tool {name}; set {name.upper().replace('-', '_')}"
-        )
+        raise RuntimeError(f"missing tool {name}; set {name.upper().replace('-', '_')}")
     return found
 
 
@@ -81,9 +85,7 @@ def adapter_source(case):
     """The same typed-unranked descriptor/grid bridge as matmul128."""
     arguments = case["arguments"]
     shapes = argument_shapes(case)
-    params = ", ".join(
-        f"MemRef{arg['rank']} *a{i}" for i, arg in enumerate(arguments)
-    )
+    params = ", ".join(f"MemRef{arg['rank']} *a{i}" for i, arg in enumerate(arguments))
     lines = [
         "/* Generated from this case; offsets and lengths are in elements. */",
         '#include "support.h"',
@@ -181,9 +183,7 @@ def export_case(case, output):
     from contract_frontend import export_kernel
 
     module_name = "vit_operator_" + case["name"]
-    spec = importlib.util.spec_from_file_location(
-        module_name, case["kernel_source"]
-    )
+    spec = importlib.util.spec_from_file_location(module_name, case["kernel_source"])
     kernel_module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = kernel_module
     spec.loader.exec_module(kernel_module)
@@ -205,9 +205,7 @@ def export_case(case, output):
     )
     (output / "adapter.c").write_text(adapter_source(case))
     manifest = dict(case)
-    manifest["kernel_source"] = (
-        Path(case["kernel_source"]).relative_to(REPO).as_posix()
-    )
+    manifest["kernel_source"] = Path(case["kernel_source"]).relative_to(REPO).as_posix()
     manifest.update(
         frontend="triton-riscv export_contract -> verified standard MLIR",
         contract_manifest_sha256=digest(output / "contract-manifest.json"),
@@ -245,8 +243,9 @@ def summary_report_path(output_root, case_names, kind):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", required=True)
-    parser.add_argument("--output", type=Path, required=True,
-                        help="this case's output directory")
+    parser.add_argument(
+        "--output", type=Path, required=True, help="this case's output directory"
+    )
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     export_case(describe(args.case), args.output)

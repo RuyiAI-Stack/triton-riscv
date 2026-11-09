@@ -1,42 +1,17 @@
-# makefile -- the matmul_i8_196x768x768 experimental BOSCAME pipeline.
 #
-#     kernels.py (Triton)                      [make ttir]
-#       -> kernel.ttir
-#     external export_contract(ASTSource, target=boscame)
-#       -> kernel.frontend.mlir (neutral buffer contract)
-#       -> kernel.bufferized.mlir --bosc-ame-plan
-#       -> kernel.planned.mlir --bosc-ame-emit             [make boscame]
-#       -> kernel.boscame.mlir
-#     --lower-bosc-ame + --buddy-to-llvmir     [make llvm]
-#       -> kernel.llvm.mlir + kernel.ll
-#     llc -> AME fixed-register/fence post     [make asm]
-#       -> kernel.nr.s
-#     clang -c + ld.lld + audit + objcopy      [make bin]
-#       -> build/matmul_i8_196x768x768/matmul_i8_196x768x768.bin
+# Per-case Make rules for FPGA operator 'makefile' (model
+# 'matmul_i8_196x768x768').
 #
-# `make` runs all of it.  Every stage is a file rule, so re-running only
-# rebuilds what changed.
+# Inputs: this directory's kernel.py / launch.c plus parent common.mk compiler
+# stages.
 #
-# The problem is A[196,768] i8 @ B[768,768] i8^T + C[196,768] i32 with the
-# BOSCAME tile contract BM=32, BN=BK=128.  The AME register file caps one tile
-# dimension at 64, so the planner lowers BN=128 as two 64-column AME groups and
-# BK=128 as two 64-wide AME K blocks.  M=196 is not a multiple of BM=32, so the
-# launch grid is 7x6 and the last M program is the masked boundary tile: the
-# frontend uses the explicit launch grid to specialize full/tail programs,
-# retains the K/BK reduction loop, and accesses only the logical [196,768] rows.
+# Outputs: AOT artifacts and the board image for this shape only, not sibling
+# cases.
 #
-# The image runs on the NH/E6 platform (runtime/boscame/nh_e6), which owns the
-# boot, the dual-core release/wait, the E6 address-space setup (seven TOR PMP
-# regions, `satp = 0`) and the CSR 0xbc0 cache policy.  `link.ld` places the
-# DDR operand windows inside the PMP region the platform exports -- otherwise a
-# DMA that leaves that region hangs with no diagnostic.
+# When used: `make` inside the case directory or via the model top-level
+# makefile.
 #
-# Board-check and debug variants build into their own directories:
-#     make debug          progress marker per program + a 20-row on-board oracle
-#     make boardcheck     two full launches, signed-i8 extremes, INT32 wrap,
-#                         input/DDR guards and the full 196-row oracle
-# `make FENCES=1` restores the board `fence rw, rw` pairs around AME/RVV
-# memory instructions and the strict ELF fence audit.
+
 .DEFAULT_GOAL := all
 .DELETE_ON_ERROR :=
 

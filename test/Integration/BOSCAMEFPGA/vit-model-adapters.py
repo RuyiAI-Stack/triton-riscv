@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t
-"""ViT graph descriptors retain ranks/offsets and reject blocked kernels."""
+"""
+Python lit test 'vit-model-adapters.py' covering ViT model adapter wiring for
+FPGA tests.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t
 import importlib.util
 import json
 import shutil
@@ -157,9 +169,7 @@ def test_index(work):
         ("adapter.c", "adapter_sha256"),
     ):
         (directory / filename).write_text(
-            replace.adapter_source(case)
-            if filename == "adapter.c"
-            else "fixture\n"
+            replace.adapter_source(case) if filename == "adapter.c" else "fixture\n"
         )
         manifest[key] = replace.digest(directory / filename)
     (directory / "frontend.json").write_text(json.dumps(manifest))

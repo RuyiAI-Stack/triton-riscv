@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Versions cannot be laundered by annotation; accuracy is explicit and closed."""
+"""
+Python lit test 'versions-and-math.py' covering contract version field and math
+approximations.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import subprocess
 import sys
 
@@ -8,9 +20,7 @@ TOOL = sys.argv[1]
 
 
 def run(source, *passes):
-    return subprocess.run(
-        [TOOL, *passes], input=source, text=True, capture_output=True
-    )
+    return subprocess.run([TOOL, *passes], input=source, text=True, capture_output=True)
 
 
 def reject(source, rule):
@@ -40,9 +50,7 @@ for width in ("i32", "i64"):
 
 accuracy = '{exp = {domain = "all-f32", special_values = "ieee", max_abs_error = 1.0e-6 : f64, max_rel_error = 1.0e-5 : f64}}'
 source = (
-    "module {func.func @f() attributes {contract.math = "
-    + accuracy
-    + "} {return}}"
+    "module {func.func @f() attributes {contract.math = " + accuracy + "} {return}}"
 )
 result = run(source, "--kernel-contract-annotate", "--kernel-contract-verify")
 assert result.returncode == 0, result.stderr
@@ -68,9 +76,7 @@ plain = run(
 assert plain.returncode == 0 and "contract.math" not in plain.stdout
 reject('module attributes {test.hidden = {plan.route = "dma"}} {}', "V14")
 reject("module {func.func @f(%a: memref<4xf32, 3>) {return}}", "V3/V14")
-reject(
-    "module {module @nested attributes {contract.version = 9 : i64} {}}", "V1"
-)
+reject("module {module @nested attributes {contract.version = 9 : i64} {}}", "V1")
 for dialect in ("tt", "tts", "tptr", "bosc_ame", "llvm", "unknown"):
     result = run(
         f'module {{"{dialect}.hidden"() : () -> ()}}',

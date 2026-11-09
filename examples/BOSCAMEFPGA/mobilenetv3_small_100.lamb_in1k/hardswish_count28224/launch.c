@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'hardswish_count28224' (model
+// 'mobilenetv3_small_100.lamb_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -37,6 +51,12 @@ int launch(void) {
   int errors = 0;
   float maximum = 0;
   for (int i = 0; i < 28224; ++i)
-    compare(o[i], ({ float shifted = x[i] + 3.0f; float lower = shifted > 0.0f ? shifted : 0.0f; float clamped = lower < 6.0f ? lower : 6.0f; (x[i] * clamped) / 6.0f; }), 1e-5f, 1e-5f, &errors, &maximum);
+    compare(o[i], ({
+              float shifted = x[i] + 3.0f;
+              float lower = shifted > 0.0f ? shifted : 0.0f;
+              float clamped = lower < 6.0f ? lower : 6.0f;
+              (x[i] * clamped) / 6.0f;
+            }),
+            1e-5f, 1e-5f, &errors, &maximum);
   return print_check("hardswish_count28224", errors, maximum);
 }

@@ -1,3 +1,17 @@
+"""
+Triton-riscv backend compiler: shared conversions, optional BOSCAME AOT contract
+export, then buddy-opt / LLVM for RISC-V.
+
+Inputs: Triton TTIR modules and backend options (including AOT-only / contract
+flags).
+
+Outputs: object, assembly, or verified contract artifacts. No live device is
+required in AOT-only mode.
+
+When used: triton.compile and the FPGA export path once the shared plugin is
+installed.
+"""
+
 import functools
 import hashlib
 import os
@@ -77,15 +91,9 @@ def _get_sanitizer_type():
     # throws error if set to something other than "asan" or "tsan"
     sanitizer_type = os.getenv("TRITON_SHARED_SANITIZER_TYPE", "")
 
-    if (
-        sanitizer_type != ""
-        and sanitizer_type != "asan"
-        and sanitizer_type != "tsan"
-    ):
+    if sanitizer_type != "" and sanitizer_type != "asan" and sanitizer_type != "tsan":
         # throw error
-        raise Exception(
-            f"TRITON_SHARED_SANITIZER_TYPE {sanitizer_type} is invalid."
-        )
+        raise Exception(f"TRITON_SHARED_SANITIZER_TYPE {sanitizer_type} is invalid.")
 
     return sanitizer_type
 
@@ -100,9 +108,7 @@ def _ttir_to_ttsharedir(mod):
         _dump_ir_if_needed([src_path])
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
-        linalg_experimental_opts = (
-            "structured-ldst-mode=tensor-first-vector-cpu"
-        )
+        linalg_experimental_opts = "structured-ldst-mode=tensor-first-vector-cpu"
 
         subprocess_args = [
             triton_shared_opt_path,
@@ -165,9 +171,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
         ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
         ime_pre_llvm_path = os.path.join(tmpdir, "ime-pre-llvm.mlir")
         standard_pre_llvm_path = os.path.join(tmpdir, "pre-llvm.mlir")
-        pre_llvm_transformed_path = os.path.join(
-            tmpdir, "pre-llvm-transformed.mlir"
-        )
+        pre_llvm_transformed_path = os.path.join(tmpdir, "pre-llvm-transformed.mlir")
         atomic_cas_path = os.path.join(tmpdir, "ttshared-atomic-cas.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
@@ -328,9 +332,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             )
             pre_llvm_transform_passes = ["--expand-float8-conversions"]
             if "__triton_shared_atomic_cas_" in ttsharedir:
-                pre_llvm_transform_passes.insert(
-                    0, "--lower-atomic-cas-to-llvm"
-                )
+                pre_llvm_transform_passes.insert(0, "--lower-atomic-cas-to-llvm")
             subprocess.check_call(
                 [
                     _get_triton_shared_opt_path(),
@@ -425,9 +427,7 @@ def _remove_invalid_stack_frees(llir: str) -> str:
     """Remove frees whose pointer is derived from an LLVM stack allocation."""
     definitions = {
         match.group(1): match.group(2)
-        for match in re.finditer(
-            r"^\s*(%[-\w.]+)\s*=\s*(.+)$", llir, re.MULTILINE
-        )
+        for match in re.finditer(r"^\s*(%[-\w.]+)\s*=\s*(.+)$", llir, re.MULTILINE)
     }
     stack_values = {
         value
@@ -485,9 +485,7 @@ def _optimize_llir(llir: str, options=None):
     define = re.search(r"^define\b[^\n]*\((.*)\)[^{]*\{", llir, re.MULTILINE)
     if define:
         pointer_args = set(
-            re.findall(
-                r"(?:^|,\s*)ptr(?:\s+[^,%]+)*\s+(%[-\w.]+)", define.group(1)
-            )
+            re.findall(r"(?:^|,\s*)ptr(?:\s+[^,%]+)*\s+(%[-\w.]+)", define.group(1))
         )
         descriptor_fields = set()
         for match in re.finditer(
@@ -515,8 +513,7 @@ def _optimize_llir(llir: str, options=None):
                 descriptor_fields.add(match.group(1))
         if descriptor_fields:
             metadata_ids = [
-                int(value)
-                for value in re.findall(r"^!(\d+) =", llir, re.MULTILINE)
+                int(value) for value in re.findall(r"^!(\d+) =", llir, re.MULTILINE)
             ]
             invariant_id = max(metadata_ids, default=-1) + 1
             fields = "|".join(re.escape(value) for value in descriptor_fields)
@@ -592,9 +589,7 @@ def _ttsharedir_to_vectorir(ttsharedir: str):
 def _vectorir_to_llir(vectorir: str):
     with tempfile.TemporaryDirectory() as tmpdir:
         vector_path = os.path.join(tmpdir, "vector.mlir")
-        transformed_vector_path = os.path.join(
-            tmpdir, "vector-transformed.mlir"
-        )
+        transformed_vector_path = os.path.join(tmpdir, "vector-transformed.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
         Path(vector_path).write_text(vectorir)
@@ -723,17 +718,13 @@ def _llir_to_bin(llir: str, metadata, options=None):
         if sanitizer_type != "":
             # using a sanitizer
             # invoke pass to append sanitizer attributes
-            instrumented_src_path = os.path.join(
-                tmpdir, "kernel-instrumented.ll"
-            )
+            instrumented_src_path = os.path.join(tmpdir, "kernel-instrumented.ll")
 
             opt_path = _get_llvm_bin_path("opt")
             top_level_triton_path = os.path.dirname(triton.__file__)
             sanitizer_attributes_pass_path = str(
                 next(
-                    Path(top_level_triton_path).rglob(
-                        "libSanitizerAttributes.so"
-                    ),
+                    Path(top_level_triton_path).rglob("libSanitizerAttributes.so"),
                     None,
                 )
             )
@@ -886,9 +877,7 @@ class CPUBackend(BaseBackend):
 
     def __init__(self, target: GPUTarget) -> None:
         super().__init__(target)
-        self._aot = (
-            BoscameDelegate(target) if target.backend == "boscame" else None
-        )
+        self._aot = BoscameDelegate(target) if target.backend == "boscame" else None
 
     def export_contract(self, source, **kwargs):
         if self._aot is None:
@@ -900,11 +889,7 @@ class CPUBackend(BaseBackend):
             raise ValueError(AOT_ONLY)
         args = {"arch": self.target.arch}
         args.update(
-            {
-                k: opts[k]
-                for k in CPUOptions.__dataclass_fields__.keys()
-                if k in opts
-            }
+            {k: opts[k] for k in CPUOptions.__dataclass_fields__.keys() if k in opts}
         )
         args.setdefault("openmp_num_threads", _get_openmp_num_threads())
         if (
@@ -960,18 +945,14 @@ class CPUBackend(BaseBackend):
     def add_stages(self, stages, options, language):
         if self._aot is not None:
             raise ValueError(AOT_ONLY)
-        stages["ttir"] = lambda src, metadata: self.make_ttir(
-            src, metadata, options
-        )
+        stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
             _ttir_to_ttsharedir(src)
         )
         stages["llir"] = lambda src, metadata: _optimize_llir(
             _ttsharedir_to_llir(src, options), options
         )
-        stages["obj"] = lambda src, metadata: _llir_to_bin(
-            src, metadata, options
-        )
+        stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
     @functools.lru_cache  # noqa: B019 -- target is immutable for this backend instance.
     def hash(self):

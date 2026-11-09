@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Lower the captured graph plumbing around separately compiled ViT kernels.
+"""BOSCAME FPGA example 'lower_model.py' under model 'vit-base-patch16-224'.
 
-Numerical kernels use common.mk's contract -> plan -> verify -> emit
-pipeline. This script only lowers the saved Buddy graph, whose numerical
-operations have already become external kernel calls. It is not a kernel
-compiler, simulator, or numerical acceptance check.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -29,9 +30,7 @@ def run(command, log):
     )
     log.write_text(result.stdout)
     if result.returncode:
-        raise RuntimeError(
-            f"{command[0]} exited {result.returncode}; see {log}"
-        )
+        raise RuntimeError(f"{command[0]} exited {result.returncode}; see {log}")
 
 
 def main():

@@ -1,49 +1,60 @@
 #!/usr/bin/env python3
-"""Triton INT8 matmul inputs for the NH/E6 BOSCAME image.
+"""Python build driver for BOSCAME FPGA tree 'matmul_i8_196x768x768'.
 
-The makefile owns the full lowering pipeline::
+Inputs: case list, toolchain env from triton-riscv-env.sh, and optional subset
+filters.
 
-    external export_contract(ASTSource, target=boscame)
-      -> kernel.frontend.mlir --kernel-contract-verify
-      -> kernel.bufferized.mlir --bosc-ame-plan
-      -> kernel.planned.mlir --bosc-ame-emit
-      -> kernel.boscame.mlir --lower-bosc-ame --buddy-to-llvmir -> kernel.ll
+Outputs: invokes Make / export for the selected operators.
 
-This file owns the real Triton frontend export, the typed unranked ABI adapter
-and the generated C shape header used by the launcher.  The shape and tile
-constants are ``tl.constexpr`` globals in kernels.py; this file only derives
-the launch grid (:data:`SHAPE`) and emits their fixed ABI.
-
-Logical problem (``kernels.py``)::
-
-    A[i8, 196, 768] row-major @ B[i8, 768, 768] physical [N,K]
-      -> C[i32, 196, 768]
-
-The AME tile contract requested by this example is ``BM=32``, ``BN=BK=128``.
-The AME register file caps one tile dimension at 64, so the planner lowers
-``BN`` into two 64-column groups and ``BK`` into 64-wide K blocks.  M=196 is
-not a multiple of BM=32. The explicit launch-grid contract lets the frontend
-specialize full programs and the four-row boundary program. The kernel keeps
-its `tl.load`/`tl.store` masks and ``K/BK`` reduction loop; only the 196 logical
-rows of C are read or written.
-
-Build artifacts (``build/matmul_i8_196x768x768/``) are limited to IR and the
-final image:
-
-    kernel.ttir  kernel.frontend.mlir  kernel.bufferized.mlir
-    kernel.planned.mlir  kernel.boscame.mlir  kernel.llvm.mlir  kernel.ll
-    matmul_i8_196x768x768.bin
-
-Generated C, assembly, objects, the ELF and the audit report are intermediates.
-
-Run with the boscame Python 3.12 environment:
-
-    python build.py --ttir-only       # Triton frontend -> kernel.ttir
-    python build.py --adapter experimental-boscame
-    python build.py --config
-    python build.py --launch-grid
-    python build.py --check-abi path/to/kernel.ll
+When used: when a Python entry is more convenient than raw make in the model
+directory.
 """
+
+
+# Triton INT8 matmul inputs for the NH/E6 BOSCAME image.
+#
+# The makefile owns the full lowering pipeline::
+#
+#     external export_contract(ASTSource, target=boscame)
+#       -> kernel.frontend.mlir --kernel-contract-verify
+#       -> kernel.bufferized.mlir --bosc-ame-plan
+#       -> kernel.planned.mlir --bosc-ame-emit
+#       -> kernel.boscame.mlir --lower-bosc-ame --buddy-to-llvmir -> kernel.ll
+#
+# This file owns the real Triton frontend export, the typed unranked ABI adapter
+# and the generated C shape header used by the launcher.  The shape and tile
+# constants are ``tl.constexpr`` globals in kernels.py; this file only derives
+# the launch grid (:data:`SHAPE`) and emits their fixed ABI.
+#
+# Logical problem (``kernels.py``)::
+#
+#     A[i8, 196, 768] row-major @ B[i8, 768, 768] physical [N,K]
+#       -> C[i32, 196, 768]
+#
+# The AME tile contract requested by this example is ``BM=32``, ``BN=BK=128``.
+# The AME register file caps one tile dimension at 64, so the planner lowers
+# ``BN`` into two 64-column groups and ``BK`` into 64-wide K blocks.  M=196 is
+# not a multiple of BM=32. The explicit launch-grid contract lets the frontend
+# specialize full programs and the four-row boundary program. The kernel keeps
+# its `tl.load`/`tl.store` masks and ``K/BK`` reduction loop; only the 196 logical
+# rows of C are read or written.
+#
+# Build artifacts (``build/matmul_i8_196x768x768/``) are limited to IR and the
+# final image:
+#
+#     kernel.ttir  kernel.frontend.mlir  kernel.bufferized.mlir
+#     kernel.planned.mlir  kernel.boscame.mlir  kernel.llvm.mlir  kernel.ll
+#     matmul_i8_196x768x768.bin
+#
+# Generated C, assembly, objects, the ELF and the audit report are intermediates.
+#
+# Run with the boscame Python 3.12 environment:
+#
+#     python build.py --ttir-only       # Triton frontend -> kernel.ttir
+#     python build.py --adapter experimental-boscame
+#     python build.py --config
+#     python build.py --launch-grid
+#     python build.py --check-abi path/to/kernel.ll
 
 import argparse
 import os
@@ -53,9 +64,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[2]
-BUILD_ROOT = Path(
-    os.environ.get("MATMUL_I8_BUILD_ROOT", str(ROOT / "build"))
-).resolve()
+BUILD_ROOT = Path(os.environ.get("MATMUL_I8_BUILD_ROOT", str(ROOT / "build"))).resolve()
 OUT = BUILD_ROOT / "matmul_i8_196x768x768"
 sys.path.insert(0, str(ROOT))
 import kernels  # noqa: E402
@@ -232,13 +241,9 @@ def verify_abi(path):
     if not match:
         raise RuntimeError("Missing Triton entry definition: " + SYMBOL)
     actual = [part.strip().split()[0] for part in match.group(1).split(",")]
-    expected = [value for _name in SIGNATURE for value in ("i64", "ptr")] + [
-        "i32"
-    ] * 6
+    expected = [value for _name in SIGNATURE for value in ("i64", "ptr")] + ["i32"] * 6
     if actual != expected:
-        raise RuntimeError(
-            f"Triton ABI changed: expected {expected}, got {actual}"
-        )
+        raise RuntimeError(f"Triton ABI changed: expected {expected}, got {actual}")
     if re.search(
         r"\b(?:call|declare)\b[^\n]*@(?:malloc|aligned_alloc|realloc|free)\b",
         contents,
@@ -253,9 +258,7 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--output", type=Path, help="Build root (defaults to build/)"
-    )
+    parser.add_argument("--output", type=Path, help="Build root (defaults to build/)")
     parser.add_argument(
         "--export-contract",
         "--ttir-only",

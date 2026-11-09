@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Explicit reference order preserves aliasing without claiming snapshot safety."""
+"""
+Python lit test 'ordered-matmul.py' covering explicit matmul order vs aliasing /
+snapshots.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import re
 import subprocess
 import sys
@@ -11,15 +23,11 @@ ABI = "contract.abi = {args_disjoint = true}"
 
 
 def run(source, *passes):
-    return subprocess.run(
-        [TOOL, *passes], input=source, text=True, capture_output=True
-    )
+    return subprocess.run([TOOL, *passes], input=source, text=True, capture_output=True)
 
 
 def annotate(source):
-    result = run(
-        source, "--kernel-contract-annotate", "--kernel-contract-verify"
-    )
+    result = run(source, "--kernel-contract-annotate", "--kernel-contract-verify")
     assert result.returncode == 0, result.stderr
     repeated = run(
         result.stdout, "--kernel-contract-annotate", "--kernel-contract-verify"
@@ -39,9 +47,7 @@ def reject(source, diagnostic, verify=False):
 
 
 def operation(source, label):
-    return next(
-        line for line in source.splitlines() if f'test.id = "{label}"' in line
-    )
+    return next(line for line in source.splitlines() if f'test.id = "{label}"' in line)
 
 
 def graph(source):

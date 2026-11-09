@@ -1,11 +1,33 @@
-"""Standalone Triton source for pwconv_cin96_cout40_h14_w14."""
+"""
+Standalone Triton kernel for FPGA case 'pwconv_cin96_cout40_h14_w14' (model
+'mobilenetv3_small_100.lamb_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/mobilenetv3_small_100.lamb_in1k/pwconv_cin96_cout40_h14_w14
+before linking launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
-def pointwise_conv2d(X, Weight, Bias, Out, CIN: tl.constexpr, COUT: tl.constexpr,
-                     H: tl.constexpr, W: tl.constexpr):
+def pointwise_conv2d(
+    X,
+    Weight,
+    Bias,
+    Out,
+    CIN: tl.constexpr,
+    COUT: tl.constexpr,
+    H: tl.constexpr,
+    W: tl.constexpr,
+):
     """1x1 convolution. One program owns one output pixel."""
     oc = tl.program_id(0)
     spatial = tl.program_id(1)
@@ -16,14 +38,19 @@ def pointwise_conv2d(X, Weight, Bias, Out, CIN: tl.constexpr, COUT: tl.constexpr
         acc += x * wt
     tl.store(Out + oc * H * W + spatial, acc + tl.load(Bias + oc))
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'pointwise_conv2d',
- 'kernel': 'pointwise_conv2d',
- 'arguments': [{'name': 'X', 'rank': 4, 'dtype': 'f32'},
-               {'name': 'Weight', 'rank': 4, 'dtype': 'f32'},
-               {'name': 'Bias', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 4, 'dtype': 'f32'}],
- 'shape': [1, 96, 14, 14],
- 'constexprs': {'CIN': 96, 'COUT': 40, 'H': 14, 'W': 14},
- 'grid': [40, 196, 1],
- 'roles': []}
+KERNEL_CONFIG = {
+    "family": "pointwise_conv2d",
+    "kernel": "pointwise_conv2d",
+    "arguments": [
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Weight", "rank": 4, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 4, "dtype": "f32"},
+    ],
+    "shape": [1, 96, 14, 14],
+    "constexprs": {"CIN": 96, "COUT": 40, "H": 14, "W": 14},
+    "grid": [40, 196, 1],
+    "roles": [],
+}

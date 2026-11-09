@@ -1,3 +1,15 @@
+"""LLVM lit config for the default triton-shared / contract tests.
+
+Inputs: built triton-shared-opt, FileCheck, and Python from the CMake site cfg.
+
+Outputs: substitutions (%PATH%, %PYTHON, features) consumed by RUN lines under
+test/.
+
+When used: lit discovers this file as the suite root for non-FPGA conversion
+tests.
+"""
+
+
 # -*- Python -*-
 # ruff: noqa: F821
 
@@ -32,9 +44,7 @@ config.triton_shared_sanitizer_lib_dir = os.path.join(
 )
 
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
-config.substitutions.append(
-    ("%sanitizer_dir", config.triton_shared_sanitizer_dir)
-)
+config.substitutions.append(("%sanitizer_dir", config.triton_shared_sanitizer_dir))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%toolsdir", config.llvm_tools_dir))
 
@@ -94,9 +104,7 @@ if (
     )
     != 0
 ):
-    lit_config.fatal(
-        "frontend Python tests require NumPy in the configured Python"
-    )
+    lit_config.fatal("frontend Python tests require NumPy in the configured Python")
 
 # TODO: what's this?
 llvm_config.with_environment(

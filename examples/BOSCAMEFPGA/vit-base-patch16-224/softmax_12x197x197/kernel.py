@@ -1,13 +1,24 @@
-"""Standalone Triton source for softmax_12x197x197."""
+"""
+Standalone Triton kernel for FPGA case 'softmax_12x197x197' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/softmax_12x197x197 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
 
 
 @triton.jit
-def softmax(
-    X, Out, ROWS: tl.constexpr, LENGTH: tl.constexpr, BLOCK: tl.constexpr
-):
+def softmax(X, Out, ROWS: tl.constexpr, LENGTH: tl.constexpr, BLOCK: tl.constexpr):
     row = tl.program_id(0)
     column = tl.arange(0, BLOCK)
     valid = column < LENGTH

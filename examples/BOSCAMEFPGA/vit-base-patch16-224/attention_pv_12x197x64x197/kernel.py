@@ -1,4 +1,17 @@
-"""Standalone Triton source for attention_pv_12x197x64x197."""
+"""
+Standalone Triton kernel for FPGA case 'attention_pv_12x197x64x197' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/attention_pv_12x197x64x197 before
+linking launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -38,9 +51,7 @@ def attention_dot(
         )
         acc = tl.dot(a, b, acc, input_precision="ieee")
     valid = (rows[:, None] < M) & (cols[None, :] < N)
-    tl.store(
-        C + head * M * N + rows[:, None] * N + cols[None, :], acc * SCALE, valid
-    )
+    tl.store(C + head * M * N + rows[:, None] * N + cols[None, :], acc * SCALE, valid)
 
 
 # Fixed specialization; cases.py reads this literal without importing Triton.

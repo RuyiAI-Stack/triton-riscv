@@ -1,3 +1,15 @@
+//
+// FileCheck lit test input 'reference-matmul-i8-196x768x768.ttir' (reference
+// matmul i8 196x768x768 lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock reference matmul i8
+// 196x768x768 lowering and contract facts.
+//
 
 module {
   tt.func public @triton_matmul_i8_196x768x768(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) attributes {noinline = false} {

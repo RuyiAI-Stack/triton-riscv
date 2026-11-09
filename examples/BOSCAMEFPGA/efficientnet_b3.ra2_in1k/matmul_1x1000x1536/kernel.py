@@ -1,17 +1,37 @@
-"""Standalone Triton source for matmul_1x1000x1536."""
+"""
+Standalone Triton kernel for FPGA case 'matmul_1x1000x1536' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/matmul_1x1000x1536 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def matmul(
-    A, B, C,
-    M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-    BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
     INTEGER: tl.constexpr,
 ):
     """Signed INT8 C[M, N] += A[M, K] @ B[N, K]^T."""
-    tl.static_assert(INTEGER == True)
+    tl.static_assert(INTEGER)
     rows = tl.program_id(0) * BM + tl.arange(0, BM)
     cols = tl.program_id(1) * BN + tl.arange(0, BN)
     k = tl.arange(0, BK)

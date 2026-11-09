@@ -1,13 +1,14 @@
-//===- kernel.contract.mlir ---------------------------------------------===//
 //
-// 196x768x768 matmul 的跨项目契约 IR（design reference，buddy-opt 可解析）。
+// FileCheck lit test input 'kernel.contract.mlir' (design-reference matmul
+// contract IR).
 //
-// 图模型（v1 决策）：compute graph 以 region/scope 为单位组织：
-//   - scope 0 = function 根 scope；1/2 = if 的两个 arm；3/4 = 两个 K 循环体。
-//   - 每个 scope 各自声明完备性；函数级 complete 是聚合（所有 scope complete）。
-//   - 循环用 uniform-loop 摘要（trip_count/uniform/serial + carried slots），
-//     不要求枚举动态实例。
-//   - 逻辑值引用仍用整数 ID；契约 verifier 做双向/闭包检查。
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: Contract suite to lock design-reference matmul contract IR.
+//
 
 module attributes {
   contract.version = 1 : i32,

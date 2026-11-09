@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'pwconv_cin8_cout16_h1_w1' (model
+// 'mobilenetv3_small_100.lamb_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -17,7 +31,8 @@ static void compare(float actual, float expected, float atol, float rtol,
     *maximum = d;
 }
 
-extern void _mlir_ciface_kernel_pwconv_cin8_cout16_h1_w1(MemRef4 *, MemRef4 *, MemRef1 *, MemRef4 *);
+extern void _mlir_ciface_kernel_pwconv_cin8_cout16_h1_w1(MemRef4 *, MemRef4 *,
+                                                         MemRef1 *, MemRef4 *);
 int launch(void) {
   size_t off = 0;
   float *x = (float *)workspace(off);

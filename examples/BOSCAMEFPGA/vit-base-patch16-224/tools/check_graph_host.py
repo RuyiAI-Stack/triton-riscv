@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Run a Buddy ViT subgraph with the Triton host bridge and compare logits.
+"""
+BOSCAME FPGA example 'check_graph_host.py' under model 'vit-base-patch16-224'.
 
-The replacement stage writes the exact Buddy subgraph used by the model entry.
-This check JIT lowers that saved graph, passes the captured checkpoint tensors
-in Buddy's argument order, and compares its logits with the same PyTorch
-wrapper and FP32 pixel tensor.  It is a host numerical check, not an FPGA run.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -54,9 +56,7 @@ def subgraph_argument_shapes(source, entry):
             raise RuntimeError(
                 f"@{entry} argument {index} has unsupported type tensor<{tensor_type}>"
             )
-        shapes.append(
-            tuple(int(dim) for dim in dimensions.group(1).split("x") if dim)
-        )
+        shapes.append(tuple(int(dim) for dim in dimensions.group(1).split("x") if dim))
     return shapes
 
 
@@ -118,9 +118,7 @@ def main():
         and report.get("status") != "PASS"
         and not args.allow_partial
     ):
-        raise SystemExit(
-            f"replacement status is {report.get('status')}, expected PASS"
-        )
+        raise SystemExit(f"replacement status is {report.get('status')}, expected PASS")
 
     # libomp and MLIR's runner libraries must be present before the JIT engine
     # starts.  The supplied Triton bridge exports all graph external calls.
@@ -160,17 +158,13 @@ def main():
         for t in compiler.imported_params[graph]
     ]
     if len(parameters) != 200:
-        raise RuntimeError(
-            f"expected 200 parameter tensors, got {len(parameters)}"
-        )
+        raise RuntimeError(f"expected 200 parameter tensors, got {len(parameters)}")
     if sum(p.size for p in parameters) != 86_567_656:
         raise RuntimeError("captured parameter count disagrees with ViT-B/16")
     if args.import_dir is not None:
         records = json.loads((args.import_dir / "params.json").read_text())
         if len(records) != len(parameters):
-            raise RuntimeError(
-                "captured parameter order has changed since import"
-            )
+            raise RuntimeError("captured parameter order has changed since import")
         for index, (record, value) in enumerate(zip(records, parameters)):
             digest = hashlib.sha256(value.tobytes()).hexdigest()
             if (
@@ -199,9 +193,7 @@ def main():
     # high-level module with the saved Triton-call graph in the same context.
     graph.lower_to_top_level_ir()
     with ir.Location.unknown(graph._ctx):
-        graph._imported_module = ir.Module.parse(
-            subgraph_source, context=graph._ctx
-        )
+        graph._imported_module = ir.Module.parse(subgraph_source, context=graph._ctx)
     started = time.time()
     graph.lower_to_llvm_ir(enable_openmp=False)
     lowering_seconds = round(time.time() - started, 3)
@@ -242,9 +234,7 @@ def main():
         "subgraph": str(subgraph),
         "subgraph_sha256": hashlib.sha256(subgraph.read_bytes()).hexdigest(),
         "entry": entry,
-        "replacement_status": (
-            report["status"] if args.subgraph is None else None
-        ),
+        "replacement_status": (report["status"] if args.subgraph is None else None),
         "external_calls": (
             report["graphs"]["forward"]["external_calls"]
             if args.subgraph is None

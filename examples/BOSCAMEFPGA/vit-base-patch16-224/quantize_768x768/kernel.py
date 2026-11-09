@@ -1,4 +1,17 @@
-"""Standalone Triton source for quantize_768x768."""
+"""
+Standalone Triton kernel for FPGA case 'quantize_768x768' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/quantize_768x768 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -17,9 +30,7 @@ def quantize(X, Q, Scale, WIDTH: tl.constexpr, BLOCK: tl.constexpr):
     base = value.to(tl.int32)
     fraction = value - base.to(tl.float32)
     # Adding 0.5 in f32 first can round nextafter(0.5, 0) up to 1.0.
-    adjustment = tl.where(
-        tl.abs(fraction) >= 0.5, tl.where(value >= 0, 1, -1), 0
-    )
+    adjustment = tl.where(tl.abs(fraction) >= 0.5, tl.where(value >= 0, 1, -1), 0)
     integer = (base + adjustment).to(tl.int8)
     tl.store(Scale + row, scale)
     tl.store(Q + row * WIDTH + channel, integer, valid)

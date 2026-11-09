@@ -1,7 +1,21 @@
-"""Standalone Triton source for silu_1x24x144x144."""
+"""
+Standalone Triton kernel for FPGA case 'silu_1x24x144x144' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/silu_1x24x144x144 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
+
 
 @triton.jit
 def silu(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):

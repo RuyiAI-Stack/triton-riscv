@@ -1,8 +1,16 @@
-"""Standalone Triton source for conv2d_1x1_6x144_k1_s1 (i8 x i8 -> i32).
+"""
+Standalone Triton kernel for FPGA case 'conv2d_1x1_6x144_k1_s1' (model
+'efficientnet_b3.ra2_in1k').
 
-1x1 NCHW conv is lowered as a packed GEMM:
-  X[H*W, C] @ Weight[OC, C]^T -> Out[H*W, OC]  (i8 x i8 -> i32)
-Bias is applied in launch.c (contract rejects bias broadcast into the tile).
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/conv2d_1x1_6x144_k1_s1 before
+linking launch.c.
 """
 
 import triton
@@ -24,7 +32,7 @@ def conv2d_nchw(
     INTEGER: tl.constexpr,
 ):
     """Signed INT8 Out[M, N] = X[M, K] @ Weight[N, K]^T (Bias added in launch)."""
-    tl.static_assert(INTEGER == True)
+    tl.static_assert(INTEGER)
     rows = tl.program_id(0) * BM + tl.arange(0, BM)
     cols = tl.program_id(1) * BN + tl.arange(0, BN)
     k = tl.arange(0, BK)

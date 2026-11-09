@@ -5,6 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Mask and predicate analysis for Triton shared conversions.
+//
+// Inputs: tt.load/store with masks, scf.if, and arith comparisons on induction
+// vars.
+//
+// Outputs: recovered bounds/predicates so structured memref lowering stays
+// in-bounds.
+//
+// When used: TritonToUnstructured and StructuredToMemref before emitting
+// DMA-like loads.
+//
+
 #include "triton-shared/Analysis/MaskAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -507,8 +520,8 @@ LogicalResult MaskState::parseCmp(arith::CmpIOp cmpOp, const Location loc,
         // drop it again.  Leaving it in the IR would keep a use of the compared
         // value alive after the mask itself has been consumed as metadata, and
         // an erased metadata producer would then strand an unrealized cast.
-        collapsedMask = tensor::CollapseShapeOp::create(
-            builder, loc, flatType, cmpOp, reassociation);
+        collapsedMask = tensor::CollapseShapeOp::create(builder, loc, flatType,
+                                                        cmpOp, reassociation);
         unstructuredMask = collapsedMask;
       }
       masks[cmpOpDim] = unstructuredMask;

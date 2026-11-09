@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'se_mul_c16_h56_w56' (model
+// 'mobilenetv3_small_100.lamb_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -17,7 +31,8 @@ static void compare(float actual, float expected, float atol, float rtol,
     *maximum = d;
 }
 
-extern void _mlir_ciface_kernel_se_mul_c16_h56_w56(MemRef1 *, MemRef1 *, MemRef1 *);
+extern void _mlir_ciface_kernel_se_mul_c16_h56_w56(MemRef1 *, MemRef1 *,
+                                                   MemRef1 *);
 int launch(void) {
   size_t off = 0;
   float *x = (float *)workspace(off);
@@ -44,6 +59,7 @@ int launch(void) {
   float maximum = 0;
   for (int c = 0; c < 16; ++c)
     for (int s = 0; s < 3136; ++s)
-      compare(o[c * 3136 + s], x[c * 3136 + s] * scale[c], 1e-6f, 1e-6f, &errors, &maximum);
+      compare(o[c * 3136 + s], x[c * 3136 + s] * scale[c], 1e-6f, 1e-6f,
+              &errors, &maximum);
   return print_check("se_mul_c16_h56_w56", errors, maximum);
 }

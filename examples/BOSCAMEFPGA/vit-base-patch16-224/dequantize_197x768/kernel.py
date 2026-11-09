@@ -1,4 +1,17 @@
-"""Standalone Triton source for dequantize_197x768."""
+"""
+Standalone Triton kernel for FPGA case 'dequantize_197x768' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/dequantize_197x768 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl

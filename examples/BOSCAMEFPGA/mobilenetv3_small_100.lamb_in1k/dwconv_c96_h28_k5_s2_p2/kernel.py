@@ -1,13 +1,40 @@
-"""Standalone Triton source for dwconv_c96_h28_k5_s2_p2."""
+"""
+Standalone Triton kernel for FPGA case 'dwconv_c96_h28_k5_s2_p2' (model
+'mobilenetv3_small_100.lamb_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/mobilenetv3_small_100.lamb_in1k/dwconv_c96_h28_k5_s2_p2
+before linking launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
-def depthwise_conv2d(X, Weight, Bias, Out, C: tl.constexpr, H: tl.constexpr,
-                     W: tl.constexpr, KH: tl.constexpr, KW: tl.constexpr,
-                     SH: tl.constexpr, SW: tl.constexpr, PH: tl.constexpr,
-                     PW: tl.constexpr, OH: tl.constexpr, OW: tl.constexpr):
+def depthwise_conv2d(
+    X,
+    Weight,
+    Bias,
+    Out,
+    C: tl.constexpr,
+    H: tl.constexpr,
+    W: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
+):
     """One program owns one output pixel so every load stays scalar."""
     ch = tl.program_id(0)
     oh = tl.program_id(1)
@@ -23,24 +50,31 @@ def depthwise_conv2d(X, Weight, Bias, Out, C: tl.constexpr, H: tl.constexpr,
                 acc += x * wt
     tl.store(Out + (ch * OH + oh) * OW + ow, acc + tl.load(Bias + ch))
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'depthwise_conv2d',
- 'kernel': 'depthwise_conv2d',
- 'arguments': [{'name': 'X', 'rank': 4, 'dtype': 'f32'},
-               {'name': 'Weight', 'rank': 4, 'dtype': 'f32'},
-               {'name': 'Bias', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 4, 'dtype': 'f32'}],
- 'shape': [1, 96, 28, 28],
- 'constexprs': {'C': 96,
-                'H': 28,
-                'W': 28,
-                'KH': 5,
-                'KW': 5,
-                'SH': 2,
-                'SW': 2,
-                'PH': 2,
-                'PW': 2,
-                'OH': 14,
-                'OW': 14},
- 'grid': [96, 14, 14],
- 'roles': []}
+KERNEL_CONFIG = {
+    "family": "depthwise_conv2d",
+    "kernel": "depthwise_conv2d",
+    "arguments": [
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Weight", "rank": 4, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 4, "dtype": "f32"},
+    ],
+    "shape": [1, 96, 28, 28],
+    "constexprs": {
+        "C": 96,
+        "H": 28,
+        "W": 28,
+        "KH": 5,
+        "KW": 5,
+        "SH": 2,
+        "SW": 2,
+        "PH": 2,
+        "PW": 2,
+        "OH": 14,
+        "OW": 14,
+    },
+    "grid": [96, 14, 14],
+    "roles": [],
+}

@@ -1,4 +1,17 @@
-"""Standalone Triton source for attention_pv_12x128x64x128."""
+"""
+Standalone Triton kernel for FPGA case 'attention_pv_12x128x64x128' (model
+'electra-base-discriminator').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/electra-base-discriminator/attention_pv_12x128x64x128
+before linking launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -38,29 +51,35 @@ def attention_dot(
         )
         acc = tl.dot(a, b, acc, input_precision="ieee")
     valid = (rows[:, None] < M) & (cols[None, :] < N)
-    tl.store(
-        C + head * M * N + rows[:, None] * N + cols[None, :], acc * SCALE, valid
-    )
+    tl.store(C + head * M * N + rows[:, None] * N + cols[None, :], acc * SCALE, valid)
+
 
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'attention_pv',
- 'kernel': 'attention_dot',
- 'arguments': [{'name': 'A', 'rank': 3, 'dtype': 'f32'},
-               {'name': 'B', 'rank': 3, 'dtype': 'f32'},
-               {'name': 'C', 'rank': 3, 'dtype': 'f32'}],
- 'shape': [12, 128, 64, 128],
- 'constexprs': {'HEADS': 12,
-                'M': 128,
-                'N': 64,
-                'K': 128,
-                'BM': 16,
-                'BN': 16,
-                'BK': 64,
-                'SCALE': 1.0},
- 'grid': [8, 4, 12],
- 'roles': [],
- 'metadata': {'dtype': 'f32',
-              'model': 'google/electra-base-discriminator',
-              'seq_len': 128,
-              'note': 'Unique encoder shapes at seq_len 128. Twelve layers share these '
-                      'bins.'}}
+KERNEL_CONFIG = {
+    "family": "attention_pv",
+    "kernel": "attention_dot",
+    "arguments": [
+        {"name": "A", "rank": 3, "dtype": "f32"},
+        {"name": "B", "rank": 3, "dtype": "f32"},
+        {"name": "C", "rank": 3, "dtype": "f32"},
+    ],
+    "shape": [12, 128, 64, 128],
+    "constexprs": {
+        "HEADS": 12,
+        "M": 128,
+        "N": 64,
+        "K": 128,
+        "BM": 16,
+        "BN": 16,
+        "BK": 64,
+        "SCALE": 1.0,
+    },
+    "grid": [8, 4, 12],
+    "roles": [],
+    "metadata": {
+        "dtype": "f32",
+        "model": "google/electra-base-discriminator",
+        "seq_len": 128,
+        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+    },
+}

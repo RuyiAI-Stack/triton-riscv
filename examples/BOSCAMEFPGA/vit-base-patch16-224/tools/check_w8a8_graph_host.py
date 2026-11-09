@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Validate the W8A8 Buddy graph on the host.
+"""
+BOSCAME FPGA example 'check_w8a8_graph_host.py' under model
+'vit-base-patch16-224'.
 
-The replacement report is the ABI authority.  This checker obtains the
-captured FP32 parameters in importer order, derives each added INT8 weight and
-scale from the report's ``w8a8_linears`` records, allocates every caller-owned
-workspace from ``input_layout``, and checks that this sequence exactly matches
-the lowered ``@vit`` tensor signature before invoking the host engine.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -27,9 +29,7 @@ from boscame_paths import llvm_lib_dir  # noqa: E402
 
 
 def parse_arguments(source: str, entry: str):
-    match = re.search(
-        rf"func\.func\s+@{re.escape(entry)}\((.*?)\)\s*->", source, re.S
-    )
+    match = re.search(rf"func\.func\s+@{re.escape(entry)}\((.*?)\)\s*->", source, re.S)
     if match is None:
         raise RuntimeError(f"entry @{entry} is missing from saved subgraph")
     values = re.findall(r"%arg(\d+): tensor<([^>]+)>", match.group(1))
@@ -40,9 +40,7 @@ def parse_arguments(source: str, entry: str):
         m = re.fullmatch(r"((?:\d+x)*)(f32|i8|i32)", typ)
         if m is None:
             raise RuntimeError(f"unsupported tensor type tensor<{typ}>")
-        result.append(
-            (tuple(int(x) for x in m.group(1).split("x") if x), m.group(2))
-        )
+        result.append((tuple(int(x) for x in m.group(1).split("x") if x), m.group(2)))
     return result
 
 
@@ -66,9 +64,7 @@ def quantize_rows(value: np.ndarray):
     saturated = np.clip(ratio, np.float32(-127), np.float32(127))
     base = saturated.astype(np.int32)
     fraction = saturated - base.astype(np.float32)
-    adjustment = np.where(
-        np.abs(fraction) >= 0.5, np.where(saturated >= 0, 1, -1), 0
-    )
+    adjustment = np.where(np.abs(fraction) >= 0.5, np.where(saturated >= 0, 1, -1), 0)
     quantized = (base + adjustment).astype(np.int8).reshape(value.shape)
     return quantized, scale
 
@@ -114,9 +110,7 @@ def main():
         require(path)
     report = json.loads(report_path.read_text())
     if report.get("status") != "PASS" or report.get("w8a8_linear_count") != 73:
-        raise RuntimeError(
-            "replacement report is not a complete 73-linear W8A8 graph"
-        )
+        raise RuntimeError("replacement report is not a complete 73-linear W8A8 graph")
     source = subgraph.read_text()
     entry_match = re.search(r"func\.func\s+@([A-Za-z0-9_]+)\(", source)
     if entry_match is None:
@@ -169,9 +163,7 @@ def main():
     for linear in report["w8a8_linears"]:
         value = original.get(linear["weight_param"])
         if value is None:
-            raise RuntimeError(
-                f"missing source parameter {linear['weight_param']}"
-            )
+            raise RuntimeError(f"missing source parameter {linear['weight_param']}")
         quantized, scale = quantize_rows(value)
         generated[linear["weight_param_name"]] = quantized
         generated[linear["scale_param_name"]] = scale
@@ -237,9 +229,7 @@ def main():
         if name in index_by_name:
             continue
         expected = (tuple(record["shape"]), report_dtype(record["dtype"]))
-        candidates = [
-            index for index in unassigned if signature[index] == expected
-        ]
+        candidates = [index for index in unassigned if signature[index] == expected]
         if len(candidates) != 1:
             raise RuntimeError(
                 f"cannot uniquely map unused placeholder {name}: {expected}, candidates={candidates}"
@@ -251,8 +241,7 @@ def main():
             "saved report and subgraph do not describe the same placeholder ABI"
         )
     value_by_name = {
-        record["name"]: value
-        for record, value in zip(input_layout, workspace_values)
+        record["name"]: value for record, value in zip(input_layout, workspace_values)
     }
     value_by_name.update(
         {

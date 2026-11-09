@@ -1,5 +1,16 @@
-# Link one case's kernel.o into an NH/E6 image. Does not compile the kernel.
-# Usage, from a case directory: make -f ../board.mk bin
+#
+# Shared Make rules for BOSCAME FPGA model 'gte-small'.
+#
+# Inputs: case KERNEL_CONFIG, Triton kernel.py, buddy-opt, and the RISC-V GNU
+# toolchain plus board flags.
+#
+# Outputs: TTIR/MLIR dumps, objects, ELF, and .bin images under the model build
+# directory.
+#
+# When used: included by each case makefile and the model top-level makefile for
+# AOT and board builds.
+#
+
 CASE := $(notdir $(CURDIR))
 MODEL := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT := $(abspath $(MODEL)/../../..)

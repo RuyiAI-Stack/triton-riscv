@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Record Makefile results and collect suite evidence; never invoke compilers."""
+"""Result rollup for BOSCAME FPGA model 'vit-base-patch16-224'.
+
+Inputs: per-case check logs, UART captures, or simcheck JSON produced by the
+Make flow.
+
+Outputs: a readable summary of pass/fail and error stats across the model.
+
+When used: after a batch host-check or board run.
+"""
 
 import argparse
 import json
@@ -33,8 +41,18 @@ def success(name, output, stage):
     manifest = json.loads((directory / "frontend.json").read_text())
     if manifest["kernel_module_sha256"] != digest(case["kernel_source"]):
         raise ValueError("frontend manifest does not match current kernel.py")
-    for key in ("name", "family", "kernel", "signature", "constexprs", "grid",
-                "shape", "arguments", "accumulation", "math_accuracy"):
+    for key in (
+        "name",
+        "family",
+        "kernel",
+        "signature",
+        "constexprs",
+        "grid",
+        "shape",
+        "arguments",
+        "accumulation",
+        "math_accuracy",
+    ):
         if manifest.get(key) != case.get(key):
             raise ValueError("frontend manifest does not match current " + key)
     artifacts = {}
@@ -93,10 +111,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("inputs", "success", "failure", "collect"))
     parser.add_argument("--case", action="append", dest="cases")
-    parser.add_argument("--all", action="store_true", help="write the complete-suite report")
+    parser.add_argument(
+        "--all", action="store_true", help="write the complete-suite report"
+    )
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--stage", choices=(*STAGE_FILES, "bufferized", "planned",
-                                           "llvm-ir", "encode", "restrict", "object"))
+    parser.add_argument(
+        "--stage",
+        choices=(
+            *STAGE_FILES,
+            "bufferized",
+            "planned",
+            "llvm-ir",
+            "encode",
+            "restrict",
+            "object",
+        ),
+    )
     parser.add_argument("--report", type=Path)
     parser.add_argument("--inputs", type=Path)
     parser.add_argument("--value", action="append", default=[])
@@ -115,7 +145,8 @@ def main():
         names = args.cases or [case["name"] for case in inventory()]
         report = collect(args.output, names, args.stage)
         destination = args.report or summary_report_path(
-            args.output, None if args.all else args.cases, "build")
+            args.output, None if args.all else args.cases, "build"
+        )
     else:
         if not args.cases or len(args.cases) != 1:
             parser.error("per-case results require exactly one --case")
@@ -131,8 +162,11 @@ def main():
                 reason = args.log.read_text().strip() or reason
             record = failure(name, args.output, args.stage, reason)
         write_json(args.output / name / "build-result.json", record)
-        report = {"schema": 1, "status": "PASS" if record["status"] == "PASS" else "PARTIAL",
-                  "cases": [record]}
+        report = {
+            "schema": 1,
+            "status": "PASS" if record["status"] == "PASS" else "PARTIAL",
+            "cases": [record],
+        }
         destination = args.report or summary_report_path(args.output, [name], "build")
         print(f"{record['status']}: {name} ({record['stage']})", flush=True)
     write_json(destination, report)

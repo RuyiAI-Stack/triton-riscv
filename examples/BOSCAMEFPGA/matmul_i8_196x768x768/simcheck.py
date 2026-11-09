@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
-"""Bit-exact DDR-level check of the generated experimental BOSCAME kernel.
+"""Numeric simcheck driver for BOSCAME FPGA model 'matmul_i8_196x768x768'.
 
-This script runs the experimental BOSCAME pass output: every program of the
-launch grid is executed by `tools/boscame_buffer_sim.py` (the functional NH/E6
-model -- real DMA contract, two 128 KiB SPM banks, AME tile semantics) and the
-resulting C is compared against an independent NumPy INT32 oracle.  SPM
-persists between programs, and guards/access logs check excluded DDR.
+Inputs: exported kernels and CPU oracles / reference tensors for each registered
+case.
 
-The operands are the logical [196,768] / [768,768] buffers the launcher fills;
-the last M program is the masked boundary tile (196 is not a multiple of 32).
+Outputs: pass/fail and max-error per operator without needing the FPGA board.
 
-    python3 simcheck.py [--module PATH] [--programs N]
-
-The oracle and launch read the shape and grid from ``build.py``; this keeps the
-simulator aligned with ``kernels.py``.  Requires numpy.
+When used: after AOT export, before or instead of a board run, from the model
+directory.
 """
+
+
+# Bit-exact DDR-level check of the generated experimental BOSCAME kernel.
+#
+# This script runs the experimental BOSCAME pass output: every program of the
+# launch grid is executed by `tools/boscame_buffer_sim.py` (the functional NH/E6
+# model -- real DMA contract, two 128 KiB SPM banks, AME tile semantics) and the
+# resulting C is compared against an independent NumPy INT32 oracle.  SPM
+# persists between programs, and guards/access logs check excluded DDR.
+#
+# The operands are the logical [196,768] / [768,768] buffers the launcher fills;
+# the last M program is the masked boundary tile (196 is not a multiple of 32).
+#
+#     python3 simcheck.py [--module PATH] [--programs N]
+#
+# The oracle and launch read the shape and grid from ``build.py``; this keeps the
+# simulator aligned with ``kernels.py``.  Requires numpy.
 
 import argparse
 import hashlib
@@ -64,25 +75,16 @@ def extreme_operands():
 
 def check_accesses(accesses, x, y):
     """Every DDR access stays inside this program's authorized rectangle."""
-    m, n, k, bm, bn = (
-        example.SHAPE[name] for name in ("M", "N", "K", "BM", "BN")
-    )
+    m, n, k, bm, bn = (example.SHAPE[name] for name in ("M", "N", "K", "BM", "BN"))
     rows = min(bm, m - x * bm)
     counts = {}
     for name, start, end, kind in accesses:
         pitch = k if name != "%arg2" else n * 4
         row = start // pitch
-        lo, hi = (
-            (y * bn, (y + 1) * bn)
-            if name == "%arg1"
-            else (x * bm, x * bm + rows)
-        )
-        left, right = (
-            (y * bn * 4, (y + 1) * bn * 4) if name == "%arg2" else (0, k)
-        )
+        lo, hi = (y * bn, (y + 1) * bn) if name == "%arg1" else (x * bm, x * bm + rows)
+        left, right = (y * bn * 4, (y + 1) * bn * 4) if name == "%arg2" else (0, k)
         assert (
-            lo <= row < hi
-            and row * pitch + left <= start < end <= row * pitch + right
+            lo <= row < hi and row * pitch + left <= start < end <= row * pitch + right
         )
         assert name == "%arg2" or kind == "read"
         counts[name, kind] = counts.get((name, kind), 0) + end - start
@@ -119,12 +121,10 @@ def check_case(machine, data, order, limit, label):
         check_accesses(machine.accesses[first:], x, y)
 
     # The oracle accumulates in INT64, then independently applies INT32 wrap.
-    want = (
-        c0.astype(np.int64) + a.astype(np.int64) @ b.astype(np.int64).T
-    ).astype("<i4")
-    got = np.frombuffer(buffers["%arg2"], dtype="<i4", count=c0.size).reshape(
-        c0.shape
+    want = (c0.astype(np.int64) + a.astype(np.int64) @ b.astype(np.int64).T).astype(
+        "<i4"
     )
+    got = np.frombuffer(buffers["%arg2"], dtype="<i4", count=c0.size).reshape(c0.shape)
     max_abs = int(np.abs(got.astype(np.int64) - want.astype(np.int64)).max())
     assert buffers["%arg0"] == a.tobytes() + guard
     assert buffers["%arg1"] == b.tobytes() + guard

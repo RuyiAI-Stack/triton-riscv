@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'launch.c' (model
+// 'layernorm_197x768').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 /* NH/E6 execution and independent padded-TTIR oracle for LayerNorm. */
 #include <stddef.h>
 #include <stdint.h>

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Prepare identical ViT inputs and compare FP32/emitted-W8A8 logits.
+"""
+BOSCAME FPGA example 'compare_accuracy.py' under model 'vit-base-patch16-224'.
 
-No candidate arithmetic is implemented here. Candidate logits must come from
-the complete emitted model and carry its execution evidence. Missing model,
-dataset or execution evidence produces SKIP, never an accuracy PASS.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -55,17 +58,15 @@ def prepare(args):
     for record in records:
         path = args.samples.parent / record["path"]
         with Image.open(path) as image:
-            pixels = processor(
-                images=image.convert("RGB"), return_tensors="np"
-            )["pixel_values"]
+            pixels = processor(images=image.convert("RGB"), return_tensors="np")[
+                "pixel_values"
+            ]
         if pixels.shape != (1, 3, 224, 224):
             raise ValueError("processor did not produce the fixed model shape")
         images.append(pixels[0].astype(np.float32))
         label = record.get("label", -1)
         if not isinstance(label, int) or not -1 <= label < 1000:
-            raise ValueError(
-                "labels must be zero-based class indices or absent"
-            )
+            raise ValueError("labels must be zero-based class indices or absent")
         labels.append(label)
         source_hashes.append(digest_file(path))
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -171,23 +172,17 @@ def metrics(reference_logits, candidate_logits, labels):
         "max_abs_logit_error": float(np.max(np.abs(difference), initial=0)),
         "mean_abs_logit_error": float(np.mean(np.abs(difference))),
         "logit_rmse": float(np.sqrt(np.mean(difference**2))),
-        "prediction_agreement": float(
-            np.mean(ref_rank[:, 0] == got_rank[:, 0])
-        ),
+        "prediction_agreement": float(np.mean(ref_rank[:, 0] == got_rank[:, 0])),
         "top1": None,
         "top5": None,
     }
     if np.any(labeled):
         for topk in (1, 5):
             ref = np.mean(
-                np.any(
-                    ref_rank[labeled, :topk] == labels[labeled, None], axis=1
-                )
+                np.any(ref_rank[labeled, :topk] == labels[labeled, None], axis=1)
             )
             got = np.mean(
-                np.any(
-                    got_rank[labeled, :topk] == labels[labeled, None], axis=1
-                )
+                np.any(got_rank[labeled, :topk] == labels[labeled, None], axis=1)
             )
             result[f"top{topk}"] = {
                 "reference": float(ref),
@@ -249,12 +244,8 @@ def self_test(_):
     assert result["prediction_agreement"] == 0.5
     assert result["top1"]["change_percentage_points"] == -50
     assert result["top5"]["w8a8"] == 1
-    assert (
-        metrics(reference_logits, candidate, np.array([-1, -1]))["top1"] is None
-    )
-    with tempfile.TemporaryDirectory(
-        prefix="vit-accuracy-protocol-"
-    ) as directory:
+    assert metrics(reference_logits, candidate, np.array([-1, -1]))["top1"] is None
+    with tempfile.TemporaryDirectory(prefix="vit-accuracy-protocol-") as directory:
         work = Path(directory)
         inputs = work / "inputs.npz"
         np.savez(

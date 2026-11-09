@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Reject valid MLIR whose declared content history crosses a loop incorrectly."""
+"""
+Python lit test 'loop-boundaries.py' covering scf.for bounds recovered into
+contract facts.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import subprocess
 import sys
 from pathlib import Path
@@ -32,9 +44,7 @@ reject("init_value_id = 3", "init_value_id = 2", "V20/V26")
 # Body reads bind to iter, rather than the parent's one-time initializer.
 reject("array<i64: 4, 5, 7>", "array<i64: 4, 5, 3>", "V22/V23")
 # A parent consumer must read result, not a static body version.
-reject(
-    "input_values = array<i64: 8>", "input_values = array<i64: 6>", "V22/V23"
-)
+reject("input_values = array<i64: 8>", "input_values = array<i64: 6>", "V22/V23")
 
 # A full-kill loop needs boundary WAW ordering, but has no semantic value users.
 source = """

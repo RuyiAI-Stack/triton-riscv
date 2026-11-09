@@ -1,7 +1,16 @@
-"""Standalone Triton source for linear_128x16x768.
+"""
+Standalone Triton kernel for FPGA case 'linear_128x16x768' (model
+'electra-base-discriminator').
 
-The discriminator classifier is 768 to 1. The matmul tile is 16 columns, so
-this bin computes 16 outputs and the real logit is column 0.
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/electra-base-discriminator/linear_128x16x768 before linking
+launch.c.
 """
 
 import triton
@@ -42,17 +51,24 @@ def linear(
     previous = tl.load(C + rows[:, None] * N + cols[None, :], valid, other=0.0)
     tl.store(C + rows[:, None] * N + cols[None, :], acc + previous, valid)
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'linear',
- 'kernel': 'linear',
- 'arguments': [{'name': 'A', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'B', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'C', 'rank': 2, 'dtype': 'f32'}],
- 'shape': [128, 16, 768],
- 'constexprs': {'M': 128, 'N': 16, 'K': 768, 'BM': 16, 'BN': 16, 'BK': 64},
- 'grid': [8, 1, 1],
- 'roles': [],
- 'metadata': {'dtype': 'f32',
-              'model': 'google/electra-base-discriminator',
-              'seq_len': 128,
-              'note': 'Discriminator classifier padded to 16 columns. Logit is column 0.'}}
+KERNEL_CONFIG = {
+    "family": "linear",
+    "kernel": "linear",
+    "arguments": [
+        {"name": "A", "rank": 2, "dtype": "f32"},
+        {"name": "B", "rank": 2, "dtype": "f32"},
+        {"name": "C", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [128, 16, 768],
+    "constexprs": {"M": 128, "N": 16, "K": 768, "BM": 16, "BN": 16, "BK": 64},
+    "grid": [8, 1, 1],
+    "roles": [],
+    "metadata": {
+        "dtype": "f32",
+        "model": "google/electra-base-discriminator",
+        "seq_len": 128,
+        "note": "Discriminator classifier padded to 16 columns. Logit is column 0.",
+    },
+}

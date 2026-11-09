@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Check actual full-grid nonlinear outputs with an independent 80-digit oracle.
+"""
+BOSCAME FPGA example 'check_nonlinear_numerics.py' under model
+'vit-base-patch16-224'.
 
-The strict simulator produces the required output archives. This tool only
-checks those outputs; it cannot supply successful emitted execution evidence.
-Dense/sampled observations are not a formal approximation error bound.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 import argparse
@@ -46,7 +50,9 @@ def sample_round(case, arrays, actual):
         )
         sample = arrays["X"].ravel()[points]
         got = actual.ravel()[points]
-        selection = "first complete boundary-pattern period plus 257 stratified positions"
+        selection = (
+            "first complete boundary-pattern period plus 257 stratified positions"
+        )
     else:
         length = case["constexprs"]["LENGTH"]
         count = actual.size // length
@@ -60,7 +66,9 @@ def sample_round(case, arrays, actual):
         )
         sample = arrays["X"].reshape(-1, length)[points]
         got = actual.reshape(-1, length)[points]
-        selection = "first sixteen special-pattern rows plus 33 stratified complete rows"
+        selection = (
+            "first sixteen special-pattern rows plus 33 stratified complete rows"
+        )
     inputs = {"X": sample}
     precise = nonlinear_reference_mp(case, inputs, dps=80)["Out"]
     double = nonlinear_reference64(case, inputs)["Out"]
@@ -74,9 +82,7 @@ def sample_round(case, arrays, actual):
         selection=selection,
         selected_units=len(points),
         sampled_outputs=got.size,
-        selection_sha256=hashlib.sha256(
-            points.astype("<i8").tobytes()
-        ).hexdigest(),
+        selection_sha256=hashlib.sha256(points.astype("<i8").tobytes()).hexdigest(),
         input_sha256=hashlib.sha256(sample.tobytes()).hexdigest(),
         actual_sha256=hashlib.sha256(got.tobytes()).hexdigest(),
         reference_sha256=hashlib.sha256(precise.tobytes()).hexdigest(),
@@ -108,8 +114,7 @@ def main():
             collected = collect_nonlinear_case(case, args.output)
             if collected["status"] != "PASS":
                 raise RuntimeError(
-                    "strict full-grid evidence unavailable: "
-                    + collected["reason"]
+                    "strict full-grid evidence unavailable: " + collected["reason"]
                 )
             output = args.output / name
             record.update(
@@ -123,31 +128,23 @@ def main():
                 output / "nonlinear-outputs.npz", allow_pickle=False
             ) as archive:
                 for index, (label, stress, _) in enumerate(scenarios_for(case)):
-                    arrays = make_inputs(
-                        case, argument_shapes(case), stress=stress
-                    )
+                    arrays = make_inputs(case, argument_shapes(case), stress=stress)
                     rounds.append(
                         {
                             "name": label,
-                            **sample_round(
-                                case, arrays, archive["round" + str(index)]
-                            ),
+                            **sample_round(case, arrays, archive["round" + str(index)]),
                         }
                     )
             record.update(status="PASS", rounds=rounds)
         except Exception as error:
-            record.update(
-                status="FAIL", reason=f"{type(error).__name__}: {error}"
-            )
+            record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
         records.append(record)
         print(
             f"{record['status']}: {name} independent high-precision samples",
             flush=True,
         )
     report = {
-        "status": "PASS"
-        if all(r["status"] == "PASS" for r in records)
-        else "FAIL",
+        "status": "PASS" if all(r["status"] == "PASS" for r in records) else "FAIL",
         "cases": records,
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)

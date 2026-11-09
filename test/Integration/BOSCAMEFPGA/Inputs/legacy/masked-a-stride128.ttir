@@ -1,7 +1,16 @@
-// A 64x64x64 i8 dot whose A rows are 128 bytes apart with only 63 valid
-// columns, and whose B rows have 63 valid reduction elements.  The bytes the
-// masks exclude are DDR garbage: the pass must not read them, and the
-// materialized lanes must be `other` (= 0).
+//
+// FileCheck lit test input 'masked-a-stride128.ttir' (masked a stride128
+// lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock masked a stride128 lowering
+// and contract facts.
+//
+
 module {
   tt.func public @masked_dot(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
     %c64 = arith.constant dense<64> : tensor<64x1xi32>

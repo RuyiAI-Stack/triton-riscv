@@ -1,4 +1,16 @@
-# Each case owns its kernel/configuration; Make owns every compiler stage.
+#
+# Shared Make rules for BOSCAME FPGA model 'vit-base-patch16-224'.
+#
+# Inputs: case KERNEL_CONFIG, Triton kernel.py, buddy-opt, and the RISC-V GNU
+# toolchain plus board flags.
+#
+# Outputs: TTIR/MLIR dumps, objects, ELF, and .bin images under the model build
+# directory.
+#
+# When used: included by each case makefile and the model top-level makefile for
+# AOT and board builds.
+#
+
 .DEFAULT_GOAL := asm
 .DELETE_ON_ERROR:
 CASE := $(notdir $(CURDIR))

@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t triton-shared-opt
-"""Integer accumulator semantics, local tensor fusion, and SSA preservation."""
+"""
+Python lit test 'boscame-tensor-accumulator-fusion.py' covering tensor
+accumulator fusion.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: TritonToLinalgExperimental conversion suite. Keep RUN lines and inner
+docstrings that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t triton-shared-opt
 import re
 import subprocess
 import sys
@@ -53,9 +65,7 @@ def source():
         function("fuse", product() + add() + f"return %sum : {C}"),
         function(
             "swapped",
-            product()
-            + add("%product", "%c", swapped=True)
-            + f"return %sum : {C}",
+            product() + add("%product", "%c", swapped=True) + f"return %sum : {C}",
         ),
         function(
             "dense_zero",
@@ -159,11 +169,7 @@ tt.func public @floating(%a: tensor<16x64xf32>, %b: tensor<64x16xf32>,
 }}
 """,
     ]
-    return (
-        "module {\nfunc.func private @effect()\n"
-        + "\n".join(functions)
-        + "\n}\n"
-    )
+    return "module {\nfunc.func private @effect()\n" + "\n".join(functions) + "\n}\n"
 
 
 def bodies(text):
@@ -181,11 +187,7 @@ def source_functions(text):
     pattern = r"(?:tt|func)\.func (?:public |private )?@(\w+)\("
     matches = list(re.finditer(pattern, text))
     for index, match in enumerate(matches):
-        limit = (
-            matches[index + 1].start()
-            if index + 1 < len(matches)
-            else len(text)
-        )
+        limit = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         opening = text.find("{", match.end(), limit)
         if opening < 0:
             continue
@@ -202,9 +204,7 @@ def main():
     input_path = Path(prefix + ".mlir")
     outputs = {}
     for name, function_text in source_functions(source()):
-        module = (
-            "module {\nfunc.func private @effect()\n" + function_text + "\n}\n"
-        )
+        module = "module {\nfunc.func private @effect()\n" + function_text + "\n}\n"
         input_path.write_text(module)
         result = subprocess.run(
             [
@@ -218,12 +218,9 @@ def main():
             text=True,
         )
         if name == "broadcast":
-            assert result.returncode != 0 and "V25" in result.stderr, (
-                result.stderr
-            )
+            assert result.returncode != 0 and "V25" in result.stderr, result.stderr
             assert (
-                "linalg.matmul" in result.stderr
-                and "linalg.generic" in result.stderr
+                "linalg.matmul" in result.stderr and "linalg.generic" in result.stderr
             )
             continue
         assert result.returncode == 0, (name, result.stderr)

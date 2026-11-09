@@ -1,3 +1,15 @@
+//
+// Public headers for BOSCAME FPGA support on model 'vit-base-patch16-224'.
+//
+// Inputs: launch.c and board_support need MemRef typedefs, workspace(),
+// alignment, and check_close() prototypes.
+//
+// Outputs: the C API those harnesses compile against, without pulling
+// board-only UART details into host tests.
+//
+// When used: included by every launch.c and support.c in this model directory.
+//
+
 #ifndef VIT_OPERATOR_SUPPORT_H
 #define VIT_OPERATOR_SUPPORT_H
 

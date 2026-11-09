@@ -1,3 +1,8 @@
+/*
+ * Linker script for bare-metal BOSCAME FPGA binaries (model 'xlnet-base-cased').
+ * Places boot, text/rodata, and the workspace arena expected by board_support.
+ */
+
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 

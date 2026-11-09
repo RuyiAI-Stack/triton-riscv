@@ -205,5 +205,7 @@ export LD_PRELOAD=/usr/lib64/libgfortran.so.5:$LD_PRELOAD
 
 The optional `boscame` target exports verified standard buffer MLIR and a
 manifest without a device driver or Buddy build dependency. See
-[the AOT API and build guide](docs/BoscameAOT.md). CPUBackend remains the only
-concrete backend plugin; CPU/RISC-V/IME defaults are unchanged.
+[the AOT API](docs/BoscameAOT.md) and the FPGA example index
+[examples/BOSCAMEFPGA/README.md](examples/BOSCAMEFPGA/README.md).
+CPUBackend remains the only concrete backend plugin; CPU/RISC-V/IME defaults
+are unchanged.

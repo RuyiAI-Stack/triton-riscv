@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'layernorm_128x768' (model
+// 'xlnet-base-cased').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 #ifdef HOST_TEST
 static float oracle_exp(float x) { return (float)exp((double)x); }
@@ -25,7 +39,8 @@ static void compare(float actual, float expected, float atol, float rtol,
   if (d > *maximum)
     *maximum = d;
 }
-extern void _mlir_ciface_kernel_layernorm_128x768(MemRef2 *, MemRef1 *, MemRef1 *, MemRef2 *);
+extern void _mlir_ciface_kernel_layernorm_128x768(MemRef2 *, MemRef1 *,
+                                                  MemRef1 *, MemRef2 *);
 int launch(void) {
   const int ROWS = 128, WIDTH = 768, COUNT = ROWS * WIDTH;
   size_t off = 0;
@@ -58,7 +73,8 @@ int launch(void) {
     }
     var /= WIDTH;
     for (int j = 0; j < WIDTH; ++j) {
-      float want = (x[r * WIDTH + j] - mean) / oracle_sqrt(var + 1e-12f) * w[j] + b[j];
+      float want =
+          (x[r * WIDTH + j] - mean) / oracle_sqrt(var + 1e-12f) * w[j] + b[j];
       compare(o[r * WIDTH + j], want, 4e-4f, 4e-4f, &errors, &maximum);
     }
   }

@@ -1,6 +1,16 @@
-# RUN: %PYTHON %s
-"""PV references preserve zero products, per-block adds and f32 rounding."""
+"""Python lit test 'vit-pv-oracle.py' covering ViT attention PV CPU oracle.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s
 import copy
 import hashlib
 import itertools
@@ -10,9 +20,7 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(
-    0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools")
-)
+sys.path.insert(0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools"))
 from oracles import (  # noqa: E402
     _matmul_blocked_sequential,
     _matmul_sequential,
@@ -91,22 +99,14 @@ def test_real_case_stress():
     expected = reference(case, arrays)["C"]
     assert np.all(np.isfinite(expected))
     assert np.any(expected != _matmul_sequential(arrays["A"], arrays["B"]))
-    assert np.array_equal(
-        expected, reference(case, {**arrays, "C": expected})["C"]
-    )
+    assert np.array_equal(expected, reference(case, {**arrays, "C": expected})["C"])
 
 
 def test_logical_row_audit():
     case = describe("attention_pv_12x197x64x197")
-    accesses = [
-        ("%arg0", row * 788, (row + 1) * 788, "read") for row in range(16)
-    ]
-    accesses += [
-        ("%arg1", row * 256, row * 256 + 64, "read") for row in range(197)
-    ]
-    accesses += [
-        ("%arg2", row * 256, row * 256 + 64, "write") for row in range(16)
-    ]
+    accesses = [("%arg0", row * 788, (row + 1) * 788, "read") for row in range(16)]
+    accesses += [("%arg1", row * 256, row * 256 + 64, "read") for row in range(197)]
+    accesses += [("%arg2", row * 256, row * 256 + 64, "write") for row in range(16)]
     dma = [("%arg1", "spm", 0, 0, 64, 0)] * 197
     matrix = [
         {
@@ -282,9 +282,7 @@ def test_collect_shard_metadata():
         except SimulationBlocked:
             pass
         else:
-            raise AssertionError(
-                "false shard partition/order evidence accepted"
-            )
+            raise AssertionError("false shard partition/order evidence accepted")
 
 
 test_block_order()

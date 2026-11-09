@@ -1,3 +1,16 @@
+//
+// C support runtime for BOSCAME FPGA model 'mobilenetv3_small_100.lamb_in1k'.
+//
+// Inputs: workspace size, operand pointers, and UART/status hooks shared by
+// every launch.c in this model tree.
+//
+// Outputs: aligned workspace(), MemRef helpers, print_check(), and numeric
+// oracles used on host and on the board.
+//
+// When used: linked into each case image via common.mk / board.mk after the
+// kernel object is produced.
+//
+
 #include "support.h"
 
 #ifndef HOST_TEST
@@ -25,8 +38,9 @@ uint64_t nr_cycles(void) { return (uint64_t)clock(); }
 
 void *workspace(size_t byte_offset) {
   if (byte_offset >= sizeof(arena)) {
-    fputs("EfficientNet operator workspace offset exceeds VIT_WORKSPACE_BYTES\n",
-          stderr);
+    fputs(
+        "EfficientNet operator workspace offset exceeds VIT_WORKSPACE_BYTES\n",
+        stderr);
     abort();
   }
   return arena + byte_offset;

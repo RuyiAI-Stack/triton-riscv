@@ -5,6 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// TableGen passes for TritonToLinalgExperimental, including contract and
+// dump-facts options.
+//
+// Inputs: mlir-tblgen plus PassBase.td.
+//
+// Outputs: generated pass decls used by the experimental pipeline registration.
+//
+// When used: cmake build of lib/Conversion/TritonToLinalgExperimental.
+//
+
 #ifndef TRITON_TO_LINALG_EXPERIMENTAL_CONVERSION_PASSES
 #define TRITON_TO_LINALG_EXPERIMENTAL_CONVERSION_PASSES
 

@@ -1,3 +1,15 @@
+//
+// Public headers for BOSCAME FPGA support on model 'efficientnet_b3.ra2_in1k'.
+//
+// Inputs: launch.c and board_support need MemRef typedefs, workspace(),
+// alignment, and check_close() prototypes.
+//
+// Outputs: the C API those harnesses compile against, without pulling
+// board-only UART details into host tests.
+//
+// When used: included by every launch.c and support.c in this model directory.
+//
+
 #ifndef EFFNET_OPERATOR_SUPPORT_H
 #define EFFNET_OPERATOR_SUPPORT_H
 

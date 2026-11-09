@@ -1,4 +1,16 @@
-// A rows are 100 bytes apart, so no A row start is provably 64 B aligned.
+//
+// FileCheck lit test input 'unaligned-a.ttir' (unaligned a lowering and
+// contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock unaligned a lowering and
+// contract facts.
+//
+
 module {
   tt.func public @unaligned_a(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %pid: i32) {
     %cpitch = arith.constant dense<100> : tensor<64x1xi32>

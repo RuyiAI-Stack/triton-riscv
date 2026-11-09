@@ -1,7 +1,21 @@
-"""Standalone Triton source for add_count18816."""
+"""
+Standalone Triton kernel for FPGA case 'add_count18816' (model
+'mobilenetv3_small_100.lamb_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/mobilenetv3_small_100.lamb_in1k/add_count18816 before
+linking launch.c.
+"""
 
 import triton
 import triton.language as tl
+
 
 @triton.jit
 def residual_add(X, Y, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
@@ -11,13 +25,18 @@ def residual_add(X, Y, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
     y = tl.load(Y + index, valid, other=0.0)
     tl.store(Out + index, x + y, valid)
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'residual_add',
- 'kernel': 'residual_add',
- 'arguments': [{'name': 'X', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Y', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 1, 'dtype': 'f32'}],
- 'shape': [18816],
- 'constexprs': {'COUNT': 18816, 'BLOCK': 128},
- 'grid': [147, 1, 1],
- 'roles': []}
+KERNEL_CONFIG = {
+    "family": "residual_add",
+    "kernel": "residual_add",
+    "arguments": [
+        {"name": "X", "rank": 1, "dtype": "f32"},
+        {"name": "Y", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 1, "dtype": "f32"},
+    ],
+    "shape": [18816],
+    "constexprs": {"COUNT": 18816, "BLOCK": 128},
+    "grid": [147, 1, 1],
+    "roles": [],
+}

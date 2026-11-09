@@ -1,7 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: for_lineage = complete
+//
+// FileCheck lit test input 'boscame-for-lineage.mlir' (boscame for lineage
+// lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame for
+// lineage lowering and contract facts.
+//
+
 module {
   tt.func public @for_lineage(
       %initial_ptr: !tt.ptr<f32>, %body_ptr: !tt.ptr<f32>,

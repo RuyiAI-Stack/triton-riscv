@@ -1,7 +1,21 @@
-"""Standalone Triton source for gap_72x72x144."""
+"""
+Standalone Triton kernel for FPGA case 'gap_72x72x144' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/gap_72x72x144 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
+
 
 @triton.jit
 def gap(X, Out, SPATIAL: tl.constexpr, C: tl.constexpr, BLOCK: tl.constexpr):
@@ -20,36 +34,12 @@ KERNEL_CONFIG = {
     "family": "gap",
     "kernel": "gap",
     "arguments": [
-        {
-            "name": "X",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Out",
-            "rank": 2,
-            "dtype": "f32"
-        }
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
     ],
-    "shape": [
-        1,
-        144,
-        72,
-        72
-    ],
-    "constexprs": {
-        "SPATIAL": 5184,
-        "C": 144,
-        "BLOCK": 128
-    },
-    "grid": [
-        144,
-        1,
-        1
-    ],
+    "shape": [1, 144, 72, 72],
+    "constexprs": {"SPATIAL": 5184, "C": 144, "BLOCK": 128},
+    "grid": [144, 1, 1],
     "roles": [],
-    "metadata": {
-        "dtype": "efficientnet-b3",
-        "model": "timm/efficientnet_b3.ra2_in1k"
-    }
+    "metadata": {"dtype": "efficientnet-b3", "model": "timm/efficientnet_b3.ra2_in1k"},
 }

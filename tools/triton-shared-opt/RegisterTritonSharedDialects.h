@@ -1,3 +1,15 @@
+//
+// Register triton-shared dialects and related passes on the mlir-opt style
+// driver.
+//
+// Inputs: DialectRegistry in triton-shared-opt.
+//
+// Outputs: dialects/passes available to --kernel-contract-* and experimental
+// conversions.
+//
+// When used: tools/triton-shared-opt startup before parsing IR.
+//
+
 #pragma once
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"

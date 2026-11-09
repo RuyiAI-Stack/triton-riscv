@@ -1,6 +1,16 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""Real exported TTIR, persistent SPM, guards, and a select-zero oracle."""
+"""Python lit test 'boscame-layernorm.py' covering layernorm AOT integration.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import re
 import subprocess
@@ -20,11 +30,7 @@ def lower(source, output, boscame):
     command = [
         opt,
         str(source),
-        *(
-            experimental_pipeline()
-            if boscame
-            else ["--triton-to-linalg-experimental"]
-        ),
+        *(experimental_pipeline() if boscame else ["--triton-to-linalg-experimental"]),
         "-o",
         str(output),
     ]
@@ -59,10 +65,7 @@ def main():
     assert "vector<1xf32>" not in candidate_text
     # Scalar reduction seeds/results are ordinary scratch. All tensor data
     # stays in SPM; the two f32 slots add only eight bytes of stack payload.
-    assert (
-        len(re.findall(r"memref\.alloca[^\n]*: memref<f32>", candidate_text))
-        == 2
-    )
+    assert len(re.findall(r"memref\.alloca[^\n]*: memref<f32>", candidate_text)) == 2
     assert "memref.copy" not in candidate_text
     assert all(
         "memref<f32>" in line and "#bosc_ame.spm" not in line
@@ -79,11 +82,7 @@ def main():
         == 2
     )
     assert (
-        len(
-            re.findall(
-                r"scf\.for[^\n]*iter_args\([^\n]*-> \(f32\)", candidate_text
-            )
-        )
+        len(re.findall(r"scf\.for[^\n]*iter_args\([^\n]*-> \(f32\)", candidate_text))
         == 2
     )
     for operation in ("subf", "mulf", "addf"):
@@ -108,9 +107,9 @@ def main():
     assert not re.search(r"bosc_ame\.dma\.start[^\n]*i1", candidate_text), (
         "predicate-only i1 buffers must not become DMA payloads"
     )
-    assert not re.search(
-        r"bosc_ame\.dma\.start[^\n]*memref<\d+xi32", candidate_text
-    ), "static index and bound auxiliaries must not become DMA payloads"
+    assert not re.search(r"bosc_ame\.dma\.start[^\n]*memref<\d+xi32", candidate_text), (
+        "static index and bound auxiliaries must not become DMA payloads"
+    )
     assert "memref.memory_space_cast" not in candidate_text
     rng = np.random.default_rng(71)
     rows, width = 197, 768
@@ -124,12 +123,8 @@ def main():
         "%arg2": bytearray(bias.tobytes() + guard),
         "%arg3": bytearray(bytes([0xDA]) * x.nbytes + guard),
     }
-    reference_buffers = {
-        name: bytearray(data) for name, data in buffers.items()
-    }
-    snapshots = {
-        name: bytes(data) for name, data in buffers.items() if name != "%arg3"
-    }
+    reference_buffers = {name: bytearray(data) for name, data in buffers.items()}
+    snapshots = {name: bytes(data) for name, data in buffers.items() if name != "%arg3"}
     machine = Machine(candidate, "triton_layernorm_197x768")
     reference = Machine(baseline, "triton_layernorm_197x768")
     # Reversed/interleaved programs reuse poisoned SPM banks and include the last row.
@@ -210,13 +205,9 @@ def main():
         f"PASS numerics: rtol=2e-5, atol=2e-5 against default experimental buffer IR and independent masked-lane TTIR oracle (max absolute error vs f64 {max_error:.3g})"
     )
     # CHECK: PASS guards: last row, Weight/Bias tails and persistent poisoned SPM
-    print(
-        "PASS guards: last row, Weight/Bias tails and persistent poisoned SPM"
-    )
+    print("PASS guards: last row, Weight/Bias tails and persistent poisoned SPM")
     # CHECK: PASS SPM: direct vector arithmetic and two ordered vector reductions
-    print(
-        "PASS SPM: direct vector arithmetic and two ordered vector reductions"
-    )
+    print("PASS SPM: direct vector arithmetic and two ordered vector reductions")
 
 
 if __name__ == "__main__":

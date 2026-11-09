@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Check the complete emitted LayerNorm against standard numerical references.
+"""
+BOSCAME FPGA example 'check_layernorm_numerics.py' under model
+'vit-base-patch16-224'.
 
-The candidate always executes all 197 programs in the strict BOSCAME model.
-An optional baseline module executes the identical inputs and launch order;
-its errors are evidence rather than an acceptance requirement. PyTorch adds a
-float32 comparison when installed, while the float64 and sequential float32
-NumPy references are always checked. This is a numerical correctness check,
-not a performance measurement.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 import argparse
@@ -72,9 +73,7 @@ def execute_module(case, arrays, module, label):
     rows, width = case["shape"]
     gx, gy, gz = case["grid"]
     if (gx, gy, gz) != (rows, 1, 1):
-        raise ValueError(
-            "LayerNorm numerical check requires one program per row"
-        )
+        raise ValueError("LayerNorm numerical check requires one program per row")
     for launched, row in enumerate(reversed(range(rows)), 1):
         machine.launch(
             buffers,
@@ -102,15 +101,12 @@ def execute_module(case, arrays, module, label):
     for name, start, end, mode in machine.accesses:
         if name not in limits or not 0 <= start < end <= limits[name]:
             raise AssertionError(
-                label
-                + f": access outside logical DDR: {(name, start, end, mode)}"
+                label + f": access outside logical DDR: {(name, start, end, mode)}"
             )
         if mode == "write" and name != "%arg3":
             raise AssertionError(label + ": write to read-only input: " + name)
     if digest(module) != module_hash:
-        raise SimulationBlocked(
-            label + ": emitted module changed during execution"
-        )
+        raise SimulationBlocked(label + ": emitted module changed during execution")
     result = (
         np.frombuffer(buffers["%arg3"], dtype=np.float32, count=rows * width)
         .copy()
@@ -145,9 +141,7 @@ def numerical_error(actual, expected):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-module", type=Path)
-    parser.add_argument(
-        "--candidate-module", type=Path, default=DEFAULT_CANDIDATE
-    )
+    parser.add_argument("--candidate-module", type=Path, default=DEFAULT_CANDIDATE)
     parser.add_argument(
         "--report", type=Path, default=ROOT / "build/layernorm-numerics.json"
     )
@@ -218,9 +212,7 @@ def main():
             report["results"][label] = metrics
         after = report["results"]["after"]
         passed = (
-            all(
-                after[name]["outside_rtol_atol_2e5"] == 0 for name in references
-            )
+            all(after[name]["outside_rtol_atol_2e5"] == 0 for name in references)
             and after["sequential_f32_oracle"]["max_abs"] == 0
         )
         report["status"] = "PASS" if passed else "FAIL"
@@ -230,8 +222,7 @@ def main():
             )
         if "before" in values:
             same_output = (
-                report["results"]["before"]["output_sha256"]
-                == after["output_sha256"]
+                report["results"]["before"]["output_sha256"] == after["output_sha256"]
             )
             report.update(
                 classification=(

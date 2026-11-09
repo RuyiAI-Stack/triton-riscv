@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""SPM matmul inputs/output: direct tiles, physical layouts and vector packing."""
+"""
+Python lit test 'boscame-spm-matmul.py' covering SPM-resident matmul capacity
+and DMA.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import subprocess
 import sys
@@ -79,9 +91,7 @@ def source_for(m, n, k, row_major_b, spm_c):
 
 
 def floating_source(row_major_b):
-    b_row, b_col = (
-        ("%row_scaled", "%col") if row_major_b else ("%row", "%col_scaled")
-    )
+    b_row, b_col = ("%row_scaled", "%col") if row_major_b else ("%row", "%col_scaled")
     return f"""module {{
   tt.func public @floating(%a: !tt.ptr<f32>, %b: !tt.ptr<f32>, %c: !tt.ptr<f32>) {{
     %r = tt.make_range {{start = 0 : i32, end = 16 : i32}} : tensor<16xi32>
@@ -168,9 +178,7 @@ def check_floating(work, opt, rng):
             # operations, followed by its one separate nonzero C addition.
             expected = np.zeros((16, 16), dtype=np.float32)
             for k in range(16):
-                product = np.multiply(
-                    a[:, k, None], b[None, k, :], dtype=np.float32
-                )
+                product = np.multiply(a[:, k, None], b[None, k, :], dtype=np.float32)
                 expected = np.add(expected, product, dtype=np.float32)
             expected = np.add(initial, expected, dtype=np.float32)
             actual = np.frombuffer(
@@ -193,9 +201,7 @@ def check_floating(work, opt, rng):
             text=True,
         )
         assert translated.returncode == 0, translated.stderr
-        print(
-            f"PASS {name}: standard Linalg, exact f32 oracle, nonzero C and guards"
-        )
+        print(f"PASS {name}: standard Linalg, exact f32 oracle, nonzero C and guards")
 
     unsupported = """module {
       func.func @bad(%b: memref<16x16xf32>, %c: memref<16x16xf32>, %offset: index) {
@@ -228,9 +234,7 @@ def check_floating(work, opt, rng):
         )
         assert result.returncode != 0, name + " silently succeeded"
         assert error in result.stderr, result.stderr
-    print(
-        "PASS bounded floating snapshots: reject short backing and unknown offsets"
-    )
+    print("PASS bounded floating snapshots: reject short backing and unknown offsets")
 
 
 def main():
@@ -265,10 +269,7 @@ def main():
         )
         if row_b:
             assert result.returncode != 0
-            assert (
-                "AME tile addresses or parent pitch are not legal"
-                in result.stderr
-            )
+            assert "AME tile addresses or parent pitch are not legal" in result.stderr
             print("PASS row-b: reject unsupported physical B layout")
             continue
         if name == "partial-k":
@@ -334,22 +335,19 @@ def main():
             }
             machine.launch(buffers)
             expected = (
-                a.astype(np.int64) @ b.astype(np.int64)
-                + initial.astype(np.int64)
+                a.astype(np.int64) @ b.astype(np.int64) + initial.astype(np.int64)
             ).astype(np.int32)
             np.testing.assert_array_equal(
-                np.frombuffer(
-                    buffers["%arg2"], dtype=np.int32, count=m * n
-                ).reshape(m, n),
+                np.frombuffer(buffers["%arg2"], dtype=np.int32, count=m * n).reshape(
+                    m, n
+                ),
                 expected,
             )
             assert buffers["%arg0"] == a_storage.tobytes() + guard
             assert buffers["%arg1"] == b_storage.tobytes() + guard
             assert buffers["%arg2"][-len(guard) :] == guard
             if spm_c:
-                assert (
-                    machine.spm[1][16384 : 16384 + 256] == bytes([0x5A]) * 256
-                )
+                assert machine.spm[1][16384 : 16384 + 256] == bytes([0x5A]) * 256
                 end = 16384 + 256 + m * n * 4
                 assert machine.spm[1][end : end + 256] == bytes([0x5A]) * 256
         print(f"PASS {name}: exact signed i8/i32 wrap, initial C and guards")

@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t triton-shared-opt
-"""A dynamically aligned prefix must not become a falsely static DMA plan."""
+"""
+Python lit test 'boscame-dynamic-prefix.py' covering dynamic prefix DMA /
+masking.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: TritonToLinalgExperimental conversion suite. Keep RUN lines and inner
+docstrings that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t triton-shared-opt
 import subprocess
 import sys
 from pathlib import Path
@@ -33,13 +45,10 @@ def main():
             capture_output=True,
             text=True,
         )
-        assert (
-            result.returncode > 0 and "kernel contract V4:" in result.stderr
-        ), result.stderr
-        assert (
-            "LLVM ERROR" not in result.stderr
-            and "Stack dump" not in result.stderr
+        assert result.returncode > 0 and "kernel contract V4:" in result.stderr, (
+            result.stderr
         )
+        assert "LLVM ERROR" not in result.stderr and "Stack dump" not in result.stderr
 
 
 if __name__ == "__main__":

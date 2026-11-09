@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""Compile the emitted MLIR wrappers and real typed-unranked adapters on the host."""
+"""
+Python lit test 'boscame-adapter.py' covering adapter between contract IR and
+FPGA runtime.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import re
 import shutil
@@ -19,9 +31,7 @@ REPO = Path(os.environ["BUDDY_ROOT"])
 
 
 def run(command):
-    result = subprocess.run(
-        [str(x) for x in command], capture_output=True, text=True
-    )
+    result = subprocess.run([str(x) for x in command], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout
 
@@ -70,9 +80,7 @@ def main():
             work / (name + suffix) for suffix in (".mlir", ".llvm.mlir", ".ll")
         )
         input_path = Path(__file__).parent / "Inputs" / fixture
-        pipeline = experimental_pipeline(
-            symbol + ":2,16,1" if name == "gemm" else None
-        )
+        pipeline = experimental_pipeline(symbol + ":2,16,1" if name == "gemm" else None)
         if name == "tiled-gemm":
             contract = run(
                 [
@@ -127,12 +135,8 @@ def main():
                 ]
             )
         )
-        params = ", ".join(
-            f"int64_t r{i}, void *p{i}" for i in range(len(counts))
-        )
-        scalars = ", ".join(
-            "int32_t " + n for n in ("gx", "gy", "gz", "x", "y", "z")
-        )
+        params = ", ".join(f"int64_t r{i}, void *p{i}" for i in range(len(counts)))
+        scalars = ", ".join("int32_t " + n for n in ("gx", "gy", "gz", "x", "y", "z"))
         arrays = "\n".join(
             f"static unsigned char a{i}[{count * width + 128}] __attribute__((aligned(64)));"
             for i, (count, width) in enumerate(zip(counts, widths))
@@ -153,8 +157,7 @@ def main():
                 )
         args = ", ".join(f"&m{i}" for i in range(len(counts)))
         decl = ", ".join(
-            "MemRef2 *" if len(shape) == 2 else "Descriptor *"
-            for shape in shapes
+            "MemRef2 *" if len(shape) == 2 else "Descriptor *" for shape in shapes
         )
         probe = work / (name + ".probe.c")
         probe.write_text(f"""#include <stdint.h>
@@ -179,9 +182,7 @@ int main(int argc, char **argv) {{
         binary = work / name
         run([clang, "-O0", adapter, wrapper_path, probe, "-o", binary])
         run([binary])
-        bad = subprocess.run(
-            [str(binary), "invalid-alias"], capture_output=True
-        )
+        bad = subprocess.run([str(binary), "invalid-alias"], capture_output=True)
         assert bad.returncode != 0, "adapter accepted aliasing DDR arguments"
     # CHECK: PASS adapters: actual C wrappers, typed unranked descriptors, element offsets/counts, six grid scalars and nonalias checks
     print(

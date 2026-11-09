@@ -1,4 +1,12 @@
-"""Make the shared example path helpers available to standalone ViT tools."""
+"""Path helpers for BOSCAME FPGA model 'xlnet-base-cased'.
+
+Inputs: this file location; optional env overrides for buddy-opt and repo roots.
+
+Outputs: resolved paths to triton-riscv, buddy-mlir, and build directories.
+
+When used: export.py, simcheck, and report scripts so they do not hard-code
+checkouts.
+"""
 
 import sys
 from pathlib import Path

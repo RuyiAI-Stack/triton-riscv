@@ -1,15 +1,43 @@
-"""Standalone Triton source for conv2d_288x288_3x40_k3_s2."""
+"""
+Standalone Triton kernel for FPGA case 'conv2d_288x288_3x40_k3_s2' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/conv2d_288x288_3x40_k3_s2 before
+linking launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def conv2d_nchw(
-    X, Weight, Bias, Out,
-    H: tl.constexpr, W: tl.constexpr, C: tl.constexpr, OC: tl.constexpr,
-    KH: tl.constexpr, KW: tl.constexpr, SH: tl.constexpr, SW: tl.constexpr,
-    PH: tl.constexpr, PW: tl.constexpr, OH: tl.constexpr, OW: tl.constexpr,
-    BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,
+    X,
+    Weight,
+    Bias,
+    Out,
+    H: tl.constexpr,
+    W: tl.constexpr,
+    C: tl.constexpr,
+    OC: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
 ):
     """NCHW convolution. One program owns one output pixel so every load is scalar."""
     tl.static_assert(BM > 0)
@@ -36,33 +64,12 @@ KERNEL_CONFIG = {
     "family": "conv2d_f32",
     "kernel": "conv2d_nchw",
     "arguments": [
-        {
-            "name": "X",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Weight",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Bias",
-            "rank": 1,
-            "dtype": "f32"
-        },
-        {
-            "name": "Out",
-            "rank": 4,
-            "dtype": "f32"
-        }
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Weight", "rank": 4, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 4, "dtype": "f32"},
     ],
-    "shape": [
-        1,
-        3,
-        288,
-        288
-    ],
+    "shape": [1, 3, 288, 288],
     "constexprs": {
         "H": 288,
         "W": 288,
@@ -78,16 +85,9 @@ KERNEL_CONFIG = {
         "OW": 144,
         "BM": 16,
         "BN": 16,
-        "BK": 64
+        "BK": 64,
     },
-    "grid": [
-        40,
-        144,
-        144
-    ],
+    "grid": [40, 144, 144],
     "roles": [],
-    "metadata": {
-        "dtype": "efficientnet-b3",
-        "model": "timm/efficientnet_b3.ra2_in1k"
-    }
+    "metadata": {"dtype": "efficientnet-b3", "model": "timm/efficientnet_b3.ra2_in1k"},
 }

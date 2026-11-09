@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Execute the classifier W8A8 chain using only current emitted kernels.
+"""
+BOSCAME FPGA example 'check_w8a8_chain.py' under model 'vit-base-patch16-224'.
 
-NumPy supplies independent oracles and prepares inputs; every candidate
-quantize, dot, dequantize, bias and residual operation executes emitted IR in
-the strict DDR/SPM/REG simulator. This is a Linear-chain check, not a complete
-ViT accuracy result.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -66,9 +68,7 @@ def inputs(multiplier=1):
     )
     activation = np.resize(pattern, (1, 768)) * np.float32(multiplier)
     weight = np.resize(pattern[::-1], (1000, 768)).copy()
-    channel_scale = np.ldexp(
-        np.ones(1000, dtype=np.float32), np.arange(1000) % 13 - 6
-    )
+    channel_scale = np.ldexp(np.ones(1000, dtype=np.float32), np.arange(1000) % 13 - 6)
     weight *= channel_scale[:, None]
     weight[0] = 0
     return activation, weight
@@ -134,9 +134,7 @@ def run_chain(kernels, activation, weight, old_c, order, machines):
         restored["Out"].view(np.uint32), oracle_out.view(np.uint32)
     )
     bias = np.linspace(-0.75, 0.5, 1000, dtype=np.float32)
-    residual = np.linspace(0.125, -0.25, 1000, dtype=np.float32).reshape(
-        1, 1000
-    )
+    residual = np.linspace(0.125, -0.25, 1000, dtype=np.float32).reshape(1, 1000)
     biased = execute(
         CASES[4],
         {
@@ -163,9 +161,7 @@ def run_chain(kernels, activation, weight, old_c, order, machines):
     for k in range(768):
         np.add(
             fp32_product,
-            np.multiply(
-                activation[:, k, None], weight[None, :, k], dtype=np.float32
-            ),
+            np.multiply(activation[:, k, None], weight[None, :, k], dtype=np.float32),
             out=fp32_product,
         )
     fp32_final = np.add(
@@ -203,15 +199,11 @@ def main():
     }
     try:
         modules = {
-            name: check_artifacts(describe(name), args.kernels)
-            for name in CASES
+            name: check_artifacts(describe(name), args.kernels) for name in CASES
         }
         module_hashes = {name: digest(path) for name, path in modules.items()}
         matmul = modules[CASES[2]].read_text()
-        if (
-            "bosc_ame.tile.zero_acc" not in matmul
-            or "bosc_ame.tile.mma" not in matmul
-        ):
+        if "bosc_ame.tile.zero_acc" not in matmul or "bosc_ame.tile.mma" not in matmul:
             raise SimulationBlocked(
                 "overwrite matmul must contain real tile.zero_acc and i8 MMA"
             )
@@ -242,9 +234,7 @@ def main():
             "reverse",
             machines,
         )
-        report["runs"].append(
-            {"name": "zero-token-and-zero-channel", **evidence}
-        )
+        report["runs"].append({"name": "zero-token-and-zero-channel", **evidence})
         for name in CASES:
             current = check_artifacts(describe(name), args.kernels)
             if digest(current) != module_hashes[name]:
@@ -265,11 +255,7 @@ def main():
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     return (
-        0
-        if report["status"] == "PASS"
-        else 2
-        if report["status"] == "BLOCKED"
-        else 1
+        0 if report["status"] == "PASS" else 2 if report["status"] == "BLOCKED" else 1
     )
 
 

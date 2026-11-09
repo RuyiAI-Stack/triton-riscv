@@ -1,28 +1,16 @@
-# makefile -- the layernorm_197x768 experimental BOSCAME pipeline.
 #
-#     kernel.py (Triton)                      [make ttir]
-#       -> kernel.ttir
-#     external export_contract(ASTSource, target=boscame)
-#       -> kernel.frontend.mlir (neutral buffer contract)
-#       -> kernel.bufferized.mlir --bosc-ame-plan
-#       -> kernel.planned.mlir --bosc-ame-emit             [make boscame]
-#       -> kernel.boscame.mlir
-#     --lower-bosc-ame + --buddy-to-llvmir     [make llvm]
-#       -> kernel.llvm.mlir + kernel.ll
-#     llc -> RVV assembly; NR filter           [make asm]
-#       -> kernel.nr.s
-#     clang -c + ld.lld + audit + objcopy      [make bin]
-#       -> build/layernorm_197x768/layernorm_197x768.bin
+# Per-case Make rules for FPGA operator 'makefile' (model 'layernorm_197x768').
 #
-# 'make' runs all of it.  Every stage is a file rule, so re-running only
-# rebuilds what changed.  'make boscame', 'make llvm' and 'make asm' stop at
-# the named stage.
+# Inputs: this directory's kernel.py / launch.c plus parent common.mk compiler
+# stages.
 #
-# The image runs on the NH/E6 platform (runtime/boscame/nh_e6), which owns the
-# boot, the dual-core release/wait, the E6 address-space setup (seven TOR PMP
-# regions, satp=0) and the CSR 0xbc0 cache policy.  link.ld places the DDR
-# windows inside the PMP region the platform exports -- otherwise a DMA that
-# leaves that region hangs with no diagnostic.
+# Outputs: AOT artifacts and the board image for this shape only, not sibling
+# cases.
+#
+# When used: `make` inside the case directory or via the model top-level
+# makefile.
+#
+
 .DEFAULT_GOAL := all
 .DELETE_ON_ERROR :=
 

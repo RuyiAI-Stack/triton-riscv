@@ -1,7 +1,21 @@
-"""Standalone Triton source for quantize_1x1536."""
+"""
+Standalone Triton kernel for FPGA case 'quantize_1x1536' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/quantize_1x1536 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
+
 
 @triton.jit
 def quantize(X, Q, Scale, WIDTH: tl.constexpr, BLOCK: tl.constexpr):
@@ -17,9 +31,7 @@ def quantize(X, Q, Scale, WIDTH: tl.constexpr, BLOCK: tl.constexpr):
     # cast lowers to vfncvt.rtz.x.f.w, which the FPGA assembler rejects.
     base = value.to(tl.int32)
     fraction = value - base.to(tl.float32)
-    adjustment = tl.where(
-        tl.abs(fraction) >= 0.5, tl.where(value >= 0, 1, -1), 0
-    )
+    adjustment = tl.where(tl.abs(fraction) >= 0.5, tl.where(value >= 0, 1, -1), 0)
     integer = (base + adjustment).to(tl.int8)
     tl.store(Scale + row, scale)
     tl.store(Q + row * WIDTH + channel, integer, valid)

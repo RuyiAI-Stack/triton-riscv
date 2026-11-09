@@ -1,7 +1,21 @@
-"""Standalone Triton source for hardsigmoid_count288."""
+"""
+Standalone Triton kernel for FPGA case 'hardsigmoid_count288' (model
+'mobilenetv3_small_100.lamb_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/mobilenetv3_small_100.lamb_in1k/hardsigmoid_count288 before
+linking launch.c.
+"""
 
 import triton
 import triton.language as tl
+
 
 @triton.jit
 def hardsigmoid(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
@@ -14,12 +28,17 @@ def hardsigmoid(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
     # Round the FP32 division, rather than multiplying by a rounded reciprocal.
     tl.store(Out + index, tl.div_rn(clamped, 6.0), valid)
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'hardsigmoid',
- 'kernel': 'hardsigmoid',
- 'arguments': [{'name': 'X', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 1, 'dtype': 'f32'}],
- 'shape': [288],
- 'constexprs': {'COUNT': 288, 'BLOCK': 128},
- 'grid': [3, 1, 1],
- 'roles': []}
+KERNEL_CONFIG = {
+    "family": "hardsigmoid",
+    "kernel": "hardsigmoid",
+    "arguments": [
+        {"name": "X", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 1, "dtype": "f32"},
+    ],
+    "shape": [288],
+    "constexprs": {"COUNT": 288, "BLOCK": 128},
+    "grid": [3, 1, 1],
+    "roles": [],
+}

@@ -1,4 +1,13 @@
-"""Independent NumPy references for the ported ViT operator semantics."""
+"""CPU reference oracles for BOSCAME FPGA model 'vit-base-patch16-224'.
+
+Inputs: numpy tensors with the same shapes/dtypes as the Triton kernels under
+test.
+
+Outputs: expected outputs for simcheck and host-check to compare against device
+results.
+
+When used: imported by simcheck.py / nonlinear_simcheck.py in this model tree.
+"""
 
 import math
 
@@ -98,9 +107,7 @@ def _nonlinear_stress(case, arrays):
                 )
                 row[-1] = 0
             else:
-                row[:] = np.resize(
-                    np.array([-0.0, 0.0, -np.inf], np.float32), length
-                )
+                row[:] = np.resize(np.array([-0.0, 0.0, -np.inf], np.float32), length)
 
 
 def output_names(case):
@@ -126,9 +133,7 @@ def make_inputs(case, shapes, stress=False):
         name, dtype = argument["name"], DTYPES[argument["dtype"]]
         if dtype == DTYPES["i8"]:
             if stress:
-                choices = np.array(
-                    [-128, -127, -1, 0, 1, 126, 127], dtype=dtype
-                )
+                choices = np.array([-128, -127, -1, 0, 1, 126, 127], dtype=dtype)
                 value = rng.choice(choices, size=shape)
             else:
                 value = rng.integers(-15, 16, size=shape, dtype=dtype)
@@ -151,9 +156,7 @@ def make_inputs(case, shapes, stress=False):
             value = rng.normal(0.2, 1.1, size=shape).astype(dtype)
         if name in outputs and name != "C":
             # A visible sentinel proves every required element was written.
-            value = np.full(
-                shape, 0x55 if dtype.kind == "i" else np.nan, dtype=dtype
-            )
+            value = np.full(shape, 0x55 if dtype.kind == "i" else np.nan, dtype=dtype)
         arrays[name] = np.ascontiguousarray(value, dtype=dtype)
     if case["family"] == "per_token_quantization":
         arrays["X"][0] = 0.0
@@ -173,9 +176,9 @@ def make_inputs(case, shapes, stress=False):
         a, b = arrays["A"], arrays["B"]
         block = case["constexprs"]["BK"]
         a.fill(0)
-        signs = np.where(
-            (np.indices(a.shape[:-1]).sum(axis=0) % 2) == 0, 1, -1
-        ).astype(np.float32)
+        signs = np.where((np.indices(a.shape[:-1]).sum(axis=0) % 2) == 0, 1, -1).astype(
+            np.float32
+        )
         if a.shape[-1] > block + 1:
             a[..., 0] = signs * np.float32(2**25)
             a[..., block] = -signs * np.float32(2**25)
@@ -216,9 +219,9 @@ def nonlinear_reference64(case, arrays):
             return 0.5 * value * math.erfc(-value / math.sqrt(2))
 
         return {
-            "Out": np.fromiter(
-                (gelu(v) for v in x.flat), np.float64, x.size
-            ).reshape(x.shape)
+            "Out": np.fromiter((gelu(v) for v in x.flat), np.float64, x.size).reshape(
+                x.shape
+            )
         }
     if case["family"] != "softmax":
         raise ValueError("double nonlinear reference requires GELU or Softmax")
@@ -227,10 +230,7 @@ def nonlinear_reference64(case, arrays):
     for row, out in zip(x.reshape(-1, length), result.reshape(-1, length)):
         values = [float(v) for v in row]
         maximum = max(values)
-        if (
-            any(math.isnan(v) or v == math.inf for v in values)
-            or maximum == -math.inf
-        ):
+        if any(math.isnan(v) or v == math.inf for v in values) or maximum == -math.inf:
             out.fill(np.nan)
             continue
         exponential = [math.exp(v - maximum) for v in values]
@@ -263,9 +263,7 @@ def nonlinear_reference_mp(case, arrays, dps=80):
                 result.flat[index] = answer
         elif case["family"] == "softmax":
             length = case["constexprs"]["LENGTH"]
-            for row, out in zip(
-                x.reshape(-1, length), result.reshape(-1, length)
-            ):
+            for row, out in zip(x.reshape(-1, length), result.reshape(-1, length)):
                 values = [float(v) for v in row]
                 maximum = max(values)
                 if (
@@ -286,9 +284,7 @@ def _matmul_sequential(a, b):
     """One f32 multiply and one f32 add per K, with no reassociation/FMA."""
     result = np.zeros(a.shape[:-1] + (b.shape[-1],), dtype=np.float32)
     for k in range(a.shape[-1]):
-        product = np.multiply(
-            a[..., :, k, None], b[..., k, None, :], dtype=np.float32
-        )
+        product = np.multiply(a[..., :, k, None], b[..., k, None, :], dtype=np.float32)
         np.add(result, product, out=result)
     return result
 
@@ -386,9 +382,7 @@ def reference(case, arrays):
         value = np.divide(x, scale[:, None], dtype=np.float32)
         saturated = np.clip(value, np.float32(-127), np.float32(127))
         base = saturated.astype(np.int32)
-        fraction = np.subtract(
-            saturated, base.astype(np.float32), dtype=np.float32
-        )
+        fraction = np.subtract(saturated, base.astype(np.float32), dtype=np.float32)
         adjustment = np.where(
             np.abs(fraction) >= np.float32(0.5),
             np.where(saturated >= 0, 1, -1),
@@ -402,16 +396,10 @@ def reference(case, arrays):
             arrays["Row"][:, None],
             dtype=np.float32,
         )
-        return {
-            "Out": np.multiply(
-                first, arrays["Column"][None, :], dtype=np.float32
-            )
-        }
+        return {"Out": np.multiply(first, arrays["Column"][None, :], dtype=np.float32)}
     if family == "gelu":
         x = arrays["X"]
-        erf_input = np.multiply(
-            x, np.float32(0.7071067811865475), dtype=np.float32
-        )
+        erf_input = np.multiply(x, np.float32(0.7071067811865475), dtype=np.float32)
         erf = np.fromiter(
             (math.erf(float(v)) for v in erf_input.flat),
             dtype=np.float32,
@@ -426,17 +414,13 @@ def reference(case, arrays):
             case["constexprs"]["BLOCK"],
         )
         x = arrays["X"].reshape(-1, length)
-        padded = np.pad(
-            x, ((0, 0), (0, block - length)), constant_values=-np.inf
-        )
+        padded = np.pad(x, ((0, 0), (0, block - length)), constant_values=-np.inf)
         centered = np.subtract(
             padded, np.max(padded, axis=1)[:, None], dtype=np.float32
         )
         exponential = np.exp(centered, dtype=np.float32)
         total = np.cumsum(exponential, axis=1, dtype=np.float32)[:, -1]
-        result = np.divide(
-            exponential[:, :length], total[:, None], dtype=np.float32
-        )
+        result = np.divide(exponential[:, :length], total[:, None], dtype=np.float32)
         return {"Out": result.reshape(arrays["Out"].shape)}
     raise ValueError("no complete independent oracle for " + family)
 
@@ -450,9 +434,7 @@ def compare(case, actual, expected):
         if got.shape != want.shape or got.dtype != want.dtype:
             raise AssertionError(f"{name}: output shape/dtype differs")
         finite = np.isfinite(got) & np.isfinite(want)
-        delta = np.abs(
-            got[finite].astype(np.float64) - want[finite].astype(np.float64)
-        )
+        delta = np.abs(got[finite].astype(np.float64) - want[finite].astype(np.float64))
         max_abs = max(max_abs, float(np.max(delta, initial=0)))
         if tolerant:
             np.testing.assert_allclose(

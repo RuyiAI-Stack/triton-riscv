@@ -1,4 +1,15 @@
-"""Standalone Triton source for bias_add_128x384."""
+"""
+Standalone Triton kernel for FPGA case 'bias_add_128x384' (model 'e5-small-v2').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in examples/BOSCAMEFPGA/e5-small-v2/bias_add_128x384
+before linking launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -17,18 +28,24 @@ def bias_add(
     bias = tl.load(Bias + channel, channel < WIDTH, other=0.0)
     tl.store(Out + index, x + bias, valid)
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'bias_add',
- 'kernel': 'bias_add',
- 'arguments': [{'name': 'X', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'Bias', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 2, 'dtype': 'f32'}],
- 'shape': [128, 384],
- 'constexprs': {'ROWS': 128, 'WIDTH': 384, 'BLOCK': 1024},
- 'grid': [128, 1, 1],
- 'roles': [],
- 'metadata': {'dtype': 'f32',
-              'model': 'intfloat/e5-small-v2',
-              'seq_len': 128,
-              'note': 'Unique encoder shapes at seq_len 128. Twelve layers share these '
-                      'bins.'}}
+KERNEL_CONFIG = {
+    "family": "bias_add",
+    "kernel": "bias_add",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [128, 384],
+    "constexprs": {"ROWS": 128, "WIDTH": 384, "BLOCK": 1024},
+    "grid": [128, 1, 1],
+    "roles": [],
+    "metadata": {
+        "dtype": "f32",
+        "model": "intfloat/e5-small-v2",
+        "seq_len": 128,
+        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+    },
+}

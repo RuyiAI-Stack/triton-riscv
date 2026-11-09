@@ -1,6 +1,22 @@
+//
+// Host / bare-metal harness for FPGA case 'conv2d_144x144_24x144_k1_s1' (model
+// 'efficientnet_b3.ra2_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
-extern void _mlir_ciface_kernel_conv2d_144x144_24x144_k1_s1(MemRef2 *, MemRef2 *,
-                                                           MemRef1 *, MemRef2 *);
+extern void _mlir_ciface_kernel_conv2d_144x144_24x144_k1_s1(MemRef2 *,
+                                                            MemRef2 *,
+                                                            MemRef1 *,
+                                                            MemRef2 *);
 int launch(void) {
   size_t off = 0;
   /* Packed X: i8 [H*W, C] = [20736, 24] */

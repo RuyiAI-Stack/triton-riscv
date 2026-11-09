@@ -1,7 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: hidden_memory_effect = reject: kernel contract V25: generic requires pure scalar arithmetic operations
+//
+// FileCheck lit test input 'boscame-hidden-memory-effect.mlir' (boscame hidden
+// memory effect lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame hidden
+// memory effect lowering and contract facts.
+//
+
 module {
   memref.global "private" @side_effect : memref<16xf32> = uninitialized
 

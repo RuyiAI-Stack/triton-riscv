@@ -1,7 +1,10 @@
-"""Strict emitted-IR nonlinear validation with disjoint program shards.
+"""Nonlinear op simcheck for BOSCAME FPGA model 'vit-base-patch16-224'.
 
-References only judge results. Every accepted output comes from Machine.launch;
-the retained output archive lets collection repeat the numerical comparisons.
+Inputs: kernels such as softmax/gelu/layernorm plus matching Python oracles.
+
+Outputs: per-case numeric reports for ops that are not plain matmul/add.
+
+When used: model validation when linear GEMM checks are not enough.
 """
 
 import concurrent.futures
@@ -42,9 +45,7 @@ def _region(case, point):
         )
     ):
         raise ValueError("invalid nonlinear program: " + str(point))
-    stride = case["constexprs"][
-        "BLOCK" if case["family"] == "gelu" else "LENGTH"
-    ]
+    stride = case["constexprs"]["BLOCK" if case["family"] == "gelu" else "LENGTH"]
     start = point[0] * stride
     count = math.prod(case["shape"])
     return start, min(start + stride, count)
@@ -85,9 +86,7 @@ def audit_nonlinear_program(case, point, accesses):
             or spans[-1][1] != end
             or any(left[1] != right[0] for left, right in zip(spans, spans[1:]))
         ):
-            raise AssertionError(
-                "nonlinear missing/duplicate DDR coverage: " + name
-            )
+            raise AssertionError("nonlinear missing/duplicate DDR coverage: " + name)
     return dict.fromkeys(intervals, end - start)
 
 
@@ -110,9 +109,7 @@ def nonlinear_shards(case, workers):
         raise ValueError("nonlinear workers must be positive")
     points = list(itertools.product(*(range(n) for n in case["grid"])))
     width = math.ceil(len(points) / workers)
-    return [
-        points[start : start + width] for start in range(0, len(points), width)
-    ]
+    return [points[start : start + width] for start in range(0, len(points), width)]
 
 
 def nonlinear_worker(case, output_root, programs):
@@ -133,9 +130,7 @@ def nonlinear_worker(case, output_root, programs):
                 selected_programs=programs,
             )
         if len(machines) != 1:
-            raise AssertionError(
-                "nonlinear shard did not retain one Machine/SPM"
-            )
+            raise AssertionError("nonlinear shard did not retain one Machine/SPM")
         metrics["input_sha256"] = _hash(arrays["X"])
         runs.append(
             {
@@ -220,9 +215,7 @@ def check_nonlinear_sharded(case, output_root, workers):
             simulator_sources=_sources(),
         )
         shards = nonlinear_shards(case, workers)
-        record.update(
-            workers=min(workers, len(shards)), shard_count=len(shards)
-        )
+        record.update(workers=min(workers, len(shards)), shard_count=len(shards))
         if workers == 1:
             results = [nonlinear_worker(case, output_root, shards[0])]
         else:
@@ -262,8 +255,7 @@ def check_nonlinear_sharded(case, output_root, workers):
                     piece["name"] != name
                     or metrics["order"] != order
                     or metrics["module_sha256"] != digest(module)
-                    or metrics["kernel_module_sha256"]
-                    != digest(case["kernel_source"])
+                    or metrics["kernel_module_sha256"] != digest(case["kernel_source"])
                     or metrics["input_sha256"] != _hash(arrays["X"])
                 ):
                     raise AssertionError(
@@ -285,23 +277,16 @@ def check_nonlinear_sharded(case, output_root, workers):
                     "nonlinear_error": errors,
                     "nonlinear_ddr_bytes": {
                         key: sum(
-                            p["metrics"]["nonlinear_ddr_bytes"][key]
-                            for p in pieces
+                            p["metrics"]["nonlinear_ddr_bytes"][key] for p in pieces
                         )
                         for key in ("%arg0", "%arg1")
                     },
-                    "ddr_accesses": sum(
-                        p["metrics"]["ddr_accesses"] for p in pieces
-                    ),
-                    "dma_transfers": sum(
-                        p["metrics"]["dma_transfers"] for p in pieces
-                    ),
+                    "ddr_accesses": sum(p["metrics"]["ddr_accesses"] for p in pieces),
+                    "dma_transfers": sum(p["metrics"]["dma_transfers"] for p in pieces),
                 }
             )
         if runs[1]["output_sha256"] != runs[2]["output_sha256"]:
-            raise AssertionError(
-                "nonlinear stress output depends on launch order"
-            )
+            raise AssertionError("nonlinear stress output depends on launch order")
         if record["simulator_sources"] != _sources():
             raise AssertionError("simulator source changed during execution")
         archive_path = output / "nonlinear-outputs.npz"
@@ -318,8 +303,7 @@ def check_nonlinear_sharded(case, output_root, workers):
                 {
                     "programs": result["programs"],
                     "runs": [
-                        {"name": r["name"], **r["metrics"]}
-                        for r in result["runs"]
+                        {"name": r["name"], **r["metrics"]} for r in result["runs"]
                     ],
                 }
                 for result in results
@@ -329,9 +313,7 @@ def check_nonlinear_sharded(case, output_root, workers):
         record["reason"] = str(error)
     except Exception as error:
         record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
-    (output / "simcheck-result.json").write_text(
-        json.dumps(record, indent=2) + "\n"
-    )
+    (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(
         f"{record['status']}: {case['name']} ({record['programs']}/{record['total_programs']}; nonlinear shards)",
         flush=True,
@@ -360,16 +342,13 @@ def collect_nonlinear_case(case, output_root):
         if (
             saved.get("name") != case["name"]
             or saved.get("module_sha256") != digest(module)
-            or saved.get("kernel_module_sha256")
-            != digest(case["kernel_source"])
+            or saved.get("kernel_module_sha256") != digest(case["kernel_source"])
             or saved.get("simulator_sources") != _sources()
             or saved.get("output_archive") != archive_path.name
             or not archive_path.is_file()
             or saved.get("output_archive_sha256") != digest(archive_path)
         ):
-            raise SimulationBlocked(
-                "stale nonlinear source/module/output archive"
-            )
+            raise SimulationBlocked("stale nonlinear source/module/output archive")
         fixed = nonlinear_shards(case, saved["workers"])
         shards, runs = saved.get("shards", []), saved.get("runs", [])
         if (
@@ -388,9 +367,7 @@ def collect_nonlinear_case(case, output_root):
                         "nonlinear output archive shape/dtype differs"
                     )
                 arrays = make_inputs(case, argument_shapes(case), stress=stress)
-                with np.errstate(
-                    invalid="ignore", over="ignore", under="ignore"
-                ):
+                with np.errstate(invalid="ignore", over="ignore", under="ignore"):
                     expected = reference(case, arrays)["Out"]
                     mathematical = nonlinear_reference64(case, arrays)["Out"]
                 compare(case, {"Out": actual}, {"Out": expected})
@@ -403,14 +380,11 @@ def collect_nonlinear_case(case, output_root):
                     or run.get("total_programs") != math.prod(case["grid"])
                     or run.get("outputs") != actual.size
                     or run.get("module_sha256") != digest(module)
-                    or run.get("kernel_module_sha256")
-                    != digest(case["kernel_source"])
+                    or run.get("kernel_module_sha256") != digest(case["kernel_source"])
                     or run.get("input_sha256") != _hash(arrays["X"])
                     or run.get("output_sha256") != {"Out": _hash(actual)}
-                    or run.get("ordered_f32_reference_sha256")
-                    != _hash(expected)
-                    or run.get("mathematical_reference_sha256")
-                    != _hash(mathematical)
+                    or run.get("ordered_f32_reference_sha256") != _hash(expected)
+                    or run.get("mathematical_reference_sha256") != _hash(mathematical)
                     or run.get("nonlinear_error") != errors
                     or run.get("nonlinear_ddr_bytes")
                     != dict.fromkeys(("%arg0", "%arg1"), actual.size * 4)
@@ -439,12 +413,10 @@ def collect_nonlinear_case(case, output_root):
                     if (
                         item.get("name") != name
                         or item.get("order") != order
-                        or item.get("selected_programs")
-                        != [list(p) for p in ordered]
+                        or item.get("selected_programs") != [list(p) for p in ordered]
                         or item.get("programs") != len(points)
                         or item.get("outputs") != int(np.count_nonzero(mask))
-                        or item.get("output_sha256")
-                        != {"Out": _hash(actual[mask])}
+                        or item.get("output_sha256") != {"Out": _hash(actual[mask])}
                         or item.get("module_sha256") != digest(module)
                         or item.get("kernel_module_sha256")
                         != digest(case["kernel_source"])

@@ -1,4 +1,16 @@
-"""Standalone Triton source for linear_128x384x384."""
+"""
+Standalone Triton kernel for FPGA case 'linear_128x384x384' (model
+'e5-small-v2').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/e5-small-v2/linear_128x384x384 before linking launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -38,18 +50,24 @@ def linear(
     previous = tl.load(C + rows[:, None] * N + cols[None, :], valid, other=0.0)
     tl.store(C + rows[:, None] * N + cols[None, :], acc + previous, valid)
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'linear',
- 'kernel': 'linear',
- 'arguments': [{'name': 'A', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'B', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'C', 'rank': 2, 'dtype': 'f32'}],
- 'shape': [128, 384, 384],
- 'constexprs': {'M': 128, 'N': 384, 'K': 384, 'BM': 16, 'BN': 16, 'BK': 64},
- 'grid': [8, 24, 1],
- 'roles': [],
- 'metadata': {'dtype': 'f32',
-              'model': 'intfloat/e5-small-v2',
-              'seq_len': 128,
-              'note': 'Unique encoder shapes at seq_len 128. Twelve layers share these '
-                      'bins.'}}
+KERNEL_CONFIG = {
+    "family": "linear",
+    "kernel": "linear",
+    "arguments": [
+        {"name": "A", "rank": 2, "dtype": "f32"},
+        {"name": "B", "rank": 2, "dtype": "f32"},
+        {"name": "C", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [128, 384, 384],
+    "constexprs": {"M": 128, "N": 384, "K": 384, "BM": 16, "BN": 16, "BK": 64},
+    "grid": [8, 24, 1],
+    "roles": [],
+    "metadata": {
+        "dtype": "f32",
+        "model": "intfloat/e5-small-v2",
+        "seq_len": 128,
+        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+    },
+}

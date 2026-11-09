@@ -1,4 +1,23 @@
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//===----------------------------------------------------------------------===//
+//
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+//
+//===----------------------------------------------------------------------===//
+
+//
+// triton-shared-opt contract export: dump verified BOSCAME AOT artifacts from
+// MLIR.
+//
+// Inputs: a module after emitContract / kernel-contract-annotate, plus CLI
+// flags.
+//
+// Outputs: contract MLIR/JSON and optional build-identity strings for
+// reproducibility.
+//
+// When used: `triton-shared-opt --contract-*` and FPGA export scripts.
+//
+
 #include "ContractExport.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

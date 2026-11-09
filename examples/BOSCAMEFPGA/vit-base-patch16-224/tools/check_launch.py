@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Exercise standalone launch and generated descriptor/grid adapters natively.
+"""BOSCAME FPGA example 'check_launch.py' under model 'vit-base-patch16-224'.
 
-This is an ABI smoke check, not numerical or simulator validation. A mock raw
-Triton entry checks every descriptor and grid coordinate of the first adapter
-invocation. After that adapter returns, a test wrapper leaves launch() with longjmp before its numerical
-oracle runs. No fake output values are computed or accepted as correct.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 import argparse
@@ -110,8 +111,7 @@ def mock_source(case):
     raw_params += ["int32_t gx", "int32_t gy", "int32_t gz"]
     raw_params += ["int32_t px", "int32_t py", "int32_t pz"]
     typed_params = ", ".join(
-        f"MemRef{argument['rank']} *a{i}"
-        for i, argument in enumerate(arguments)
+        f"MemRef{argument['rank']} *a{i}" for i, argument in enumerate(arguments)
     )
     raw_symbol = "_mlir_ciface_" + case["symbol"]
     launch_symbol = "_mlir_ciface_kernel_" + case["name"]
@@ -171,9 +171,7 @@ def mock_source(case):
         '  require(++adapters == 1, "one adapter call from launch");',
     ]
     if patch:
-        lines.append(
-            "  patch_buffer(a3->aligned, 196u * 768u * sizeof(float));"
-        )
+        lines.append("  patch_buffer(a3->aligned, 196u * 768u * sizeof(float));")
     lines += [
         "  vit_test_adapter("
         + ", ".join(f"a{i}" for i in range(len(arguments)))
@@ -214,9 +212,7 @@ def check_case(case, args):
         "simulator_executed": False,
         "launch_adapter_invocations": 1,
         "scope": "first launch adapter invocation, including its entire grid",
-        "expected_programs": case["grid"][0]
-        * case["grid"][1]
-        * case["grid"][2],
+        "expected_programs": case["grid"][0] * case["grid"][1] * case["grid"][2],
     }
     logs = []
     try:
@@ -280,9 +276,7 @@ def check_case(case, args):
         record["reason"] = str(error)
         logs.append("BLOCKED: " + str(error))
     (destination / "check.log").write_text("\n".join(logs) + "\n")
-    (destination / "result.json").write_text(
-        json.dumps(record, indent=2) + "\n"
-    )
+    (destination / "result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(f"{record['status']}: {case['name']}", flush=True)
     return record
 
@@ -291,21 +285,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", action="append", dest="cases")
     parser.add_argument("--all", action="store_true")
-    parser.add_argument(
-        "--build-dir", type=Path, default=ROOT / "build/kernels"
-    )
-    parser.add_argument(
-        "--output", type=Path, default=ROOT / "build/launch-check"
-    )
+    parser.add_argument("--build-dir", type=Path, default=ROOT / "build/kernels")
+    parser.add_argument("--output", type=Path, default=ROOT / "build/launch-check")
     parser.add_argument(
         "--cc", default=shutil.which("clang") or shutil.which("cc") or "cc"
     )
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
-    cases = (
-        [describe(name) for name in args.cases] if args.cases else inventory()
-    )
+    cases = [describe(name) for name in args.cases] if args.cases else inventory()
     records = [check_case(case, args) for case in cases]
     report = {
         "schema": 1,

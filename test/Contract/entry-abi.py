@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Module entry ABI promises do not propagate to called/address-taken helpers."""
+"""
+Python lit test 'entry-abi.py' covering kernel argument ABI and
+disjoint/alignment facts.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import re
 import subprocess
 import sys
@@ -10,9 +22,7 @@ ABI = "contract.abi = {args_disjoint = true, args_aligned_bytes = 64 : i64}"
 
 
 def run(source, *passes):
-    return subprocess.run(
-        [TOOL, *passes], input=source, text=True, capture_output=True
-    )
+    return subprocess.run([TOOL, *passes], input=source, text=True, capture_output=True)
 
 
 def war(name, visibility=""):
@@ -40,9 +50,7 @@ module attributes {{{ABI}}} {{
 
 
 def assert_war(source, helper_expected=True):
-    result = run(
-        source, "--kernel-contract-annotate", "--kernel-contract-verify"
-    )
+    result = run(source, "--kernel-contract-annotate", "--kernel-contract-verify")
     assert result.returncode == 0, result.stderr
     functions = re.split(r"func.func (?:private )?@", result.stdout)
     for name, expected in (
@@ -68,12 +76,11 @@ for visibility in ("", "private "):
     )
     result = run(mutated, "--kernel-contract-verify")
     assert result.returncode != 0
-    assert (
-        "V23/V24: missing RAW, WAR, WAW or scalar SSA dependency"
-        in result.stderr
-    )
+    assert "V23/V24: missing RAW, WAR, WAW or scalar SSA dependency" in result.stderr
 
-address = "%callee = func.constant @helper : (memref<16xf32>, memref<16xf32>, f32) -> f32"
+address = (
+    "%callee = func.constant @helper : (memref<16xf32>, memref<16xf32>, f32) -> f32"
+)
 assert_war(module(war("helper"), address))
 assert_war(
     module(
@@ -101,10 +108,7 @@ pointwise = """
 """
 result = run(module(pointwise, direct), "--kernel-contract-annotate")
 assert result.returncode != 0
-assert (
-    "V25: overlapping views must have identical element addresses"
-    in result.stderr
-)
+assert "V25: overlapping views must have identical element addresses" in result.stderr
 result = run(
     module(pointwise, ""),
     "--kernel-contract-annotate",

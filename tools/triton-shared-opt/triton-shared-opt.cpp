@@ -5,6 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Driver for triton-shared-opt: dialect registration, contract export CLI, and
+// MlirOptMain.
+//
+// Inputs: command-line passes plus optional --contract-build-info.
+//
+// Outputs: transformed MLIR on stdout, or the build identity string for pinning
+// toolchains.
+//
+// When used: lit tests and local debugging of BOSCAME AOT conversions.
+//
+
 #include "ContractBuildIdentity.h"
 #include "ContractExport.h"
 #include "RegisterTritonSharedDialects.h"

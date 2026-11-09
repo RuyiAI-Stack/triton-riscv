@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Execute complete independent ViT launch grids in the strict BOSCAME model."""
+"""Numeric simcheck driver for BOSCAME FPGA model 'e5-small-v2'.
+
+Inputs: exported kernels and CPU oracles / reference tensors for each registered
+case.
+
+Outputs: pass/fail and max-error per operator without needing the FPGA board.
+
+When used: after AOT export, before or instead of a board run, from the model
+directory.
+"""
 
 import argparse
 import concurrent.futures
@@ -172,9 +181,7 @@ def audit_pv_program(case, point, accesses, dma, matrix):
     if (k * 4) % 64:
         a_copies = [event for event in matrix if event["source"] == "%arg0"]
         if len(a_copies) != math.ceil(k / bk):
-            raise AssertionError(
-                f"PV A matrix-copy count at {point}: {len(a_copies)}"
-            )
+            raise AssertionError(f"PV A matrix-copy count at {point}: {len(a_copies)}")
         for block, event in enumerate(a_copies):
             valid = min(bk, k - block * bk)
             expected = {
@@ -189,9 +196,7 @@ def audit_pv_program(case, point, accesses, dma, matrix):
                 "register_class": "acc",
             }
             if any(event[key] != value for key, value in expected.items()):
-                raise AssertionError(
-                    f"PV A matrix-copy geometry at {point}: {event}"
-                )
+                raise AssertionError(f"PV A matrix-copy geometry at {point}: {event}")
             label = (
                 ("full-M" if rows == bm else "tail-M")
                 + "/"
@@ -201,14 +206,10 @@ def audit_pv_program(case, point, accesses, dma, matrix):
         if any(event[0] == "%arg0" for event in dma):
             raise AssertionError("PV unaligned A incorrectly used DMA")
     b_packets = [event for event in dma if event[0] == "%arg1"]
-    if len(b_packets) != k or any(
-        event[4] != columns * 4 for event in b_packets
-    ):
+    if len(b_packets) != k or any(event[4] != columns * 4 for event in b_packets):
         raise AssertionError(f"PV B DMA packets at {point}: {len(b_packets)}")
     if any(event["source"] == "%arg1" for event in matrix):
-        raise AssertionError(
-            "PV legal B DMA unexpectedly became a matrix transfer"
-        )
+        raise AssertionError("PV legal B DMA unexpectedly became a matrix transfer")
     return {
         "a_matrix_geometry": geometry,
         "b_dma_packets": len(b_packets),
@@ -220,9 +221,7 @@ def check_artifacts(case, output_root):
     output = Path(output_root) / case["name"]
     result_path = output / "build-result.json"
     if not result_path.is_file():
-        raise SimulationBlocked(
-            "missing build-result.json; build this case first"
-        )
+        raise SimulationBlocked("missing build-result.json; build this case first")
     result = json.loads(result_path.read_text())
     if result.get("status") != "PASS" or result.get("stage") == "ttir":
         raise SimulationBlocked(
@@ -262,9 +261,7 @@ def check_artifacts(case, output_root):
         )
     ttir = output / "kernel.ttir"
     if not ttir.is_file() or manifest.get("ttir_sha256") != digest(ttir):
-        raise SimulationBlocked(
-            "stale build: frontend TTIR hash differs from manifest"
-        )
+        raise SimulationBlocked("stale build: frontend TTIR hash differs from manifest")
     return module
 
 
@@ -298,10 +295,7 @@ def simulate_case(
     for argument, shape in zip(case["arguments"], shapes):
         name = argument["name"]
         value = np.asarray(arrays[name])
-        if (
-            value.shape != tuple(shape)
-            or value.dtype != DTYPES[argument["dtype"]]
-        ):
+        if value.shape != tuple(shape) or value.dtype != DTYPES[argument["dtype"]]:
             raise ValueError(
                 f"{name}: expected {shape} {DTYPES[argument['dtype']]}, got {value.shape} {value.dtype}"
             )
@@ -317,9 +311,7 @@ def simulate_case(
     machine_key = (case["name"], digest(module))
     machine = machines.get(machine_key) if machines is not None else None
     if machine is None:
-        with tempfile.TemporaryDirectory(
-            prefix="vit-boscame-sim-"
-        ) as directory:
+        with tempfile.TemporaryDirectory(prefix="vit-boscame-sim-") as directory:
             loops = Path(directory) / "kernel.loops.mlir"
             try:
                 process = subprocess.run(
@@ -373,9 +365,7 @@ def simulate_case(
     }
     nonlinear_bytes = {"%arg0": 0, "%arg1": 0}
     for launched, point in enumerate(programs, 1):
-        scalars = {
-            f"%arg{count + i}": value for i, value in enumerate([*grid, *point])
-        }
+        scalars = {f"%arg{count + i}": value for i, value in enumerate([*grid, *point])}
         try:
             program_start = (
                 len(machine.accesses),
@@ -443,10 +433,7 @@ def simulate_case(
                 f"DDR access outside logical argument: {(name, start, end, action)}"
             )
         index = int(name.removeprefix("%arg"))
-        if (
-            action == "write"
-            and case["arguments"][index]["name"] not in writable
-        ):
+        if action == "write" and case["arguments"][index]["name"] not in writable:
             raise AssertionError("write to read-only input: " + name)
     if case["family"] == "matmul_i8_overwrite" and any(
         name == "%arg2" and action == "read"
@@ -463,9 +450,7 @@ def simulate_case(
         comparison_expected = {"C": expected["C"][mask]}
     elif case["family"] in ("gelu", "softmax"):
         comparison_actual, comparison_expected, nonlinear_metrics = (
-            selected_nonlinear_comparison(
-                case, programs, actual, expected, initial
-            )
+            selected_nonlinear_comparison(case, programs, actual, expected, initial)
         )
     max_abs = compare(case, comparison_actual, comparison_expected)
     return actual, {
@@ -502,11 +487,7 @@ def simulate_case(
             if nonlinear_metrics is not None
             else {}
         ),
-        **(
-            {"selected_programs": programs}
-            if selected_programs is not None
-            else {}
-        ),
+        **({"selected_programs": programs} if selected_programs is not None else {}),
     }
 
 
@@ -565,8 +546,7 @@ def assemble_pv_round(case, pieces, expected):
         if (
             metrics["programs"] != len(points)
             or metrics["outputs"] != np.count_nonzero(mask)
-            or {tuple(point) for point in metrics["selected_programs"]}
-            != point_set
+            or {tuple(point) for point in metrics["selected_programs"]} != point_set
             or len(metrics["selected_programs"]) != len(points)
             or values.shape != (np.count_nonzero(mask),)
             or values.dtype != DTYPES["f32"]
@@ -575,19 +555,13 @@ def assemble_pv_round(case, pieces, expected):
             or metrics.get("bit_exact_f32") is not True
             or metrics.get("reference_sha256") != metrics["output_sha256"]
         ):
-            raise AssertionError(
-                "PV aggregate lacks executed slice/hash evidence"
-            )
+            raise AssertionError("PV aggregate lacks executed slice/hash evidence")
         assembled[mask] = values
         covered |= mask
         programs |= point_set
-    complete = set(
-        itertools.product(*(range(extent) for extent in case["grid"]))
-    )
+    complete = set(itertools.product(*(range(extent) for extent in case["grid"])))
     if programs != complete or not np.all(covered):
-        raise AssertionError(
-            "PV aggregate is missing full-grid programs/outputs"
-        )
+        raise AssertionError("PV aggregate is missing full-grid programs/outputs")
     if not np.array_equal(assembled.view(np.uint32), expected.view(np.uint32)):
         raise AssertionError("PV aggregate ordered f32 output is not bit-exact")
     return assembled
@@ -617,9 +591,7 @@ def check_pv_sharded(case, output_root, workers):
         record["module_sha256"] = digest(module)
         record["kernel_module_sha256"] = digest(case["kernel_source"])
         shards = pv_shards(case)
-        record.update(
-            workers=min(workers, len(shards)), shard_count=len(shards)
-        )
+        record.update(workers=min(workers, len(shards)), shard_count=len(shards))
         results = []
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=record["workers"],
@@ -656,14 +628,11 @@ def check_pv_sharded(case, output_root, workers):
                 metrics = piece["metrics"]
                 if (
                     metrics["module_sha256"] != digest(module)
-                    or metrics["kernel_module_sha256"]
-                    != digest(case["kernel_source"])
+                    or metrics["kernel_module_sha256"] != digest(case["kernel_source"])
                     or piece["name"] != name
                     or metrics["order"] != order
                 ):
-                    raise AssertionError(
-                        "PV shard source/module/scenario differs"
-                    )
+                    raise AssertionError("PV shard source/module/scenario differs")
                 per_shard = metrics["pv_access_audit"]
                 audit["b_dma_packets"] += per_shard["b_dma_packets"]
                 for key in ("a_matrix_geometry", "ddr_bytes"):
@@ -717,9 +686,7 @@ def check_pv_sharded(case, output_root, workers):
         record["reason"] = str(error)
     except Exception as error:
         record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
-    (output / "simcheck-result.json").write_text(
-        json.dumps(record, indent=2) + "\n"
-    )
+    (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(
         f"{record['status']}: {case['name']} ({record['programs']}/{record['total_programs']}; sharded)",
         flush=True,
@@ -730,9 +697,7 @@ def check_pv_sharded(case, output_root, workers):
 def validate_pv_shard_evidence(case, saved, module_hash):
     """Reject incomplete/overlapping stored shard metadata during collection."""
     shards = saved.get("shards", [])
-    if len(shards) != len(pv_shards(case)) or saved.get("shard_count") != len(
-        shards
-    ):
+    if len(shards) != len(pv_shards(case)) or saved.get("shard_count") != len(shards):
         raise SimulationBlocked("incomplete PV shard count")
     references = {
         stress: reference(
@@ -747,9 +712,7 @@ def validate_pv_shard_evidence(case, saved, module_hash):
         try:
             mask = pv_program_mask(case, points)
         except ValueError as error:
-            raise SimulationBlocked(
-                "invalid PV shard program selection"
-            ) from error
+            raise SimulationBlocked("invalid PV shard program selection") from error
         point_set = {tuple(point) for point in points}
         if frozenset(point_set) not in fixed_shards:
             raise SimulationBlocked(
@@ -763,27 +726,21 @@ def validate_pv_shard_evidence(case, saved, module_hash):
             raise SimulationBlocked("incomplete PV shard rounds")
         for run, (name, stress, order) in zip(runs, scenarios_for(case)):
             expected = references[stress][mask]
-            expected_hash = {
-                "C": hashlib.sha256(expected.tobytes()).hexdigest()
-            }
+            expected_hash = {"C": hashlib.sha256(expected.tobytes()).hexdigest()}
             ordered_points = sorted(point_set)
             if order == "reverse":
                 ordered_points.reverse()
             elif order == "tail-first":
-                ordered_points.sort(
-                    key=lambda point: (-point[0], point[1], point[2])
-                )
+                ordered_points.sort(key=lambda point: (-point[0], point[1], point[2]))
             if (
                 run.get("name") != name
                 or run.get("order") != order
                 or run.get("module_sha256") != module_hash
-                or run.get("kernel_module_sha256")
-                != digest(case["kernel_source"])
+                or run.get("kernel_module_sha256") != digest(case["kernel_source"])
                 or run.get("programs") != len(points)
                 or run.get("outputs") != np.count_nonzero(mask)
                 or len(run.get("selected_programs", [])) != len(points)
-                or {tuple(point) for point in run["selected_programs"]}
-                != point_set
+                or {tuple(point) for point in run["selected_programs"]} != point_set
                 or [tuple(point) for point in run["selected_programs"]]
                 != ordered_points
                 or run.get("bit_exact_f32") is not True
@@ -794,9 +751,7 @@ def validate_pv_shard_evidence(case, saved, module_hash):
                 raise SimulationBlocked(
                     "incomplete PV shard numerical/coverage evidence"
                 )
-    complete = set(
-        itertools.product(*(range(extent) for extent in case["grid"]))
-    )
+    complete = set(itertools.product(*(range(extent) for extent in case["grid"])))
     if points_seen != complete:
         raise SimulationBlocked("PV shards do not cover the full grid")
 
@@ -845,10 +800,7 @@ def check_case(case, output_root):
             and scenarios[1][1]
             and scenarios[1][1] == scenarios[2][1]
         )
-        if (
-            repeated
-            and runs[1]["output_sha256"] != runs[2]["output_sha256"]
-        ):
+        if repeated and runs[1]["output_sha256"] != runs[2]["output_sha256"]:
             raise AssertionError(
                 "identical stress inputs depend on program launch order"
             )
@@ -857,9 +809,7 @@ def check_case(case, output_root):
         record["reason"] = str(error)
     except Exception as error:
         record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
-    (output / "simcheck-result.json").write_text(
-        json.dumps(record, indent=2) + "\n"
-    )
+    (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(
         f"{record['status']}: {case['name']} ({record['programs']}/{record['total_programs']})",
         flush=True,
@@ -886,14 +836,10 @@ def collect_case(case, output_root):
         module = check_artifacts(case, output_root)
         record["module_sha256"] = digest(module)
         if not path.is_file():
-            raise SimulationBlocked(
-                "no simcheck-result.json for this successful build"
-            )
+            raise SimulationBlocked("no simcheck-result.json for this successful build")
         saved = json.loads(path.read_text())
         if saved.get("module_sha256") != digest(module):
-            raise SimulationBlocked(
-                "stale simulation: emitted module hash changed"
-            )
+            raise SimulationBlocked("stale simulation: emitted module hash changed")
         if saved.get("status") != "PASS":
             return saved
         scenarios = scenarios_for(case)
@@ -944,9 +890,7 @@ def collect_case(case, output_root):
             != [(name, order_prefix + order) for name, _, order in scenarios]
             or runs[1]["output_sha256"] != runs[2]["output_sha256"]
         ):
-            raise SimulationBlocked(
-                "incomplete numerical/launch-order stress evidence"
-            )
+            raise SimulationBlocked("incomplete numerical/launch-order stress evidence")
         saved.update(
             kernel_module_sha256=digest(case["kernel_source"]),
             full_grid_programs=full_grid,
@@ -994,8 +938,7 @@ def main():
         else inventory()
     )
     if args.pv_workers < 1 or (
-        args.pv_workers > 1
-        and any(case["family"] != "attention_pv" for case in cases)
+        args.pv_workers > 1 and any(case["family"] != "attention_pv" for case in cases)
     ):
         parser.error("--pv-workers requires positive workers and PV-only cases")
     if args.nonlinear_workers < 1 or (

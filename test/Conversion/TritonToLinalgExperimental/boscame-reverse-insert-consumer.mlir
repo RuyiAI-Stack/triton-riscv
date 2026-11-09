@@ -1,9 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: reverse_insert_destination = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
-// CONTRACT-CASE: reverse_memref_reshape_consumer = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
-// CONTRACT-CASE: reverse_scatter_destination = reject: op was not bufferized
+//
+// FileCheck lit test input 'boscame-reverse-insert-consumer.mlir' (boscame
+// reverse insert consumer lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame
+// reverse insert consumer lowering and contract facts.
+//
+
 module {
   func.func @reverse_insert_destination(%input: tensor<4xf32>, %upper: index)
       -> tensor<4xf32> {

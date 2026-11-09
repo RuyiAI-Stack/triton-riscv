@@ -1,11 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: another_function = complete
-// CONTRACT-CASE: argument_owners = incomplete
-// The function input and both while-region inputs have argument number zero.
-// Their references must retain the owner, region and block instead of merging
-// all three into the same block-arg#0 name.
+//
+// FileCheck lit test input 'boscame-facts-block-arguments.mlir' (boscame facts
+// block arguments lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame facts
+// block arguments lowering and contract facts.
+//
+
 module {
   func.func @argument_owners(%input: tensor<4xf32>, %condition: i1, %upper: index)
       -> tensor<4xf32> {

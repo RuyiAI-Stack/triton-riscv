@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Test bridge: external TTIR frontend followed by the independent Buddy tool."""
+"""
+Shared opt pipeline driver for BOSCAME FPGA integration tests (pipeline-opt.py).
+
+Inputs: TTIR snippets and triton-shared-opt / buddy-opt pass lists.
+
+Outputs: lowered IR for FileCheck or numeric Python assertions.
+
+When used: Integration/BOSCAMEFPGA tests that reuse the same AOT pass recipe.
+"""
 
 import os
 import shutil
@@ -44,12 +52,8 @@ def main():
         cursor += 1
     tool = os.environ.get("TRITON_SHARED_OPT_PATH")
     if not tool:
-        raise SystemExit(
-            "integration tests require explicit TRITON_SHARED_OPT_PATH"
-        )
-    with tempfile.TemporaryDirectory(
-        prefix="contract-integration-"
-    ) as temporary:
+        raise SystemExit("integration tests require explicit TRITON_SHARED_OPT_PATH")
+    with tempfile.TemporaryDirectory(prefix="contract-integration-") as temporary:
         boundary = Path(temporary) / "contract.mlir"
         command = [tool, source or "-", *frontend, *common, "-o", str(boundary)]
         if "--split-input-file" in backend:

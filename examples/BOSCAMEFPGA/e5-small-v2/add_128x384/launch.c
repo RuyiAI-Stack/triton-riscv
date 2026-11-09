@@ -1,3 +1,16 @@
+//
+// Host / bare-metal harness for FPGA case 'add_128x384' (model 'e5-small-v2').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 #ifdef HOST_TEST
 static float oracle_exp(float x) { return (float)exp((double)x); }
@@ -39,7 +52,8 @@ int launch(void) {
     y[i] = (i % 17 - 8) * 0.015625f;
     o[i] = 0;
   }
-  MemRef2 X = make_2(x, 128, 384), Y = make_2(y, 128, 384), O = make_2(o, 128, 384);
+  MemRef2 X = make_2(x, 128, 384), Y = make_2(y, 128, 384),
+          O = make_2(o, 128, 384);
   _mlir_ciface_kernel_add_128x384(&X, &Y, &O);
   int errors = 0;
   float maximum = 0;

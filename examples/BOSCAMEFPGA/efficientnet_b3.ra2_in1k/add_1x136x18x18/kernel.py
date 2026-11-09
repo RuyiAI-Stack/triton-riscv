@@ -1,12 +1,24 @@
-"""Standalone Triton source for add_1x136x18x18."""
+"""
+Standalone Triton kernel for FPGA case 'add_1x136x18x18' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/add_1x136x18x18 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
-def binary(
-    X, Y, Out, COUNT: tl.constexpr, MULTIPLY: tl.constexpr, BLOCK: tl.constexpr
-):
+def binary(X, Y, Out, COUNT: tl.constexpr, MULTIPLY: tl.constexpr, BLOCK: tl.constexpr):
     index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = index < COUNT
     x = tl.load(X + index, valid, other=0.0)

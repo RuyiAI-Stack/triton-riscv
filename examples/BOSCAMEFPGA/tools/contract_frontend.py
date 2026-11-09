@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""External triton-riscv AOT handoff shared by the real Triton examples."""
+"""BOSCAME FPGA example 'contract_frontend.py' under model 'tools'.
+
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
+"""
 
 import argparse
 import hashlib
@@ -8,9 +15,7 @@ import subprocess
 from pathlib import Path
 
 
-def export_kernel(
-    fn, signature, constexprs, grid, symbol, output, math_accuracy=None
-):
+def export_kernel(fn, signature, constexprs, grid, symbol, output, math_accuracy=None):
     from triton.backends.compiler import GPUTarget
     from triton.backends.triton_shared.contract import export_contract
     from triton.compiler import ASTSource

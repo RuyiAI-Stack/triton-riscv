@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Prove zero rematerialization before creating loop content versions."""
+"""
+Python lit test 'immutable-zero-copy.py' covering immutable inputs that must
+stay zero-copy.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import subprocess
 import sys
 
@@ -87,9 +99,9 @@ assert output.count("memref.alloc") == 2
 
 # An unknown callee may change a passed allocation. The normalizer cannot
 # turn that uncertainty into a fresh zero value or hide the original read.
-escaped = source(
-    before="func.call @touch(%zero) : (memref<16xi32>) -> ()"
-).replace("module {", "module {\n  func.func private @touch(memref<16xi32>)", 1)
+escaped = source(before="func.call @touch(%zero) : (memref<16xi32>) -> ()").replace(
+    "module {", "module {\n  func.func private @touch(memref<16xi32>)", 1
+)
 assert "memref.copy" in annotate(escaped)
 
 # Copying negative zero preserves the actual scalar bits; it is not silently

@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'attention_qk_12x128x128x64' (model
+// 'electra-base-discriminator').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 #ifdef HOST_TEST
 static float oracle_exp(float x) { return (float)exp((double)x); }
@@ -25,7 +39,8 @@ static void compare(float actual, float expected, float atol, float rtol,
   if (d > *maximum)
     *maximum = d;
 }
-extern void _mlir_ciface_kernel_attention_qk_12x128x128x64(MemRef3 *, MemRef3 *, MemRef3 *);
+extern void _mlir_ciface_kernel_attention_qk_12x128x128x64(MemRef3 *, MemRef3 *,
+                                                           MemRef3 *);
 int launch(void) {
   const int H = 12, M = 128, N = 128, K = 64;
   size_t off = 0;
@@ -38,7 +53,8 @@ int launch(void) {
     a[i] = (i % 29 - 14) * 0.0078125f;
   for (int i = 0; i < H * K * N; ++i)
     b[i] = (i % 23 - 11) * 0.01171875f;
-  MemRef3 A = make_3(a, H, M, K), B = make_3(b, H, K, N), C = make_3(c, H, M, N);
+  MemRef3 A = make_3(a, H, M, K), B = make_3(b, H, K, N),
+          C = make_3(c, H, M, N);
   _mlir_ciface_kernel_attention_qk_12x128x128x64(&A, &B, &C);
   int errors = 0;
   float maximum = 0;
@@ -49,7 +65,8 @@ int launch(void) {
         for (int q = 0; q < K; ++q)
           want += a[h * M * K + i * K + q] * b[h * K * N + q * N + j];
         want *= 0.125f;
-        compare(c[h * M * N + i * N + j], want, 5e-3f, 5e-3f, &errors, &maximum);
+        compare(c[h * M * N + i * N + j], want, 5e-3f, 5e-3f, &errors,
+                &maximum);
       }
   return print_check("attention_qk_12x128x128x64", errors, maximum);
 }

@@ -1,4 +1,14 @@
-"""BOSCAME AOT Contract export. This module never selects or opens a device."""
+"""BOSCAME AOT Contract export API for triton-riscv.
+
+Inputs: a compiled Triton module plus BoscameOptions (tile, verify, dump-facts,
+and identity hooks).
+
+Outputs: target-neutral contract JSON/MLIR with buffer facts and specialization
+metadata, without opening a device.
+
+When used: compiler.py AOT path, tests under test/Contract, and FPGA export
+helpers.
+"""
 
 import hashlib
 import json
@@ -11,9 +21,7 @@ from pathlib import Path
 
 from .paths import _get_triton_shared_opt_path
 
-AOT_ONLY = (
-    "boscame is AOT-only; use export_contract() to export a verified Contract"
-)
+AOT_ONLY = "boscame is AOT-only; use export_contract() to export a verified Contract"
 
 
 @dataclass(frozen=True)
@@ -53,9 +61,7 @@ class BoscameOptions:
         }
         unknown = options.keys() - allowed
         if unknown:
-            raise ValueError(
-                "unknown boscame options: " + ", ".join(sorted(unknown))
-            )
+            raise ValueError("unknown boscame options: " + ", ".join(sorted(unknown)))
         if any(type(value) is not bool for value in options.values()):
             raise ValueError("boscame option values must be boolean")
         if options.get("enable_fp_fusion") or options.get("allow_fp_reassoc"):
@@ -92,9 +98,7 @@ def _file_sha(path):
 
 
 def _run(argv):
-    process = subprocess.run(
-        list(map(str, argv)), text=True, capture_output=True
-    )
+    process = subprocess.run(list(map(str, argv)), text=True, capture_output=True)
     if process.returncode:
         raise ValueError(process.stderr.strip() or process.stdout.strip())
     return process.stdout
@@ -125,14 +129,8 @@ def _math_attribute(accuracy):
         errors = []
         for key in ("max_abs_error", "max_rel_error"):
             value = budget[key]
-            if (
-                type(value) not in (int, float)
-                or not math.isfinite(value)
-                or value < 0
-            ):
-                raise ValueError(
-                    "math error budgets must be finite and nonnegative"
-                )
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                raise ValueError("math error budgets must be finite and nonnegative")
             errors.append(f"{key} = {float(value):.17e} : f64")
         entries.append(
             name
@@ -152,9 +150,7 @@ class BoscameDelegate:
             "generic",
             1,
         ):
-            raise ValueError(
-                'boscame requires GPUTarget("boscame", "generic", 1)'
-            )
+            raise ValueError('boscame requires GPUTarget("boscame", "generic", 1)')
         self.target = target
 
     def export(
@@ -205,9 +201,7 @@ class BoscameDelegate:
         tool_sha = _file_sha(tool)
         build_identity = json.loads(_run([tool, "--contract-build-info"]))
 
-        with tempfile.TemporaryDirectory(
-            prefix="triton-contract-"
-        ) as temporary:
+        with tempfile.TemporaryDirectory(prefix="triton-contract-") as temporary:
             temporary = Path(temporary)
             raw, prepared, normalized = (
                 temporary / name
@@ -239,9 +233,7 @@ class BoscameDelegate:
                 raw.write_bytes(data)
                 input_identity = {"kind": "ttir", "sha256": _sha(data)}
             else:
-                raise TypeError(
-                    "source must be a Triton ASTSource or TTIR file"
-                )
+                raise TypeError("source must be a Triton ASTSource or TTIR file")
 
             prepare = []
             if entry_name:
@@ -269,8 +261,7 @@ class BoscameDelegate:
                 "launch-grid=" + name + ":" + ",".join(map(str, launch_grid)),
                 "enable-make-gather-scatter="
                 + str(effective.enable_make_gather_scatter).lower(),
-                "enable-collapse-shape="
-                + str(effective.enable_collapse_shape).lower(),
+                "enable-collapse-shape=" + str(effective.enable_collapse_shape).lower(),
             ]
             if caller_contract:
                 flags.append("caller-contract=" + caller_contract)
@@ -296,9 +287,7 @@ class BoscameDelegate:
             )
             contract = output.read_text()
             metadata = json.loads(report.read_text())
-            entry = next(
-                item for item in metadata["functions"] if item["name"] == name
-            )
+            entry = next(item for item in metadata["functions"] if item["name"] == name)
         if _file_sha(tool) != tool_sha:
             raise RuntimeError(
                 "frontend tool changed during Contract export; rebuild and retry"
@@ -372,12 +361,8 @@ def main():
     parser.add_argument("source", type=Path)
     parser.add_argument("--launch-grid", required=True, help="x,y,z")
     parser.add_argument("--entry-name")
-    parser.add_argument(
-        "--caller-contract", choices=("args_aligned64_nonalias",)
-    )
-    parser.add_argument(
-        "--math-accuracy", type=Path, help="explicit accuracy JSON"
-    )
+    parser.add_argument("--caller-contract", choices=("args_aligned64_nonalias",))
+    parser.add_argument("--math-accuracy", type=Path, help="explicit accuracy JSON")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:

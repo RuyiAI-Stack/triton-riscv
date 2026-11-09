@@ -5,6 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Structured Triton dialect to MemRef lowering.
+//
+// Inputs: pointer/mask analysis results on blocked loads and stores.
+//
+// Outputs: memref.load/store (and related ops) that BOSCAME / buddy passes can
+// consume.
+//
+// When used: after TritonArithToLinalg when the access is proven contiguous.
+//
+
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 #include "triton-shared/Conversion/StructuredToMemref/StructuredToMemref.h"

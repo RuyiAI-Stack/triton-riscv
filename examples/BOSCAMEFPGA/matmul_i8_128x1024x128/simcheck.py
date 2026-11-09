@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Bit-exact DDR-level check of the generated experimental BOSCAME kernel.
+"""Numeric simcheck driver for BOSCAME FPGA model 'matmul_i8_128x1024x128'.
 
-This script runs the experimental BOSCAME pass output:
-every program of the launch grid is executed by `tools/boscame_buffer_sim.py` (the
-functional NH/E6 model -- real DMA contract, two 128 KiB SPM banks, AME tile
-semantics) and the resulting C is compared against an independent NumPy INT32
-oracle. SPM persists between programs, and guards/access logs check excluded DDR.
+Inputs: exported kernels and CPU oracles / reference tensors for each registered
+case.
 
-    python3 simcheck.py [--module PATH] [--programs N]
+Outputs: pass/fail and max-error per operator without needing the FPGA board.
 
-The oracle and launch read the shape and grid from ``build.py``; this keeps
-the simulator aligned with ``kernels.py``. Requires numpy.
+When used: after AOT export, before or instead of a board run, from the model
+directory.
 """
 
 import argparse
@@ -118,8 +115,7 @@ def main():
     assert buffers["%arg2"][-len(guard) :] == guard
     limits = {"%arg0": a.nbytes, "%arg1": b.nbytes, "%arg2": c0.nbytes}
     assert all(
-        0 <= start < end <= limits[name]
-        for name, start, end, _ in machine.accesses
+        0 <= start < end <= limits[name] for name, start, end, _ in machine.accesses
     )
     max_abs = int(np.abs(got.astype(np.int64) - want).max())
     print(f"simulated {launched}/{total} programs, max_abs={max_abs}")

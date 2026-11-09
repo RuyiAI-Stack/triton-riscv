@@ -1,9 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: call_lineage = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
-// CONTRACT-CASE: select_second = complete
-// CONTRACT-CASE: select_second_with_two_generics = complete
+//
+// FileCheck lit test input 'boscame-call-lineage.mlir' (boscame call lineage
+// lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame call
+// lineage lowering and contract facts.
+//
+
 module {
   func.func private @select_second(%first: tensor<4xf32>,
       %second: tensor<4xf32>) -> tensor<4xf32> {

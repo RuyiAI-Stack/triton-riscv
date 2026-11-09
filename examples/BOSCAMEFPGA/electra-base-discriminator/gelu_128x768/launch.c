@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'gelu_128x768' (model
+// 'electra-base-discriminator').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 #ifdef HOST_TEST
 static float oracle_exp(float x) { return (float)exp((double)x); }
@@ -39,7 +53,8 @@ int launch(void) {
   int errors = 0;
   float maximum = 0;
   for (int i = 0; i < COUNT; ++i) {
-    float v = x[i], want = 0.5f * v * (1.0f + oracle_erf(v * 0.7071067811865475f));
+    float v = x[i],
+          want = 0.5f * v * (1.0f + oracle_erf(v * 0.7071067811865475f));
     compare(o[i], want, 3e-4f, 3e-4f, &errors, &maximum);
   }
   return print_check("gelu_128x768", errors, maximum);

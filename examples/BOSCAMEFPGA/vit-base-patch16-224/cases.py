@@ -1,7 +1,13 @@
-"""Read fixed specializations from each kernel.py without importing Triton.
+"""Case registry for BOSCAME FPGA model 'vit-base-patch16-224'.
 
-KERNEL_CONFIG must be a literal dict so inventory/model tools can inspect it
-with only the Python standard library. Numerical bodies stay in their cases.
+Inputs: per-case kernel.py files beside this registry; each must define
+KERNEL_CONFIG used by export and Make.
+
+Outputs: names, shapes, dtypes, and launch metadata for batch build, simcheck,
+and board-run helpers.
+
+When used: model-level export.py / report.py / makefiles walk this list instead
+of hard-coding operator names.
 """
 
 import ast
@@ -23,8 +29,9 @@ def describe(name):
         node.value
         for node in module.body
         if isinstance(node, ast.Assign)
-        and any(isinstance(t, ast.Name) and t.id == "KERNEL_CONFIG"
-                for t in node.targets)
+        and any(
+            isinstance(t, ast.Name) and t.id == "KERNEL_CONFIG" for t in node.targets
+        )
     ]
     if len(configs) != 1:
         raise ValueError(f"{source}: expected one literal KERNEL_CONFIG")
@@ -32,7 +39,15 @@ def describe(name):
     # Descriptive annotations from the former JSON remain beside the kernel,
     # while the public descriptor retains its existing ABI and report schema.
     config.pop("metadata", None)
-    for key in ("family", "kernel", "arguments", "shape", "constexprs", "grid", "roles"):
+    for key in (
+        "family",
+        "kernel",
+        "arguments",
+        "shape",
+        "constexprs",
+        "grid",
+        "roles",
+    ):
         if key not in config:
             raise ValueError(f"{source}: missing KERNEL_CONFIG[{key!r}]")
     for key in ("grid", "shape"):
@@ -47,8 +62,7 @@ def describe(name):
         "kernel_source": str(source),
         "symbol": "triton_" + name,
         "signature": {
-            arg["name"]: POINTER_TYPES[arg["dtype"]]
-            for arg in config["arguments"]
+            arg["name"]: POINTER_TYPES[arg["dtype"]] for arg in config["arguments"]
         },
         "directory": str(source.parent),
         "launch_source": str(source.parent / "launch.c"),

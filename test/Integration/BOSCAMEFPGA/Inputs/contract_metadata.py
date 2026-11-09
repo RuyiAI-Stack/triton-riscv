@@ -1,4 +1,12 @@
-"""Check the actual exported kernels at the backend-independent boundary."""
+"""Frontend metadata helpers for BOSCAME contract FileCheck tests.
+
+Inputs: compiled or textual modules plus expected contract.abi / lineage fields.
+
+Outputs: extracted attributes and comparisons used by the calling lit test.
+
+When used: BOSCAME FPGA integration coverage of launch-grid and buffer facts
+from the Python frontend.
+"""
 
 import re
 import subprocess
@@ -44,9 +52,7 @@ def main():
         Path(prefix + "." + fixture + ".mlir").write_text(output)
         outputs[fixture] = output
         if grid:
-            assert "contract.compute_graph = {complete = true" in output, (
-                fixture
-            )
+            assert "contract.compute_graph = {complete = true" in output, fixture
     matmul = outputs["matmul-i8.ttir"]
     assert matmul.count("linalg.matmul") == 1
     assert "a_source_load_origin_ids = array<i64: 0>" in matmul
@@ -59,18 +65,12 @@ def main():
     layernorm = outputs["layernorm.ttir"]
     assert layernorm.count("linalg.reduce") == 2
     assert layernorm.count("contract.access") == 4
-    assert (
-        layernorm.count('kind = "rectangular", valid_shape = array<i64: 768>')
-        == 4
-    )
+    assert layernorm.count('kind = "rectangular", valid_shape = array<i64: 768>') == 4
     assert "other = 1.000000e+00 : f32" in layernorm
     assert "other = 0.000000e+00 : f32" in layernorm
-    stores = [
-        line for line in layernorm.splitlines() if 'kind = "store"' in line
-    ]
+    stores = [line for line in layernorm.splitlines() if 'kind = "store"' in line]
     assert (
-        len(stores) == 1
-        and "source_load_origin_ids = array<i64: 0, 1, 2>" in stores[0]
+        len(stores) == 1 and "source_load_origin_ids = array<i64: 0, 1, 2>" in stores[0]
     )
     lineage = outputs["matmul-lineage.ttir"]
     assert "a_source_load_origin_ids = array<i64: 0>" in lineage

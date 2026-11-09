@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Fetch the pinned ViT files from the Hugging Face mirror.
+"""BOSCAME FPGA example 'fetch_assets.py' under model 'vit-base-patch16-224'.
 
-The script is deliberately explicit about the repository and files: graph
-capture can be reproduced without a transformers cache or an implicit model
-revision. Large files are streamed and resumed by urllib's HTTP server when
-possible.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations

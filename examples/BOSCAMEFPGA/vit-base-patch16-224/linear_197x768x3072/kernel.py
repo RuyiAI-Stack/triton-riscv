@@ -1,4 +1,17 @@
-"""Standalone Triton source for linear_197x768x3072."""
+"""
+Standalone Triton kernel for FPGA case 'linear_197x768x3072' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/linear_197x768x3072 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl

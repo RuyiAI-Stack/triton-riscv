@@ -1,5 +1,18 @@
-#include "support.h"
+//
+// C support runtime for BOSCAME FPGA model 'efficientnet_b3.ra2_in1k'.
+//
+// Inputs: workspace size, operand pointers, and UART/status hooks shared by
+// every launch.c in this model tree.
+//
+// Outputs: aligned workspace(), MemRef helpers, print_check(), and numeric
+// oracles used on host and on the board.
+//
+// When used: linked into each case image via common.mk / board.mk after the
+// kernel object is produced.
+//
+
 #include "nh_e6_platform.h"
+#include "support.h"
 #include "uart.h"
 
 static unsigned char arena[VIT_WORKSPACE_BYTES]
@@ -52,8 +65,7 @@ int check_close(float actual, float expected, float atol, float rtol) {
     float f;
     uint32_t u;
   } a = {actual}, b = {expected};
-  if ((a.u & 0x7f800000u) == 0x7f800000u ||
-      (b.u & 0x7f800000u) == 0x7f800000u)
+  if ((a.u & 0x7f800000u) == 0x7f800000u || (b.u & 0x7f800000u) == 0x7f800000u)
     return actual == expected;
   float d = actual - expected;
   if (d < 0)

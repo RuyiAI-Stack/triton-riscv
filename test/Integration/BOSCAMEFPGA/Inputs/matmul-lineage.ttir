@@ -1,3 +1,16 @@
+//
+// FileCheck lit test input 'matmul-lineage.ttir' (matmul lineage lowering and
+// contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock matmul lineage lowering and
+// contract facts.
+//
+
 module {
   tt.func public @matmul_load_lineage(%a_ptr: !tt.ptr<i8>, %b_ptr: !tt.ptr<i8>) -> tensor<16x16xi32> {
     %acc_zero = arith.constant dense<0> : tensor<16x16xi32>

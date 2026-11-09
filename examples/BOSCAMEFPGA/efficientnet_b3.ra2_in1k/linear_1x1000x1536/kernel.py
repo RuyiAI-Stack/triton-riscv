@@ -1,13 +1,34 @@
-"""Standalone Triton source for linear_1x1000x1536."""
+"""
+Standalone Triton kernel for FPGA case 'linear_1x1000x1536' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/linear_1x1000x1536 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def linear(
-    A, W, Bias, Out,
-    M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-    BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,
+    A,
+    W,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
 ):
     """Out[M, N] = A[M, K] @ W[N, K]^T + Bias[N]."""
     rows = tl.program_id(0) * BM + tl.arange(0, BM)

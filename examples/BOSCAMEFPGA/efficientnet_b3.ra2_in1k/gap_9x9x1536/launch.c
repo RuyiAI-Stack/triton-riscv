@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'gap_9x9x1536' (model
+// 'efficientnet_b3.ra2_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -23,11 +37,13 @@ int launch(void) {
   size_t off = 0;
   float *x = (float *)workspace(off);
   off = vit_align64(off + (size_t)124416 * 4u);
-  for (int i = 0; i < 124416; ++i) x[i] = 0;
+  for (int i = 0; i < 124416; ++i)
+    x[i] = 0;
   MemRef4 X = make_4(x, 1, 1536, 9, 9);
   float *o = (float *)workspace(off);
   off = vit_align64(off + (size_t)1536 * 4u);
-  for (int i = 0; i < 1536; ++i) o[i] = 0;
+  for (int i = 0; i < 1536; ++i)
+    o[i] = 0;
   MemRef2 O = make_2(o, 1, 1536);
   _mlir_ciface_kernel_gap_9x9x1536(&X, &O);
   nr_puts("numerical acceptance is simcheck\n");

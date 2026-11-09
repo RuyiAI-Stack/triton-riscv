@@ -1,4 +1,11 @@
-"""Two-process TTIR/Contract bridge helpers for optional integration tests."""
+"""Shared opt pipeline driver for BOSCAME FPGA integration tests (pipeline.py).
+
+Inputs: TTIR snippets and triton-shared-opt / buddy-opt pass lists.
+
+Outputs: lowered IR for FileCheck or numeric Python assertions.
+
+When used: Integration/BOSCAMEFPGA tests that reuse the same AOT pass recipe.
+"""
 
 import os
 import subprocess

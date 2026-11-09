@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Check all 197 programs against the padded TTIR f32 semantics, without a board."""
+"""Numeric simcheck driver for BOSCAME FPGA model 'layernorm_197x768'.
+
+Inputs: exported kernels and CPU oracles / reference tensors for each registered
+case.
+
+Outputs: pass/fail and max-error per operator without needing the FPGA board.
+
+When used: after AOT export, before or instead of a board run, from the model
+directory.
+"""
 
 import argparse
 import subprocess
@@ -88,9 +97,7 @@ def main():
         "%arg2": bytearray(bias.tobytes() + guard),
         "%arg3": bytearray(bytes(x.nbytes) + guard),
     }
-    original = {
-        name: bytes(data) for name, data in buffers.items() if name != "%arg3"
-    }
+    original = {name: bytes(data) for name, data in buffers.items() if name != "%arg3"}
     max_error = 0.0
     for row in reversed(range(example.ROWS)):
         start, end = row * example.WIDTH * 4, (row + 1) * example.WIDTH * 4
@@ -114,9 +121,7 @@ def main():
             ("%arg2", 0, example.WIDTH * 4, "read"),
             ("%arg3", start, end, "write"),
         ]
-    assert all(
-        bytes(buffers[name]) == snapshot for name, snapshot in original.items()
-    )
+    assert all(bytes(buffers[name]) == snapshot for name, snapshot in original.items())
     assert buffers["%arg3"][-len(guard) :] == guard
     output = bytes(buffers["%arg3"][: x.nbytes])
     if args.compare_output is not None:

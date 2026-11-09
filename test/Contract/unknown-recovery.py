@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Recover local content facts after full kills without completing opaque scopes."""
+"""
+Python lit test 'unknown-recovery.py' covering unknown ops still produce
+conservative facts.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import re
 import subprocess
 import sys
@@ -18,16 +30,12 @@ def fill(target, label, scalar="%zero", type_=TYPE):
 
 def load(target, label, result=None):
     result = result or "%" + label.replace("-", "_")
-    return (
-        f'{result} = memref.load {target}[%index] {{test.id = "{label}"}} '
-        f": {TYPE}\n"
-    )
+    return f'{result} = memref.load {target}[%index] {{test.id = "{label}"}} : {TYPE}\n'
 
 
 def copy(source, target, label):
     return (
-        f'memref.copy {source}, {target} {{test.id = "{label}"}} '
-        f": {TYPE} to {TYPE}\n"
+        f'memref.copy {source}, {target} {{test.id = "{label}"}} : {TYPE} to {TYPE}\n'
     )
 
 
@@ -68,15 +76,11 @@ module {{
 
 
 def invoke(source, *passes):
-    return subprocess.run(
-        [TOOL, *passes], input=source, text=True, capture_output=True
-    )
+    return subprocess.run([TOOL, *passes], input=source, text=True, capture_output=True)
 
 
 def operation(source, label):
-    return next(
-        line for line in source.splitlines() if f'test.id = "{label}"' in line
-    )
+    return next(line for line in source.splitlines() if f'test.id = "{label}"' in line)
 
 
 def task(source, label):
@@ -91,9 +95,7 @@ def ids(record, field):
 
 
 def annotated(name, source, present=(), absent=()):
-    result = invoke(
-        source, "--kernel-contract-annotate", "--kernel-contract-verify"
-    )
+    result = invoke(source, "--kernel-contract-annotate", "--kernel-contract-verify")
     assert result.returncode == 0, (name, result.stderr)
     text = result.stdout
     graph = re.search(r"contract.compute_graph = \{([^}]*)\}", text)[1]
@@ -103,9 +105,7 @@ def annotated(name, source, present=(), absent=()):
     for label in absent:
         assert task(text, label) is None, (name, label, text)
     # Reannotation must neither revive omitted tasks nor complete the scope.
-    repeated = invoke(
-        text, "--kernel-contract-annotate", "--kernel-contract-verify"
-    )
+    repeated = invoke(text, "--kernel-contract-annotate", "--kernel-contract-verify")
     assert repeated.returncode == 0, (name, repeated.stderr)
     repeated_graph = re.search(
         r"contract.compute_graph = \{([^}]*)\}", repeated.stdout
@@ -131,10 +131,7 @@ def reject(name, text):
     result = invoke(text, "--kernel-contract-verify")
     assert result.returncode != 0, name
     assert "V15/V23" in result.stderr, (name, result.stderr)
-    assert (
-        "LLVM ERROR" not in result.stderr
-        and "PLEASE submit" not in result.stderr
-    )
+    assert "LLVM ERROR" not in result.stderr and "PLEASE submit" not in result.stderr
 
 
 branch = """
@@ -203,9 +200,7 @@ restored(arm_output, "parent-recover", "parent-recovered")
 # A full fill with a captured unknown scalar still reads unknown content, and
 # replacing it with a partial fill still needs the unmodeled old snapshot.
 recovery = operation(text, "recover-fill")
-scalar = re.search(r"(%[^ ]+) = memref.load", operation(text, "unknown-load"))[
-    1
-]
+scalar = re.search(r"(%[^ ]+) = memref.load", operation(text, "unknown-load"))[1]
 reject(
     "unknown-scalar-claim",
     text.replace(
@@ -320,8 +315,7 @@ block = re.search(r"\^bb0\((%[^:]+): i32, (%[^:]+): i32\)", tail)
 lhs, old = block.groups()
 reject(
     "pointwise-init-read-claim",
-    head
-    + tail.replace(f"arith.addi {lhs}, {lhs}", f"arith.addi {lhs}, {old}", 1),
+    head + tail.replace(f"arith.addi {lhs}, {lhs}", f"arith.addi {lhs}, {old}", 1),
 )
 
 

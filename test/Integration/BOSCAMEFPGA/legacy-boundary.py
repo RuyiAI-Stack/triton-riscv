@@ -1,12 +1,18 @@
-# RUN: %PYTHON %s %t
-"""Retired scratch-ABI inputs through the standard two-process boundary.
+"""
+Python lit test 'legacy-boundary.py' covering legacy diagnostic / boundary TTIR
+cases.
 
-Dense and pitched inputs execute emitted IR with strict byte-range checks.
-K-blocking, initializer/wrap and static/nonzero-other mask numerics are also
-covered by boscame-k-blocked.py. Dynamic old scratch masks remain explicit v1
-rejections; no scratch argument or legacy frontend pass is introduced.
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
 """
 
+# RUN: %PYTHON %s %t
 import os
 import re
 import subprocess
@@ -42,9 +48,7 @@ expected = {
 assert {path.stem for path in fixtures.glob("*.ttir")} == expected.keys()
 for name, diagnostic in expected.items():
     grid = (
-        "triton_matmul_i8_196x768x768:7,6,1"
-        if name.startswith("reference-")
-        else None
+        "triton_matmul_i8_196x768x768:7,6,1" if name.startswith("reference-") else None
     )
     output = work / (name + ".mlir")
     result = subprocess.run(
@@ -58,9 +62,7 @@ for name, diagnostic in expected.items():
         capture_output=True,
         text=True,
     )
-    assert result.returncode >= 0 and "Stack dump" not in result.stderr, (
-        result.stderr
-    )
+    assert result.returncode >= 0 and "Stack dump" not in result.stderr, result.stderr
     if diagnostic:
         assert result.returncode != 0 and diagnostic in result.stderr, (
             name,
@@ -102,9 +104,9 @@ for name, diagnostic in expected.items():
         }
         first = len(machine.accesses)
         machine.launch(buffers)
-        reference = (
-            a[:, :64].astype(np.int64) @ b[:, :64].astype(np.int64).T
-        ).astype(np.int32)
+        reference = (a[:, :64].astype(np.int64) @ b[:, :64].astype(np.int64).T).astype(
+            np.int32
+        )
         np.testing.assert_array_equal(
             np.frombuffer(c, dtype=np.int32, count=4096).reshape(64, 64),
             reference,

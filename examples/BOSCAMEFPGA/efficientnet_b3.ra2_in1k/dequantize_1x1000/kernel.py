@@ -1,12 +1,31 @@
-"""Standalone Triton source for dequantize_1x1000."""
+"""
+Standalone Triton kernel for FPGA case 'dequantize_1x1000' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/dequantize_1x1000 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def dequantize(
-    X, Row, Column, Out,
-    ROWS: tl.constexpr, COLS: tl.constexpr, BLOCK: tl.constexpr,
+    X,
+    Row,
+    Column,
+    Out,
+    ROWS: tl.constexpr,
+    COLS: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """Out = int32 value * row scale * column scale. This case has one row."""
     tl.static_assert(ROWS == 1)
@@ -23,44 +42,14 @@ KERNEL_CONFIG = {
     "family": "dequantization",
     "kernel": "dequantize",
     "arguments": [
-        {
-            "name": "X",
-            "rank": 2,
-            "dtype": "i32"
-        },
-        {
-            "name": "Row",
-            "rank": 1,
-            "dtype": "f32"
-        },
-        {
-            "name": "Column",
-            "rank": 1,
-            "dtype": "f32"
-        },
-        {
-            "name": "Out",
-            "rank": 2,
-            "dtype": "f32"
-        }
+        {"name": "X", "rank": 2, "dtype": "i32"},
+        {"name": "Row", "rank": 1, "dtype": "f32"},
+        {"name": "Column", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
     ],
-    "shape": [
-        1,
-        1000
-    ],
-    "constexprs": {
-        "ROWS": 1,
-        "COLS": 1000,
-        "BLOCK": 128
-    },
-    "grid": [
-        8,
-        1,
-        1
-    ],
+    "shape": [1, 1000],
+    "constexprs": {"ROWS": 1, "COLS": 1000, "BLOCK": 128},
+    "grid": [8, 1, 1],
     "roles": [],
-    "metadata": {
-        "dtype": "efficientnet-b3",
-        "model": "timm/efficientnet_b3.ra2_in1k"
-    }
+    "metadata": {"dtype": "efficientnet-b3", "model": "timm/efficientnet_b3.ra2_in1k"},
 }

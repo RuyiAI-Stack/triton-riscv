@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s
-"""Check that the three real drivers pass their explicit launch and ABI promises."""
+"""
+Python lit test 'launch-grid-frontend-test.py' covering launch grid captured on
+the contract.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s
 import importlib.util
 import sys
 import tempfile
@@ -53,19 +65,13 @@ class LaunchGridFrontendTest(unittest.TestCase):
                     args[0].constants,
                     {
                         (args[0].fn.arg_names.index(key),): value
-                        for key, value in getattr(
-                            driver, "CONSTEXPRS", {}
-                        ).items()
+                        for key, value in getattr(driver, "CONSTEXPRS", {}).items()
                     },
                 )
-                self.assertEqual(
-                    kwargs["target"], GPUTarget("boscame", "generic", 1)
-                )
+                self.assertEqual(kwargs["target"], GPUTarget("boscame", "generic", 1))
                 self.assertEqual(kwargs["launch_grid"], grid)
                 self.assertEqual(kwargs["entry_name"], "triton_" + name)
-                self.assertEqual(
-                    kwargs["caller_contract"], "args_aligned64_nonalias"
-                )
+                self.assertEqual(kwargs["caller_contract"], "args_aligned64_nonalias")
                 self.assertIsNone(kwargs["math_accuracy"])
                 artifact.write.assert_called_once_with(Path(temporary))
 

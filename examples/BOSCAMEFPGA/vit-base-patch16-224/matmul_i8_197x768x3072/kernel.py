@@ -1,4 +1,17 @@
-"""Standalone Triton source for matmul_i8_197x768x3072."""
+"""
+Standalone Triton kernel for FPGA case 'matmul_i8_197x768x3072' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/matmul_i8_197x768x3072 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -49,8 +62,20 @@ KERNEL_CONFIG = {
         {"name": "C", "rank": 2, "dtype": "i32"},
     ],
     "shape": [197, 768, 3072],
-    "constexprs": {"M": 197, "VALID_M": 197, "N": 768, "K": 3072, "BM": 32, "BN": 64, "BK": 128},
+    "constexprs": {
+        "M": 197,
+        "VALID_M": 197,
+        "N": 768,
+        "K": 3072,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+    },
     "grid": [7, 12, 1],
     "roles": [],
-    "metadata": {"dtype": "i8 x i8 -> i32", "target": "nr-fpga", "checked_elements": 151296},
+    "metadata": {
+        "dtype": "i8 x i8 -> i32",
+        "target": "nr-fpga",
+        "checked_elements": 151296,
+    },
 }

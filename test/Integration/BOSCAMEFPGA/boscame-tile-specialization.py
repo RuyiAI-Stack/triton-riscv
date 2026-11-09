@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t contract-pipeline-opt
-"""Launch/loop proofs, compact snapshots, graph rebuilding and pitched DMA."""
+"""
+Python lit test 'boscame-tile-specialization.py' covering explicit tile
+specialization.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t contract-pipeline-opt
 import itertools
 import os
 import re
@@ -44,17 +56,12 @@ def check_graph(text, functions=1):
         assert function.count("contract.loop_carried_slots") == 2
         for task in tasks:
             node = int(re.search(r"(?:^|, )id = (\d+)", task)[1])
-            predecessors = re.search(
-                r"predecessors = array<i64(?:: ([^>]+))?>", task
-            )[1]
+            predecessors = re.search(r"predecessors = array<i64(?:: ([^>]+))?>", task)[
+                1
+            ]
             branch = set(range(0, 5) if node < 5 else range(5, 12))
-            assert (
-                not predecessors
-                or set(map(int, predecessors.split(","))) <= branch
-            )
-        slots = re.findall(
-            r"contract.loop_carried_slots = \[\{([^}]+)\}\]", function
-        )
+            assert not predecessors or set(map(int, predecessors.split(","))) <= branch
+        slots = re.findall(r"contract.loop_carried_slots = \[\{([^}]+)\}\]", function)
         for index, slot in enumerate(slots):
             branch = set(range(0, 5) if index == 0 else range(5, 12))
             for field in (
@@ -175,9 +182,7 @@ def main():
 
     path, buffer = run("buffer", source, grid, BUFFERIZE)
     for branch in buffer.split("} else {"):
-        allocations = re.findall(
-            r"memref.alloc\(\).*?: (memref<[^>]+>)", branch
-        )
+        allocations = re.findall(r"memref.alloc\(\).*?: (memref<[^>]+>)", branch)
         assert sorted(allocations) == sorted(
             ["memref<32x128xi32>"] + ["memref<32x128xi8>", "memref<16384xi8>"]
         ), allocations
@@ -205,9 +210,7 @@ def main():
     branches = next(op for op in ops if op_name(op.text) == "scf.if").blocks
     for branch in branches:
         windows = [
-            op.text
-            for op in walk(branch)
-            if op_name(op.text) == "bosc_ame.spm.view"
+            op.text for op in walk(branch) if op_name(op.text) == "bosc_ame.spm.view"
         ]
         assert len(windows) == 2, windows
         assert "memref.alloca" not in "\n".join(op.text for op in walk(branch))
@@ -221,9 +224,7 @@ def main():
         ):
             assert "strided<[128, 1]" in line, line
         elif "bosc_ame.tile.load_b " in line:
-            assert (
-                "strided<[1, 768]" in line and "bosc_ame.direct_ddr" in line
-            ), line
+            assert "strided<[1, 768]" in line and "bosc_ame.direct_ddr" in line, line
     lowered = work / "hardware.mlir"
     subprocess.run(
         [
@@ -274,15 +275,11 @@ def main():
     run("unproved", unknown, grid, reject="kernel contract V4")
     _, text = run(
         "nonunit-loop",
-        source.replace(
-            "%c1_i32 = arith.constant 1", "%c1_i32 = arith.constant 2"
-        ),
+        source.replace("%c1_i32 = arith.constant 1", "%c1_i32 = arith.constant 2"),
         grid,
     )
     assert text.count("scf.if") == 1 and "arith.minsi" not in text
-    body = source[
-        source.index("module {") + len("module {") : source.rfind("}")
-    ]
+    body = source[source.index("module {") + len("module {") : source.rfind("}")]
     _, text = run(
         "two-functions",
         "module {\n" + body + body.replace(SYMBOL, "second") + "}\n",
@@ -386,9 +383,7 @@ def main():
     b = rng.integers(-128, 128, (64, 384), dtype=np.int8)
     expected_b = b[:, :256].copy()
     expected_b[:, 128:] = -2
-    expected = (a.astype(np.int64) @ expected_b.astype(np.int64).T).astype(
-        "<i4"
-    )
+    expected = (a.astype(np.int64) @ expected_b.astype(np.int64).T).astype("<i4")
     guard = bytes([0xA7]) * 1024
     buffers = {
         "%arg0": bytearray(a.tobytes() + guard),
@@ -397,9 +392,7 @@ def main():
     }
     machine.launch(buffers)
     np.testing.assert_array_equal(
-        np.frombuffer(buffers["%arg2"], dtype="<i4", count=4096).reshape(
-            64, 64
-        ),
+        np.frombuffer(buffers["%arg2"], dtype="<i4", count=4096).reshape(64, 64),
         expected,
     )
     assert (
@@ -414,8 +407,7 @@ def main():
     ]
     assert sum(end - start for start, end in reads) == 64 * 128
     assert all(
-        0 <= start // 384 < 64
-        and start % 384 < start % 384 + end - start <= 128
+        0 <= start // 384 < 64 and start % 384 < start % 384 + end - start <= 128
         for start, end in reads
     )
     print(

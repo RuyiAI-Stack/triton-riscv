@@ -1,13 +1,14 @@
-"""Triton kernel for the standalone layernorm_197x768 example.
+"""
+Standalone Triton kernel for FPGA case 'kernel.py' (model 'layernorm_197x768').
 
-``layernorm`` is the ViT-B/16 LayerNorm operator: one program normalizes one
-row of the ``[197, 768]`` hidden state of ``google/vit-base-patch16-224``
-(196 patches + the CLS token) and applies the affine ``weight``/``bias``.
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
 
-The body is the migrated ``layernorm`` from
-``../vit-base-patch16-224/triton/kernels.py``; the fixed problem size is
-supplied by :mod:`build` as ``tl.constexpr`` values, so this source stays free
-of any hard-coded shape.
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in examples/BOSCAMEFPGA/layernorm_197x768/kernel.py
+before linking launch.c.
 """
 
 import triton

@@ -1,6 +1,17 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""Failure exit codes and memory contracts of the experimental BOSCAME entry."""
+"""
+Python lit test 'boscame-contracts.py' covering end-to-end contract emit/verify.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import subprocess
 import sys
@@ -49,9 +60,7 @@ def main():
         args = experimental_pipeline() if args is None else args
         file = work / (name + ".mlir")
         file.write_text(source)
-        result = subprocess.run(
-            [OPT, str(file), *args], text=True, capture_output=True
-        )
+        result = subprocess.run([OPT, str(file), *args], text=True, capture_output=True)
         if expect:
             assert result.returncode != 0, name + " silently succeeded"
             assert expect in result.stderr, (name, result.stderr)
@@ -134,10 +143,7 @@ def main():
     )
     assert "func.func @attrs" in attrs and 'test.custom = "custom"' in attrs
     assert 'test.arg = "arg"' in attrs and 'test.result = "result"' in attrs
-    assert (
-        "func.func private @hidden" in attrs
-        and 'test.private = "hidden"' in attrs
-    )
+    assert "func.func private @hidden" in attrs and 'test.private = "hidden"' in attrs
     assert (
         'test.arg = "private_arg"' in attrs
         and 'test.result = "private_result"' in attrs

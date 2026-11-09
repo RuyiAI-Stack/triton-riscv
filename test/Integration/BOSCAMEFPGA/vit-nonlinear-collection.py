@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s
-"""Collection rechecks actual values; PASS labels and hashes are insufficient."""
+"""
+Python lit test 'vit-nonlinear-collection.py' covering collect ViT nonlinear ops
+for oracles.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s
 import copy
 import hashlib
 import json
@@ -12,9 +24,7 @@ from unittest.mock import patch
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(
-    0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools")
-)
+sys.path.insert(0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools"))
 from nonlinear_simcheck import (  # noqa: E402
     _sources,
     collect_nonlinear_case,
@@ -45,16 +55,12 @@ case = {
     "constexprs": {"COUNT": 9, "BLOCK": 4},
     "grid": [3, 1, 1],
 }
-with tempfile.TemporaryDirectory(
-    prefix="nonlinear-evidence-test-"
-) as directory:
+with tempfile.TemporaryDirectory(prefix="nonlinear-evidence-test-") as directory:
     output_root = Path(directory)
     output = output_root / case["name"]
     output.mkdir()
     module = output / "kernel.boscame.mlir"
-    module.write_text(
-        "// numerical evidence fixture, not an executable module\n"
-    )
+    module.write_text("// numerical evidence fixture, not an executable module\n")
     module_hash, kernel_hash = digest(module), digest(case["kernel_source"])
     shards = [
         {"programs": [list(p) for p in points], "runs": []}
@@ -79,9 +85,7 @@ with tempfile.TemporaryDirectory(
                 "output_sha256": {"Out": sha(actual)},
                 "ordered_f32_reference_sha256": sha(actual),
                 "mathematical_reference_sha256": sha(mathematical),
-                "nonlinear_error": nonlinear_error_metrics(
-                    actual, mathematical
-                ),
+                "nonlinear_error": nonlinear_error_metrics(actual, mathematical),
                 "nonlinear_ddr_bytes": {"%arg0": 36, "%arg1": 36},
             }
         )
@@ -97,9 +101,7 @@ with tempfile.TemporaryDirectory(
                 {
                     "name": name,
                     "order": order,
-                    "selected_programs": points[::-1]
-                    if order == "reverse"
-                    else points,
+                    "selected_programs": points[::-1] if order == "reverse" else points,
                     "programs": len(points),
                     "outputs": int(np.count_nonzero(mask)),
                     "output_sha256": {"Out": sha(actual[mask])},

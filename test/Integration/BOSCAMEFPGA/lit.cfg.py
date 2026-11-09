@@ -1,5 +1,17 @@
+"""LLVM lit config for BOSCAME FPGA integration tests.
+
+Inputs: buddy-opt / triton-shared-opt, Python oracles, and optional
+board-unrelated CPU paths.
+
+Outputs: substitutions and features specific to test/Integration/BOSCAMEFPGA.
+
+When used: lit run of FPGA AOT integration without requiring the physical board.
+"""
+
+
 # ruff: noqa: F821
-"""Optional cross-repository tests, separate from the frontend core suite."""
+
+# Optional cross-repository tests, separate from the frontend core suite.
 
 import os
 import sys
@@ -36,9 +48,7 @@ config.environment.update(
 )
 bridge = Path(config.test_exec_root) / "contract-pipeline-opt"
 bridge.parent.mkdir(parents=True, exist_ok=True)
-bridge.write_bytes(
-    (Path(__file__).parent / "Inputs/pipeline-opt.py").read_bytes()
-)
+bridge.write_bytes((Path(__file__).parent / "Inputs/pipeline-opt.py").read_bytes())
 bridge.chmod(0o755)
 config.substitutions.extend(
     [

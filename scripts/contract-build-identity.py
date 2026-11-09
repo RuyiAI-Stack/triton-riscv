@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Generate the frontend's compiled identity without recording local paths."""
+"""Compute a reproducible contract build identity for AOT pins.
+
+Inputs: repo root, Triton path, LLVM build dir, and an output file path (argv).
+
+Outputs: JSON with git revisions and content hashes that triton-shared-opt can
+echo.
+
+When used: cmake/tool packaging so FPGA artifacts record which compiler they
+came from.
+"""
 
 import hashlib
 import json
@@ -47,9 +56,7 @@ def main():
         "frontend_files": sources,
         "triton_revision": revision(triton),
         "triton_patch_sha256": hashlib.sha256(
-            subprocess.check_output(
-                ["git", "diff", "--binary", "HEAD"], cwd=triton
-            )
+            subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=triton)
         ).hexdigest(),
         "contract_schema_version": 1,
         "llvm_build_files": {

@@ -1,5 +1,21 @@
-//===- ContractTileSpecialization.h - Rectangular tiles
-//---------------------===//
+//===----------------------------------------------------------------------===//
+//
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+//
+//===----------------------------------------------------------------------===//
+
+//
+// Contract tile specialization for BOSCAME AOT GEMM/DMA shapes.
+//
+// Inputs: linalg matmul (or similar) plus kernel contract tile hints from the
+// frontend.
+//
+// Outputs: specialized loops/tiles that match SPM/capacity facts without
+// picking a GPU backend.
+//
+// When used: emitContract=true on TritonToLinalgExperimental.
+//
 
 #ifndef BUDDY_CONTRACTTILESPECIALIZATION_H
 #define BUDDY_CONTRACTTILESPECIALIZATION_H

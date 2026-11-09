@@ -5,6 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Convert Triton arithmetic and tensor ops into Linalg.
+//
+// Inputs: tt.elementwise, reductions, broadcasts, and related arith on tensor
+// types.
+//
+// Outputs: linalg.generic / named ops used by the experimental and BOSCAME
+// pipelines.
+//
+// When used: early in TritonToLinalgExperimental before contract tile
+// specialization.
+//
+
 #include "triton-shared/Conversion/TritonArithToLinalg/TritonArithToLinalg.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"

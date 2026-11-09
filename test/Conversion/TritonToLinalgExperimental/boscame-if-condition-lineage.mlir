@@ -1,7 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: if_condition_is_a_data_dependency = reject: kernel contract V17: v1 if requires explicit then and else scopes
+//
+// FileCheck lit test input 'boscame-if-condition-lineage.mlir' (boscame if
+// condition lineage lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame if
+// condition lineage lowering and contract facts.
+//
+
 module {
   func.func @if_condition_is_a_data_dependency(
       %condition_buffer: memref<1xi1>, %side_effect: memref<1xi1>,

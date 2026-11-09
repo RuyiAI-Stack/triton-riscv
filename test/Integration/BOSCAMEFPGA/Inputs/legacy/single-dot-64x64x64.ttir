@@ -1,3 +1,16 @@
+//
+// FileCheck lit test input 'single-dot-64x64x64.ttir' (single dot 64x64x64
+// lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock single dot 64x64x64
+// lowering and contract facts.
+//
+
 module {
   tt.func public @single_dot64(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
     %c64 = arith.constant dense<64> : tensor<64x1xi32>

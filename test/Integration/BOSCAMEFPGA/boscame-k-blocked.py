@@ -1,6 +1,16 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""Internal K blocking and dynamic rectangular masks, with an independent oracle."""
+"""Python lit test 'boscame-k-blocked.py' covering K-blocked matmul tiling.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import subprocess
 import sys
@@ -29,8 +39,7 @@ def main():
 
     def lower(name, ttir):
         input_path, output, loops = (
-            work / (name + suffix)
-            for suffix in (".ttir", ".mlir", ".loops.mlir")
+            work / (name + suffix) for suffix in (".ttir", ".mlir", ".loops.mlir")
         )
         input_path.write_text(ttir)
         result = subprocess.run(
@@ -49,17 +58,14 @@ def main():
         assert text.count("bosc_ame.tile.mma") == 4, (
             "K=256 must use four 64-wide AME blocks"
         )
-        assert (
-            "linalg.matmul" not in text and "bosc_ame.lower_to_ame" not in text
-        )
+        assert "linalg.matmul" not in text and "bosc_ame.lower_to_ame" not in text
         assert "memref.memory_space_cast" not in text
         assert "bufferization.to_tensor" not in text
         assert "bufferization.to_buffer" not in text
         operand_loads = [
             line
             for line in text.splitlines()
-            if "bosc_ame.tile.load_a " in line
-            or "bosc_ame.tile.load_b " in line
+            if "bosc_ame.tile.load_a " in line or "bosc_ame.tile.load_b " in line
         ]
         assert len(operand_loads) == 8
         assert all(
@@ -93,9 +99,7 @@ def main():
         "%arg2": c,
     }
     machine.launch(buffers)
-    expected = (a.astype(np.int64) @ b.astype(np.int64).T + initial).astype(
-        np.int32
-    )
+    expected = (a.astype(np.int64) @ b.astype(np.int64).T + initial).astype(np.int32)
     np.testing.assert_array_equal(
         np.frombuffer(c, dtype=np.int32, count=4096).reshape(64, 64), expected
     )
@@ -107,9 +111,7 @@ def main():
 
     # Dynamic contiguous extent is chunks * 64, so each enabled DMA packet is
     # wholly inside the original mask. B remains physical [N,K], logical [K,N].
-    masked = source.replace(
-        "%C: !tt.ptr<i32>)", "%C: !tt.ptr<i32>, %chunks: i32)"
-    )
+    masked = source.replace("%C: !tt.ptr<i32>)", "%C: !tt.ptr<i32>, %chunks: i32)")
     masked = masked.replace(
         "%a = tt.load %pa3 :",
         """%c64scalar = arith.constant 64 : i32

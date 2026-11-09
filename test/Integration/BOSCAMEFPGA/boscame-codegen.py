@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""Direct LLVM export and actual RVV/AME assembly, checked by the retained NR filter."""
+"""
+Python lit test 'boscame-codegen.py' covering codegen smoke for BOSCAME FPGA
+AOT.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import re
 import shutil
@@ -40,8 +52,7 @@ def main():
         ("gemm", "matmul-i8.ttir", True),
     ):
         module, lowered, llvm, assembly = (
-            work / (name + suffix)
-            for suffix in (".mlir", ".llvm.mlir", ".ll", ".s")
+            work / (name + suffix) for suffix in (".mlir", ".llvm.mlir", ".ll", ".s")
         )
         input_path = Path(__file__).parent / "Inputs" / source
         run(
@@ -49,9 +60,7 @@ def main():
                 opt,
                 input_path,
                 *experimental_pipeline(
-                    "triton_matmul_i8_128x1024x128:8,64,1"
-                    if name == "gemm"
-                    else None
+                    "triton_matmul_i8_128x1024x128:8,64,1" if name == "gemm" else None
                 ),
                 "-o",
                 module,
@@ -116,9 +125,7 @@ def main():
             assert re.search(r"\bvle(?:8|32)\.v\b", checked) and re.search(
                 r"\bvse(?:8|32)\.v\b", checked
             )
-        assert not re.search(
-            r"\bvlenb\b|\b(?:vs[1248]r|vl[1248]re\d+)\.v\b", checked
-        )
+        assert not re.search(r"\bvlenb\b|\b(?:vs[1248]r|vl[1248]re\d+)\.v\b", checked)
         live = False
         for line in checked.splitlines():
             if re.search(r"#\s*mlce32", line):

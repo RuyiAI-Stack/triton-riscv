@@ -1,4 +1,16 @@
-// The mask couples the row index with the column index.
+//
+// FileCheck lit test input 'diag-coupled-mask.ttir' (diag coupled mask lowering
+// and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock diag coupled mask lowering
+// and contract facts.
+//
+
 module {
   tt.func public @coupled_mask(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %pid: i32) {
     %cpitch = arith.constant dense<64> : tensor<64x1xi32>

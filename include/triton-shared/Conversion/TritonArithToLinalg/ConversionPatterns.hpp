@@ -1,12 +1,18 @@
+//
+// Triton arith/tensor rewrite patterns, including contract-aware DotOp
+// emission.
+//
+// Inputs: tt.dot / arith / tensor ops during TritonArithToLinalg, plus
+// KernelContract when enabled.
+//
+// Outputs: Linalg matmul/elementwise that preserve buffer facts for later
+// BOSCAME AOT.
+//
+// When used: shared conversion instead of a GPU-only dot lowering.
+//
+
 #ifndef TRITON_CONVERSION_PATTERNS
 #define TRITON_CONVERSION_PATTERNS
-
-//===----------------------------------------------------------------------===//
-//
-// Copyright (c) Microsoft Corporation, Meta Platforms.
-// Licensed under the MIT license.
-//
-//===----------------------------------------------------------------------===//
 
 #include "triton-shared/Analysis/MaskAnalysis.h"
 #include "triton-shared/Analysis/OpFoldResultUtils.h"

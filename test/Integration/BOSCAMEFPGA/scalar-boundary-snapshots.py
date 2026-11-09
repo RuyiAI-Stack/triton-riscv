@@ -1,15 +1,25 @@
-# RUN: %PYTHON %s %t contract-pipeline-opt
-"""Scalar scale accesses reuse neutral singleton boundary snapshots."""
+"""
+Python lit test 'scalar-boundary-snapshots.py' covering scalar boundary snapshot
+safety.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t contract-pipeline-opt
 import os
 import struct
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(
-    0, str(Path(os.environ["BUDDY_ROOT"]) / "examples/FPGA-BOSCAME/tools")
-)
+sys.path.insert(0, str(Path(os.environ["BUDDY_ROOT"]) / "examples/FPGA-BOSCAME/tools"))
 from boscame_buffer_sim import Machine  # noqa: E402
 
 work, tool = Path(sys.argv[1]), sys.argv[2]

@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t
-"""Registered AOT entry, strict inputs, real identities and driver isolation."""
+"""
+Python lit test 'aot-api.py' covering registered AOT entry, identities, and
+driver isolation.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s %t
 import hashlib
 import json
 import os
@@ -79,9 +91,7 @@ for grid in (
     (1, 1, 1, 1),
 ):
     reject(
-        lambda grid=grid: export_contract(
-            source, target=target, launch_grid=grid
-        ),
+        lambda grid=grid: export_contract(source, target=target, launch_grid=grid),
         "launch_grid",
     )
 for options, diagnostic in (
@@ -194,20 +204,14 @@ assert manifest["effective_promises"] == {
     "math_accuracy": None,
 }
 assert (
-    "contract.abi" not in artifact.contract
-    and "contract.math" not in artifact.contract
+    "contract.abi" not in artifact.contract and "contract.math" not in artifact.contract
 )
-assert (
-    "contract.math" in promised.contract and "contract.abi" in promised.contract
-)
+assert "contract.math" in promised.contract and "contract.abi" in promised.contract
 for output, digest in (
     (artifact.ttir, "ttir_sha256"),
     (artifact.contract, "contract_sha256"),
 ):
-    assert (
-        hashlib.sha256(output.encode()).hexdigest()
-        == manifest["outputs"][digest]
-    )
+    assert hashlib.sha256(output.encode()).hexdigest() == manifest["outputs"][digest]
 identity = manifest["tool"]["build"]
 assert identity["contract_schema_version"] == 1
 for implementation in (
@@ -217,14 +221,10 @@ for implementation in (
     assert len(identity["frontend_files"][implementation]) == 64
 assert identity["frontend_revision"] and identity["triton_revision"]
 assert identity["llvm_build_files"] and identity["frontend_files"]
-assert (
-    manifest["triton"]["binary_sha256"]
-    and manifest["triton"]["compiler_sha256"]
-)
+assert manifest["triton"]["binary_sha256"] and manifest["triton"]["compiler_sha256"]
 serialized = json.dumps(manifest)
 assert (
-    str(Path.home()) not in serialized
-    and str(Path.cwd().resolve()) not in serialized
+    str(Path.home()) not in serialized and str(Path.cwd().resolve()) not in serialized
 )
 for forbidden in (
     "tt.",
@@ -249,9 +249,7 @@ minimal = "module {tt.func public @entry() {tt.return}}"
 for text, diagnostic in (
     ("module {func.func @f() {return}}", "Triton TTIR input only"),
     (
-        minimal.replace(
-            "module {", "module attributes {contract.version = 7 : i32} {"
-        ),
+        minimal.replace("module {", "module attributes {contract.version = 7 : i32} {"),
         "V1",
     ),
     (
@@ -306,9 +304,7 @@ reject(
     "uninlined calls are unsupported",
 )
 incomplete = export_contract(
-    ASTSource(
-        conditional_kernel, {"X": "*fp32", "Y": "*fp32", "condition": "i1"}, {}
-    ),
+    ASTSource(conditional_kernel, {"X": "*fp32", "Y": "*fp32", "condition": "i1"}, {}),
     target=target,
     launch_grid=(1, 1, 1),
 )

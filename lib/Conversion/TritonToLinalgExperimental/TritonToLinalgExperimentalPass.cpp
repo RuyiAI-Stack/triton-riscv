@@ -5,6 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Experimental Triton to Linalg pipeline, including emitContract.
+//
+// Inputs: TTIR/MLIR modules and flags such as contract, dump-facts, and tile
+// specialization.
+//
+// Outputs: target-neutral Linalg/MemRef/SCF plus a verified kernel contract
+// when requested.
+//
+// When used: triton-shared-opt and backend/compiler.py for BOSCAME AOT.
+//
+
 #include "ContractTileSpecialization.h"
 #include "mlir/Dialect/Ptr/IR/PtrDialect.h"
 #include "triton-shared/Analysis/KernelContract.h"

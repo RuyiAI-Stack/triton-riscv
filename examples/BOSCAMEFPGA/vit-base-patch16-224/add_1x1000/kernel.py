@@ -1,4 +1,16 @@
-"""Standalone Triton source for add_1x1000."""
+"""
+Standalone Triton kernel for FPGA case 'add_1x1000' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/add_1x1000 before linking launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -10,8 +22,7 @@ def add(X, Y, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
     valid = index < COUNT
     tl.store(
         Out + index,
-        tl.load(X + index, valid, other=0.0)
-        + tl.load(Y + index, valid, other=0.0),
+        tl.load(X + index, valid, other=0.0) + tl.load(Y + index, valid, other=0.0),
         valid,
     )
 

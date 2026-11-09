@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t contract-pipeline-opt
-"""Eliminate zero-product storage without reassociating floating arithmetic."""
+"""
+Python lit test 'boscame-floating-zero-product.py' covering zero-product float
+fast-paths.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t contract-pipeline-opt
 import os
 import re
 import struct
@@ -10,9 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(
-    0, str(Path(os.environ["BUDDY_ROOT"]) / "examples/FPGA-BOSCAME/tools")
-)
+sys.path.insert(0, str(Path(os.environ["BUDDY_ROOT"]) / "examples/FPGA-BOSCAME/tools"))
 from boscame_buffer_sim import Machine  # noqa: E402
 
 A, B, C = "tensor<2x4xf32>", "tensor<4x2xf32>", "tensor<2x2xf32>"
@@ -126,9 +136,7 @@ def cases():
     yield "loop_k", module("loop_k", body)
     body = constant("zero", "0.0")
     for index in range(3):
-        body += dot(
-            "%zero" if index == 0 else f"%next{index - 1}", f"%next{index}"
-        )
+        body += dot("%zero" if index == 0 else f"%next{index - 1}", f"%next{index}")
     yield "multi_k", module("multi_k", body + store("%next2"))
 
 
@@ -182,9 +190,7 @@ def numerics(work, name, source, opt, initial, iterations=1):
         r"(arith.constant )0x([0-9A-Fa-f]{8})( : f32)",
         lambda match: (
             match[1]
-            + repr(
-                struct.unpack("<f", int(match[2], 16).to_bytes(4, "little"))[0]
-            )
+            + repr(struct.unpack("<f", int(match[2], 16).to_bytes(4, "little"))[0])
             + match[3]
         ),
         loops,
@@ -198,9 +204,7 @@ def numerics(work, name, source, opt, initial, iterations=1):
             np.array([[1, -1], [2, -2], [4, -4], [8, -8]], dtype=np.float32),
         ),
         (
-            np.array(
-                [[-0.0, 0.0, -0.0, 0.0], [1e20, 1, -1e20, 1]], dtype=np.float32
-            ),
+            np.array([[-0.0, 0.0, -0.0, 0.0], [1e20, 1, -1e20, 1]], dtype=np.float32),
             np.ones((4, 2), dtype=np.float32),
         ),
         (
@@ -221,17 +225,17 @@ def numerics(work, name, source, opt, initial, iterations=1):
         if name in ("multiple_product", "multiple_zero"):
             buffers["%arg3"] = bytearray(bytes(16) + guard)
         machine.launch(buffers)
-        actual = np.frombuffer(
-            buffers["%arg2"], dtype=np.float32, count=4
-        ).reshape(2, 2)
+        actual = np.frombuffer(buffers["%arg2"], dtype=np.float32, count=4).reshape(
+            2, 2
+        )
         bitwise_equal(actual, reference(a, b, initial, iterations))
         assert buffers["%arg0"] == a.tobytes() + guard
         assert buffers["%arg1"] == b.tobytes() + guard
         assert buffers["%arg2"][16:] == guard
         if "%arg3" in buffers:
-            side = np.frombuffer(
-                buffers["%arg3"], dtype=np.float32, count=4
-            ).reshape(2, 2)
+            side = np.frombuffer(buffers["%arg3"], dtype=np.float32, count=4).reshape(
+                2, 2
+            )
             expected = (
                 reference(a, b, 0.0)
                 if name == "multiple_product"
@@ -293,9 +297,9 @@ def main():
             "multi_k",
         ):
             assert len(matrix_allocations(output)) >= 2, (name, output)
-            assert re.search(
-                r"linalg.generic[^\n]* ins\(%[\w]+, %[\w]+ :", output
-            ), name
+            assert re.search(r"linalg.generic[^\n]* ins\(%[\w]+, %[\w]+ :", output), (
+                name
+            )
     for name, initial in (
         ("zero", 0.0),
         ("negative_zero", -0.0),
@@ -321,9 +325,7 @@ def main():
     for value in a[0]:
         reassociated = np.float32(reassociated + value)
     assert reassociated == np.float32(1.0)
-    print(
-        "PASS: floating zero-product storage and strict arithmetic boundaries"
-    )
+    print("PASS: floating zero-product storage and strict arithmetic boundaries")
 
 
 if __name__ == "__main__":

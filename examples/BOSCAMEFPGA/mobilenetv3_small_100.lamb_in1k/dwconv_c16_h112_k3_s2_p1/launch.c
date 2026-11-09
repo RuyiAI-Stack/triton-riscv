@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'dwconv_c16_h112_k3_s2_p1' (model
+// 'mobilenetv3_small_100.lamb_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -17,7 +31,8 @@ static void compare(float actual, float expected, float atol, float rtol,
     *maximum = d;
 }
 
-extern void _mlir_ciface_kernel_dwconv_c16_h112_k3_s2_p1(MemRef4 *, MemRef4 *, MemRef1 *, MemRef4 *);
+extern void _mlir_ciface_kernel_dwconv_c16_h112_k3_s2_p1(MemRef4 *, MemRef4 *,
+                                                         MemRef1 *, MemRef4 *);
 int launch(void) {
   size_t off = 0;
   float *x = (float *)workspace(off);
@@ -60,10 +75,12 @@ int launch(void) {
           for (int kx = 0; kx < 3; ++kx) {
             int ix = ox * 2 + kx - 1;
             if (iy >= 0 && iy < 112 && ix >= 0 && ix < 112)
-              acc += (double)x[(ch * 112 + iy) * 112 + ix] * weight[(ch * 3 + ky) * 3 + kx];
+              acc += (double)x[(ch * 112 + iy) * 112 + ix] *
+                     weight[(ch * 3 + ky) * 3 + kx];
           }
         }
-        compare(o[(ch * 56 + oy) * 56 + ox], (float)acc, 1e-3f, 1e-3f, &errors, &maximum);
+        compare(o[(ch * 56 + oy) * 56 + ox], (float)acc, 1e-3f, 1e-3f, &errors,
+                &maximum);
       }
   return print_check("dwconv_c16_h112_k3_s2_p1", errors, maximum);
 }

@@ -1,3 +1,16 @@
+//
+// C support runtime for BOSCAME FPGA model 'vit-base-patch16-224'.
+//
+// Inputs: workspace size, operand pointers, and UART/status hooks shared by
+// every launch.c in this model tree.
+//
+// Outputs: aligned workspace(), MemRef helpers, print_check(), and numeric
+// oracles used on host and on the board.
+//
+// When used: linked into each case image via common.mk / board.mk after the
+// kernel object is produced.
+//
+
 #include "support.h"
 
 #ifndef HOST_TEST

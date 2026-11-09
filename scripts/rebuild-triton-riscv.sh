@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+#
+# Rebuild helper for the local triton-riscv / buddy toolchain.
+#
+# Inputs: a checkout laid out as expected by triton-riscv-env.sh (LLVM, Triton,
+# buddy-mlir).
+#
+# Outputs: configured CMake/Ninja builds and refreshed Python plugin install.
+#
+# When used: after pulling LLVM/Triton/buddy changes, sourced env then this
+# script.
+#
 
 set -euo pipefail
 

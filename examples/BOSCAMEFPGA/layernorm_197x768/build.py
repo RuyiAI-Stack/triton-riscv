@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
-"""Triton LayerNorm inputs for the NH/E6 BOSCAME image.
+"""Python build driver for BOSCAME FPGA tree 'layernorm_197x768'.
 
-The makefile owns the full lowering pipeline::
+Inputs: case list, toolchain env from triton-riscv-env.sh, and optional subset
+filters.
 
-    external export_contract(ASTSource, target=boscame)
-      -> kernel.frontend.mlir --kernel-contract-verify
-      -> kernel.bufferized.mlir --bosc-ame-plan
-      -> kernel.planned.mlir --bosc-ame-emit
-      -> kernel.boscame.mlir --lower-bosc-ame --buddy-to-llvmir -> kernel.ll
+Outputs: invokes Make / export for the selected operators.
 
-This file owns the real Triton frontend export, the fixed problem size and the
-typed unranked ABI adapter used by the launcher.  Only `kernel.ttir` is
-generated here; the remaining stages belong to the makefile.
-
-    layernorm_197x768: X[197,768] f32, Weight[768] f32, Bias[768] f32
-                       -> Out[197,768] f32, one program per row
-
-Run with the boscame Python environment:
-
-    python build.py --ttir-only       # Triton frontend -> kernel.ttir
-    python build.py --adapter         # typed launcher ABI bridge to stdout
+When used: when a Python entry is more convenient than raw make in the model
+directory.
 """
+
+
+# Triton LayerNorm inputs for the NH/E6 BOSCAME image.
+#
+# The makefile owns the full lowering pipeline::
+#
+#     external export_contract(ASTSource, target=boscame)
+#       -> kernel.frontend.mlir --kernel-contract-verify
+#       -> kernel.bufferized.mlir --bosc-ame-plan
+#       -> kernel.planned.mlir --bosc-ame-emit
+#       -> kernel.boscame.mlir --lower-bosc-ame --buddy-to-llvmir -> kernel.ll
+#
+# This file owns the real Triton frontend export, the fixed problem size and the
+# typed unranked ABI adapter used by the launcher.  Only `kernel.ttir` is
+# generated here; the remaining stages belong to the makefile.
+#
+#     layernorm_197x768: X[197,768] f32, Weight[768] f32, Bias[768] f32
+#                        -> Out[197,768] f32, one program per row
+#
+# Run with the boscame Python environment:
+#
+#     python build.py --ttir-only       # Triton frontend -> kernel.ttir
+#     python build.py --adapter         # typed launcher ABI bridge to stdout
 
 import argparse
 import os
@@ -64,9 +75,7 @@ def verify_ttir(ttir):
     `math.rsqrt` of the shifted variance are the whole point of the kernel;
     an export that loses one of them is not this operator.
     """
-    missing = [
-        token for token in ("@" + SYMBOL, "math.rsqrt") if token not in ttir
-    ]
+    missing = [token for token in ("@" + SYMBOL, "math.rsqrt") if token not in ttir]
     if ttir.count('"tt.reduce"') != 2:
         missing.append("two tt.reduce")
     if ttir.count("tt.store") != 1:
@@ -151,13 +160,9 @@ def verify_abi(path):
     if not match:
         raise RuntimeError("Missing Triton entry definition: " + SYMBOL)
     actual = [part.strip().split()[0] for part in match.group(1).split(",")]
-    expected = [value for _name in SIGNATURE for value in ("i64", "ptr")] + [
-        "i32"
-    ] * 6
+    expected = [value for _name in SIGNATURE for value in ("i64", "ptr")] + ["i32"] * 6
     if actual != expected:
-        raise RuntimeError(
-            f"Triton ABI changed: expected {expected}, got {actual}"
-        )
+        raise RuntimeError(f"Triton ABI changed: expected {expected}, got {actual}")
     if re.search(
         r"\b(?:call|declare)\b[^\n]*@(?:malloc|aligned_alloc|realloc|free)\b",
         contents,
@@ -189,9 +194,7 @@ def main():
         type=Path,
         help="Verify the typed entry LLVM ABI and absence of heap allocation",
     )
-    parser.add_argument(
-        "--output", type=Path, help="Build root (defaults to build/)"
-    )
+    parser.add_argument("--output", type=Path, help="Build root (defaults to build/)")
     args = parser.parse_args()
     if args.check_abi:
         verify_abi(args.check_abi)

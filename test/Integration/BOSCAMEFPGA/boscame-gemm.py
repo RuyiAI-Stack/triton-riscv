@@ -1,6 +1,16 @@
-# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
-"""Full example grid: signed i8, physical [N,K] B, nonzero C and i32 wrap."""
+"""Python lit test 'boscame-gemm.py' covering GEMM numeric / IR integration.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t 2>&1 | FileCheck %s
 import os
 import re
 import subprocess
@@ -62,10 +72,7 @@ def main():
     for line in text.splitlines():
         if "bosc_ame.tile.load_a " in line or "bosc_ame.tile.load_b " in line:
             assert "bosc_ame.direct_ddr" in line, line
-        elif (
-            "bosc_ame.tile.load_acc " in line
-            or "bosc_ame.tile.store_acc " in line
-        ):
+        elif "bosc_ame.tile.load_acc " in line or "bosc_ame.tile.store_acc " in line:
             assert "#bosc_ame.spm<" in line, line
     assert text.count("bosc_ame.spm.view") == 2
     assert text.count("bosc_ame.dma.start") == 32
@@ -100,9 +107,7 @@ def main():
         "%arg1": bytearray(b.tobytes() + guard),
         "%arg2": bytearray(initial.tobytes() + guard),
     }
-    snapshots = {
-        name: bytes(data) for name, data in buffers.items() if name != "%arg2"
-    }
+    snapshots = {name: bytes(data) for name, data in buffers.items() if name != "%arg2"}
     machine = Machine(loops, "triton_matmul_i8_128x1024x128")
     # The independent oracle uses wide exact accumulation and wraps only at
     # the final i32 conversion, never any generated staging or tile indices.
@@ -121,9 +126,7 @@ def main():
                     "%arg7": j,
                 },
             )
-    actual = np.frombuffer(
-        buffers["%arg2"], dtype=np.int32, count=m * n
-    ).reshape(m, n)
+    actual = np.frombuffer(buffers["%arg2"], dtype=np.int32, count=m * n).reshape(m, n)
     np.testing.assert_array_equal(actual, expected)
     assert bytes(buffers["%arg2"][-len(guard) :]) == guard
     for name, snapshot in snapshots.items():
@@ -131,13 +134,10 @@ def main():
     # Only user ranges are logged; ordinary packing buffers have separate storage.
     limits = {"%arg0": a.nbytes, "%arg1": b.nbytes, "%arg2": initial.nbytes}
     assert all(
-        0 <= start < end <= limits[name]
-        for name, start, end, _ in machine.accesses
+        0 <= start < end <= limits[name] for name, start, end, _ in machine.accesses
     )
     assert all(
-        name == "%arg2"
-        for name, _, _, kind in machine.accesses
-        if kind == "write"
+        name == "%arg2" for name, _, _, kind in machine.accesses if kind == "write"
     )
     c_accesses = [
         (name, kind) for name, _, _, kind in machine.accesses if name == "%arg2"

@@ -1,22 +1,32 @@
-"""Triton kernel for the standalone signed INT8 AME matmul example.
+"""Shared kernel helpers for BOSCAME FPGA model 'matmul_i8_196x768x768'.
 
-``matmul_i8`` is the kernel used by the ViT-B/16 W8A8 path
-(``examples/FPGA-BOSCAME/vit-base-patch16-224/triton/kernels.py``).  The
-operational shape ``[196, 768] @ [768, 768]^T`` is fixed in this module
-together with the AME tile contract ``BM=32``, ``BN=128``, ``BK=128``; the
-launch grid is derived from them by :mod:`build`.
+Inputs: common Triton language patterns reused by more than one case kernel.py.
 
-The AME register file caps one tile dimension at 64, so ``BN=128`` is a
-*logical* program tile: the BOSCAME planner lowers it as two 64-column AME
-groups, and ``BK=128`` as two 64-wide AME K blocks.  M=196 is not a multiple of
-BM=32 and N/K need not match the tiles exactly, so the kernel keeps its
-boundary masks (rows past ``M``, K lanes past ``K``) and iterates over the
-``K/BK`` reduction blocks.
+Outputs: jit-able building blocks imported by those cases.
 
-The external triton-riscv AOT exporter normalizes and bufferizes this source.
-Buddy verifies its standard Contract, plans storage, verifies the plan and
-emits BOSCAME before LLVM lowering, as in ``../matmul_i8_128x1024x128``.
+When used: keep per-case files small when several operators share the same
+tiling.
 """
+
+
+# Triton kernel for the standalone signed INT8 AME matmul example.
+#
+# ``matmul_i8`` is the kernel used by the ViT-B/16 W8A8 path
+# (``examples/FPGA-BOSCAME/vit-base-patch16-224/triton/kernels.py``).  The
+# operational shape ``[196, 768] @ [768, 768]^T`` is fixed in this module
+# together with the AME tile contract ``BM=32``, ``BN=128``, ``BK=128``; the
+# launch grid is derived from them by :mod:`build`.
+#
+# The AME register file caps one tile dimension at 64, so ``BN=128`` is a
+# *logical* program tile: the BOSCAME planner lowers it as two 64-column AME
+# groups, and ``BK=128`` as two 64-wide AME K blocks.  M=196 is not a multiple of
+# BM=32 and N/K need not match the tiles exactly, so the kernel keeps its
+# boundary masks (rows past ``M``, K lanes past ``K``) and iterates over the
+# ``K/BK`` reduction blocks.
+#
+# The external triton-riscv AOT exporter normalizes and bufferizes this source.
+# Buddy verifies its standard Contract, plans storage, verifies the plan and
+# emits BOSCAME before LLVM lowering, as in ``../matmul_i8_128x1024x128``.
 
 import triton
 import triton.language as tl

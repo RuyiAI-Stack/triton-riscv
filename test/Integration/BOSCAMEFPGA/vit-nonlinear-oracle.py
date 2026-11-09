@@ -1,6 +1,16 @@
-# RUN: %PYTHON %s
-"""Independent nonlinear references, IEEE cases and executed-slice coverage."""
+"""Python lit test 'vit-nonlinear-oracle.py' covering ViT nonlinear CPU oracles.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s
 import copy
 import hashlib
 import itertools
@@ -10,9 +20,7 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(
-    0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools")
-)
+sys.path.insert(0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools"))
 from nonlinear_simcheck import (  # noqa: E402
     assemble_nonlinear_round,
     audit_nonlinear_program,
@@ -39,9 +47,7 @@ def rejects(function, *args):
         function(*args)
     except (AssertionError, ValueError):
         return
-    raise AssertionError(
-        "invalid nonlinear numerical/coverage evidence accepted"
-    )
+    raise AssertionError("invalid nonlinear numerical/coverage evidence accepted")
 
 
 def test_references():
@@ -112,9 +118,7 @@ def test_softmax_reference():
     assert np.all(rows[6, ::2] == 0)
     assert not np.signbit(rows[6, ::2]).any()
     finite_rows = np.all(np.isfinite(rows), axis=1)
-    np.testing.assert_allclose(
-        rows[finite_rows].sum(axis=1), 1, rtol=1e-15, atol=1e-15
-    )
+    np.testing.assert_allclose(rows[finite_rows].sum(axis=1), 1, rtol=1e-15, atol=1e-15)
     # Large negative exponents remain positive when representable in binary64;
     # the reference does not pretruncate their mass to make a recipe pass.
     assert 0 < rows[5, 0] < 1e-40
@@ -132,9 +136,7 @@ def test_real_grid_coverage():
         shards = nonlinear_shards(case, 48)
         points = [p for shard in shards for p in shard]
         assert len(points) == len(set(points)) == programs
-        assert set(points) == set(
-            itertools.product(*(range(n) for n in case["grid"]))
-        )
+        assert set(points) == set(itertools.product(*(range(n) for n in case["grid"])))
         assert np.count_nonzero(nonlinear_program_mask(case, points)) == outputs
         for bad in (
             [],

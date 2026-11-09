@@ -1,4 +1,17 @@
-"""Standalone Triton source for layernorm_128x768."""
+"""
+Standalone Triton kernel for FPGA case 'layernorm_128x768' (model
+'electra-base-discriminator').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/electra-base-discriminator/layernorm_128x768 before linking
+launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -28,19 +41,25 @@ def layernorm(
     out = centered * tl.rsqrt(variance + EPS) * weight + bias
     tl.store(Out + row * WIDTH + channel, out, valid)
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'layernorm',
- 'kernel': 'layernorm',
- 'arguments': [{'name': 'X', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'Weight', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Bias', 'rank': 1, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 2, 'dtype': 'f32'}],
- 'shape': [128, 768],
- 'constexprs': {'ROWS': 128, 'WIDTH': 768, 'BLOCK': 1024, 'EPS': 1e-12},
- 'grid': [128, 1, 1],
- 'roles': [],
- 'metadata': {'dtype': 'f32',
-              'model': 'google/electra-base-discriminator',
-              'seq_len': 128,
-              'note': 'Unique encoder shapes at seq_len 128. Twelve layers share these '
-                      'bins.'}}
+KERNEL_CONFIG = {
+    "family": "layernorm",
+    "kernel": "layernorm",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "f32"},
+        {"name": "Weight", "rank": 1, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [128, 768],
+    "constexprs": {"ROWS": 128, "WIDTH": 768, "BLOCK": 1024, "EPS": 1e-12},
+    "grid": [128, 1, 1],
+    "roles": [],
+    "metadata": {
+        "dtype": "f32",
+        "model": "google/electra-base-discriminator",
+        "seq_len": 128,
+        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+    },
+}

@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'launch.c' (model
+// 'matmul_i8_128x1024x128').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 /*
  * matmul_i8_128x1024x128 launch: application startup, E6 driver and NH report.
  *

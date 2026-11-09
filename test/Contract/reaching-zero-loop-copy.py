@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Fold a loop's zero snapshot without hiding writes in a shared lifetime."""
+"""
+Python lit test 'reaching-zero-loop-copy.py' covering reaching defs through
+zero-trip copies.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import re
 import subprocess
 import sys
@@ -104,9 +116,7 @@ write = "linalg.fill ins(%changed : i32) outs(%source : memref<16xi32>)"
 
 # Following the copy lexically in the same loop does not suffice: the write
 # precedes the next copy. The real loop-carried source must remain visible.
-output = annotate(
-    module("scf.for %i = %c0 to %c3 step %c1 {" + copy + write + "}")
-)
+output = annotate(module("scf.for %i = %c0 to %c3 step %c1 {" + copy + write + "}"))
 assert "memref.copy" in output
 assert "contract.loop_carried_slots" in output
 

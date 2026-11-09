@@ -1,6 +1,17 @@
-# RUN: %PYTHON %s triton-shared-opt
-"""Source access history survives storage rewrites independently of graph IDs."""
+"""
+Python lit test 'source-lineage.py' covering frontend source lineage on buffers.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: Contract suite. Keep RUN lines and inner docstrings that describe the
+scenario.
+"""
+
+# RUN: %PYTHON %s triton-shared-opt
 import re
 import subprocess
 import sys
@@ -94,9 +105,7 @@ module attributes {{
 output = annotate(direct(facts))
 graph_complete(output, True)
 reject_aggregate(output, True)
-assert "source_load_origin_ids = array<i64: 42, 75, 99>" in dot_provenance(
-    output
-)
+assert "source_load_origin_ids = array<i64: 42, 75, 99>" in dot_provenance(output)
 assert "id = 0 : i64" in output
 
 # An ordinary buffer-form computation can have a complete dependency graph

@@ -5,6 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Collapse-shape rewrites inside the experimental Linalg pipeline.
+//
+// Inputs: tensor/memref ops whose extra unit dims block contraction or DMA
+// matching.
+//
+// Outputs: collapsed types/ops so later contract and BOSCAME passes see
+// canonical ranks.
+//
+// When used: TritonToLinalgExperimental when emitContract needs stable layouts.
+//
+
 #include "triton-shared/Conversion/TritonToLinalgExperimental/CollapseShape.h"
 #include "triton-shared/Conversion/StructuredToMemref/StructuredToMemref.h"
 #include "triton-shared/Conversion/TritonArithToLinalg/ConversionTools.h"

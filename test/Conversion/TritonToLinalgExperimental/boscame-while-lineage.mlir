@@ -1,12 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly or retain an incomplete graph. Complete,
-// read-free private overwrites may recover local versions after an opaque
-// boundary; they do not make its control-flow summary complete.
-// CONTRACT-CASE: while_before_result = incomplete
-// CONTRACT-CASE: while_memref_condition = incomplete
-// CONTRACT-CASE: while_slot_permutation = incomplete
-// CONTRACT-CASE: while_writer_exit = incomplete
+//
+// FileCheck lit test input 'boscame-while-lineage.mlir' (boscame while lineage
+// lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame while
+// lineage lowering and contract facts.
+//
+
 module {
   func.func @while_before_result(%input: tensor<4xf32>, %condition: i1,
       %condition_buffer: memref<1xi1>)

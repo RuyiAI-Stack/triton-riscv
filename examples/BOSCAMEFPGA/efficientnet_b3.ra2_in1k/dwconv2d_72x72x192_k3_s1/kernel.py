@@ -1,14 +1,39 @@
-"""Standalone Triton source for dwconv2d_72x72x192_k3_s1."""
+"""
+Standalone Triton kernel for FPGA case 'dwconv2d_72x72x192_k3_s1' (model
+'efficientnet_b3.ra2_in1k').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/efficientnet_b3.ra2_in1k/dwconv2d_72x72x192_k3_s1 before
+linking launch.c.
+"""
 
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def dwconv2d_nchw(
-    X, Weight, Bias, Out,
-    H: tl.constexpr, W: tl.constexpr, C: tl.constexpr,
-    KH: tl.constexpr, KW: tl.constexpr, SH: tl.constexpr, SW: tl.constexpr,
-    PH: tl.constexpr, PW: tl.constexpr, OH: tl.constexpr, OW: tl.constexpr,
+    X,
+    Weight,
+    Bias,
+    Out,
+    H: tl.constexpr,
+    W: tl.constexpr,
+    C: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """Depthwise NCHW convolution. One program owns one output pixel."""
@@ -34,33 +59,12 @@ KERNEL_CONFIG = {
     "family": "dwconv2d_f32",
     "kernel": "dwconv2d_nchw",
     "arguments": [
-        {
-            "name": "X",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Weight",
-            "rank": 4,
-            "dtype": "f32"
-        },
-        {
-            "name": "Bias",
-            "rank": 1,
-            "dtype": "f32"
-        },
-        {
-            "name": "Out",
-            "rank": 4,
-            "dtype": "f32"
-        }
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Weight", "rank": 4, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 4, "dtype": "f32"},
     ],
-    "shape": [
-        1,
-        192,
-        72,
-        72
-    ],
+    "shape": [1, 192, 72, 72],
     "constexprs": {
         "H": 72,
         "W": 72,
@@ -73,16 +77,9 @@ KERNEL_CONFIG = {
         "PW": 1,
         "OH": 72,
         "OW": 72,
-        "BLOCK": 16
+        "BLOCK": 16,
     },
-    "grid": [
-        192,
-        72,
-        72
-    ],
+    "grid": [192, 72, 72],
     "roles": [],
-    "metadata": {
-        "dtype": "efficientnet-b3",
-        "model": "timm/efficientnet_b3.ra2_in1k"
-    }
+    "metadata": {"dtype": "efficientnet-b3", "model": "timm/efficientnet_b3.ra2_in1k"},
 }

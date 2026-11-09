@@ -1,4 +1,11 @@
-"""Explicit external Buddy paths for optional BOSCAME backend workflows."""
+"""BOSCAME FPGA example 'paths.py' under model 'tools'.
+
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
+"""
 
 import os
 import shutil

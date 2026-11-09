@@ -1,6 +1,15 @@
-// LayerNorm 197x768: manually authored design fixture, not compiler output.
-// One program handles one row. Logical width=1024, valid prefix=768, EPS=1e-12.
-// 21 tasks, 22 content versions; squares has its own root and no initializer.
+//
+// FileCheck lit test input 'layernorm.contract.mlir' (layernorm buffer contract
+// IR).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: Contract suite to lock layernorm buffer contract IR.
+//
+
 #identity = affine_map<(d0) -> (d0)>
 
 module attributes {

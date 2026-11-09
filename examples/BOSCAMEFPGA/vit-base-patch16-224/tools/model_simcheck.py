@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Audit prerequisites for a complete ViT BOSCAME simulation, failing closed.
+"""BOSCAME FPGA example 'model_simcheck.py' under model 'vit-base-patch16-224'.
 
-A standalone kernel PASS, graph replacement PASS, successful host check, or
-successful static graph link cannot establish a model simulation PASS. This
-entry records why full-model simulation must be skipped while any required
-kernel is blocked. It never substitutes NumPy/PyTorch arithmetic for emitted
-kernel execution and never labels this prerequisite audit a model PASS.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -66,9 +66,7 @@ def read_report(path, reasons):
             raise ValueError("duplicate case names")
         return {record["name"]: record for record in cases}
     except (OSError, ValueError, KeyError, TypeError) as error:
-        reasons.append(
-            {"stage": "prerequisite", "reason": f"{path.name}: {error}"}
-        )
+        reasons.append({"stage": "prerequisite", "reason": f"{path.name}: {error}"})
         return {}
 
 
@@ -140,9 +138,9 @@ def main():
                 )
         if build.get("status") != "PASS" or check.get("status") != "PASS":
             continue
-        if check.get("programs") != check.get(
-            "total_programs"
-        ) or not check.get("programs"):
+        if check.get("programs") != check.get("total_programs") or not check.get(
+            "programs"
+        ):
             reasons.append(
                 {
                     "case": name,
@@ -159,9 +157,7 @@ def main():
                 )
             record["module_sha256"] = digest
         except (OSError, ValueError) as error:
-            reasons.append(
-                {"case": name, "stage": "artifact", "reason": str(error)}
-            )
+            reasons.append({"case": name, "stage": "artifact", "reason": str(error)})
     # No compiled-graph simulator exists yet. This must remain explicit even
     # if all standalone kernels pass: those results prove a different scope.
     if not reasons:

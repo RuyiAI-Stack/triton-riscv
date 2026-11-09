@@ -1,9 +1,23 @@
-//===- KernelContract.h - Target-independent buffer contracts ----*- C++
-//-*-===//
+//===----------------------------------------------------------------------===//
 //
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
 //
 //===----------------------------------------------------------------------===//
+
+//
+// Kernel buffer contract analysis, annotation, and verification for BOSCAME
+// AOT.
+//
+// Inputs: a ModuleOp in buffer form (Linalg / MemRef / SCF) with optional
+// frontend lineage attrs.
+//
+// Outputs: contract.* attributes on args and ops, plus verify failures when
+// facts do not hold.
+//
+// When used: --kernel-contract-annotate/verify and the emitContract pipeline in
+// triton-shared-opt.
+//
 
 #ifndef TRITON_SHARED_ANALYSIS_KERNELCONTRACT_H
 #define TRITON_SHARED_ANALYSIS_KERNELCONTRACT_H

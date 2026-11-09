@@ -5,6 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Pointer and block-pointer analysis for structured conversions.
+//
+// Inputs: tt.addptr, make_block_ptr, splat, and kernel pointer arguments.
+//
+// Outputs: base, shape, stride, and offset facts for memref descriptors.
+//
+// When used: StructuredToMemref and contract lineage when proving contiguous
+// buffers.
+//
+
 #include "triton-shared/AnalysisStructured/PtrAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"

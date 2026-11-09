@@ -72,9 +72,9 @@ strict target simulators; these simulators are not frontend core dependencies.
 
 ## Example ownership
 
-All BOSCAME Triton Python kernels, the three standalone example drivers and the
-complete ViT model live in [examples/BOSCAMEFPGA](../examples/BOSCAMEFPGA).
-Export-only goals need no Buddy installation. Buddy consumes the resulting
-`kernel.frontend.mlir`; image and simulator workflows use an explicit
-`BUDDY_ROOT` and tool configuration. Cross-repository tests are under
-`test/Integration/BOSCAMEFPGA` and are enabled separately from the core suite.
+All BOSCAME Triton kernels, model suites and the ViT graph tools live in
+[examples/BOSCAMEFPGA](../examples/BOSCAMEFPGA/README.md). Export-only goals
+need no Buddy installation. Buddy consumes `kernel.frontend.mlir`; image and
+simulator workflows use an explicit `BUDDY_ROOT`. Cross-repository tests are
+under `test/Integration/BOSCAMEFPGA` and are enabled separately from the core
+suite.

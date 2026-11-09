@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Check 73 dense rewrites and overwrite ABI using a graph structure fixture.
+"""
+BOSCAME FPGA example 'check_w8a8_rewrite.py' under model 'vit-base-patch16-224'.
 
-This fixture uses real Buddy graph operations but no model values. It verifies
-graph surgery and descriptors, and makes no numerical or model accuracy claim.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 import argparse
@@ -33,9 +37,7 @@ def fixture(shapes):
     parameters, inputs, biases = [], [], []
 
     def node(cls, name, shape, args=(), parents=()):
-        result = rewrite._new_node(
-            graph, cls, name, args, shape, TensorDType.Float32
-        )
+        result = rewrite._new_node(graph, cls, name, args, shape, TensorDType.Float32)
         for parent in parents:
             result.add_parent(parent.name)
             parent.add_children(name)
@@ -45,9 +47,7 @@ def fixture(shapes):
         prefix = f"dense_{number}"
         weight = node(PlaceholderOp, prefix + "_weight", [n, k])
         bias = node(PlaceholderOp, prefix + "_bias", [n])
-        source = node(
-            PlaceholderOp, prefix + "_source", [1, 197 if m == 1 else m, k]
-        )
+        source = node(PlaceholderOp, prefix + "_source", [1, 197 if m == 1 else m, k])
         parameters.extend([weight, bias])
         inputs.append(source)
         if m == 1:
@@ -98,9 +98,9 @@ def main():
         "--report", type=Path, default=ROOT / "build/w8a8-rewrite-check.json"
     )
     args = parser.parse_args()
-    shapes = (
-        [(197, 768, 768)] * 4 + [(197, 3072, 768), (197, 768, 3072)]
-    ) * 12 + [(1, 1000, 768)]
+    shapes = ([(197, 768, 768)] * 4 + [(197, 3072, 768), (197, 768, 3072)]) * 12 + [
+        (1, 1000, 768)
+    ]
     index = {
         case["name"]: {
             **case,
@@ -112,29 +112,21 @@ def main():
     calls, report = [], {"uncovered": []}
     assert rewrite.rewrite_linears_to_w8a8(graph, index, calls, report) == 73
     assert len(calls) == 219 and not report["uncovered"]
-    assert all(
-        call["case"].get("accumulation") == "overwrite" for call in calls[1::3]
-    )
+    assert all(call["case"].get("accumulation") == "overwrite" for call in calls[1::3])
     assert len(graph.inputs) == 73 * 5
     for bias in biases:
-        assert bias.args[0].endswith("_out") and bias._parents[0].endswith(
-            "_out"
-        )
+        assert bias.args[0].endswith("_out") and bias._parents[0].endswith("_out")
     with tempfile.TemporaryDirectory(prefix="vit-w8a8-rewrite-") as directory:
         adapter = Path(directory) / "adapter.c"
         rewrite.generate_adapters(calls, adapter)
         text = adapter.read_text()
         assert "acc[i] = 0" not in text and "matmul_i8_overwrite_" in text
         assert "MemRef2 case_arg_2" in text
-    missing = {
-        name: case for name, case in index.items() if "overwrite" not in name
-    }
+    missing = {name: case for name, case in index.items() if "overwrite" not in name}
     graph, _ = fixture([(1, 1000, 768)])
     rejected = {"uncovered": []}
     assert rewrite.rewrite_linears_to_w8a8(graph, missing, [], rejected) == 0
-    assert (
-        "matmul_i8_overwrite_1x1000x768" in rejected["uncovered"][0]["reason"]
-    )
+    assert "matmul_i8_overwrite_1x1000x768" in rejected["uncovered"][0]["reason"]
     result = {
         "schema": 1,
         "status": "PASS",

@@ -1,4 +1,14 @@
-"""Standalone Triton source for add_128x384."""
+"""Standalone Triton kernel for FPGA case 'add_128x384' (model 'gte-small').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in examples/BOSCAMEFPGA/gte-small/add_128x384 before
+linking launch.c.
+"""
 
 import triton
 import triton.language as tl
@@ -10,23 +20,28 @@ def add(X, Y, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
     valid = index < COUNT
     tl.store(
         Out + index,
-        tl.load(X + index, valid, other=0.0)
-        + tl.load(Y + index, valid, other=0.0),
+        tl.load(X + index, valid, other=0.0) + tl.load(Y + index, valid, other=0.0),
         valid,
     )
 
+
 # Fixed specialization; cases.py reads this literal without importing Triton.
-KERNEL_CONFIG = {'family': 'add',
- 'kernel': 'add',
- 'arguments': [{'name': 'X', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'Y', 'rank': 2, 'dtype': 'f32'},
-               {'name': 'Out', 'rank': 2, 'dtype': 'f32'}],
- 'shape': [128, 384],
- 'constexprs': {'COUNT': 49152, 'BLOCK': 128},
- 'grid': [384, 1, 1],
- 'roles': [],
- 'metadata': {'dtype': 'f32',
-              'model': 'thenlper/gte-small',
-              'seq_len': 128,
-              'note': 'Unique encoder shapes at seq_len 128. Twelve layers share these '
-                      'bins.'}}
+KERNEL_CONFIG = {
+    "family": "add",
+    "kernel": "add",
+    "arguments": [
+        {"name": "X", "rank": 2, "dtype": "f32"},
+        {"name": "Y", "rank": 2, "dtype": "f32"},
+        {"name": "Out", "rank": 2, "dtype": "f32"},
+    ],
+    "shape": [128, 384],
+    "constexprs": {"COUNT": 49152, "BLOCK": 128},
+    "grid": [384, 1, 1],
+    "roles": [],
+    "metadata": {
+        "dtype": "f32",
+        "model": "thenlper/gte-small",
+        "seq_len": 128,
+        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+    },
+}

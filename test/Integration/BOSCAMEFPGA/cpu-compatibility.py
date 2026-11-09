@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t
-"""Execute the ordinary CPU CAS/FP8 paths after the frontend split."""
+"""
+Python lit test 'cpu-compatibility.py' covering CPU reference compatibility of
+AOT IR.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t
 import os
 import shutil
 import sys
@@ -57,17 +69,13 @@ check_default_path(first)
 
 for limit in (4, 448):
     values = torch.linspace(-limit, limit, 256, dtype=torch.float32)
-    values[:8] = torch.tensor(
-        [0.0, -0.0, 0.5, -0.5, 1.0625, -1.0625, 1.1875, -1.1875]
-    )
+    values[:8] = torch.tensor([0.0, -0.0, 0.5, -0.5, 1.0625, -1.0625, 1.1875, -1.1875])
     bits = torch.empty(256, dtype=torch.uint8)
     roundtrip = torch.empty_like(values)
     compiled = fp8_kernel[(1,)](values, bits, roundtrip, tl.float8e4nv, 256)
     expected = values.to(torch.float8_e4m3fn)
     assert torch.equal(bits, expected.view(torch.uint8))
-    assert torch.equal(
-        roundtrip.view(torch.int32), expected.float().view(torch.int32)
-    )
+    assert torch.equal(roundtrip.view(torch.int32), expected.float().view(torch.int32))
     check_default_path(compiled)
 
 print(

@@ -1,7 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: reverse_if_consumer = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+//
+// FileCheck lit test input 'boscame-reverse-consumers.mlir' (boscame reverse
+// consumers lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame
+// reverse consumers lowering and contract facts.
+//
+
 module {
   func.func @reverse_if_consumer(
       %input: tensor<4xf32>,

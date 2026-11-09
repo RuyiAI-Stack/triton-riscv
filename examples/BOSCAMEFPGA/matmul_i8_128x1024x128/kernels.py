@@ -1,9 +1,11 @@
-"""Triton kernel for the standalone signed INT8 AME matmul example.
+"""Shared kernel helpers for BOSCAME FPGA model 'matmul_i8_128x1024x128'.
 
-``matmul_i8`` is the kernel used by the ViT-B/16 W8A8 path; the same body is
-in ``../matmul_i8_196x768x768/kernels.py`` (only the signature formatting is
-per ruff here).  The operational shape ``[128, 128] @ [1024, 128]^T`` is
-fixed in this module and lowered through the BOSCAME NR pipeline.
+Inputs: common Triton language patterns reused by more than one case kernel.py.
+
+Outputs: jit-able building blocks imported by those cases.
+
+When used: keep per-case files small when several operators share the same
+tiling.
 """
 
 import triton

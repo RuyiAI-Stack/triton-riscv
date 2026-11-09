@@ -1,6 +1,18 @@
-# RUN: %PYTHON %s %t contract-pipeline-opt
-"""Prove K-loop partitions without changing tensor recurrence or f32 order."""
+"""
+Python lit test 'boscame-k-tail-specialization.py' covering K-tail remainder
+specialization.
 
+Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
+RUN: substitutions.
+
+Outputs: assertions / FileCheck on exported contract IR or numeric results;
+non-zero exit on mismatch.
+
+When used: BOSCAME FPGA integration suite. Keep RUN lines and inner docstrings
+that describe the scenario.
+"""
+
+# RUN: %PYTHON %s %t contract-pipeline-opt
 import itertools
 import os
 import re
@@ -38,9 +50,7 @@ def source(m, n, k, *, multiple=False, unsafe=None):
     )
     yielded = "%next, %other_next" if multiple else "%next"
     final = (
-        "%final = arith.addf %result#0, %result#1 : tensor<4x4xf32>"
-        if multiple
-        else ""
+        "%final = arith.addf %result#0, %result#1 : tensor<4x4xf32>" if multiple else ""
     )
     output = "%final" if multiple else "%result"
     loop = "scf.for unsigned" if unsafe == "unsigned" else "scf.for"
@@ -165,9 +175,7 @@ def oracle(a, b, multiple):
 def check_events(text, m, n, k):
     rows = {BLOCK} | ({m % BLOCK} if m % BLOCK else set())
     cols = {BLOCK} | ({n % BLOCK} if n % BLOCK else set())
-    ks = ({BLOCK} if k >= BLOCK else set()) | (
-        {k % BLOCK} if k % BLOCK else set()
-    )
+    ks = ({BLOCK} if k >= BLOCK else set()) | ({k % BLOCK} if k % BLOCK else set())
     expected = (
         {(0, r, t) for r, t in itertools.product(rows, ks)}
         | {(1, t, c) for t, c in itertools.product(ks, cols)}
@@ -209,9 +217,7 @@ def check_tensor_recurrence(path, expected_loops, multiple):
         for result in results:
             assert any(
                 "linalg.generic" in user
-                and re.search(
-                    r"ins\([^)]*" + re.escape(result) + r"(?=[, :])", user
-                )
+                and re.search(r"ins\([^)]*" + re.escape(result) + r"(?=[, :])", user)
                 for user in following
             ), (line, result)
     assert count == expected_loops, (count, expected_loops)
@@ -243,9 +249,7 @@ def numerics(path, text, m, n, k, multiple):
             machine.launch(
                 buffers,
                 {
-                    name: grid[int(axis)]
-                    if role == "num_programs"
-                    else pid[int(axis)]
+                    name: grid[int(axis)] if role == "num_programs" else pid[int(axis)]
                     for name, axis, role in arguments
                 },
             )
@@ -256,14 +260,10 @@ def numerics(path, text, m, n, k, multiple):
         totals = {"%arg0": 0, "%arg1": 0, "%arg2": 0}
         for name, start, end, kind in machine.accesses:
             count, pitch = (
-                (m, k)
-                if name == "%arg0"
-                else ((k, n) if name == "%arg1" else (m, n))
+                (m, k) if name == "%arg0" else ((k, n) if name == "%arg1" else (m, n))
             )
             row, col = divmod(start, pitch * 4)
-            assert (
-                0 <= row < count and 0 <= col < col + end - start <= pitch * 4
-            )
+            assert 0 <= row < count and 0 <= col < col + end - start <= pitch * 4
             assert kind == ("write" if name == "%arg2" else "read")
             totals[name] += end - start
         assert totals == {
@@ -321,17 +321,13 @@ def main():
         ]
         assert sorted(ids) == list(range(len(ids))), ids
         branches = (2 if m % 4 else 1) * (2 if n % 4 else 1)
-        assert text.count("linalg.matmul") == branches * (
-            2 if k > 4 and k % 4 else 1
-        )
+        assert text.count("linalg.matmul") == branches * (2 if k > 4 and k % 4 else 1)
         check_events(text, m, n, k)
         if k >= 4 and not multiple:
             assert text.count("contract.loop_carried_slots") == branches
         tensor_dumps = [
             dump
-            for dump in re.split(
-                r"// -----// IR Dump Before[^\n]*\n", result.stderr
-            )
+            for dump in re.split(r"// -----// IR Dump Before[^\n]*\n", result.stderr)
             if "bufferization.to_tensor" in dump
             and "linalg.matmul" in dump
             and "tensor<4x4xf32>" in dump
@@ -347,9 +343,7 @@ def main():
             if "linalg.matmul" in line:
                 assert line.count("tensor<4x4xf32>") >= 3, line
         if k > 4 and k % 4:
-            check_tensor_recurrence(
-                work / (label + ".tensor.mlir"), branches, multiple
-            )
+            check_tensor_recurrence(work / (label + ".tensor.mlir"), branches, multiple)
         lowered = run(
             text,
             "--convert-linalg-to-loops",
@@ -367,9 +361,9 @@ def main():
             "--triton-to-linalg-experimental=contract=true caller-contract=args_aligned64_nonalias launch-grid=k_tail:1,1,1",
             "--mlir-print-ir-after-failure",
         )
-        assert (
-            result.returncode != 0 and "kernel contract V4" in result.stderr
-        ), result.stderr
+        assert result.returncode != 0 and "kernel contract V4" in result.stderr, (
+            result.stderr
+        )
         dump = result.stderr.split("IR Dump After", 1)[-1]
         assert dump.count("linalg.matmul") == 1 and dump.count("scf.for") == 1
     print(

@@ -1,7 +1,16 @@
-// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
-// Each function independently checks the v1 boundary; unsupported content or
-// control flow must fail explicitly instead of claiming a complete graph.
-// CONTRACT-CASE: while_matmul_lineage = incomplete
+//
+// FileCheck lit test input 'boscame-while-matmul-lineage.mlir' (boscame while
+// matmul lineage lowering and contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: TritonToLinalgExperimental conversion suite to lock boscame while
+// matmul lineage lowering and contract facts.
+//
+
 module {
   tt.func public @while_matmul_lineage(%a_ptr: !tt.ptr<i8>,
       %b_ptr: !tt.ptr<i8>, %replacement_ptr: !tt.ptr<i8>,

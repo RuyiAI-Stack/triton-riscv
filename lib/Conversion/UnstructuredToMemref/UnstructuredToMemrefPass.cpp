@@ -5,6 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Unstructured gather/scatter-style ops to MemRef lowering.
+//
+// Inputs: tts.gather / tts.scatter produced when structured lowering cannot
+// prove a dense access.
+//
+// Outputs: memref forms that still carry contract buffer annotations where
+// possible.
+//
+// When used: the fallback path of the shared pipeline after
+// TritonToUnstructured.
+//
+
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 

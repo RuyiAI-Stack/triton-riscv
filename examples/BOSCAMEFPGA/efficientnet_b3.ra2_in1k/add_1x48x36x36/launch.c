@@ -1,3 +1,17 @@
+//
+// Host / bare-metal harness for FPGA case 'add_1x48x36x36' (model
+// 'efficientnet_b3.ra2_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -32,7 +46,8 @@ int launch(void) {
     y[i] = (i % 17 - 8) * 0.015625f;
     o[i] = 0;
   }
-  MemRef4 X = make_4(x, 1, 48, 36, 36), Y = make_4(y, 1, 48, 36, 36), O = make_4(o, 1, 48, 36, 36);
+  MemRef4 X = make_4(x, 1, 48, 36, 36), Y = make_4(y, 1, 48, 36, 36),
+          O = make_4(o, 1, 48, 36, 36);
   _mlir_ciface_kernel_add_1x48x36x36(&X, &Y, &O);
   for (int i = 0; i < 62208; ++i)
     compare(o[i], x[i] + y[i], 1e-6f, 1e-6f, &errors, &maximum);

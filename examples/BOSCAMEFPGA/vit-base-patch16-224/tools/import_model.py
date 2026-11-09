@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Capture google/vit-base-patch16-224 with Buddy's Dynamo frontend.
+"""BOSCAME FPGA example 'import_model.py' under model 'vit-base-patch16-224'.
 
-Only this script talks to HuggingFace/PyTorch. Later stages consume the saved
-raw graph and MLIR, which makes it possible to audit every external Triton
-replacement against a single fixed `[1,3,224,224]` input contract.
+Inputs: neighboring kernel, launch, and Make files in this example tree.
+
+Outputs: support for AOT compile, simcheck, or board execution.
+
+When used: examples/BOSCAMEFPGA bring-up and numeric validation.
 """
 
 from __future__ import annotations
@@ -66,9 +68,7 @@ def describe_graph(graph):
         dtype = dtype_of(op)
         if shape is not None or dtype is not None:
             entry["tensor_meta"] = {
-                k: v
-                for k, v in (("shape", shape), ("dtype", dtype))
-                if v is not None
+                k: v for k, v in (("shape", shape), ("dtype", dtype)) if v is not None
             }
         entries.append(entry)
     return entries
@@ -136,8 +136,7 @@ def load_model(config_path: Path, checkpoint: Path, dtype):
                 # Keep bias as an explicit AddOp so the linear and bias_add
                 # Triton ABIs remain separate.
                 return (
-                    torch.matmul(value, module.weight.transpose(-1, -2))
-                    + module.bias
+                    torch.matmul(value, module.weight.transpose(-1, -2)) + module.bias
                 )
 
             hidden = vit.embeddings(pixel_values)
@@ -150,31 +149,19 @@ def load_model(config_path: Path, checkpoint: Path, dtype):
                 # Transformers 4.x wraps Q/K/V in ``attention.attention``;
                 # 5.x exposes them directly on ``ViTAttention``.
                 attn = getattr(block.attention, "attention", block.attention)
-                q = project(
-                    getattr(attn, "q_proj", getattr(attn, "query", None)), x
-                )
-                k = project(
-                    getattr(attn, "k_proj", getattr(attn, "key", None)), x
-                )
-                v = project(
-                    getattr(attn, "v_proj", getattr(attn, "value", None)), x
-                )
+                q = project(getattr(attn, "q_proj", getattr(attn, "query", None)), x)
+                k = project(getattr(attn, "k_proj", getattr(attn, "key", None)), x)
+                v = project(getattr(attn, "v_proj", getattr(attn, "value", None)), x)
                 batch, seq, width = q.shape
-                heads = getattr(
-                    attn, "num_attention_heads", config.num_attention_heads
-                )
-                dim = getattr(
-                    attn, "attention_head_size", config.hidden_size // heads
-                )
+                heads = getattr(attn, "num_attention_heads", config.num_attention_heads)
+                dim = getattr(attn, "attention_head_size", config.hidden_size // heads)
                 q = q.view(batch, seq, heads, dim).transpose(1, 2)
                 k = k.view(batch, seq, heads, dim).transpose(1, 2)
                 v = v.view(batch, seq, heads, dim).transpose(1, 2)
                 scores = torch.matmul(q, k.transpose(-1, -2)) * (dim**-0.5)
                 probs = torch.softmax(scores, dim=-1)
                 context = torch.matmul(probs, v)
-                context = (
-                    context.transpose(1, 2).contiguous().view(batch, seq, width)
-                )
+                context = context.transpose(1, 2).contiguous().view(batch, seq, width)
                 output_proj = getattr(attn, "o_proj", None)
                 if output_proj is None:
                     output_proj = block.attention.output.dense
@@ -182,9 +169,7 @@ def load_model(config_path: Path, checkpoint: Path, dtype):
                 residual = hidden
                 x = block.layernorm_after(hidden)
                 mlp = getattr(block, "mlp", None)
-                intermediate = (
-                    getattr(mlp, "fc1", None) if mlp is not None else None
-                )
+                intermediate = getattr(mlp, "fc1", None) if mlp is not None else None
                 if intermediate is None:
                     intermediate = block.intermediate.dense
                 x = project(intermediate, x)
@@ -204,9 +189,7 @@ def load_model(config_path: Path, checkpoint: Path, dtype):
             "tensor_count": len(state),
             "missing": missing,
             "unexpected": unexpected,
-            "checkpoint_sha256": hashlib.sha256(
-                checkpoint.read_bytes()
-            ).hexdigest(),
+            "checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
         },
     )
 
@@ -246,9 +229,7 @@ def main():
     )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument(
-        "--dtype", choices=("float32", "float16"), default="float32"
-    )
+    parser.add_argument("--dtype", choices=("float32", "float16"), default="float32")
     parser.add_argument("--save-mlir", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -290,9 +271,7 @@ def main():
                 "sha256": hashlib.sha256(array.tobytes()).hexdigest(),
             }
         )
-    (args.output / "params.json").write_text(
-        json.dumps(param_records, indent=2) + "\n"
-    )
+    (args.output / "params.json").write_text(json.dumps(param_records, indent=2) + "\n")
     report = {
         "model": "google/vit-base-patch16-224",
         "input_shape": [1, 3, 224, 224],
@@ -322,9 +301,7 @@ def main():
     if args.save_mlir:
         group = "subgraph0"
         graph.op_groups = {
-            group: [
-                op for op in graph.body if not isinstance(op, PlaceholderOp)
-            ]
+            group: [op for op in graph.body if not isinstance(op, PlaceholderOp)]
         }
         graph.group_map_device = {group: DeviceType.CPU}
         driver = GraphDriver(graph)
@@ -336,9 +313,7 @@ def main():
             str(driver.construct_main_graph(True))
         )
         report["mlir"] = "forward.mlir"
-    (args.output / "import.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (args.output / "import.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 
 

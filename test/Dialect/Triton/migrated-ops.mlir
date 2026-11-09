@@ -1,10 +1,15 @@
-// RUN: triton-shared-opt %s | triton-shared-opt | FileCheck %s
 //
-// Coverage for the TTIR dialect surface that the migration has to keep intact:
-// tt.func with argument attributes, !tt.ptr address spaces, the load/store
-// variants, elementwise shape ops, tt.dot with an input precision, the program
-// id ops and call/return.  Everything is printed and re-parsed by the second
-// triton-shared-opt in the RUN line.
+// FileCheck lit test input 'migrated-ops.mlir' (migrated ops lowering and
+// contract facts).
+//
+// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: Triton dialect suite to lock migrated ops lowering and contract
+// facts.
+//
 
 module {
   // CHECK-LABEL: tt.func public @kernel
