@@ -60,13 +60,12 @@ staged `triton-shared-opt`, so source it before running anything by hand. Its de
 layout the scripts use -- `triton/`, `.cache/llvm`, `.cache/buddy` -- and it prepends the LLVM and
 buddy `bin` directories to `PATH`, which is how the backend finds the toolchains. Override
 `LLVM_SYSPATH` to point it elsewhere; `make setup` and `make build` take `TRITON_DIR` for the
-revision they check out, and `make` takes `PYTHON` for the interpreter it builds with. To
-check the installed backend by hand:
+revision they check out, and `make` takes `PYTHON` for the interpreter it builds with. To see
+which backend ended up active:
 
 ```sh
 source scripts/env.sh
-python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-python -c "from triton.backends.triton_shared.paths import _get_triton_shared_opt_path as f; print(f())"
+python -c "import triton; print(triton.__version__, triton.runtime.driver.active.get_current_target())"
 ```
 
 `triton-shared-opt` has no console script: the backend runs the copy bundled in the package, or
