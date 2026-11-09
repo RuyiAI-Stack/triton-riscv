@@ -38,9 +38,10 @@ export CXX="${CXX:-clang++}"
 # source tree; the tool is staged below instead.
 export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-staging${TRITON_APPEND_CMAKE_ARGS:+ ${TRITON_APPEND_CMAKE_ARGS}}"
 
-# TRITON_PLUGIN_DIRS (set by env.sh) is what makes Triton package backend/ as
-# triton.backends.triton_shared, register its entry point, and build the C++
-# plugin into libtriton.so.
+# Triton's plugin support, which packages backend/ as triton.backends.triton_shared
+# and builds the C++ plugin into libtriton.so. setup.py turns this into
+# -DTRITON_PLUGIN_DIRS, which cmake caches, so only the build needs it.
+export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
 "${PYTHON}" -m pip install --no-build-isolation -e "${TRITON_DIR}"
 
 # Stage the freshly built tool where the backend looks for it.
