@@ -114,10 +114,17 @@ it.
 
 ### AMD GPU
 
-The same kernel runs on an AMD GPU. The target picks the backend, and on a machine with ROCm
-the AMD backend activates on its own (`is_active()` asks torch for `torch.version.hip`); put
-the tensors on the device (`device="cuda"`, which ROCm uses as well) and `python gemm.py`
-does the same thing there.
+The same kernel runs on an AMD GPU: the target picks the backend, and on a machine with ROCm
+the AMD backend activates on its own (`is_active()` asks torch for `torch.version.hip`).
+Neither the kernel nor the launch changes -- only where the tensors live:
+
+```py
+a = torch.randn(BLOCK, BLOCK, device="cuda")
+b = torch.randn(BLOCK, BLOCK, device="cuda")
+c = torch.empty(BLOCK, BLOCK, device="cuda")
+```
+
+`cuda` is the spelling ROCm uses as well, and `python gemm.py` prints `ok: True` there too.
 
 On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
 active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
