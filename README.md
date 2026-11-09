@@ -19,6 +19,8 @@ Python @triton.jit
 
 ## Install
 
+### From a wheel
+
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 # `triton` and the buddy tools come from the index that carries them; PyPI only
@@ -33,7 +35,7 @@ tar xf llvm-*.tar.gz -C /path/to/llvm
 export LLVM_BINARY_DIR=/path/to/llvm/bin
 ```
 
-## Install from source
+### From source
 
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
