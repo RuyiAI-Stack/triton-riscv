@@ -14,9 +14,7 @@ TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 # builds for, and builds Proton and the NVIDIA sanitizer runtime, none of which
 # this backend needs. Stub them before env.sh, so that whatever env.sh points at
 # a real file -- the AMD codegen library -- wins over the stub.
-# shellcheck source=scripts/_gpu-stub-env.sh
 source "${ROOT_DIR}/scripts/_gpu-stub-env.sh" "${ROOT_DIR}/.cache/gpu-deps-stub"
-# shellcheck source=scripts/env.sh
 source "${ROOT_DIR}/scripts/env.sh"
 
 PYTHON="${PYTHON:-${TRITON_VENV}/bin/python}"

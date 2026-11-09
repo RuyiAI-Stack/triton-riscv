@@ -120,7 +120,6 @@ dnf install -y clang lld git libstdc++-devel
 # land it) are enabled first, so `gcc` below is the right one either way.
 toolset_root=""
 for enable in $(ls -1 /opt/rh/gcc-toolset-*/enable 2>/dev/null | sort -V); do
-    # shellcheck disable=SC1090
     source "${enable}"
     toolset_root="$(dirname "${enable}")/root/usr"
 done
@@ -139,7 +138,6 @@ export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
 # triton.backends entry point, which is how Triton discovers backends.
 export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 
-# shellcheck source=scripts/_gpu-stub-env.sh
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
 
 # setup.sh fetches the toolchains and the pinned Triton checkout; build.sh builds
