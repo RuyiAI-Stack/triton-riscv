@@ -67,7 +67,7 @@ def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
     tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"   # the GPU when there is one
+device = "cpu"
 BLOCK = 16
 a = torch.randn(BLOCK, BLOCK, device=device)
 b = torch.randn(BLOCK, BLOCK, device=device)
@@ -115,10 +115,35 @@ it.
 
 ### AMD GPU
 
-The kernel does not change, and neither does the script above: it asks torch for a device, so
-on a machine with ROCm it picks the GPU, where the AMD backend activates on its own
-(`is_active()` asks torch for `torch.version.hip`). That is the ordinary Triton pattern --
-upstream's tutorials are written the same way.
+The same program with `device = "cuda"` runs on an AMD GPU -- that one line is the difference:
+
+```py
+# gemm.py
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    a = tl.load(a_ptr + offs[:, None] * BLOCK + offs[None, :])
+    b = tl.load(b_ptr + offs[:, None] * BLOCK + offs[None, :])
+    tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
+
+
+device = "cuda"          # the only line that differs from the version above
+BLOCK = 16
+a = torch.randn(BLOCK, BLOCK, device=device)
+b = torch.randn(BLOCK, BLOCK, device=device)
+c = torch.empty(BLOCK, BLOCK, device=device)
+matmul[(1,)](a, b, c, BLOCK=BLOCK)
+print("ok:", torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3))
+```
+
+`cuda` is the spelling ROCm uses as well, and on a machine with ROCm the AMD backend
+activates on its own (`is_active()` asks torch for `torch.version.hip`), so nothing else
+changes: these are ordinary Triton kernels, and upstream's tutorials work the same way.
 
 On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
 active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
