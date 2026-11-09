@@ -91,8 +91,7 @@ make test
 
 What you end up with is an editable Triton whose backend is
 `triton.backends.triton_shared`. It takes over when no GPU backend is present,
-so `import triton` behaves as usual, and the tutorials in
-[`python/tutorials/`](python/tutorials) run anywhere a CPU does.
+so `import triton` behaves as usual.
 
 ## Clone
 
@@ -153,23 +152,6 @@ python -c "from triton.backends.triton_shared.paths import _get_triton_shared_op
 
 `triton-shared-opt` has no console script: the backend runs the copy bundled in
 the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
-
-## Tutorials
-
-[`python/tutorials/`](python/tutorials) holds the notebooks, one per RISC-V
-feature:
-
-- `02-rvv-vectorization` compiles one kernel twice -- once with the RISC-V vector
-extension and once without -- and disassembles both, so you can see the
-`vle32.v` / `vfadd.vv` / `vse32.v` the backend emits;
-- `03-ime-matmul` lowers `tl.dot` to the integrated matrix extension's `vmadot`
-and `vfmadot` when `TRITON_RISCV_USE_IME=1`.
-
-Both compile RISC-V code on any host and are executed by CI. To run them locally:
-
-```sh
-make test-tutorials
-```
 
 ## Generate and run RVV ELF files with QEMU
 
