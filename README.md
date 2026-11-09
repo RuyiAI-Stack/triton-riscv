@@ -95,6 +95,25 @@ The instructions it prints are the RVV ones:
       60: 020ee427      vse32.v     v8, (t4)
 ```
 
+## How to
+
+One wheel, three ways to use it, all of them on RISC-V:
+
+- **RISC-V CPU.** On `riscv64` the backend selects itself and the kernels run on the CPU --
+  that is what the example above does. The rest of the suite lives in `python/examples/`.
+- **RISC-V with the vector and matrix extensions.** RVV is on by default (the backend's
+  `llc` feature string is `+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`), and
+  `TRITON_RISCV_USE_IME=1` compiles `tl.dot` to the integrated matrix extension's
+  `vmadot` / `vfmadot` (see `python/examples/smtime/test_smtime.py`). Either one only *runs*
+  where the hardware has the extension.
+- **RISC-V host with an AMD GPU.** The wheel carries the AMD backend and the codegen
+  library it needs, so a kernel compiles to `hsaco` here. Running it needs ROCm for
+  riscv64, which does not exist yet.
+
+The backend can also emit a self-contained RISC-V ELF to be run elsewhere, without a
+toolchain on the target -- see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) and
+`python/examples/rvv_vec_add_elf.py`.
+
 ## Clone
 
 ```sh
