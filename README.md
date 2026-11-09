@@ -40,8 +40,9 @@ export LLVM_BINARY_DIR=/path/to/llvm/bin
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
 cd triton-riscv
-make
-make test
+make setup    # creates .venv, downloads the pinned LLVM and buddy builds, clones the pinned Triton
+make build    # builds Triton and installs the backend into that .venv
+make test     # the plugin's lit tests and the example suite
 ```
 
 What you end up with is an editable Triton whose backend is
