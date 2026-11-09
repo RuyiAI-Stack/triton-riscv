@@ -84,8 +84,11 @@ python gemm.py          # ok: True
 a REPL will not do. On `riscv64` the CPU backend selects itself, so no `set_active` call or
 extra environment variable is needed. The rest of the suite lives in `python/examples/`.
 
-The RISC-V vector extension is on by default (`+v` is in the backend's `llc` feature string),
-so this GEMM already comes out vectorized. To see it, ask for the RISC-V target explicitly
+#### RVV
+
+The vector extension is on by default -- `+v` is in the backend's `llc` feature string
+(`+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`; `TRITON_RISCV_LLC_FEATURES` overrides it) -- so
+the GEMM above already comes out vectorized. To see it, ask for the RISC-V target explicitly
 and count the instructions in the object:
 
 ```py
@@ -108,10 +111,59 @@ llvm-objdump -d gemm.o | grep -oE "vsetivli|vle32\.v|vse32\.v|vfmacc\.vf|vfadd\.
       2 vsetivli
 ```
 
-`TRITON_RISCV_USE_IME=1` goes further for `tl.dot`: an fp16 or int8 dot lowers to the
-integrated matrix extension's `vfmadot` / `vmadot` (see
-`python/examples/smtime/test_smtime.py`). Either extension only *runs* where the hardware has
-it.
+#### SpacemiT IME
+
+SpacemiT's integrated matrix extension (IME) adds `vmadot` for integers and `vfmadot` for
+fp16, and the backend can lower `tl.dot` straight to them. Set `TRITON_RISCV_USE_IME=1` and
+`linalg.matmul` goes through buddy-mlir's IME dialect (`--lower-linalg-to-ime`,
+`--lower-ime`) with the object built for `+xsmtime`. The tile it wants is 4x4 with a k of 8
+for int8 and 4 for fp16 -- the int8 GEMM in `python/examples/smtime/test_smtime.py` is the
+smallest one that hits it:
+
+```py
+# ime.py
+import os
+import torch
+import triton
+import triton.language as tl
+
+os.environ["TRITON_RISCV_USE_IME"] = "1"
+
+
+@triton.jit
+def matmul_i8(a_ptr, b_ptr, c_ptr):
+    m = tl.arange(0, 4)
+    n = tl.arange(0, 4)
+    k = tl.arange(0, 8)
+    a = tl.load(a_ptr + m[:, None] * 8 + k[None, :])
+    b = tl.load(b_ptr + k[:, None] * 4 + n[None, :])
+    tl.store(c_ptr + m[:, None] * 4 + n[None, :], tl.dot(a, b, out_dtype=tl.int32))
+
+
+a = torch.randint(-8, 8, (4, 8), dtype=torch.int8)
+b = torch.randint(-8, 8, (8, 4), dtype=torch.int8)
+c = torch.empty((4, 4), dtype=torch.int32)
+open("ime.o", "wb").write(matmul_i8.warmup(a, b, c, grid=(1,)).asm["obj"])
+```
+
+```sh
+llvm-objdump -d ime.o | grep -E "vmadot|vle8|vsetvli"
+```
+
+```
+  80: vsetvli  zero, a1, e8, m4, ta, ma
+  88: vle8.v   v8, (s1)
+ 13c: vsetvli  zero, a7, e8, m4, ta, ma
+ 140: vle8.v   v8, (s6)
+ 144: vle8.v   v12, (a2)
+ 148: vsetvli  zero, a7, e32, m4, ta, ma
+ 150: vmadot   v16, v8, v12
+ 26a: vsetvli  zero, a0, e8, m4, ta, ma
+ 26e: vle8.v   v8, (t0)
+```
+
+The kernel only *runs* where the hardware implements the extension; elsewhere it is an
+illegal instruction.
 
 ### AMD GPU
 
