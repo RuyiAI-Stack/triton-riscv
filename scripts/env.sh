@@ -13,9 +13,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 fi
 
 _TRITON_RISCV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# The virtualenv scripts/setup.sh creates. Only the PATH below needs it, so it
-# stays out of the environment.
-TRITON_VENV="${TRITON_VENV:-${_TRITON_RISCV_DIR}/.venv}"
 
 # The LLVM build scripts/setup.sh downloads, which the Triton build links against.
 export LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"
@@ -30,6 +27,6 @@ export LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"
 export TRITON_AMD_CODEGEN_PATH="${_TRITON_RISCV_DIR}/triton/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 
 # Both toolchains are found on PATH, the same way an installed wheel finds them.
-export PATH="${TRITON_VENV}/bin:${LLVM_SYSPATH}/bin:${_TRITON_RISCV_DIR}/.cache/buddy/bin:${PATH}"
+export PATH="${LLVM_SYSPATH}/bin:${_TRITON_RISCV_DIR}/.cache/buddy/bin:${PATH}"
 # Keep the repository's own triton/ checkout from shadowing the installed one.
 export PYTHONSAFEPATH=1

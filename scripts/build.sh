@@ -17,7 +17,7 @@ TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 source "${ROOT_DIR}/scripts/_gpu-stub-env.sh" "${ROOT_DIR}/.cache/gpu-deps-stub"
 source "${ROOT_DIR}/scripts/env.sh"
 
-PYTHON="${PYTHON:-${TRITON_VENV}/bin/python}"
+PYTHON="${PYTHON:-python3}"
 
 # Build against the Python stable ABI (abi3), which is how upstream builds its
 # abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged

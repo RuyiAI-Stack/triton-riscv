@@ -13,7 +13,7 @@ Activate the same Python environment used to build and run Triton-RISCV, then
 source the repository environment helper:
 
 ```sh
-conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
+source /path/to/your/venv/bin/activate
 cd /path/to/triton-riscv
 source scripts/env.sh
 ```

@@ -40,8 +40,10 @@ export PATH=/path/to/llvm/bin:$PATH
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
 cd triton-riscv
-make setup    # creates .venv, downloads the pinned LLVM and buddy builds, clones the pinned Triton
-make build    # builds Triton and installs the backend into that .venv
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+make setup    # downloads the pinned LLVM and buddy builds, clones the pinned Triton
+make build    # builds Triton and installs the backend
 make test     # the plugin's lit tests and the example suite
 ```
 
@@ -55,10 +57,10 @@ by the [QEMU example](docs/06-RISCV-QEMU.md).
 
 `scripts/env.sh` exports what the backend and the lit tests need to find the toolchains and the
 staged `triton-shared-opt`, so source it before running anything by hand. Its defaults follow the
-layout `make` creates -- `triton/`, `.venv`, `.cache/llvm`, `.cache/buddy` -- and it prepends the
-venv, LLVM and buddy `bin` directories to `PATH`, which is how the backend finds the
-toolchains. Override `TRITON_VENV` or `LLVM_SYSPATH` to point it elsewhere; `make setup` and
-`make build` take `TRITON_DIR` for the revision they check out. `make build` ends by
+layout the scripts use -- `triton/`, `.cache/llvm`, `.cache/buddy` -- and it prepends the LLVM and
+buddy `bin` directories to `PATH`, which is how the backend finds the toolchains. Override
+`LLVM_SYSPATH` to point it elsewhere; `make setup` and `make build` take `TRITON_DIR` for the
+revision they check out, and `make` takes `PYTHON` for the interpreter it builds with. `make build` ends by
 printing the installed Triton version, the module it loaded and the `triton-shared-opt` it
 shelled out to; to check by hand:
 

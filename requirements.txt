@@ -1,0 +1,12 @@
+# Build and test dependencies for triton-riscv, for the interpreter that builds
+# Triton. The riscv64 wheels for numpy and cmake live on the Ruyi index.
+--extra-index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple
+
+numpy
+cmake>=3.20,<4.0
+setuptools>=40.8.0
+ninja>=1.11.1
+nanobind==2.10.2
+pytest
+pytest-xdist
+lit
