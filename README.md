@@ -60,9 +60,8 @@ staged `triton-shared-opt`, so source it before running anything by hand. Its de
 layout the scripts use -- `triton/`, `.cache/llvm`, `.cache/buddy` -- and it prepends the LLVM and
 buddy `bin` directories to `PATH`, which is how the backend finds the toolchains. Override
 `LLVM_SYSPATH` to point it elsewhere; `make setup` and `make build` take `TRITON_DIR` for the
-revision they check out, and `make` takes `PYTHON` for the interpreter it builds with. `make build` ends by
-printing the installed Triton version, the module it loaded and the `triton-shared-opt` it
-shelled out to; to check by hand:
+revision they check out, and `make` takes `PYTHON` for the interpreter it builds with. To
+check the installed backend by hand:
 
 ```sh
 source scripts/env.sh

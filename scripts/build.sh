@@ -48,6 +48,3 @@ mkdir -p "${ROOT_DIR}/backend/bin"
 ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt \
     "${ROOT_DIR}/backend/bin/triton-shared-opt"
 unset _python_tag
-
-"${PYTHON}" -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-"${ROOT_DIR}/backend/bin/triton-shared-opt" --version
