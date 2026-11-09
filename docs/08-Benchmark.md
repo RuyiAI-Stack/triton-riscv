@@ -24,7 +24,7 @@ or C++ sources, rebuild and clear stale kernel cache entries before measuring:
 
 ```sh
 make build
-rm -rf "$TRITON_CACHE_DIR"
+rm -rf ~/.triton/cache
 ```
 
 The Buddy column needs Buddy's Python packages. The benchmark helper first uses
@@ -217,7 +217,7 @@ Rebuild the backend and remove cached kernels:
 
 ```sh
 make build
-rm -rf "$TRITON_CACHE_DIR"
+rm -rf ~/.triton/cache
 ```
 
 ### A Benchmark Is Very Slow

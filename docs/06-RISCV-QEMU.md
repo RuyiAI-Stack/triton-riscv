@@ -192,7 +192,7 @@ Rebuild the backend and then clear stale kernel artifacts:
 
 ```sh
 make build
-rm -rf "$TRITON_CACHE_DIR"
+rm -rf ~/.triton/cache
 ```
 
 ### QEMU Reports `verification failed`
