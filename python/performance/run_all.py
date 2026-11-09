@@ -147,9 +147,9 @@ def main():
     buddy_bin = buddy_dir / "build" / "bin"
     llvm_bin = buddy_dir / "llvm" / "build" / "bin"
     if buddy_bin.is_dir():
-        env["PATH"] = f"{buddy_bin}:{env['PATH']}"
+        env.setdefault("BUDDY_MLIR_BINARY_DIR", str(buddy_bin))
     if llvm_bin.is_dir():
-        env["PATH"] = f"{llvm_bin}:{env['PATH']}"
+        env.setdefault("LLVM_BINARY_DIR", str(llvm_bin))
     env["PYTHONPATH"] = (
         str(perf_dir)
         if not env.get("PYTHONPATH")
