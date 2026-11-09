@@ -48,8 +48,6 @@ so `import triton` behaves as usual.
 
 ## Quick start
 
-### RISC-V CPU
-
 ```py
 # add.py
 import torch
@@ -110,10 +108,12 @@ llvm-objdump -d add.o | grep -E "vset|vle32|vse32|vfadd"   # or "$LLVM_BINARY_DI
 extension's `vmadot` / `vfmadot` (see `python/examples/smtime/test_smtime.py`); both
 extensions only *run* where the hardware has them.
 
-### RISC-V host with an AMD GPU
+## Running on an AMD GPU
 
-The wheel carries the AMD backend and the codegen library it needs, so the same kernel can
-also be compiled for a GPU from here -- the target picks the backend:
+The wheel carries the AMD backend and the codegen library it needs, so an AMD GPU is just
+another target: ask for the `hip` target and the GPU backend takes over, exactly as it does
+with upstream Triton. It needs a working ROCm installation and an AMD GPU -- the wheel does
+not ship the ROCm runtime.
 
 ```py
 from triton.backends.compiler import GPUTarget
@@ -128,13 +128,6 @@ src = ASTSource(
 print(sorted(triton.compile(src, target=GPUTarget("hip", "gfx942", 64)).asm))
 # ['amdgcn', 'hsaco', 'llir', 'source', 'ttgir', 'ttir']
 ```
-
-Running such a kernel needs ROCm for riscv64, which does not exist yet, so this is a
-compile-only path today.
-
-The backend can also emit a self-contained RISC-V ELF to run elsewhere, with no toolchain on
-the target: see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) and
-`python/examples/rvv_vec_add_elf.py`.
 
 ## Clone
 
