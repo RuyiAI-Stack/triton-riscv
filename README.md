@@ -68,11 +68,10 @@ def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
     tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
 
 
-device = "cpu"
 BLOCK = 16
-a = torch.randn(BLOCK, BLOCK, device=device)
-b = torch.randn(BLOCK, BLOCK, device=device)
-c = torch.empty(BLOCK, BLOCK, device=device)
+a = torch.randn(BLOCK, BLOCK)
+b = torch.randn(BLOCK, BLOCK)
+c = torch.empty(BLOCK, BLOCK)
 matmul[(1,)](a, b, c, BLOCK=BLOCK)
 print("ok:", torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3))
 ```
@@ -117,10 +116,9 @@ llvm-objdump -d gemm.o | grep -oE "vsetivli|vle32\.v|vse32\.v|vfmacc\.vf|vfadd\.
 SpacemiT's integrated matrix extension (IME) adds `vmadot` for integers and `vfmadot` for
 fp16, and the backend can lower `tl.dot` straight to them. Set `TRITON_RISCV_USE_IME=1` and
 `linalg.matmul` goes through buddy-mlir's IME dialect (`--lower-linalg-to-ime`,
-`--lower-ime`) with the object built for `+xsmtime`. That is why this example is smaller
-than the GEMM above: the lowering looks for its own tile, 4x4 with a k of 8 for int8 and 4
-for fp16, so a bigger `tl.dot` is left alone. The int8 GEMM in
-`python/examples/smtime/test_smtime.py` is the smallest one that hits it:
+`--lower-ime`) with the object built for `+xsmtime`. The tile it wants is 4x4 with a k of 8
+for int8 and 4 for fp16 -- the int8 GEMM in `python/examples/smtime/test_smtime.py` is the
+smallest one that hits it:
 
 ```py
 # ime.py
@@ -169,7 +167,8 @@ illegal instruction.
 
 ### AMD GPU
 
-The same program with `device = "cuda"` runs on an AMD GPU -- that one line is the difference:
+The same program runs on an AMD GPU: the difference is where the tensors live, and `cuda`
+is the spelling ROCm uses as well.
 
 ```py
 # gemm.py
@@ -186,7 +185,7 @@ def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
     tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
 
 
-device = "cuda"          # the only line that differs from the version above
+device = "cuda"          # the tensors decide where the kernels run
 BLOCK = 16
 a = torch.randn(BLOCK, BLOCK, device=device)
 b = torch.randn(BLOCK, BLOCK, device=device)
