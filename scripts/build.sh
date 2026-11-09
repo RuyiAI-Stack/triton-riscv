@@ -3,15 +3,29 @@
 # Build and install Triton with the triton-shared backend. Run scripts/setup.sh
 # once first -- the Makefile's `all` target and `make setup` do that for you.
 #
-# Environment: see scripts/env.sh. Set PYTHON to build into another interpreter.
+# Environment: scripts/env.sh, plus the GPU dependency stubs sourced first.
+# Set PYTHON to build into another interpreter.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
+
+# Upstream Triton downloads host-specific GPU toolchains that riscv64 has no
+# builds for, and builds Proton and the NVIDIA sanitizer runtime, none of which
+# this backend needs. Stub them before env.sh, so that whatever env.sh points at
+# a real file -- the AMD codegen library -- wins over the stub.
+# shellcheck source=scripts/_gpu-stub-env.sh
+source "${ROOT_DIR}/scripts/_gpu-stub-env.sh" "${ROOT_DIR}/.cache/gpu-deps-stub"
 # shellcheck source=scripts/env.sh
 source "${ROOT_DIR}/scripts/env.sh"
 
 PYTHON="${PYTHON:-${TRITON_VENV}/bin/python}"
+
+# Build against the Python stable ABI (abi3), which is how upstream builds its
+# abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged
+# cp312-abi3, so it covers Python 3.12 and later instead of only the interpreter
+# it was built with. Upstream ships no abi3 wheel for free-threaded builds.
+export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
 
 # Build with clang, as the official Triton wheels do: clang tolerates the
 # "deprecated aggregate builder" pattern MLIR's generated code uses, while gcc

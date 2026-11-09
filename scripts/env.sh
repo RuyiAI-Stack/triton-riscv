@@ -28,23 +28,14 @@ BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${_TRITON_RISCV_DIR}/.cache/budd
 # Build time
 # ---------------------------------------------------------------------------
 
-# Upstream Triton downloads host-specific GPU toolchains that riscv64 has no
-# builds for; disable them for every build started from this shell.
-# shellcheck source=scripts/_gpu-stub-env.sh
-source "${_TRITON_RISCV_DIR}/scripts/_gpu-stub-env.sh" "${_TRITON_RISCV_DIR}/.cache/gpu-deps-stub"
-# That stub points every GPU download at an empty directory, which is also what
-# skips upstream's AMD codegen fetch during the build. The backend reads this one
-# again when it compiles, though, so point it at the library scripts/setup.sh
+# build.sh stubs every GPU download location at an empty directory, which is also
+# what skips upstream's AMD codegen fetch during the build. The backend needs the
+# real library at compile time, though, so point it at the one scripts/setup.sh
 # builds -- the same file get_amd_codegen_path() falls back to by default.
 export TRITON_AMD_CODEGEN_PATH="${_TRITON_RISCV_DIR}/triton/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 # Triton's plugin support, which packages backend/ as
 # triton.backends.triton_shared and builds the C++ plugin into libtriton.so.
 export TRITON_PLUGIN_DIRS="${_TRITON_RISCV_DIR}"
-# Build against the Python stable ABI (abi3), which is how upstream builds its
-# abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged
-# cp312-abi3, so it covers Python 3.12 and later instead of only the interpreter
-# it was built with. Upstream ships no abi3 wheel for free-threaded builds.
-export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
 
 # ---------------------------------------------------------------------------
 # Shell
