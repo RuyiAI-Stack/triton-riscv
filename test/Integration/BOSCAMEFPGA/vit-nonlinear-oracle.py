@@ -1,7 +1,7 @@
 """Python lit test 'vit-nonlinear-oracle.py' covering ViT nonlinear CPU oracles.
 
 Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
-RUN: substitutions.
+lit substitutions.
 
 Outputs: assertions / FileCheck on exported contract IR or numeric results;
 non-zero exit on mismatch.

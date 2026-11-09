@@ -3,7 +3,7 @@ Python lit test 'loop-boundaries.py' covering scf.for bounds recovered into
 contract facts.
 
 Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
-RUN: substitutions.
+lit substitutions.
 
 Outputs: assertions / FileCheck on exported contract IR or numeric results;
 non-zero exit on mismatch.

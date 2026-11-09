@@ -2,7 +2,7 @@
 // FileCheck lit test input 'annotate.mlir' (kernel-contract-annotate attribute
 // placement).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,50 @@
 // placement.
 //
 
+// RUN: split-file %s %t
+// RUN: triton-shared-opt %t/loop.mlir --kernel-contract-annotate --kernel-contract-verify | FileCheck %s --check-prefix=LOOP
+// RUN: triton-shared-opt %t/views.mlir --kernel-contract-annotate --kernel-contract-verify | FileCheck %s --check-prefix=VIEWS
+// RUN: triton-shared-opt %t/staging.mlir --kernel-contract-annotate --kernel-contract-verify | FileCheck %s --check-prefix=STAGING
+// RUN: triton-shared-opt %t/zero-trip.mlir --kernel-contract-annotate --kernel-contract-verify | FileCheck %s --check-prefix=INCOMPLETE
+// RUN: triton-shared-opt %t/private-merge.mlir --kernel-contract-annotate --kernel-contract-verify | FileCheck %s --check-prefix=MERGE
+// RUN: not triton-shared-opt %t/overlap.mlir --kernel-contract-annotate 2>&1 | FileCheck %s --check-prefix=OVERLAP
+// RUN: not triton-shared-opt %t/shifted-init.mlir --kernel-contract-annotate 2>&1 | FileCheck %s --check-prefix=SHIFT
+// RUN: not triton-shared-opt %t/hidden-target.mlir --kernel-contract-annotate 2>&1 | FileCheck %s --check-prefix=HIDDEN
+// RUN: not triton-shared-opt %t/hidden-tensor.mlir --kernel-contract-annotate 2>&1 | FileCheck %s --check-prefix=TENSOR
+// RUN: triton-shared-opt %S/Inputs/kernel.contract.mlir --kernel-contract-verify -o /dev/null
+// RUN: triton-shared-opt %S/Inputs/matmul128.contract.mlir --kernel-contract-verify -o /dev/null
+// RUN: triton-shared-opt %S/Inputs/layernorm.contract.mlir --kernel-contract-verify -o /dev/null
+// RUN: triton-shared-opt %S/Inputs/kernel.contract.mlir --kernel-contract-annotate --kernel-contract-verify -o /dev/null
+// RUN: triton-shared-opt %S/Inputs/matmul128.contract.mlir --kernel-contract-annotate --kernel-contract-verify -o /dev/null
+// RUN: triton-shared-opt %S/Inputs/layernorm.contract.mlir --kernel-contract-annotate --kernel-contract-verify -o /dev/null
+
+// Full kills need WAW ordering across both loop boundaries, but do not read
+// the old version. Static versions describe distinct dynamic loop instances.
+// LOOP: contract.compute_graph = {{.*}}complete = true
+// LOOP: linalg.fill {{.*}}input_values = array<i64>, {{.*}}predecessors = array<i64>
+// LOOP: linalg.fill {{.*}}input_values = array<i64>, {{.*}}predecessors = array<i64: 0>
+// LOOP: backedge_producer_compute_ids = array<i64: 1>
+// LOOP-SAME: exit_consumer_compute_ids = array<i64: 2>
+// LOOP-SAME: iter_arg_consumer_compute_ids = array<i64: 1>
+// LOOP: linalg.fill {{.*}}input_values = array<i64>, {{.*}}predecessors = array<i64: 1>
+
+// VIEWS: contract.compute_graph = {{.*}}complete = true
+// VIEWS: linalg.generic
+// STAGING: source_lineage_complete = false
+// STAGING: contract.provenance = {generated_by = "planner-staging", source_lineage_complete = false}
+// STAGING-NOT: origin_id
+// INCOMPLETE: contract.compute_graph = {{.*}}complete = false
+// INCOMPLETE-NOT: contract.loop_carried_slots
+// INCOMPLETE-NOT: contract.value_ids
+// INCOMPLETE: contract.scope = {{.*}}complete = false
+// MERGE: contract.compute_graph = {{.*}}complete = false
+// MERGE: parent private content crossing if is outside v1
+// OVERLAP: kernel contract V25: overlapping views must have identical element addresses
+// SHIFT: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// HIDDEN: kernel contract V14: target attributes are forbidden
+// TENSOR: kernel contract V3: contract must be buffer form, without tensor types
+
+//--- loop.mlir
 module {
   func.func @kill_boundaries() {
     %zero = arith.constant 0 : i32

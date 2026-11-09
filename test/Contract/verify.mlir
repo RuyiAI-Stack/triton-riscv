@@ -2,7 +2,7 @@
 // FileCheck lit test input 'verify.mlir' (kernel-contract-verify success and
 // failure cases).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,23 @@
 // cases.
 //
 
+// RUN: split-file %s %t
+// RUN: not triton-shared-opt %t/unresolved.mlir --kernel-contract-verify 2>&1 | FileCheck %s --check-prefix=UNRESOLVED
+// RUN: not triton-shared-opt %t/duplicate.mlir --kernel-contract-verify 2>&1 | FileCheck %s --check-prefix=DUPLICATE
+// RUN: not triton-shared-opt %t/stale-read.mlir --kernel-contract-verify 2>&1 | FileCheck %s --check-prefix=STALE
+// RUN: not triton-shared-opt %t/stale-backedge.mlir --kernel-contract-verify 2>&1 | FileCheck %s --check-prefix=BACKEDGE
+// RUN: not triton-shared-opt %t/negative-origin.mlir --kernel-contract-annotate 2>&1 | FileCheck %s --check-prefix=ORIGIN
+// RUN: not triton-shared-opt %t/empty-lineage.mlir --kernel-contract-annotate 2>&1 | FileCheck %s --check-prefix=LINEAGE
+
+// Incomplete suppresses unproven graph claims, never schema/ID validation.
+// UNRESOLVED: kernel contract V7/V15: unresolved content version, including in an incomplete graph
+// DUPLICATE: kernel contract V7/V21: content version must have one nonnegative definition
+// STALE: kernel contract V22/V23: input_values must match actual reads, latest versions
+// BACKEDGE: kernel contract V11/V20/V26: loop slot must match actual init, backedge and exit consumers
+// ORIGIN: kernel contract V12: source origin IDs must be nonnegative i64 arrays
+// LINEAGE: kernel contract V12: complete provenance requires a nonempty source origin list
+
+//--- unresolved.mlir
 module attributes {contract.version = 1 : i32, contract.producer = "test"} {
   func.func @unresolved() attributes {
     contract.compute_graph = {version = 1 : i32, root_scope = 0 : i64,

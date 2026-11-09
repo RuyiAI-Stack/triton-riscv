@@ -2,7 +2,7 @@
 // FileCheck lit test input 'migrated-invalid.mlir' (migrated invalid lowering
 // and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -10,6 +10,14 @@
 // When used: Triton dialect suite to lock migrated invalid lowering and
 // contract facts.
 //
+
+// RUN: triton-shared-opt -verify-diagnostics -split-input-file %s
+
+// The migrated TTIR verifiers must still reject malformed input.  These cases
+// exercise op verifiers, type/interface constraints (TT_PtrLike / TT_Type on
+// tt.load and tt.addptr) and the "no unknown operations" dialect contract.
+
+// -----
 
 module {
   tt.func @dot_inner_dim(%a: tensor<4x8xf32>, %b: tensor<4x4xf32>, %c: tensor<4x4xf32>) {

@@ -35,5 +35,9 @@ ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/tri
     "${TRITON_RISCV_DIR}/backend/bin/triton-shared-opt"
 unset _python_tag
 
-"${PYTHON}" -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
+# Do not `import triton` here: discovering nvidia/amd drivers while
+# triton.backends is still initializing hits a circular import on some
+# hosts. The plugin tool plus the package metadata are enough to prove
+# the editable install.
+"${PYTHON}" -c "import importlib.metadata as m; print(m.version('triton'))"
 "${TRITON_RISCV_DIR}/backend/bin/triton-shared-opt" --version

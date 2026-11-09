@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-transpose-lineage.mlir' (boscame transpose
 // lineage lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,11 @@
 // transpose lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly instead of claiming a complete graph.
+// CONTRACT-CASE: transpose_exit_consumer = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: transpose_memref_writer = reject: kernel contract V23/V24: v1 does not support reading an external region after its terminal write
 module {
   func.func @transpose_memref_writer(
       %source: memref<4x4xf32>, %buffer: memref<4x4xf32>,

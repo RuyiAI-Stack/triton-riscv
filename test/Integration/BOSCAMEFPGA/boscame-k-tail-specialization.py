@@ -3,7 +3,7 @@ Python lit test 'boscame-k-tail-specialization.py' covering K-tail remainder
 specialization.
 
 Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
-RUN: substitutions.
+lit substitutions.
 
 Outputs: assertions / FileCheck on exported contract IR or numeric results;
 non-zero exit on mismatch.

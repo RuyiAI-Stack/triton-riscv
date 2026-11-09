@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-reverse-pad-consumer.mlir' (boscame reverse
 // pad consumer lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,10 @@
 // reverse pad consumer lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly instead of claiming a complete graph.
+// CONTRACT-CASE: reverse_pad_consumer = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
 module {
   func.func @reverse_pad_consumer(%input: tensor<4xf32>, %upper: index)
       -> tensor<8xf32> {

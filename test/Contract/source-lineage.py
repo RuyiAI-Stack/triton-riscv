@@ -2,7 +2,7 @@
 Python lit test 'source-lineage.py' covering frontend source lineage on buffers.
 
 Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
-RUN: substitutions.
+lit substitutions.
 
 Outputs: assertions / FileCheck on exported contract IR or numeric results;
 non-zero exit on mismatch.

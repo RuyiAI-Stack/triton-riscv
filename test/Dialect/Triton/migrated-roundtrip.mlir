@@ -2,7 +2,7 @@
 // FileCheck lit test input 'migrated-roundtrip.mlir' (migrated roundtrip
 // lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -10,6 +10,12 @@
 // When used: Triton dialect suite to lock migrated roundtrip lowering and
 // contract facts.
 //
+
+// RUN: triton-shared-opt %s | triton-shared-opt | FileCheck %s
+//
+// TTIR round trip through triton-shared-opt: the first invocation parses and verifies
+// the input, prints it again; the second invocation re-parses the printed form.
+// Any assembly format that cannot be read back therefore fails this test.
 
 module {
   // CHECK-LABEL: tt.func public @kernel

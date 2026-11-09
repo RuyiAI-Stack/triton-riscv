@@ -2,7 +2,7 @@
 // FileCheck lit test input 'dynamic-mask-lineage.mlir' (dynamic mask lineage
 // lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,10 @@
 // lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly instead of claiming a complete graph.
+// CONTRACT-CASE: dynamic_prefix = reject: kernel contract V4: static valid shape must match the access rank and be positive
 module {
   tt.func public @dynamic_prefix(%src: !tt.ptr<f32>, %dst: !tt.ptr<f32>, %limit: i32) {
     %range = tt.make_range {start = 0 : i32, end = 32 : i32} : tensor<32xi32>

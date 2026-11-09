@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-helper-alias-lineage.mlir' (boscame helper
 // alias lineage lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,21 @@
 // alias lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly instead of claiming a complete graph.
+// CONTRACT-CASE: caller = incomplete
+// CONTRACT-CASE: custom_space_entry = reject: kernel contract V3/V14: target memory spaces are forbidden in the neutral contract
+// CONTRACT-CASE: entry = complete
+// CONTRACT-CASE: fresh_local_helper = complete
+// CONTRACT-CASE: private_helper = reject: kernel contract V23/V24: v1 does not support reading an external region after its terminal write
+// CONTRACT-CASE: public_helper = complete
+// CONTRACT-CASE: readonly_helper = complete
+// CONTRACT-CASE: tensor_bridge_helper = complete
+// CONTRACT-CASE: tensor_helper = complete
+// CONTRACT-CASE: unranked_helper = complete
+// The module entry ABI does not promise that a helper's distinct formals are
+// disjoint. Preserve known same-root edges without inventing alias lineage.
 module {
   func.func private @private_helper(%src: memref<4xf32>,
       %left: memref<4xf32>, %right: memref<4xf32>, %dst: memref<4xf32>) {

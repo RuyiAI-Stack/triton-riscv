@@ -1376,12 +1376,14 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
         auto opaType = cast<RankedTensorType>(opa.getType());
         auto promotedAType =
             RankedTensorType::get(opaType.getShape(), elementType);
-        opa = arith::ExtFOp::create(rewriter, loc, promotedAType, opa);
+        opa = arith::ExtFOp::create(rewriter, loc, promotedAType, opa,
+                                    arith::FastMathFlagsAttr());
 
         auto opbType = cast<RankedTensorType>(opb.getType());
         auto promotedBType =
             RankedTensorType::get(opbType.getShape(), elementType);
-        opb = arith::ExtFOp::create(rewriter, loc, promotedBType, opb);
+        opb = arith::ExtFOp::create(rewriter, loc, promotedBType, opb,
+                                    arith::FastMathFlagsAttr());
       }
 
       if (integers && (aElemType != elementType)) {

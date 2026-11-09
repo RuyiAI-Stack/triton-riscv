@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-generic-reduction-facts.mlir' (boscame
 // generic reduction facts lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,22 @@
 // generic reduction facts lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly instead of claiming a complete graph.
+// CONTRACT-CASE: dynamic_seed_sum = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: generic_reduction = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: hidden_read = reject: kernel contract V25: generic requires pure scalar arithmetic operations
+// CONTRACT-CASE: hidden_write = reject: kernel contract V25: generic requires pure scalar arithmetic operations
+// CONTRACT-CASE: multi_operation_reduction = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: multi_output_extrema = complete
+// CONTRACT-CASE: nan_neutral_with_nnan = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: nan_neutral_without_nnan = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: parallel_and_fill = complete
+// CONTRACT-CASE: unknown_call = reject: kernel contract V25: generic requires pure scalar arithmetic operations
+// CONTRACT-CASE: unmatched_multi_operation_combiner = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: vector_element_maximum = reject: kernel contract V25: pointwise update requires parallel identity indexing
+// CONTRACT-CASE: zero_filled_sum = reject: kernel contract V25: pointwise update requires parallel identity indexing
 module {
   func.func private @unknown(f32) -> f32
 

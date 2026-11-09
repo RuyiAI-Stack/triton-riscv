@@ -2,7 +2,7 @@
 // FileCheck lit test input 'dynamic-prefix-dma.mlir' (dynamic prefix dma
 // lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -10,6 +10,10 @@
 // When used: TritonToLinalgExperimental conversion suite to lock dynamic prefix
 // dma lowering and contract facts.
 //
+
+// RUN: not triton-shared-opt %s --triton-to-linalg-experimental='contract=true caller-contract=args_aligned64_nonalias' 2>&1 | FileCheck %s
+// V1 requires statically proved rectangular memory extents, including DMA.
+// CHECK: kernel contract V4: static valid shape must match the access rank and be positive
 
 module {
   tt.func public @dynamic_prefix_aligned(%src: !tt.ptr<f32>, %dst: !tt.ptr<f32>, %limit: i32) {

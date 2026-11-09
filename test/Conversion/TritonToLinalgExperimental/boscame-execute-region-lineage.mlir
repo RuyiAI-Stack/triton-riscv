@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-execute-region-lineage.mlir' (boscame
 // execute region lineage lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,15 @@
 // execute region lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly or retain an incomplete graph. Complete,
+// read-free private overwrites may recover local versions after an opaque
+// boundary; they do not make its control-flow summary complete.
+// CONTRACT-CASE: execute_region_loop_consumer = incomplete
+// CONTRACT-CASE: execute_region_memref = incomplete
+// CONTRACT-CASE: execute_region_program_axis = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: execute_region_tensor = incomplete
 module {
   func.func @execute_region_tensor(%input: tensor<4xf32>) -> tensor<4xf32> {
     %empty = tensor.empty() : tensor<4xf32>

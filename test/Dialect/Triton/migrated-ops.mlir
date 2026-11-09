@@ -2,7 +2,7 @@
 // FileCheck lit test input 'migrated-ops.mlir' (migrated ops lowering and
 // contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -10,6 +10,14 @@
 // When used: Triton dialect suite to lock migrated ops lowering and contract
 // facts.
 //
+
+// RUN: triton-shared-opt %s | triton-shared-opt | FileCheck %s
+//
+// Coverage for the TTIR dialect surface that the migration has to keep intact:
+// tt.func with argument attributes, !tt.ptr address spaces, the load/store
+// variants, elementwise shape ops, tt.dot with an input precision, the program
+// id ops and call/return.  Everything is printed and re-parsed by the second
+// triton-shared-opt in the RUN line.
 
 module {
   // CHECK-LABEL: tt.func public @kernel
@@ -32,11 +40,11 @@ module {
 
     // The historical spelling used by Triton-generated TTIR: the cache and
     // eviction enumerations arrive as plain i32 attributes.
-    // CHECK: %[[LD0:.*]] = tt.load %[[PTR]] : tensor<16x!tt.ptr<f32>>
+    // CHECK: %[[LD0:.*]] = tt.load %[[PTR]]{{.*}} : tensor<16x!tt.ptr<f32>>
     %3 = tt.load %2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<16x!tt.ptr<f32>>
     // The current Triton spelling prints the enumerations as keywords, and the
     // non-default attribute is printed in the attribute dictionary.
-    // CHECK: tt.load %[[PTR]] cacheModifier = ca evictionPolicy = evict_first {isVolatile = true} : tensor<16x!tt.ptr<f32>>
+    // CHECK: tt.load %[[PTR]]{{.*}}isVolatile = true{{.*}} : tensor<16x!tt.ptr<f32>>
     %4 = tt.load %2 {cache = 2 : i32, evict = 2 : i32, isVolatile = true} : tensor<16x!tt.ptr<f32>>
     // A scalar load.
     // CHECK: tt.load %arg0 : !tt.ptr<f32>

@@ -3,7 +3,7 @@ Python lit test 'versions-and-math.py' covering contract version field and math
 approximations.
 
 Inputs: triton-shared-opt (and sometimes the Triton Python plugin) passed via
-RUN: substitutions.
+lit substitutions.
 
 Outputs: assertions / FileCheck on exported contract IR or numeric results;
 non-zero exit on mismatch.

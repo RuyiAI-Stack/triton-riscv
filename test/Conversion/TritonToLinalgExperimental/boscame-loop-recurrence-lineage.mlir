@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-loop-recurrence-lineage.mlir' (boscame loop
 // recurrence lineage lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,11 @@
 // recurrence lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly instead of claiming a complete graph.
+// CONTRACT-CASE: memref_recurrence = incomplete
+// CONTRACT-CASE: tensor_slot_swap = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
 module {
   // The read precedes the full-buffer update in the loop body. On a later
   // iteration it can observe the update from the previous iteration, while

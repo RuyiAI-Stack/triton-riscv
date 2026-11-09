@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-frontend-metadata.mlir' (boscame frontend
 // metadata lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,11 @@
 // frontend metadata lowering and contract facts.
 //
 
+// RUN: triton-shared-opt %s --triton-to-linalg-experimental='contract=true caller-contract=args_aligned64_nonalias' --kernel-contract-verify | FileCheck %s --implicit-check-not=bosc_ame. --implicit-check-not=plan. --implicit-check-not=bufferization. --implicit-check-not='tensor<'
+// RUN: %PYTHON %S/Inputs/contract_metadata.py %S/Inputs %t triton-shared-opt
+// RUN: not triton-shared-opt %s --triton-to-linalg-experimental='dump-facts=true' 2>&1 | FileCheck %s --check-prefix=BAD-FACTS
+// The boundary contains standard buffer-form operations and neutral source,
+// logical content and control-flow facts. It carries no backend configuration.
 module {
   tt.func public @masked_copy(%src: !tt.ptr<f32>, %dst: !tt.ptr<f32>) {
     %r = tt.make_range {start = 0 : i32, end = 32 : i32} : tensor<32xi32>

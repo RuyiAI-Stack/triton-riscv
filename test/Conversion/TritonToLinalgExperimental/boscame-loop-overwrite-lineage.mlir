@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-loop-overwrite-lineage.mlir' (boscame loop
 // overwrite lineage lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,13 @@
 // overwrite lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly or retain an incomplete graph. Complete,
+// read-free private overwrites may recover local versions after an opaque
+// boundary; they do not make its control-flow summary complete.
+// CONTRACT-CASE: loop_local_alloc_reset = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: loop_overwrite_snapshots = incomplete
 module {
   // Tensor snapshots describe the buffer when to_tensor executes. Both are
   // consumed after a later overwrite: the first snapshot retains the loop

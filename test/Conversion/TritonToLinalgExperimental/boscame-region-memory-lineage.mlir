@@ -2,7 +2,7 @@
 // FileCheck lit test input 'boscame-region-memory-lineage.mlir' (boscame region
 // memory lineage lowering and contract facts).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
@@ -11,6 +11,30 @@
 // memory lineage lowering and contract facts.
 //
 
+// RUN: %PYTHON %S/Inputs/contract_frontend_cases.py %s %t triton-shared-opt
+// Each function independently checks the v1 boundary; unsupported content or
+// control flow must fail explicitly or retain an incomplete graph. Complete,
+// read-free private overwrites may recover local versions after an opaque
+// boundary; they do not make its control-flow summary complete.
+// CONTRACT-CASE: for_memref_slot_divergent_roots = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: for_memref_slot_same_root = complete
+// CONTRACT-CASE: for_zero_trip = incomplete
+// CONTRACT-CASE: if_else_writers = incomplete
+// CONTRACT-CASE: if_memref_divergent_roots = reject: kernel contract V23/V24: v1 does not support reading an external region after its terminal write
+// CONTRACT-CASE: if_memref_same_root = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: if_without_else = reject: kernel contract V17: v1 if requires explicit then and else scopes
+// CONTRACT-CASE: partial_view_writers = incomplete
+// CONTRACT-CASE: scalar_partial_writer = reject: kernel contract V22/V25: v1 private scalar stores require rank-zero storage
+// CONTRACT-CASE: switch_memref_divergent_roots = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: switch_memref_same_root = incomplete
+// CONTRACT-CASE: tensor_before_overwrite = complete
+// CONTRACT-CASE: tensor_buffer_full_overwrite = complete
+// CONTRACT-CASE: tensor_buffer_partial_overwrite = reject: kernel contract V22/V25: v1 private scalar stores require rank-zero storage
+// CONTRACT-CASE: tensor_buffer_roundtrip = complete
+// CONTRACT-CASE: while_memref_slot_divergent_roots = reject: kernel contract V22/V23: read or partial inheritance has no initialized content version
+// CONTRACT-CASE: while_memref_slot_same_root = complete
+// Structured side effects have no tensor result through which a later read
+// can discover both paths. Reaching writers must merge at the region exit.
 module {
   func.func @if_else_writers(%condition: i1, %initial: memref<4xf32>,
       %left: memref<4xf32>, %right: memref<4xf32>, %dst: memref<4xf32>) {

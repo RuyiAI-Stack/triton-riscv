@@ -2,7 +2,7 @@
 // FileCheck lit test input 'matmul128.contract.mlir' (128-wide matmul contract
 // IR).
 //
-// Inputs: textual IR plus RUN: triton-shared-opt (or buddy-opt) and CHECK
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
 // lines.
 //
 // Outputs: pass/fail in lit; IR dumps only on failure.
