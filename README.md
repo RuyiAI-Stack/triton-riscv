@@ -117,9 +117,10 @@ llvm-objdump -d gemm.o | grep -oE "vsetivli|vle32\.v|vse32\.v|vfmacc\.vf|vfadd\.
 SpacemiT's integrated matrix extension (IME) adds `vmadot` for integers and `vfmadot` for
 fp16, and the backend can lower `tl.dot` straight to them. Set `TRITON_RISCV_USE_IME=1` and
 `linalg.matmul` goes through buddy-mlir's IME dialect (`--lower-linalg-to-ime`,
-`--lower-ime`) with the object built for `+xsmtime`. The tile it wants is 4x4 with a k of 8
-for int8 and 4 for fp16 -- the int8 GEMM in `python/examples/smtime/test_smtime.py` is the
-smallest one that hits it:
+`--lower-ime`) with the object built for `+xsmtime`. That is why this example is smaller
+than the GEMM above: the lowering looks for its own tile, 4x4 with a k of 8 for int8 and 4
+for fp16, so a bigger `tl.dot` is left alone. The int8 GEMM in
+`python/examples/smtime/test_smtime.py` is the smallest one that hits it:
 
 ```py
 # ime.py
