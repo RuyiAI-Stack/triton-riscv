@@ -23,15 +23,17 @@ Python @triton.jit
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-# `triton` and the buddy tools come from the index that carries them; PyPI only
-# holds upstream Triton. Until that index has them, both projects attach the same
-# wheels to their GitHub releases.
-pip install --index-url https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/simple/ triton buddy
-pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch  # optional
 
-# Get prebuilt LLVM from https://github.com/buddy-compiler/buddy-mlir/releases
+# The package index does not carry them yet, so take the wheels from the GitHub
+# releases of the two projects:
+#   https://github.com/RuyiAI-Stack/triton-riscv/releases  -- triton with the backend
+#   https://github.com/buddy-compiler/buddy-mlir/releases  -- buddy, and the LLVM build
+pip install /path/to/triton-*.whl /path/to/buddy-*.whl
+pip install torch  # optional
+
+# The LLVM build is the tarball in the buddy-mlir release.
 mkdir -p /path/to/llvm
-tar xf llvm-*.tar.gz -C /path/to/llvm
+tar xf /path/to/llvm-*.tar.gz -C /path/to/llvm
 export PATH=/path/to/llvm/bin:$PATH
 ```
 
