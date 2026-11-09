@@ -12,19 +12,17 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Locations
-# ---------------------------------------------------------------------------
-
 _TRITON_RISCV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The virtualenv scripts/setup.sh creates. Only the PATH below needs it, so it
+# stays out of the environment.
 TRITON_VENV="${TRITON_VENV:-${CONDA_PREFIX:-${_TRITON_RISCV_DIR}/.venv}}"
 
-# The toolchains scripts/setup.sh downloads.
-LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"
-LLVM_BINARY_DIR="${LLVM_BINARY_DIR:-${LLVM_SYSPATH}/bin}"
-BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${_TRITON_RISCV_DIR}/.cache/buddy/bin}"
+# The toolchains scripts/setup.sh downloads. The backend looks up the two bin
+# directories at run time, through triton.backends.triton_shared.paths.
+export LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"
+export LLVM_BINARY_DIR="${LLVM_BINARY_DIR:-${LLVM_SYSPATH}/bin}"
+export BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${_TRITON_RISCV_DIR}/.cache/buddy/bin}"
 
-# ---------------------------------------------------------------------------
 # Build time
 # ---------------------------------------------------------------------------
 
@@ -34,11 +32,6 @@ BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${_TRITON_RISCV_DIR}/.cache/budd
 # builds -- the same file get_amd_codegen_path() falls back to by default.
 export TRITON_AMD_CODEGEN_PATH="${_TRITON_RISCV_DIR}/triton/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 
-# ---------------------------------------------------------------------------
-# Shell
-# ---------------------------------------------------------------------------
-
-export LLVM_SYSPATH LLVM_BINARY_DIR BUDDY_MLIR_BINARY_DIR
 export PATH="${TRITON_VENV}/bin:${LLVM_BINARY_DIR}:${BUDDY_MLIR_BINARY_DIR}:${PATH}"
 # Keep the repository's own triton/ checkout from shadowing the installed one.
 export PYTHONSAFEPATH=1
