@@ -8,6 +8,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 # shellcheck source=scripts/env.sh
 source "${ROOT_DIR}/scripts/env.sh"
 
@@ -62,7 +63,7 @@ download_release llvm \
     "${LLVM_SYSPATH}"
 download_release buddy \
     "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
-    "${TRITON_RISCV_DIR}/.cache/buddy"
+    "${ROOT_DIR}/.cache/buddy"
 
 # Keep the token out of the repository's remote URL while authenticating CI
 # clones and fetches. Without a token, Git remains usable for local builds.
@@ -75,7 +76,7 @@ fi
 if [ ! -d "${TRITON_DIR}" ]; then
     git "${GIT_AUTH_ARGS[@]}" clone https://github.com/triton-lang/triton.git "${TRITON_DIR}"
 fi
-git config --global --add safe.directory "${TRITON_RISCV_DIR}"
+git config --global --add safe.directory "${ROOT_DIR}"
 git config --global --add safe.directory "${TRITON_DIR}"
 if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; then
     git "${GIT_AUTH_ARGS[@]}" -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"

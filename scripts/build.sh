@@ -7,6 +7,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 # shellcheck source=scripts/env.sh
 source "${ROOT_DIR}/scripts/env.sh"
 
@@ -30,10 +31,10 @@ export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-st
 
 # Stage the freshly built tool where the backend looks for it.
 _python_tag="$("${PYTHON}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-mkdir -p "${TRITON_RISCV_DIR}/backend/bin"
+mkdir -p "${ROOT_DIR}/backend/bin"
 ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt \
-    "${TRITON_RISCV_DIR}/backend/bin/triton-shared-opt"
+    "${ROOT_DIR}/backend/bin/triton-shared-opt"
 unset _python_tag
 
 "${PYTHON}" -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-"${TRITON_RISCV_DIR}/backend/bin/triton-shared-opt" --version
+"${ROOT_DIR}/backend/bin/triton-shared-opt" --version
