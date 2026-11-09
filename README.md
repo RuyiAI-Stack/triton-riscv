@@ -110,24 +110,45 @@ extensions only *run* where the hardware has them.
 
 ## Running on an AMD GPU
 
-The wheel carries the AMD backend and the codegen library it needs, so an AMD GPU is just
-another target: ask for the `hip` target and the GPU backend takes over, exactly as it does
-with upstream Triton. It needs a working ROCm installation and an AMD GPU -- the wheel does
-not ship the ROCm runtime.
+The wheel carries the AMD backend and the codegen library it needs, and on a machine with
+ROCm that backend activates on its own (`is_active()` asks torch for `torch.version.hip`).
+Nothing triton-riscv-specific is involved, so an ordinary GEMM runs the way it does with
+upstream Triton -- same kernel, same launch:
 
 ```py
-from triton.backends.compiler import GPUTarget
-from triton.compiler import ASTSource
+# gemm.py
+import torch
+import triton
+import triton.language as tl
 
-src = ASTSource(
-    fn=add,
-    signature={"x_ptr": "*fp32", "y_ptr": "*fp32", "out_ptr": "*fp32", "n": "i32",
-               "BLOCK": "constexpr"},
-    constexprs={"BLOCK": 1024},
-)
-print(sorted(triton.compile(src, target=GPUTarget("hip", "gfx942", 64)).asm))
-# ['amdgcn', 'hsaco', 'llir', 'source', 'ttgir', 'ttir']
+
+@triton.jit
+def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    a = tl.load(a_ptr + offs[:, None] * BLOCK + offs[None, :])
+    b = tl.load(b_ptr + offs[:, None] * BLOCK + offs[None, :])
+    tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
+
+
+BLOCK = 16
+a = torch.randn(BLOCK, BLOCK)
+b = torch.randn(BLOCK, BLOCK)
+c = torch.empty(BLOCK, BLOCK)
+matmul[(1,)](a, b, c, BLOCK=BLOCK)
+print("ok:", torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3))
 ```
+
+```sh
+python gemm.py          # ok: True -- on the GPU when ROCm is there, on the CPU otherwise
+```
+
+Put the tensors on the GPU (`device="cuda"`, which ROCm uses as well) and the same script
+runs there. On a `riscv64` host one thing does need saying out loud: this CPU backend also
+reports itself as active there, so pick the GPU explicitly with
+`TRITON_DEFAULT_BACKEND=amd` (or `triton.runtime.driver.set_active(HIPDriver())`).
+
+The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
+GPU.
 
 ## Clone
 
