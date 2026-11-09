@@ -18,6 +18,11 @@ source "${ROOT_DIR}/scripts/_gpu-stub-env.sh" "${ROOT_DIR}/.cache/gpu-deps-stub"
 source "${ROOT_DIR}/scripts/env.sh"
 
 PYTHON="${PYTHON:-python3}"
+# Triton resolves lit with shutil.which('lit'), so the interpreter we install
+# into has to come first on PATH: it picks the pip lit instead of the one in the
+# LLVM tree, which calls main() at module level and crashes under Python 3.14,
+# where Linux defaults to the forkserver start method.
+export PATH="$(dirname "$(command -v "${PYTHON}")"):${PATH}"
 
 # Build against the Python stable ABI (abi3), which is how upstream builds its
 # abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged
