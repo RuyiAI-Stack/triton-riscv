@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 #
-# Bootstrap a triton-riscv checkout: virtualenv, Python build dependencies, the
-# pinned Triton checkout, and the LLVM and buddy toolchains that scripts/build.sh
-# links against. Safe to re-run; everything already in place is reused.
+# Bootstrap a triton-riscv checkout: the pinned Triton checkout and the LLVM and
+# buddy toolchains that scripts/build.sh links against. Safe to re-run; everything
+# already in place is reused.
 #
-# Environment: see scripts/env.sh.
+# Environment: TRITON_DIR and LLVM_SYSPATH override where the checkout and the
+# LLVM toolchain land; PYTHON picks the interpreter the build dependencies are
+# installed into.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=scripts/env.sh
-source "${ROOT_DIR}/scripts/env.sh"
+TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
+LLVM_SYSPATH="${LLVM_SYSPATH:-${ROOT_DIR}/.cache/llvm}"
 
 TRITON_HASH="$(<"${ROOT_DIR}/triton-hash.txt")"
 BUDDY_PYTHON_TAG="cp312-abi3"
@@ -34,11 +36,6 @@ case "$(uname -m)" in
         ;;
 esac
 
-if [[ -z "${PYTHON:-}" ]]; then
-    PYTHON="${TRITON_VENV}/bin/python"
-    [ -x "${PYTHON}" ] || python3 -m venv "${TRITON_VENV}"
-fi
-
 # Unpack a buddy-mlir release into <dir>, mirroring the <dir>/bin layout the
 # tooling expects. Skips the download when already unpacked.
 download_release() {
@@ -62,7 +59,7 @@ download_release llvm \
     "${LLVM_SYSPATH}"
 download_release buddy \
     "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
-    "${TRITON_RISCV_DIR}/.cache/buddy"
+    "${ROOT_DIR}/.cache/buddy"
 
 # Keep the token out of the repository's remote URL while authenticating CI
 # clones and fetches. Without a token, Git remains usable for local builds.
@@ -75,13 +72,14 @@ fi
 if [ ! -d "${TRITON_DIR}" ]; then
     git "${GIT_AUTH_ARGS[@]}" clone https://github.com/triton-lang/triton.git "${TRITON_DIR}"
 fi
-git config --global --add safe.directory "${TRITON_RISCV_DIR}"
+git config --global --add safe.directory "${ROOT_DIR}"
 git config --global --add safe.directory "${TRITON_DIR}"
 if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; then
     git "${GIT_AUTH_ARGS[@]}" -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
 fi
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
 
+PYTHON="${PYTHON:-python3}"
 echo "Installing build dependencies into ${PYTHON}..."
 "${PYTHON}" -m pip install --upgrade pip
 "${PYTHON}" -m pip install "${PIP_INDEX_ARGS[@]}" numpy "cmake>=3.20,<4.0"
@@ -92,7 +90,6 @@ echo "Installing build dependencies into ${PYTHON}..."
     "pytest" \
     "pytest-xdist" \
     "lit"
-
 # The AMD codegen library. Upstream either downloads a prebuilt copy or builds one
 # against a separately pinned LLVM, and there is no riscv64 build of either; the
 # library itself is small and builds against the LLVM already here, in seconds.

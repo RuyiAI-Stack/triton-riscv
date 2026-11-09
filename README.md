@@ -10,164 +10,203 @@ Triton acts as a frontend (Python AST → TTIR); triton-riscv handles the rest o
 
 ```
 Python @triton.jit
-  └─► TTIR          (triton: ast_to_ttir + make_ttir passes)
-        └─► Linalg MLIR   (triton-shared-opt --triton-to-linalg-experimental)
+  └─► TTIR  (triton: ast_to_ttir + make_ttir passes)
+        └─► Linalg MLIR  (triton-shared-opt --triton-to-linalg-experimental)
               └─► LLVM MLIR  (Buddy Compiler lowering passes)
                     └─► LLVM IR  (mlir-translate --mlir-to-llvmir)
                           └─► native .o  (llc -filetype=obj)
 ```
 
-## Clone
+## Install
+
+### From binary
 
 ```sh
-git clone https://github.com/RuyiAI-Stack/triton-riscv.git triton-riscv
-TRITON_RISCV_DIR="$(pwd)/triton-riscv"
+python3 -m venv .venv && . .venv/bin/activate
+# `triton` and the buddy tools come from the index that carries them; PyPI only
+# holds upstream Triton. Until that index has them, both projects attach the same
+# wheels to their GitHub releases.
+pip install --index-url https://forgestash.artifact.yuantu.ac.cn/repository/pypi-riscv-local-ruyiai/simple/ triton buddy
+pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch  # optional
+
+# Get prebuilt LLVM from https://github.com/buddy-compiler/buddy-mlir/releases
+mkdir -p /path/to/llvm
+tar xf llvm-*.tar.gz -C /path/to/llvm
+export PATH=/path/to/llvm/bin:$PATH
 ```
 
-`make setup` clones the Triton revision pinned in `triton-hash.txt` and
-downloads the LLVM and buddy tools published under `buddy-hash.txt`, so neither
-needs a manual checkout.
-
-> Note: Ensure PyTorch is available in your virtual environment. For RISC-V, since PyTorch does not officially support RISC-V yet, you can build from source or use third-party builds: https://community-ci.openruyi.cn/pypi/riscv64/dev/+simple/torch . To use the third-party builds, python 3.12 or 3.13 are required.
-
-Triton is used **unpatched**. Building the stock Triton checkout on RISC-V
-requires the LLVM it links against to provide the NVPTX and AMDGPU codegen
-libraries plus `lld` (upstream Triton hard-codes them), and it requires skipping
-the host-specific GPU toolchains Triton downloads at build time (nvcc, AMD
-codegen, proton), which do not exist for `riscv64`:
-
-- The buddy-mlir LLVM release published under `buddy-hash.txt` is built with
-  those extra targets; `make setup` downloads it into `.cache/llvm` (set
-  `LLVM_SYSPATH` to use an existing LLVM instead).
-- `scripts/_gpu-stub-env.sh` points every GPU download location at an
-  empty stub directory and disables the components that need CUDA/ROCm headers.
-
-## Prerequisites
-
-### Create a virtual environment
-
-Use either a Python venv or an existing conda environment:
+### From source
 
 ```sh
-python -m venv "${TRITON_RISCV_DIR}/.venv" --prompt triton-riscv
-source "${TRITON_RISCV_DIR}/.venv/bin/activate"
+git clone https://github.com/RuyiAI-Stack/triton-riscv.git
+cd triton-riscv
+python3 -m venv .venv && . .venv/bin/activate
+make setup    # downloads the pinned LLVM and buddy builds, clones Triton, installs the build deps
+make build    # builds Triton and installs the backend
+make test     # the plugin's lit tests and the example suite
 ```
 
-Or with conda:
+### Test the installation
 
-```sh
-conda activate ruyiai
-```
-
-When a conda environment is active, `scripts/env.sh` automatically uses `CONDA_PREFIX` as `TRITON_VENV`.
-
-### Install dependencies
-
-Nothing to install: `make setup` brings up the virtualenv's build
-dependencies (cmake, ninja, nanobind, setuptools, pytest) and downloads the LLVM
-and buddy tools Triton's build links against. The only system requirement is a
-Python 3.10+ interpreter. The one thing you may have to provide yourself is the
-RVV cross toolchain and QEMU used by `scripts/build-riscv-gnu-toolchain.sh`
-(see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md)).
-
-## Environment helper
-
-[`scripts/env.sh`](scripts/env.sh) centralizes the local environment variables needed by `triton-riscv`.
-
-By default it assumes:
-
-- `TRITON_RISCV_DIR=/path/to/triton-riscv`
-- `TRITON_DIR=$TRITON_RISCV_DIR/triton` (where `make setup` clones Triton)
-- `TRITON_VENV=$CONDA_PREFIX` when a conda environment is active, otherwise `$TRITON_RISCV_DIR/.venv`
-- `LLVM_SYSPATH=$TRITON_RISCV_DIR/.cache/llvm`, the LLVM `scripts/build.sh` downloaded; override it to use another multi-target LLVM
-- `BUDDY_MLIR_BINARY_DIR=$TRITON_RISCV_DIR/.cache/buddy/bin`, likewise
-- `TRITON_SHARED_OPT_PATH` (optional) overrides where the backend looks for the tool; by default it uses the copy bundled in the package, which `scripts/build.sh` stages from the build tree just like `scripts/release.sh` does for the wheel
-- Triton's cache, dump and override directories default to `~/.triton`
-
-It exports:
-
-- `TRITON_RISCV_DIR`, `TRITON_DIR`, `TRITON_VENV`
-- `LLVM_SYSPATH`, `LLVM_BINARY_DIR`, `BUDDY_MLIR_BINARY_DIR`
-- `TRITON_HOME`, `TRITON_CACHE_DIR`, `TRITON_DUMP_DIR`, `TRITON_OVERRIDE_DIR`
-- `TRITON_SHARED_DUMP_PATH`
-
-It also prepends the venv, LLVM and buddy `bin` directories to `PATH`, sets
-`PYTHONSAFEPATH=1` so the in-tree `triton/` checkout cannot shadow the installed
-package, and disables the host-specific GPU toolchain downloads Triton would
-otherwise attempt.
-
-If your local layout differs, override variables before sourcing:
-
-```sh
-export TRITON_DIR=/path/to/triton
-export TRITON_VENV=/path/to/triton-venv   # or rely on active conda env
-source /path/to/triton-riscv/scripts/env.sh
-```
-
-This helper removes most of the repetitive local environment setup from the README, but it does not replace the external prerequisites themselves: a virtual environment, a Triton checkout, and the LLVM/buddy toolchains (`make setup` fetches all three).
-
-## Build and rebuild
-
-`make` bootstraps a fresh checkout and builds it; afterwards `make build`
-rebuilds after a change:
-
-```sh
-cd /path/to/triton-riscv
-make
-```
-
-What the targets do:
-
-| Target | |
-|---|---|
-| `make` | `make setup` then `make build` |
-| `make setup` | Virtualenv, Python build dependencies, the pinned Triton checkout, and the LLVM and buddy toolchains |
-| `make build` | Builds Triton with the triton-shared plugin and installs the `triton.backends.triton_shared` backend |
-| `make test` | Runs the example suite (see below) |
-| `make clean` | Removes the Triton build tree |
-
-`make setup` is idempotent, so running it again only picks up changes to
-`buddy-hash.txt` or `triton-hash.txt`; `make build` never touches the Triton
-checkout, so a rebuild is cheap.
-
-If you change the buddy-opt pass pipeline or cached compilation behavior, clear
-Triton's cache before rerunning tests:
-
-```sh
-rm -rf "$TRITON_CACHE_DIR"
-```
-
-Build artifacts are placed under `triton/build/{current_cmake_version}/third_party/triton_shared`.
-
-## Verify the build
-
-`make build` ends by printing the installed Triton version, the
-`triton.backends.triton_shared` module it loaded and the version of the
-`triton-shared-opt` executable the backend shells out to. To check by hand:
+`scripts/env.sh` exports what the backend and the lit tests need to find the toolchains and the
+staged `triton-shared-opt`, so source it before running anything by hand.
 
 ```sh
 source scripts/env.sh
-python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-python -c "from triton.backends.triton_shared.paths import _get_triton_shared_opt_path as f; print(f())"
+python3 -c "import triton; print(triton.__version__, triton.runtime.driver.active.get_current_target())"
 ```
 
-`triton-shared-opt` has no console script: the backend runs the copy bundled in
-the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
+On RISC-V it prints `3.9.0 GPUTarget(backend='cpu', arch=0, warp_size=0)`; on RISC-V with an AMD GPU
+it prints `3.9.0 GPUTarget(backend='hip', arch='gfx942', warp_size=64)`, with the GPU's own arch.
 
-## Run the example test suite
+## Quick start
+
+### RISC-V CPU
+
+```py
+# gemm.py
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    a = tl.load(a_ptr + offs[:, None] * BLOCK + offs[None, :])
+    b = tl.load(b_ptr + offs[:, None] * BLOCK + offs[None, :])
+    tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
+
+
+device = triton.runtime.driver.active.get_active_torch_device()
+assert device.type == "cpu"
+BLOCK = 16
+a = torch.randn(BLOCK, BLOCK, device=device)
+b = torch.randn(BLOCK, BLOCK, device=device)
+c = torch.empty(BLOCK, BLOCK, device=device)
+matmul[(1,)](a, b, c, BLOCK=BLOCK)
+target = triton.runtime.driver.active.get_current_target()
+print(f"ok: {torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3)} | {device.type} / {target.backend}")
+```
 
 ```sh
-make test   # the example suite, plus the flaggems suite on riscv64
-make lit    # the plugin's lit tests
+python gemm.py          # ok: True
 ```
 
-`make test` runs `pytest python/examples`, skipping `test_core.py`,
-`test_annotations.py` and `flaggems`; on riscv64 it then runs the flaggems suite,
-which is ~3835 tests. To run a single test:
+#### RVV
+
+The vector extension is on by default -- `+v` is in the backend's `llc` feature string
+(`+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`; `TRITON_RISCV_LLC_FEATURES` overrides it) -- so
+the GEMM above already comes out vectorized. To see it, ask for the RISC-V target explicitly
+and count the instructions in the object:
+
+```py
+compiled = matmul.warmup(
+    a, b, c, BLOCK=BLOCK, grid=(1,),
+    target_triple="riscv64-unknown-linux-gnu",   # the backend targets the host by default
+)
+open("gemm.o", "wb").write(compiled.asm["obj"])
+```
 
 ```sh
-bash -c 'source scripts/env.sh && pytest python/examples/test_vec_add.py -v'
+llvm-objdump -d gemm.o | grep -oE "vsetivli|vle32\.v|vse32\.v|vfmacc\.vf|vfadd\.vf" | sort | uniq -c
 ```
+
+```
+      1 vfadd.vf
+      9 vfmacc.vf
+     12 vle32.v
+     11 vse32.v
+      2 vsetivli
+```
+
+#### SpacemiT IME
+
+SpacemiT's integrated matrix extension (IME) adds `vmadot` for integers and `vfmadot` for
+fp16, and the backend can lower `tl.dot` straight to them. Set `TRITON_RISCV_USE_IME=1` and
+`linalg.matmul` goes through buddy-mlir's IME dialect (`--lower-linalg-to-ime`,
+`--lower-ime`) with the object built for `+xsmtime`.
+
+```py
+# ime.py
+import os
+import torch
+import triton
+import triton.language as tl
+
+os.environ["TRITON_RISCV_USE_IME"] = "1"
+
+
+@triton.jit
+def matmul_i8(a_ptr, b_ptr, c_ptr):
+    m = tl.arange(0, 4)
+    n = tl.arange(0, 4)
+    k = tl.arange(0, 8)
+    a = tl.load(a_ptr + m[:, None] * 8 + k[None, :])
+    b = tl.load(b_ptr + k[:, None] * 4 + n[None, :])
+    tl.store(c_ptr + m[:, None] * 4 + n[None, :], tl.dot(a, b, out_dtype=tl.int32))
+
+
+a = torch.randint(-8, 8, (4, 8), dtype=torch.int8)
+b = torch.randint(-8, 8, (8, 4), dtype=torch.int8)
+c = torch.empty((4, 4), dtype=torch.int32)
+open("ime.o", "wb").write(matmul_i8.warmup(a, b, c, grid=(1,)).asm["obj"])
+```
+
+```sh
+llvm-objdump -d ime.o | grep -E "vmadot|vle8|vsetvli"
+```
+
+```
+  80: vsetvli  zero, a1, e8, m4, ta, ma
+  88: vle8.v   v8, (s1)
+ 13c: vsetvli  zero, a7, e8, m4, ta, ma
+ 140: vle8.v   v8, (s6)
+ 144: vle8.v   v12, (a2)
+ 148: vsetvli  zero, a7, e32, m4, ta, ma
+ 150: vmadot   v16, v8, v12
+ 26a: vsetvli  zero, a0, e8, m4, ta, ma
+ 26e: vle8.v   v8, (t0)
+```
+
+### AMD GPU
+
+```py
+# gemm.py
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    a = tl.load(a_ptr + offs[:, None] * BLOCK + offs[None, :])
+    b = tl.load(b_ptr + offs[:, None] * BLOCK + offs[None, :])
+    tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
+
+
+device = triton.runtime.driver.active.get_active_torch_device()
+assert device.type == "cuda"   # ROCm hands out a cuda device, like CUDA does
+BLOCK = 16
+a = torch.randn(BLOCK, BLOCK, device=device)
+b = torch.randn(BLOCK, BLOCK, device=device)
+c = torch.empty(BLOCK, BLOCK, device=device)
+matmul[(1,)](a, b, c, BLOCK=BLOCK)
+target = triton.runtime.driver.active.get_current_target()
+print(f"ok: {torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3)} | {device.type} / {target.backend}")
+```
+
+On a machine with ROCm the AMD backend activates on its own (`is_active()` asks torch for
+`torch.version.hip`), so nothing else changes: these are ordinary Triton kernels, and
+upstream's tutorials are written the same way.
+
+On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
+active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
+`triton.runtime.driver.set_active(HIPDriver())`).
+
+The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
+GPU.
 
 ## Generate and run RVV ELF files with QEMU
 

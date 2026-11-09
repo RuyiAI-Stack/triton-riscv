@@ -166,6 +166,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Every build shares Triton's version, and an index refuses a version
+          # it already holds, so give each nightly a unique one.
+          if [ "${{ needs.prepare_release.outputs.is_prerelease }}" = "true" ]; then
+            export TRITON_WHEEL_VERSION_SUFFIX=".dev$(date -u +%Y%m%d)"
+          fi
           ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
 
       - name: Upload release assets
@@ -185,6 +190,26 @@ jobs:
           fi
 
           gh release upload "${TAG_NAME}" "${wheels[@]}" --clobber
+
+      # The same wheels go to the package index too, straight from the build tree.
+      # Skipped until the secrets exist, and non-fatal for now so a broken index
+      # cannot block a release: the GitHub release stays the primary channel.
+      - name: Publish the wheels to the package index
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ secrets.PYPI_URL }}" ] || [ -z "${{ secrets.PYPI_USERNAME }}" ] || [ -z "${{ secrets.PYPI_PASSWORD }}" ]; then
+            echo "PYPI_URL / PYPI_USERNAME / PYPI_PASSWORD are not set; skipping the package index upload."
+            exit 0
+          fi
+
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="${HOME}/.local/bin:${PATH}"
+          UV_PUBLISH_URL="${{ secrets.PYPI_URL }}" \
+          UV_PUBLISH_USERNAME="${{ secrets.PYPI_USERNAME }}" \
+          UV_PUBLISH_PASSWORD="${{ secrets.PYPI_PASSWORD }}" \
+            uv publish --no-attestations "${{ steps.vars.outputs.wheel_dir }}"/*.whl
 
   publish_release:
     needs: [prepare_release, wheel]
