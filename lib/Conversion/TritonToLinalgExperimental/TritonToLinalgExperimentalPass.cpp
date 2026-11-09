@@ -452,14 +452,14 @@ static void normalizeFloatingZeroProductAdds(ModuleOp module) {
         auto dense = dyn_cast<DenseFPElementsAttr>(constant.getValue());
         if (!dense || !dense.isSplat())
           continue;
-        scalar = builder.create<arith::ConstantOp>(
-            generic.getLoc(), type.getElementType(),
-            dense.getSplatValue<FloatAttr>());
+        scalar = arith::ConstantOp::create(builder, generic.getLoc(),
+                                           type.getElementType(),
+                                           dense.getSplatValue<FloatAttr>());
       }
       if (!scalar || scalar.getType() != type.getElementType())
         continue;
-      auto replacement = builder.create<linalg::GenericOp>(
-          generic.getLoc(), TypeRange{type}, ValueRange{product},
+      auto replacement = linalg::GenericOp::create(
+          builder, generic.getLoc(), TypeRange{type}, ValueRange{product},
           ValueRange{product},
           SmallVector<AffineMap>(2, builder.getMultiDimIdentityMap(2)),
           SmallVector<utils::IteratorType>(2, utils::IteratorType::parallel),
@@ -468,7 +468,7 @@ static void normalizeFloatingZeroProductAdds(ModuleOp module) {
             mapping.map(body.getArgument(zeroIndex), scalar);
             mapping.map(body.getArgument(1 - zeroIndex), arguments[0]);
             Operation *cloned = nested.clone(*add, mapping);
-            nested.create<linalg::YieldOp>(loc, cloned->getResult(0));
+            linalg::YieldOp::create(nested, loc, cloned->getResult(0));
           });
       for (NamedAttribute attr : generic->getAttrs())
         if (attr.getName().getValue().starts_with("contract."))
@@ -608,22 +608,21 @@ static void normalizeStaticTailSelects(ModuleOp module) {
     // Preserve the selected false constant exactly, including the sign of
     // floating zero.  Multiplication by a predicate is incorrect for NaN/Inf.
     OpBuilder rewriter(selectGeneric);
-    Value zero = rewriter.create<arith::ConstantOp>(
-        selectGeneric.getLoc(), outputType.getElementType(), scalar);
+    Value zero = arith::ConstantOp::create(rewriter, selectGeneric.getLoc(),
+                                           outputType.getElementType(), scalar);
     int64_t tailSize = outputType.getDimSize(0) - *prefix;
     SmallVector<OpFoldResult> offsets{rewriter.getIndexAttr(*prefix)};
     SmallVector<OpFoldResult> sizes{rewriter.getIndexAttr(tailSize)};
     SmallVector<OpFoldResult> strides{rewriter.getIndexAttr(1)};
     Value original = selectGeneric.getInputs()[trueValue.getArgNumber()];
-    Value tail = rewriter.create<tensor::ExtractSliceOp>(
-        selectGeneric.getLoc(), original, offsets, sizes, strides);
-    Value zeros =
-        rewriter
-            .create<linalg::FillOp>(selectGeneric.getLoc(), ValueRange{zero},
-                                    ValueRange{tail})
-            .getResult(0);
-    auto inserted = rewriter.create<tensor::InsertSliceOp>(
-        selectGeneric.getLoc(), zeros, original, offsets, sizes, strides);
+    Value tail = tensor::ExtractSliceOp::create(
+        rewriter, selectGeneric.getLoc(), original, offsets, sizes, strides);
+    Value zeros = linalg::FillOp::create(rewriter, selectGeneric.getLoc(),
+                                         ValueRange{zero}, ValueRange{tail})
+                      .getResult(0);
+    auto inserted =
+        tensor::InsertSliceOp::create(rewriter, selectGeneric.getLoc(), zeros,
+                                      original, offsets, sizes, strides);
     selectGeneric.getResult(0).replaceAllUsesWith(inserted.getResult());
     selectGeneric.erase();
   });
@@ -751,8 +750,9 @@ static void normalizeContractBuffers(ModuleOp module) {
     if (!initializer)
       continue;
     OpBuilder builder(copy);
-    auto fill = builder.create<linalg::FillOp>(
-        copy.getLoc(), initializer.getInputs(), ValueRange{copy.getTarget()});
+    auto fill =
+        linalg::FillOp::create(builder, copy.getLoc(), initializer.getInputs(),
+                               ValueRange{copy.getTarget()});
     for (NamedAttribute attr : copy->getAttrs())
       fill->setAttr(attr.getName(), attr.getValue());
     copy.erase();

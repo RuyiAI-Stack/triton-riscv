@@ -315,8 +315,8 @@ static void splitPartialLastIterations(func::FuncOp function,
       continue;
 
     OpBuilder builder(loop);
-    Value last = builder.create<arith::ConstantOp>(
-        loop.getLoc(),
+    Value last = arith::ConstantOp::create(
+        builder, loop.getLoc(),
         builder.getIntegerAttr(loop.getInductionVar().getType(), domain->hi));
     IRMapping prefixMapping;
     auto prefix = cast<scf::ForOp>(builder.clone(*loop, prefixMapping));
@@ -370,8 +370,9 @@ static void replaceExtents(ArrayRef<TileExtent> extents, const Ranges &ranges,
       continue;
     Value value = mapping.lookupOrDefault(extent.value);
     OpBuilder builder(value.getDefiningOp());
-    Value constant = builder.create<arith::ConstantOp>(
-        value.getLoc(), builder.getIntegerAttr(value.getType(), *size));
+    Value constant = arith::ConstantOp::create(
+        builder, value.getLoc(),
+        builder.getIntegerAttr(value.getType(), *size));
     value.replaceAllUsesWith(constant);
   }
 }
@@ -397,12 +398,12 @@ cloneBranches(OpBuilder &builder, ArrayRef<Operation *> body,
     return results;
   }
   Partition p = partitions.front();
-  Value limit = builder.create<arith::ConstantOp>(
-      loc, builder.getIntegerAttr(p.pid.getType(), p.fullPrograms));
-  Value condition = builder.create<arith::CmpIOp>(
-      loc, arith::CmpIPredicate::slt, p.pid, limit);
-  auto branch = builder.create<scf::IfOp>(loc, terminator.getOperandTypes(),
-                                          condition, /*withElseRegion=*/true);
+  Value limit = arith::ConstantOp::create(
+      builder, loc, builder.getIntegerAttr(p.pid.getType(), p.fullPrograms));
+  Value condition = arith::CmpIOp::create(
+      builder, loc, arith::CmpIPredicate::slt, p.pid, limit);
+  auto branch = scf::IfOp::create(builder, loc, terminator.getOperandTypes(),
+                                  condition, /*withElseRegion=*/true);
   for (bool full : {true, false}) {
     Block *block = full ? branch.thenBlock() : branch.elseBlock();
     // The builder supplies empty yields only for result-less ifs.
@@ -415,7 +416,7 @@ cloneBranches(OpBuilder &builder, ArrayRef<Operation *> body,
     auto results =
         cloneBranches(nested, body, terminator, partitions.drop_front(),
                       branchRanges, extents);
-    nested.create<scf::YieldOp>(loc, results);
+    scf::YieldOp::create(nested, loc, results);
   }
   return SmallVector<Value>(branch.getResults());
 }
@@ -442,8 +443,8 @@ static void refineMemorySubviews(func::FuncOp function) {
     auto offsets = simplify(view.getMixedOffsets());
     auto sizes = simplify(view.getMixedSizes());
     auto strides = simplify(view.getMixedStrides());
-    auto refined = builder.create<memref::SubViewOp>(
-        view.getLoc(), view.getSource(), offsets, sizes, strides);
+    auto refined = memref::SubViewOp::create(
+        builder, view.getLoc(), view.getSource(), offsets, sizes, strides);
     view.getResult().replaceAllUsesWith(refined.getResult());
     view.erase();
   }
@@ -573,7 +574,7 @@ LogicalResult mlir::triton::specializeContractTiles(ModuleOp module) {
       OpBuilder builder(&function.front(), function.front().begin());
       auto results = cloneBranches(builder, original, terminator, partitions,
                                    ranges, extents);
-      builder.create<func::ReturnOp>(terminator.getLoc(), results);
+      func::ReturnOp::create(builder, terminator.getLoc(), results);
       terminator.erase();
       for (Operation *op : llvm::reverse(original))
         op->erase();

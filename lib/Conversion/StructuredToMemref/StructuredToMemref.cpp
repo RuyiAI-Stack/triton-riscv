@@ -1879,8 +1879,8 @@ private:
     Value snapshot;
     memref::AllocOp alloc;
     if (rowMajor) {
-      alloc = rewriter.create<memref::AllocOp>(
-          op.getLoc(),
+      alloc = memref::AllocOp::create(
+          rewriter, op.getLoc(),
           MemRefType::get(tensorType.getShape(), tensorType.getElementType()),
           getSnapshotAlignment(op, rewriter));
       snapshot = alloc;
@@ -1891,11 +1891,12 @@ private:
       auto bufferType = MemRefType::get(
           tensorType.getShape(), tensorType.getElementType(),
           StridedLayoutAttr::get(rewriter.getContext(), 0, compactStrides));
-      alloc = rewriter.create<memref::AllocOp>(
-          op.getLoc(), MemRefType::get({elements}, tensorType.getElementType()),
+      alloc = memref::AllocOp::create(
+          rewriter, op.getLoc(),
+          MemRefType::get({elements}, tensorType.getElementType()),
           getSnapshotAlignment(op, rewriter));
-      snapshot = rewriter.create<memref::ReinterpretCastOp>(
-          op.getLoc(), bufferType, alloc, 0, tensorType.getShape(),
+      snapshot = memref::ReinterpretCastOp::create(
+          rewriter, op.getLoc(), bufferType, alloc, 0, tensorType.getShape(),
           compactStrides);
     }
     alloc->setAttr(
@@ -1907,8 +1908,9 @@ private:
                  "logical_shape",
                  rewriter.getDenseI64ArrayAttr(tensorType.getShape()))}));
     if (op.hasMask() && op.getOther()) {
-      auto fill = rewriter.create<linalg::FillOp>(
-          op.getLoc(), ValueRange{op.getOther()}, ValueRange{snapshot});
+      auto fill = linalg::FillOp::create(rewriter, op.getLoc(),
+                                         ValueRange{op.getOther()},
+                                         ValueRange{snapshot});
       fill->setAttr("contract.fill",
                     rewriter.getDictionaryAttr({rewriter.getNamedAttr(
                         "padding", rewriter.getBoolAttr(true))}));
@@ -1922,12 +1924,12 @@ private:
                                op.getLoc(), rewriter);
     }
     auto copy =
-        rewriter.create<memref::CopyOp>(op.getLoc(), source, destination);
+        memref::CopyOp::create(rewriter, op.getLoc(), source, destination);
     copy->setAttr("contract.access",
                   memoryProvenance(rewriter, "load", tensorType, mask,
                                    /*destination=*/{}, op.getOther(), op));
-    Value tensor = rewriter.create<bufferization::ToTensorOp>(
-        op.getLoc(), tensorType, snapshot, true /*restrict*/,
+    Value tensor = bufferization::ToTensorOp::create(
+        rewriter, op.getLoc(), tensorType, snapshot, true /*restrict*/,
         true /*writable*/);
     rewriter.replaceOp(op, tensor);
     return success();
@@ -3107,8 +3109,8 @@ public:
         if (auto existingType = dyn_cast<MemRefType>(*inferred))
           if (existingType.getMemorySpace())
             bufferType = existingType;
-      Value source = rewriter.create<bufferization::ToBufferOp>(
-          loc, bufferType, adaptor.getValue(), /*read_only=*/true);
+      Value source = bufferization::ToBufferOp::create(
+          rewriter, loc, bufferType, adaptor.getValue(), /*read_only=*/true);
       Value destination = ptr;
       SmallVector<OpFoldResult> mask =
           op.hasMask() ? op.getMixedMaskDims() : SmallVector<OpFoldResult>{};
@@ -3117,7 +3119,7 @@ public:
         destination =
             getSubview(tensorType.getRank(), mask, ptr, loc, rewriter);
       }
-      auto copy = rewriter.create<memref::CopyOp>(loc, source, destination);
+      auto copy = memref::CopyOp::create(rewriter, loc, source, destination);
       copy->setAttr("contract.access",
                     memoryProvenance(rewriter, "store", tensorType, mask, ptr,
                                      /*other=*/{}, op));

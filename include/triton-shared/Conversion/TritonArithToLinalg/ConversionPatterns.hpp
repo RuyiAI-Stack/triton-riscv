@@ -1,3 +1,13 @@
+#ifndef TRITON_CONVERSION_PATTERNS
+#define TRITON_CONVERSION_PATTERNS
+
+//===----------------------------------------------------------------------===//
+//
+// Copyright (c) Microsoft Corporation, Meta Platforms.
+// Licensed under the MIT license.
+//
+//===----------------------------------------------------------------------===//
+
 //
 // Triton arith/tensor rewrite patterns, including contract-aware DotOp
 // emission.
@@ -10,9 +20,6 @@
 //
 // When used: shared conversion instead of a GPU-only dot lowering.
 //
-
-#ifndef TRITON_CONVERSION_PATTERNS
-#define TRITON_CONVERSION_PATTERNS
 
 #include "triton-shared/Analysis/MaskAnalysis.h"
 #include "triton-shared/Analysis/OpFoldResultUtils.h"
@@ -1339,59 +1346,54 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
       if (isMixedIntPrecision) {
         auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
                                                 linalg::TypeFn::cast_signed);
-        res = rewriter
-                  .create<linalg::MatmulOp>(loc, TypeRange{opc.getType()},
-                                            ValueRange{opa, opb},
-                                            ValueRange{opc}, castAttr)
+        res = linalg::MatmulOp::create(rewriter, loc, TypeRange{opc.getType()},
+                                       ValueRange{opa, opb}, ValueRange{opc},
+                                       castAttr)
                   .getResult(0);
       } else {
-        res = rewriter
-                  .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
-                                            ValueRange{opc})
+        res = linalg::MatmulOp::create(rewriter, loc, ValueRange{opa, opb},
+                                       ValueRange{opc})
                   .getResult(0);
       }
     } else {
       skipC = isZeroTensor(opc, integers);
-      auto init = rewriter.create<tensor::EmptyOp>(loc, dstType.getShape(),
-                                                   elementType);
+      auto init = tensor::EmptyOp::create(rewriter, loc, dstType.getShape(),
+                                          elementType);
       TypedAttr constantAttr =
           integers
               ? static_cast<TypedAttr>(rewriter.getIntegerAttr(elementType, 0))
               : static_cast<TypedAttr>(rewriter.getFloatAttr(elementType, 0));
 
-      auto zero = rewriter.create<mlir::arith::ConstantOp>(
-          op.getLoc(), elementType, constantAttr);
+      auto zero = mlir::arith::ConstantOp::create(rewriter, op.getLoc(),
+                                                  elementType, constantAttr);
 
-      auto zeroes =
-          rewriter
-              .create<linalg::FillOp>(loc, ValueRange{zero}, ValueRange{init})
-              .result();
+      auto zeroes = linalg::FillOp::create(rewriter, loc, ValueRange{zero},
+                                           ValueRange{init})
+                        .result();
 
       if (!integers && aElemType != elementType) {
         // Promote float operands to accumulator type
         auto opaType = cast<RankedTensorType>(opa.getType());
         auto promotedAType =
             RankedTensorType::get(opaType.getShape(), elementType);
-        opa = rewriter.create<arith::ExtFOp>(loc, promotedAType, opa);
+        opa = arith::ExtFOp::create(rewriter, loc, promotedAType, opa);
 
         auto opbType = cast<RankedTensorType>(opb.getType());
         auto promotedBType =
             RankedTensorType::get(opbType.getShape(), elementType);
-        opb = rewriter.create<arith::ExtFOp>(loc, promotedBType, opb);
+        opb = arith::ExtFOp::create(rewriter, loc, promotedBType, opb);
       }
 
       if (integers && (aElemType != elementType)) {
         auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
                                                 linalg::TypeFn::cast_signed);
-        res = rewriter
-                  .create<linalg::MatmulOp>(loc, TypeRange{zeroes.getType()},
-                                            ValueRange{opa, opb},
-                                            ValueRange{zeroes}, castAttr)
+        res = linalg::MatmulOp::create(
+                  rewriter, loc, TypeRange{zeroes.getType()},
+                  ValueRange{opa, opb}, ValueRange{zeroes}, castAttr)
                   .getResult(0);
       } else {
-        res = rewriter
-                  .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
-                                            ValueRange{zeroes})
+        res = linalg::MatmulOp::create(rewriter, loc, ValueRange{opa, opb},
+                                       ValueRange{zeroes})
                   .getResult(0);
       }
     }
@@ -1419,9 +1421,9 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
 
     if (!(emitContract && integers) && !skipC) {
       if (integers)
-        res = rewriter.create<arith::AddIOp>(loc, opc, res);
+        res = arith::AddIOp::create(rewriter, loc, opc, res);
       else
-        res = rewriter.create<arith::AddFOp>(loc, opc, res);
+        res = arith::AddFOp::create(rewriter, loc, opc, res);
     }
 
     rewriter.replaceOp(op, res);
