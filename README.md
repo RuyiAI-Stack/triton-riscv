@@ -17,7 +17,7 @@ Python @triton.jit
                           └─► native .o  (llc -filetype=obj)
 ```
 
-## Quick start (from binary)
+## Install
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
@@ -32,6 +32,21 @@ mkdir -p /path/to/llvm
 tar xf llvm-*.tar.gz -C /path/to/llvm
 export LLVM_BINARY_DIR=/path/to/llvm/bin
 ```
+
+## Install from source
+
+```sh
+git clone https://github.com/RuyiAI-Stack/triton-riscv.git
+cd triton-riscv
+make
+make test
+```
+
+What you end up with is an editable Triton whose backend is
+`triton.backends.triton_shared`. It takes over when no GPU backend is present,
+so `import triton` behaves as usual.
+
+## Quick start
 
 ```py
 # add.py
@@ -79,19 +94,6 @@ The instructions it prints are the RVV ones:
       52: 02861457      vfadd.vv    v8, v8, v12
       60: 020ee427      vse32.v     v8, (t4)
 ```
-
-## Quick start (from source)
-
-```sh
-git clone https://github.com/RuyiAI-Stack/triton-riscv.git
-cd triton-riscv
-make
-make test
-```
-
-What you end up with is an editable Triton whose backend is
-`triton.backends.triton_shared`. It takes over when no GPU backend is present,
-so `import triton` behaves as usual.
 
 ## Clone
 
