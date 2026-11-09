@@ -4,13 +4,15 @@
 # pinned Triton checkout, and the LLVM and buddy toolchains that scripts/build.sh
 # links against. Safe to re-run; everything already in place is reused.
 #
-# Environment: see scripts/env.sh.
+# Environment: TRITON_DIR, TRITON_VENV and LLVM_SYSPATH override where the
+# checkout, the virtualenv and the LLVM toolchain land. The build switches
+# themselves live in scripts/env.sh, which scripts/build.sh reads.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
-# shellcheck source=scripts/env.sh
-source "${ROOT_DIR}/scripts/env.sh"
+TRITON_VENV="${TRITON_VENV:-${CONDA_PREFIX:-${ROOT_DIR}/.venv}}"
+LLVM_SYSPATH="${LLVM_SYSPATH:-${ROOT_DIR}/.cache/llvm}"
 
 TRITON_HASH="$(<"${ROOT_DIR}/triton-hash.txt")"
 BUDDY_PYTHON_TAG="cp312-abi3"
