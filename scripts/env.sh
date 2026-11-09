@@ -15,7 +15,7 @@ fi
 _TRITON_RISCV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The virtualenv scripts/setup.sh creates. Only the PATH below needs it, so it
 # stays out of the environment.
-TRITON_VENV="${TRITON_VENV:-${CONDA_PREFIX:-${_TRITON_RISCV_DIR}/.venv}}"
+TRITON_VENV="${TRITON_VENV:-${_TRITON_RISCV_DIR}/.venv}"
 
 # The LLVM build scripts/setup.sh downloads, which the Triton build links against.
 export LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"

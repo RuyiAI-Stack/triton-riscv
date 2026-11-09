@@ -11,7 +11,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
-TRITON_VENV="${TRITON_VENV:-${CONDA_PREFIX:-${ROOT_DIR}/.venv}}"
+TRITON_VENV="${TRITON_VENV:-${ROOT_DIR}/.venv}"
 LLVM_SYSPATH="${LLVM_SYSPATH:-${ROOT_DIR}/.cache/llvm}"
 
 TRITON_HASH="$(<"${ROOT_DIR}/triton-hash.txt")"
