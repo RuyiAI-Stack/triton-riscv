@@ -140,9 +140,6 @@ export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
 
-"${PYTHON}" -m pip install --upgrade pip
-"${PYTHON}" -m pip install -r "${CONTAINER_PLUGIN_DIR}/requirements.txt"
-
 # setup.sh fetches the toolchains and the pinned Triton checkout; build.sh builds
 # Triton with the triton-shared plugin, which also produces the triton-shared-opt
 # executable the backend invokes at compile time.

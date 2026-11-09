@@ -41,8 +41,7 @@ export PATH=/path/to/llvm/bin:$PATH
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
 cd triton-riscv
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-make setup    # downloads the pinned LLVM and buddy builds, clones the pinned Triton
+make setup    # downloads the pinned LLVM and buddy builds, clones Triton, installs the build deps
 make build    # builds Triton and installs the backend
 make test     # the plugin's lit tests and the example suite
 ```

@@ -5,8 +5,8 @@
 # already in place is reused.
 #
 # Environment: TRITON_DIR and LLVM_SYSPATH override where the checkout and the
-# LLVM toolchain land. The build dependencies are in requirements.txt; install
-# them into the interpreter you build with.
+# LLVM toolchain land; PYTHON picks the interpreter the build dependencies are
+# installed into.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,9 +23,12 @@ BUDDY_RELEASE_URL="https://github.com/buddy-compiler/buddy-mlir/releases/downloa
 case "$(uname -m)" in
     x86_64|amd64)
         BUDDY_PLATFORM="manylinux_2_28_x86_64"
+        PIP_INDEX_ARGS=()
         ;;
     riscv64)
         BUDDY_PLATFORM="manylinux_2_39_riscv64"
+        # Connection to https://ruyirepo.ruyicommunity.cn/pypi/simple/ is poor
+        PIP_INDEX_ARGS=(--index-url https://gitlab.com/api/v4/projects/56254198/packages/pypi/simple)
         ;;
     *)
         echo "unsupported arch: $(uname -m)" >&2
@@ -75,6 +78,18 @@ if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; t
     git "${GIT_AUTH_ARGS[@]}" -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
 fi
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
+
+PYTHON="${PYTHON:-python3}"
+echo "Installing build dependencies into ${PYTHON}..."
+"${PYTHON}" -m pip install --upgrade pip
+"${PYTHON}" -m pip install "${PIP_INDEX_ARGS[@]}" numpy "cmake>=3.20,<4.0"
+"${PYTHON}" -m pip install -U \
+    "setuptools>=40.8.0" \
+    "ninja>=1.11.1" \
+    "nanobind==2.10.2" \
+    "pytest" \
+    "pytest-xdist" \
+    "lit"
 # The AMD codegen library. Upstream either downloads a prebuilt copy or builds one
 # against a separately pinned LLVM, and there is no riscv64 build of either; the
 # library itself is small and builds against the LLVM already here, in seconds.
