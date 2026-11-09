@@ -47,32 +47,15 @@ make build    # builds Triton and installs the backend
 make test     # the plugin's lit tests and the example suite
 ```
 
-What you end up with is an editable Triton whose backend is `triton.backends.triton_shared`: it
-takes over when no GPU backend is present, so `import triton` behaves as usual. Triton itself is
-used **unpatched** -- `make setup` fetches the LLVM that upstream's build expects, built with the
-NVPTX and AMDGPU targets -- and `make` takes `TRITON_DIR` for the checkout, `LLVM_SYSPATH` for that
-toolchain and `PYTHON` for the interpreter it builds with.
-
 ### Test the installation
 
 `scripts/env.sh` exports what the backend and the lit tests need to find the toolchains and the
-staged `triton-shared-opt`, so source it before running anything by hand. It prepends the LLVM and
-buddy `bin` directories to `PATH`, which is how the backend finds the toolchains:
+staged `triton-shared-opt`, so source it before running anything by hand.
 
 ```sh
 source scripts/env.sh
 python -c "import triton; print(triton.__version__, triton.runtime.driver.active.get_current_target())"
 ```
-
-On a RISC-V machine that prints the CPU backend the plugin installs -- `3.9.0
-GPUTarget(backend='cpu', arch=0, warp_size=0)` -- because no GPU backend is present; on a machine
-with one it prints that backend instead. `make test` then runs the lit tests and the example suite
-against it.
-
-`triton-shared-opt` has no console script: the backend runs the copy bundled in the package, or
-whatever `TRITON_SHARED_OPT_PATH` points at when set. Python 3.11+ is the only system requirement;
-the RVV cross toolchain and QEMU that `scripts/build-riscv-gnu-toolchain.sh` builds are only needed
-by the [QEMU example](docs/06-RISCV-QEMU.md).
 
 ## Quick start
 
