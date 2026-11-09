@@ -94,10 +94,6 @@ print(f"ok: {torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3)} | {device.type} / {
 python gemm.py          # ok: True
 ```
 
-`triton.jit` reads the kernel's source, so kernels run from files like this one; a heredoc or
-a REPL will not do. On `riscv64` the CPU backend selects itself, so no `set_active` call or
-extra environment variable is needed. The rest of the suite lives in `python/examples/`.
-
 #### RVV
 
 The vector extension is on by default -- `+v` is in the backend's `llc` feature string
@@ -130,9 +126,7 @@ llvm-objdump -d gemm.o | grep -oE "vsetivli|vle32\.v|vse32\.v|vfmacc\.vf|vfadd\.
 SpacemiT's integrated matrix extension (IME) adds `vmadot` for integers and `vfmadot` for
 fp16, and the backend can lower `tl.dot` straight to them. Set `TRITON_RISCV_USE_IME=1` and
 `linalg.matmul` goes through buddy-mlir's IME dialect (`--lower-linalg-to-ime`,
-`--lower-ime`) with the object built for `+xsmtime`. The tile it wants is 4x4 with a k of 8
-for int8 and 4 for fp16 -- the int8 GEMM in `python/examples/smtime/test_smtime.py` is the
-smallest one that hits it:
+`--lower-ime`) with the object built for `+xsmtime`.
 
 ```py
 # ime.py
@@ -176,12 +170,7 @@ llvm-objdump -d ime.o | grep -E "vmadot|vle8|vsetvli"
  26e: vle8.v   v8, (t0)
 ```
 
-The kernel only *runs* where the hardware implements the extension; elsewhere it is an
-illegal instruction.
-
 ### AMD GPU
-
-The same program runs on an AMD GPU. Only the assertion changes -- and it spells out why:
 
 ```py
 # gemm.py
