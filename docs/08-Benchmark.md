@@ -208,8 +208,8 @@ Source the environment helper before running benchmarks:
 source scripts/env.sh
 ```
 
-If your Buddy build is not in the default location, set `BUDDY_DIR` or
-`BUDDY_MLIR_BINARY_DIR` before sourcing the helper.
+If your Buddy build is not in the default location, set `BUDDY_DIR` before running the
+benchmarks.
 
 ### Stale Backend Changes Are Not Reflected
 

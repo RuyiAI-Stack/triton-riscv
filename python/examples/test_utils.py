@@ -1,7 +1,6 @@
 from pathlib import Path
 import ctypes
 import errno
-import os
 import platform
 import re
 import shutil
@@ -10,15 +9,11 @@ import pytest
 
 
 def get_llvm_bin_path(bin_name):
-    llvm_binary_dir = os.environ.get("LLVM_BINARY_DIR")
-    if llvm_binary_dir:
-        return str(Path(llvm_binary_dir) / bin_name)
-
     path = shutil.which(bin_name)
     if path:
         return path
 
-    raise RuntimeError(f"Unable to locate '{bin_name}' via LLVM_BINARY_DIR or PATH.")
+    raise RuntimeError(f"Unable to locate '{bin_name}' on PATH.")
 
 
 class _RiscvHwprobe(ctypes.Structure):

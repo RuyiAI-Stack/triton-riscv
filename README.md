@@ -32,7 +32,7 @@ pip install torch --index-url https://community-ci.openruyi.cn/pypi/riscv64/dev/
 # Get prebuilt LLVM from https://github.com/buddy-compiler/buddy-mlir/releases
 mkdir -p /path/to/llvm
 tar xf llvm-*.tar.gz -C /path/to/llvm
-export LLVM_BINARY_DIR=/path/to/llvm/bin
+export PATH=/path/to/llvm/bin:$PATH
 ```
 
 ### From source
@@ -56,9 +56,9 @@ by the [QEMU example](docs/06-RISCV-QEMU.md).
 `scripts/env.sh` exports what the backend and the lit tests need to find the toolchains and the
 staged `triton-shared-opt`, so source it before running anything by hand. Its defaults follow the
 layout `make` creates -- `triton/`, `.venv`, `.cache/llvm`, `.cache/buddy` -- and it prepends the
-venv, LLVM and buddy `bin` directories to `PATH`. Override `TRITON_VENV`, `LLVM_SYSPATH` or
-`BUDDY_MLIR_BINARY_DIR` to point it elsewhere; `make setup` and `make build` take
-`TRITON_DIR` for the revision they check out. `make build` ends by
+venv, LLVM and buddy `bin` directories to `PATH`, which is how the backend finds the
+toolchains. Override `TRITON_VENV` or `LLVM_SYSPATH` to point it elsewhere; `make setup` and
+`make build` take `TRITON_DIR` for the revision they check out. `make build` ends by
 printing the installed Triton version, the module it loaded and the `triton-shared-opt` it
 shelled out to; to check by hand:
 

@@ -2,9 +2,8 @@
 
 Resolution order for every tool:
 
-1. an explicit environment variable (local development / build trees),
-2. a binary bundled inside this package under ``bin/``,
-3. ``PATH`` (this is how the ``buddy`` pip package exposes
+1. a binary bundled inside this package under ``bin/``,
+2. ``PATH`` (this is how the ``buddy`` pip package exposes
    ``buddy-opt`` / ``buddy-translate`` / ``buddy-llc`` console scripts).
 
 Keeping the package-relative and ``PATH`` fallbacks means a plain
@@ -23,16 +22,6 @@ def _bundled_bin_path(bin_name: str) -> str | None:
     if bundled.is_file():
         return str(bundled)
     return None
-
-
-def _env_bin_path(env_var: str, bin_name: str) -> str | None:
-    base = os.getenv(env_var, "").strip()
-    if not base:
-        return None
-    candidate = Path(base) / bin_name
-    if candidate.is_file():
-        return str(candidate)
-    raise RuntimeError(f"{env_var} is set but '{bin_name}' is missing under {base}")
 
 
 def _get_triton_shared_opt_path() -> str:
@@ -55,9 +44,6 @@ def _get_triton_shared_opt_path() -> str:
 
 
 def _get_llvm_bin_path(bin_name: str) -> str:
-    if env_path := _env_bin_path("LLVM_BINARY_DIR", bin_name):
-        return env_path
-
     if bundled := _bundled_bin_path(bin_name):
         return bundled
 
@@ -66,17 +52,13 @@ def _get_llvm_bin_path(bin_name: str) -> str:
         return path_entry
 
     raise RuntimeError(
-        f"Unable to locate LLVM tool '{bin_name}' via LLVM_BINARY_DIR, the "
-        "bundled package bin/, or PATH."
+        f"Unable to locate LLVM tool '{bin_name}' in the bundled package bin/ or on PATH."
     )
 
 
 def _get_buddy_bin_path(bin_name: str) -> str:
     # The `buddy` pip package installs buddy-opt / buddy-translate / buddy-llc
     # as console scripts, so PATH covers the pip-installed case.
-    if env_path := _env_bin_path("BUDDY_MLIR_BINARY_DIR", bin_name):
-        return env_path
-
     if bundled := _bundled_bin_path(bin_name):
         return bundled
 
@@ -85,8 +67,8 @@ def _get_buddy_bin_path(bin_name: str) -> str:
         return path_entry
 
     raise RuntimeError(
-        f"Unable to locate Buddy tool '{bin_name}' via BUDDY_MLIR_BINARY_DIR, "
-        "the bundled package bin/, or PATH (install the 'buddy' package)."
+        f"Unable to locate Buddy tool '{bin_name}' in the bundled package bin/ or on PATH "
+        "(install the 'buddy' package)."
     )
 
 
