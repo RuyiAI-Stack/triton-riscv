@@ -184,7 +184,7 @@ def matmul(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
     tl.store(c_ptr + offs[:, None] * BLOCK + offs[None, :], tl.dot(a, b))
 
 
-device = "cuda"          # use the GPU; ROCm spells it the same way
+device = "cuda"          # use the GPU; AMD also calls it cuda
 BLOCK = 16
 a = torch.randn(BLOCK, BLOCK, device=device)
 b = torch.randn(BLOCK, BLOCK, device=device)
