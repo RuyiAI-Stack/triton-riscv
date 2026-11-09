@@ -19,6 +19,8 @@ Python @triton.jit
 
 ## Install
 
+### From binary
+
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 # `triton` and the buddy tools come from the index that carries them; PyPI only
@@ -47,6 +49,8 @@ What you end up with is an editable Triton whose backend is
 so `import triton` behaves as usual.
 
 ## Quick start
+
+### RISC-V CPU
 
 ```py
 # add.py
@@ -108,7 +112,7 @@ llvm-objdump -d add.o | grep -E "vset|vle32|vse32|vfadd"   # or "$LLVM_BINARY_DI
 extension's `vmadot` / `vfmadot` (see `python/examples/smtime/test_smtime.py`); both
 extensions only *run* where the hardware has them.
 
-## Running on an AMD GPU
+### AMD GPU
 
 The wheel carries the AMD backend and the codegen library it needs, and on a machine with
 ROCm that backend activates on its own (`is_active()` asks torch for `torch.version.hip`).
