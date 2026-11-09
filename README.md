@@ -19,8 +19,6 @@ Python @triton.jit
 
 ## Install
 
-### From a wheel
-
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 # `triton` and the buddy tools come from the index that carries them; PyPI only
@@ -50,6 +48,8 @@ so `import triton` behaves as usual.
 
 ## Quick start
 
+### RISC-V CPU
+
 ```py
 # add.py
 import torch
@@ -72,22 +72,33 @@ x, y = torch.randn(n), torch.randn(n)
 out = torch.empty_like(x)
 add[(triton.cdiv(n, 1024),)](x, y, out, n, BLOCK=1024)
 print("ok:", torch.allclose(out, x + y))
+```
 
-# The backend targets the host by default; ask for RISC-V and keep the object so
-# the instructions it emitted can be inspected.
+```sh
+python add.py          # ok: True
+```
+
+`triton.jit` reads the kernel's source, so kernels run from files like this one; a heredoc or
+a REPL will not do. On `riscv64` the CPU backend selects itself, so no `set_active` call or
+extra environment variable is needed. The rest of the suite lives in `python/examples/`.
+
+### RISC-V with the vector and matrix extensions
+
+The vector extension is on by default -- the backend's `llc` feature string is
+`+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`. To see what that means for the kernel above, ask
+for the RISC-V target and disassemble the object:
+
+```py
 compiled = add.warmup(
     x, y, out, n, BLOCK=1024, grid=(triton.cdiv(n, 1024),),
-    target_triple="riscv64-unknown-linux-gnu",
+    target_triple="riscv64-unknown-linux-gnu",   # the backend targets the host by default
 )
 open("add.o", "wb").write(compiled.asm["obj"])
 ```
 
 ```sh
-python add.py
 llvm-objdump -d add.o | grep -E "vset|vle32|vse32|vfadd"   # or "$LLVM_BINARY_DIR/llvm-objdump"
 ```
-
-The instructions it prints are the RVV ones:
 
 ```
       42: cd287057      vsetivli    zero, 0x10, e32, m4, ta, ma
@@ -97,23 +108,35 @@ The instructions it prints are the RVV ones:
       60: 020ee427      vse32.v     v8, (t4)
 ```
 
-## How to
+With `TRITON_RISCV_USE_IME=1` the backend goes one step further and compiles `tl.dot` to the
+integrated matrix extension's `vmadot` / `vfmadot` (see
+`python/examples/smtime/test_smtime.py`). Both extensions only *run* where the hardware has
+them.
 
-One wheel, three ways to use it, all of them on RISC-V:
+### RISC-V host with an AMD GPU
 
-- **RISC-V CPU.** On `riscv64` the backend selects itself and the kernels run on the CPU --
-  that is what the example above does. The rest of the suite lives in `python/examples/`.
-- **RISC-V with the vector and matrix extensions.** RVV is on by default (the backend's
-  `llc` feature string is `+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`), and
-  `TRITON_RISCV_USE_IME=1` compiles `tl.dot` to the integrated matrix extension's
-  `vmadot` / `vfmadot` (see `python/examples/smtime/test_smtime.py`). Either one only *runs*
-  where the hardware has the extension.
-- **RISC-V host with an AMD GPU.** The wheel carries the AMD backend and the codegen
-  library it needs, so a kernel compiles to `hsaco` here. Running it needs ROCm for
-  riscv64, which does not exist yet.
+The wheel carries the AMD backend and the codegen library it needs, so the same kernel can
+also be compiled for a GPU from here -- the target picks the backend:
 
-The backend can also emit a self-contained RISC-V ELF to be run elsewhere, without a
-toolchain on the target -- see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) and
+```py
+from triton.backends.compiler import GPUTarget
+from triton.compiler import ASTSource
+
+src = ASTSource(
+    fn=add,
+    signature={"x_ptr": "*fp32", "y_ptr": "*fp32", "out_ptr": "*fp32", "n": "i32",
+               "BLOCK": "constexpr"},
+    constexprs={"BLOCK": 1024},
+)
+print(sorted(triton.compile(src, target=GPUTarget("hip", "gfx942", 64)).asm))
+# ['amdgcn', 'hsaco', 'llir', 'source', 'ttgir', 'ttir']
+```
+
+Running such a kernel needs ROCm for riscv64, which does not exist yet, so this is a
+compile-only path today.
+
+The backend can also emit a self-contained RISC-V ELF to run elsewhere, with no toolchain on
+the target: see [docs/06-RISCV-QEMU.md](docs/06-RISCV-QEMU.md) and
 `python/examples/rvv_vec_add_elf.py`.
 
 ## Clone
