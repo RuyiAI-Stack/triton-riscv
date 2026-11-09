@@ -82,11 +82,9 @@ python add.py          # ok: True
 a REPL will not do. On `riscv64` the CPU backend selects itself, so no `set_active` call or
 extra environment variable is needed. The rest of the suite lives in `python/examples/`.
 
-### RISC-V with the vector and matrix extensions
-
-The vector extension is on by default -- the backend's `llc` feature string is
-`+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`. To see what that means for the kernel above, ask
-for the RISC-V target and disassemble the object:
+The RISC-V vector extension is on by default (`+v` is in the backend's `llc` feature string),
+so the same kernel already comes out vectorized. To see it, ask for the RISC-V target
+explicitly and disassemble the object:
 
 ```py
 compiled = add.warmup(
@@ -108,10 +106,9 @@ llvm-objdump -d add.o | grep -E "vset|vle32|vse32|vfadd"   # or "$LLVM_BINARY_DI
       60: 020ee427      vse32.v     v8, (t4)
 ```
 
-With `TRITON_RISCV_USE_IME=1` the backend goes one step further and compiles `tl.dot` to the
-integrated matrix extension's `vmadot` / `vfmadot` (see
-`python/examples/smtime/test_smtime.py`). Both extensions only *run* where the hardware has
-them.
+`TRITON_RISCV_USE_IME=1` additionally compiles `tl.dot` to the integrated matrix
+extension's `vmadot` / `vfmadot` (see `python/examples/smtime/test_smtime.py`); both
+extensions only *run* where the hardware has them.
 
 ### RISC-V host with an AMD GPU
 
