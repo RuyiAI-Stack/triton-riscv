@@ -53,73 +53,6 @@ so `import triton` behaves as usual.
 ### RISC-V CPU
 
 ```py
-# add.py
-import torch
-import triton
-import triton.language as tl
-
-
-@triton.jit
-def add(x_ptr, y_ptr, out_ptr, n, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    tl.store(out_ptr + offsets, x + y, mask=mask)
-
-
-n = 4096
-x, y = torch.randn(n), torch.randn(n)
-out = torch.empty_like(x)
-add[(triton.cdiv(n, 1024),)](x, y, out, n, BLOCK=1024)
-print("ok:", torch.allclose(out, x + y))
-```
-
-```sh
-python add.py          # ok: True
-```
-
-`triton.jit` reads the kernel's source, so kernels run from files like this one; a heredoc or
-a REPL will not do. On `riscv64` the CPU backend selects itself, so no `set_active` call or
-extra environment variable is needed. The rest of the suite lives in `python/examples/`.
-
-The RISC-V vector extension is on by default (`+v` is in the backend's `llc` feature string),
-so the same kernel already comes out vectorized. To see it, ask for the RISC-V target
-explicitly and disassemble the object:
-
-```py
-compiled = add.warmup(
-    x, y, out, n, BLOCK=1024, grid=(triton.cdiv(n, 1024),),
-    target_triple="riscv64-unknown-linux-gnu",   # the backend targets the host by default
-)
-open("add.o", "wb").write(compiled.asm["obj"])
-```
-
-```sh
-llvm-objdump -d add.o | grep -E "vset|vle32|vse32|vfadd"   # or "$LLVM_BINARY_DIR/llvm-objdump"
-```
-
-```
-      42: cd287057      vsetivli    zero, 0x10, e32, m4, ta, ma
-      46: 020ee407      vle32.v     v8, (t4)
-      4e: 020ee607      vle32.v     v12, (t4)
-      52: 02861457      vfadd.vv    v8, v8, v12
-      60: 020ee427      vse32.v     v8, (t4)
-```
-
-`TRITON_RISCV_USE_IME=1` additionally compiles `tl.dot` to the integrated matrix
-extension's `vmadot` / `vfmadot` (see `python/examples/smtime/test_smtime.py`); both
-extensions only *run* where the hardware has them.
-
-### AMD GPU
-
-The wheel carries the AMD backend and the codegen library it needs, and on a machine with
-ROCm that backend activates on its own (`is_active()` asks torch for `torch.version.hip`).
-Nothing triton-riscv-specific is involved, so an ordinary GEMM runs the way it does with
-upstream Triton -- same kernel, same launch:
-
-```py
 # gemm.py
 import torch
 import triton
@@ -143,13 +76,52 @@ print("ok:", torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3))
 ```
 
 ```sh
-python gemm.py          # ok: True -- on the GPU when ROCm is there, on the CPU otherwise
+python gemm.py          # ok: True
 ```
 
-Put the tensors on the GPU (`device="cuda"`, which ROCm uses as well) and the same script
-runs there. On a `riscv64` host one thing does need saying out loud: this CPU backend also
-reports itself as active there, so pick the GPU explicitly with
-`TRITON_DEFAULT_BACKEND=amd` (or `triton.runtime.driver.set_active(HIPDriver())`).
+`triton.jit` reads the kernel's source, so kernels run from files like this one; a heredoc or
+a REPL will not do. On `riscv64` the CPU backend selects itself, so no `set_active` call or
+extra environment variable is needed. The rest of the suite lives in `python/examples/`.
+
+The RISC-V vector extension is on by default (`+v` is in the backend's `llc` feature string),
+so this GEMM already comes out vectorized. To see it, ask for the RISC-V target explicitly
+and count the instructions in the object:
+
+```py
+compiled = matmul.warmup(
+    a, b, c, BLOCK=BLOCK, grid=(1,),
+    target_triple="riscv64-unknown-linux-gnu",   # the backend targets the host by default
+)
+open("gemm.o", "wb").write(compiled.asm["obj"])
+```
+
+```sh
+llvm-objdump -d gemm.o | grep -oE "vsetivli|vle32\.v|vse32\.v|vfmacc\.vf|vfadd\.vf" | sort | uniq -c
+```
+
+```
+      1 vfadd.vf
+      9 vfmacc.vf
+     12 vle32.v
+     11 vse32.v
+      2 vsetivli
+```
+
+`TRITON_RISCV_USE_IME=1` goes further for `tl.dot`: an fp16 or int8 dot lowers to the
+integrated matrix extension's `vfmadot` / `vmadot` (see
+`python/examples/smtime/test_smtime.py`). Either extension only *runs* where the hardware has
+it.
+
+### AMD GPU
+
+The same kernel runs on an AMD GPU. The target picks the backend, and on a machine with ROCm
+the AMD backend activates on its own (`is_active()` asks torch for `torch.version.hip`); put
+the tensors on the device (`device="cuda"`, which ROCm uses as well) and `python gemm.py`
+does the same thing there.
+
+On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
+active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
+`triton.runtime.driver.set_active(HIPDriver())`).
 
 The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
 GPU.
