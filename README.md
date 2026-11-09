@@ -46,8 +46,29 @@ make test     # the plugin's lit tests and the example suite
 ```
 
 What you end up with is an editable Triton whose backend is
-`triton.backends.triton_shared`. It takes over when no GPU backend is present,
-so `import triton` behaves as usual.
+`triton.backends.triton_shared`: it takes over when no GPU backend is present, so `import triton`
+behaves as usual. Triton itself is used **unpatched** -- the LLVM pinned in `buddy-hash.txt` is
+built with the NVPTX and AMDGPU targets upstream Triton expects, and the revision in
+`triton-hash.txt` is cloned as is. Python 3.11+ is the only system requirement; the RVV
+cross toolchain and QEMU that `scripts/build-riscv-gnu-toolchain.sh` builds are only needed
+by the [QEMU example](docs/06-RISCV-QEMU.md).
+
+`scripts/env.sh` exports what the backend and the lit tests need to find the toolchains and the
+staged `triton-shared-opt`, so source it before running anything by hand. Its defaults follow the
+layout `make` creates -- `triton/`, `.venv`, `.cache/llvm`, `.cache/buddy` -- and it prepends the
+venv, LLVM and buddy `bin` directories to `PATH`; override `TRITON_DIR`, `TRITON_VENV`,
+`LLVM_SYSPATH` or `BUDDY_MLIR_BINARY_DIR` to point it somewhere else. `make build` ends by
+printing the installed Triton version, the module it loaded and the `triton-shared-opt` it
+shelled out to; to check by hand:
+
+```sh
+source scripts/env.sh
+python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
+python -c "from triton.backends.triton_shared.paths import _get_triton_shared_opt_path as f; print(f())"
+```
+
+`triton-shared-opt` has no console script: the backend runs the copy bundled in the package, or
+whatever `TRITON_SHARED_OPT_PATH` points at when set.
 
 ## Quick start
 
@@ -208,66 +229,6 @@ active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd`
 
 The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
 GPU.
-
-## Clone
-
-```sh
-git clone https://github.com/RuyiAI-Stack/triton-riscv.git
-cd triton-riscv
-make
-```
-
-`make setup` creates `.venv`, clones the Triton revision pinned in
-`triton-hash.txt`, and downloads the LLVM and buddy build pinned in
-`buddy-hash.txt`; `make build` then builds and installs the backend into it.
-Triton itself is used **unpatched**: the pinned LLVM is simply built with the
-NVPTX and AMDGPU targets upstream Triton expects.
-
-## Prerequisites
-
-`make setup` handles the rest: virtualenv, Python build dependencies and
-toolchains. A Python 3.11+ interpreter is the only system requirement; the RVV
-cross toolchain and QEMU that `scripts/build-riscv-gnu-toolchain.sh` builds are
-only needed by the [QEMU example](docs/06-RISCV-QEMU.md).
-
-## Environment helper
-
-`scripts/env.sh` exports what the backend and the lit tests need in order to find
-the toolchains and the staged `triton-shared-opt`, so source it before running
-anything by hand:
-
-```sh
-source scripts/env.sh
-```
-
-Its defaults follow the layout `make` creates -- `triton/`, `.venv`,
-`.cache/llvm`, `.cache/buddy` -- and it prepends the venv, LLVM and buddy `bin`
-directories to `PATH`. Override `TRITON_DIR`, `TRITON_VENV`, `LLVM_SYSPATH` or
-`BUDDY_MLIR_BINARY_DIR` before sourcing to point it somewhere else.
-
-## Build
-
-```sh
-cd /path/to/triton-riscv
-make setup
-make build
-make test
-```
-
-## Verify the build
-
-`make build` ends by printing the installed Triton version, the
-`triton.backends.triton_shared` module it loaded and the version of the
-`triton-shared-opt` executable the backend shells out to. To check by hand:
-
-```sh
-source scripts/env.sh
-python -c "import triton; import triton.backends.triton_shared.compiler as c; print(triton.__version__); print(c.__file__)"
-python -c "from triton.backends.triton_shared.paths import _get_triton_shared_opt_path as f; print(f())"
-```
-
-`triton-shared-opt` has no console script: the backend runs the copy bundled in
-the package, or whatever `TRITON_SHARED_OPT_PATH` points at when set.
 
 ## Generate and run RVV ELF files with QEMU
 
