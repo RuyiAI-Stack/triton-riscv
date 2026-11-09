@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Bootstrap a triton-riscv checkout: the pinned Triton checkout and the LLVM and
-# buddy toolchains that scripts/build.sh links against. Safe to re-run; everything already in place is reused.
+# buddy toolchains that scripts/build.sh links against. Safe to re-run; everything
+# already in place is reused.
 #
 # Environment: TRITON_DIR and LLVM_SYSPATH override where the checkout and the
 # LLVM toolchain land. The build dependencies are in requirements.txt; install

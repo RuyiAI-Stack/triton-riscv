@@ -54,7 +54,7 @@ staged `triton-shared-opt`, so source it before running anything by hand.
 
 ```sh
 source scripts/env.sh
-python -c "import triton; print(triton.__version__, triton.runtime.driver.active.get_current_target())"
+python3 -c "import triton; print(triton.__version__, triton.runtime.driver.active.get_current_target())"
 ```
 
 On RISC-V it prints `3.9.0 GPUTarget(backend='cpu', arch=0, warp_size=0)`; on RISC-V with an AMD GPU
