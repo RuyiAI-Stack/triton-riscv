@@ -40,6 +40,26 @@ export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-st
 # and builds the C++ plugin into libtriton.so. setup.py turns this into
 # -DTRITON_PLUGIN_DIRS, which cmake caches, so only the build needs it.
 export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
+# The AMD codegen library: upstream either downloads a prebuilt copy or builds one
+# against a separately pinned LLVM, and there is no riscv64 build of either. It
+# builds against the LLVM already here, in under a minute when cold and instantly
+# after that, and the AMD backend cannot compile anything without it. It has to
+# exist before the install, which is what puts it into the imported package and
+# the wheel.
+amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
+llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
+if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
+    cmake -G Ninja -S "${TRITON_DIR}/third_party/amd/backend/codegen" \
+        -B "${ROOT_DIR}/.cache/amd-codegen" \
+        -DLLVM_DIR="${llvm_cmake}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DTRITON_AMD_LLVM_REVISION=local >/dev/null
+    cmake --build "${ROOT_DIR}/.cache/amd-codegen" --target triton_amd_codegen >/dev/null
+    cp "${ROOT_DIR}/.cache/amd-codegen/libtriton_amd_codegen.so" "${amd_codegen_lib}"
+else
+    echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
+fi
+
 "${PYTHON}" -m pip install --no-build-isolation -e "${TRITON_DIR}"
 
 # Stage the freshly built tool where the backend looks for it.
