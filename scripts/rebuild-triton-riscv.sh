@@ -10,6 +10,7 @@
 # When used: after pulling LLVM/Triton/buddy changes, sourced env then this
 # script.
 #
+#!/usr/bin/env bash
 
 set -euo pipefail
 

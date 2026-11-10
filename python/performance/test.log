@@ -1,0 +1,837 @@
+python/performance batch run
+started_at=2026-04-15T12:27:21Z
+
+== python/performance/test_performance_addptr.py ==
+start=2026-04-15T12:27:21Z
+verdict=PASS
+exit_code=0
+real 4.10
+user 59.19
+sys 12.50
+output_begin
+bench_addptr(1024000,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.003904, min=0.003754, std=0.000119, max=0.004057
+CPU: Avg=0.379153, min=0.288584, std=0.020778, max=0.384114
+bench_addptr(2048000,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.008460, min=0.008265, std=0.000173, max=0.008768
+CPU: Avg=0.509668, min=0.506772, std=0.001345, max=0.512121
+bench_addptr(4096000,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.016783, min=0.016525, std=0.000135, max=0.017076
+CPU: Avg=0.669633, min=0.598966, std=0.044270, max=0.731939
+bench_addptr(8192000,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.036011, min=0.034198, std=0.001426, max=0.040679
+CPU: Avg=0.940634, min=0.846114, std=0.043334, max=1.006420
+output_end
+
+== python/performance/test_performance_blockptr_complex_offset.py ==
+start=2026-04-15T12:27:25Z
+verdict=PASS
+exit_code=0
+real 32.04
+user 73.10
+sys 41.78
+output_begin
+bench_blockptr_complex_offset(1600, 1600) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.048581, min=0.048002, std=0.000918, max=0.052431
+CPU: Avg=0.813045, min=0.741449, std=0.037247, max=0.897870
+bench_blockptr_complex_offset(3200, 3200) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.212378, min=0.209267, std=0.002224, max=0.217284
+CPU: Avg=1.153309, min=1.049570, std=0.057976, max=1.237070
+bench_blockptr_complex_offset(6400, 6400) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.903337, min=0.827132, std=0.088761, max=1.053092
+CPU: Avg=2.285441, min=2.131487, std=0.143078, max=2.662484
+output_end
+
+== python/performance/test_performance_early_return.py ==
+start=2026-04-15T12:27:57Z
+verdict=PASS
+exit_code=0
+real 2.62
+user 32.82
+sys 1.43
+output_begin
+bench_early_return(102400,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000864, min=0.000824, std=0.000022, max=0.000900
+CPU: Avg=0.081584, min=0.000855, std=0.033911, max=0.096016
+bench_early_return(409600,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.003411, min=0.003271, std=0.000132, max=0.003750
+CPU: Avg=0.331160, min=0.288235, std=0.047225, max=0.383749
+bench_early_return(1638400,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.011244, min=0.010790, std=0.000261, max=0.011728
+CPU: Avg=0.573228, min=0.545054, std=0.024256, max=0.621582
+output_end
+
+== python/performance/test_performance_einsum_qhmd_hmpd_to_qhmp.py ==
+start=2026-04-15T12:28:00Z
+verdict=FAIL
+exit_code=1
+real 2.96
+user 7.68
+sys 0.21
+output_begin
+<unknown>:0: error: invalid memref element type
+triton-shared-opt: /home/zxl/ruyi/buddy-mlir/llvm/mlir/include/mlir/IR/StorageUniquerSupport.h:179: static ConcreteT mlir::detail::StorageUserBase<ConcreteT, BaseT, StorageT, UniquerT, Traits>::get(mlir::MLIRContext*, Args&& ...) [with Args = {mlir::Type&, mlir::Attribute&}; ConcreteT = mlir::UnrankedMemRefType; BaseT = mlir::BaseMemRefType; StorageT = mlir::detail::UnrankedMemRefTypeStorage; UniquerT = mlir::detail::TypeUniquer; Traits = {mlir::PtrLikeTypeInterface::Trait, mlir::ShapedType::Trait}]: Assertion `succeeded( ConcreteT::verifyInvariants(getDefaultDiagnosticEmitFn(ctx), args...))' failed.
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: /tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt /tmp/tmpe8c5w3jz/tt.mlir --triton-to-linalg-experimental --mlir-print-debuginfo -o /tmp/tmpe8c5w3jz/ttshared.mlir
+Stack dump without symbol names (ensure you have llvm-symbolizer in your PATH or set the environment var `LLVM_SYMBOLIZER_PATH` to point to it):
+0  triton-shared-opt 0x00005c7694ee8b52
+1  triton-shared-opt 0x00005c7694ee58df
+2  triton-shared-opt 0x00005c7694ee5a2c
+3  libc.so.6         0x00007078e5645330
+4  libc.so.6         0x00007078e569eb2c pthread_kill + 284
+5  libc.so.6         0x00007078e564527e gsignal + 30
+6  libc.so.6         0x00007078e56288ff abort + 223
+7  libc.so.6         0x00007078e562881b
+8  libc.so.6         0x00007078e563b517
+9  triton-shared-opt 0x00005c7694dd4edb
+10 triton-shared-opt 0x00005c7694dd4fea
+11 triton-shared-opt 0x00005c7692648c36
+12 triton-shared-opt 0x00005c7694a8e6ff
+13 triton-shared-opt 0x00005c7694a97f87
+14 triton-shared-opt 0x00005c7694a98fe8
+15 triton-shared-opt 0x00005c7694aead8a
+16 triton-shared-opt 0x00005c7694a9c2b8
+17 triton-shared-opt 0x00005c7694a9c83e
+18 triton-shared-opt 0x00005c7694aa111c
+19 triton-shared-opt 0x00005c7694aa275a
+20 triton-shared-opt 0x00005c7694aa2882
+21 triton-shared-opt 0x00005c7692649b2c
+22 triton-shared-opt 0x00005c76941ee496
+23 triton-shared-opt 0x00005c76941ee8c1
+24 triton-shared-opt 0x00005c76941efcf8
+25 triton-shared-opt 0x00005c76925df364
+26 triton-shared-opt 0x00005c76941ee496
+27 triton-shared-opt 0x00005c76941ee8c1
+28 triton-shared-opt 0x00005c76941ef979
+29 triton-shared-opt 0x00005c76941e1367
+30 triton-shared-opt 0x00005c76941e1c86
+31 triton-shared-opt 0x00005c76941e1e4c
+32 triton-shared-opt 0x00005c7694e685fe
+33 triton-shared-opt 0x00005c76941d9fb0
+34 triton-shared-opt 0x00005c76941e1fb0
+35 triton-shared-opt 0x00005c76941e24af
+36 triton-shared-opt 0x00005c7691fbe85d
+37 libc.so.6         0x00007078e562a1ca
+38 libc.so.6         0x00007078e562a28b __libc_start_main + 139
+39 triton-shared-opt 0x00005c7691ff87e5
+bench_einsum_qhmd_hmpd_to_qhmp(2, 4, 4, 8, 4) {}, warmup=5, repeats=20, all results in seconds
+Traceback (most recent call last):
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_einsum_qhmd_hmpd_to_qhmp.py", line 151, in <module>
+    bench_einsum_qhmd_hmpd_to_qhmp(Q, H, M, P, D)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/benchmark.py", line 52, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_einsum_qhmd_hmpd_to_qhmp.py", line 146, in bench_einsum_qhmd_hmpd_to_qhmp
+    einsum_qhmd_hmpd_to_qhmp(A, B)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_einsum_qhmd_hmpd_to_qhmp.py", line 116, in einsum_qhmd_hmpd_to_qhmp
+    einsum_qhmd_hmpd_to_qhmp_kernel[grid](
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 420, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 728, in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 858, in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 319, in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 417, in <lambda>
+    stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 87, in _ttir_to_ttsharedir
+    subprocess.check_call(subprocess_args)
+  File "/usr/lib/python3.12/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt', '/tmp/tmpe8c5w3jz/tt.mlir', '--triton-to-linalg-experimental', '--mlir-print-debuginfo', '-o', '/tmp/tmpe8c5w3jz/ttshared.mlir']' died with <Signals.SIGABRT: 6>.
+output_end
+
+== python/performance/test_performance_gather_scatter.py ==
+start=2026-04-15T12:28:02Z
+verdict=PASS
+exit_code=0
+real 2.21
+user 7.91
+sys 0.35
+output_begin
+bench_gather_scatter(640,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000152, min=0.000145, std=0.000007, max=0.000177
+CPU: Avg=0.000152, min=0.000145, std=0.000007, max=0.000176
+bench_gather_scatter(1280,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000155, min=0.000148, std=0.000005, max=0.000168
+CPU: Avg=0.000156, min=0.000148, std=0.000005, max=0.000167
+bench_gather_scatter(2560,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000189, min=0.000178, std=0.000010, max=0.000213
+CPU: Avg=0.000189, min=0.000179, std=0.000010, max=0.000213
+output_end
+
+== python/performance/test_performance_gather_scatter_continuous.py ==
+start=2026-04-15T12:28:05Z
+verdict=FAIL
+exit_code=1
+real 2.78
+user 8.27
+sys 0.25
+output_begin
+<unknown>:0: error: invalid memref element type
+triton-shared-opt: /home/zxl/ruyi/buddy-mlir/llvm/mlir/include/mlir/IR/StorageUniquerSupport.h:179: static ConcreteT mlir::detail::StorageUserBase<ConcreteT, BaseT, StorageT, UniquerT, Traits>::get(mlir::MLIRContext*, Args&& ...) [with Args = {mlir::Type&, mlir::Attribute&}; ConcreteT = mlir::UnrankedMemRefType; BaseT = mlir::BaseMemRefType; StorageT = mlir::detail::UnrankedMemRefTypeStorage; UniquerT = mlir::detail::TypeUniquer; Traits = {mlir::PtrLikeTypeInterface::Trait, mlir::ShapedType::Trait}]: Assertion `succeeded( ConcreteT::verifyInvariants(getDefaultDiagnosticEmitFn(ctx), args...))' failed.
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: /tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt /tmp/tmpir0a3b7d/tt.mlir --triton-to-linalg-experimental --mlir-print-debuginfo -o /tmp/tmpir0a3b7d/ttshared.mlir
+Stack dump without symbol names (ensure you have llvm-symbolizer in your PATH or set the environment var `LLVM_SYMBOLIZER_PATH` to point to it):
+0  triton-shared-opt 0x00005f304fd21b52
+1  triton-shared-opt 0x00005f304fd1e8df
+2  triton-shared-opt 0x00005f304fd1ea2c
+3  libc.so.6         0x000072c092045330
+4  libc.so.6         0x000072c09209eb2c pthread_kill + 284
+5  libc.so.6         0x000072c09204527e gsignal + 30
+6  libc.so.6         0x000072c0920288ff abort + 223
+7  libc.so.6         0x000072c09202881b
+8  libc.so.6         0x000072c09203b517
+9  triton-shared-opt 0x00005f304fc0dedb
+10 triton-shared-opt 0x00005f304fc0dfea
+11 triton-shared-opt 0x00005f304d481c36
+12 triton-shared-opt 0x00005f304f8c76ff
+13 triton-shared-opt 0x00005f304f8d0f87
+14 triton-shared-opt 0x00005f304f8d1fe8
+15 triton-shared-opt 0x00005f304f923d8a
+16 triton-shared-opt 0x00005f304f8d52b8
+17 triton-shared-opt 0x00005f304f8d583e
+18 triton-shared-opt 0x00005f304f8da11c
+19 triton-shared-opt 0x00005f304f8db75a
+20 triton-shared-opt 0x00005f304f8db882
+21 triton-shared-opt 0x00005f304d482b2c
+22 triton-shared-opt 0x00005f304f027496
+23 triton-shared-opt 0x00005f304f0278c1
+24 triton-shared-opt 0x00005f304f028cf8
+25 triton-shared-opt 0x00005f304d418364
+26 triton-shared-opt 0x00005f304f027496
+27 triton-shared-opt 0x00005f304f0278c1
+28 triton-shared-opt 0x00005f304f028979
+29 triton-shared-opt 0x00005f304f01a367
+30 triton-shared-opt 0x00005f304f01ac86
+31 triton-shared-opt 0x00005f304f01ae4c
+32 triton-shared-opt 0x00005f304fca15fe
+33 triton-shared-opt 0x00005f304f012fb0
+34 triton-shared-opt 0x00005f304f01afb0
+35 triton-shared-opt 0x00005f304f01b4af
+36 triton-shared-opt 0x00005f304cdf785d
+37 libc.so.6         0x000072c09202a1ca
+38 libc.so.6         0x000072c09202a28b __libc_start_main + 139
+39 triton-shared-opt 0x00005f304ce317e5
+bench_gather_scatter_continuous(256, 256, 2) {}, warmup=5, repeats=20, all results in seconds
+Traceback (most recent call last):
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_gather_scatter_continuous.py", line 55, in <module>
+    bench_gather_scatter_continuous(x, y, z)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/benchmark.py", line 52, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_gather_scatter_continuous.py", line 49, in bench_gather_scatter_continuous
+    run_gather_scatter_continuous(x, y, z)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_gather_scatter_continuous.py", line 37, in run_gather_scatter_continuous
+    gather_scatter_continuous_kernel[(1,)](
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 420, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 728, in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 858, in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 319, in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 417, in <lambda>
+    stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 87, in _ttir_to_ttsharedir
+    subprocess.check_call(subprocess_args)
+  File "/usr/lib/python3.12/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt', '/tmp/tmpir0a3b7d/tt.mlir', '--triton-to-linalg-experimental', '--mlir-print-debuginfo', '-o', '/tmp/tmpir0a3b7d/ttshared.mlir']' died with <Signals.SIGABRT: 6>.
+output_end
+
+== python/performance/test_performance_index_select.py ==
+start=2026-04-15T12:28:08Z
+verdict=FAIL
+exit_code=1
+real 2.74
+user 7.41
+sys 0.26
+output_begin
+<unknown>:0: error: invalid memref element type
+triton-shared-opt: /home/zxl/ruyi/buddy-mlir/llvm/mlir/include/mlir/IR/StorageUniquerSupport.h:179: static ConcreteT mlir::detail::StorageUserBase<ConcreteT, BaseT, StorageT, UniquerT, Traits>::get(mlir::MLIRContext*, Args&& ...) [with Args = {mlir::Type&, mlir::Attribute&}; ConcreteT = mlir::UnrankedMemRefType; BaseT = mlir::BaseMemRefType; StorageT = mlir::detail::UnrankedMemRefTypeStorage; UniquerT = mlir::detail::TypeUniquer; Traits = {mlir::PtrLikeTypeInterface::Trait, mlir::ShapedType::Trait}]: Assertion `succeeded( ConcreteT::verifyInvariants(getDefaultDiagnosticEmitFn(ctx), args...))' failed.
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: /tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt /tmp/tmpignaxp1x/tt.mlir --triton-to-linalg-experimental --mlir-print-debuginfo -o /tmp/tmpignaxp1x/ttshared.mlir
+Stack dump without symbol names (ensure you have llvm-symbolizer in your PATH or set the environment var `LLVM_SYMBOLIZER_PATH` to point to it):
+0  triton-shared-opt 0x000062d874e25b52
+1  triton-shared-opt 0x000062d874e228df
+2  triton-shared-opt 0x000062d874e22a2c
+3  libc.so.6         0x0000714551845330
+4  libc.so.6         0x000071455189eb2c pthread_kill + 284
+5  libc.so.6         0x000071455184527e gsignal + 30
+6  libc.so.6         0x00007145518288ff abort + 223
+7  libc.so.6         0x000071455182881b
+8  libc.so.6         0x000071455183b517
+9  triton-shared-opt 0x000062d874d11edb
+10 triton-shared-opt 0x000062d874d11fea
+11 triton-shared-opt 0x000062d872585c36
+12 triton-shared-opt 0x000062d8749cb6ff
+13 triton-shared-opt 0x000062d8749d4f87
+14 triton-shared-opt 0x000062d8749d5fe8
+15 triton-shared-opt 0x000062d874a27d8a
+16 triton-shared-opt 0x000062d8749d92b8
+17 triton-shared-opt 0x000062d8749d983e
+18 triton-shared-opt 0x000062d8749de11c
+19 triton-shared-opt 0x000062d8749df75a
+20 triton-shared-opt 0x000062d8749df882
+21 triton-shared-opt 0x000062d872586b2c
+22 triton-shared-opt 0x000062d87412b496
+23 triton-shared-opt 0x000062d87412b8c1
+24 triton-shared-opt 0x000062d87412ccf8
+25 triton-shared-opt 0x000062d87251c364
+26 triton-shared-opt 0x000062d87412b496
+27 triton-shared-opt 0x000062d87412b8c1
+28 triton-shared-opt 0x000062d87412c979
+29 triton-shared-opt 0x000062d87411e367
+30 triton-shared-opt 0x000062d87411ec86
+31 triton-shared-opt 0x000062d87411ee4c
+32 triton-shared-opt 0x000062d874da55fe
+33 triton-shared-opt 0x000062d874116fb0
+34 triton-shared-opt 0x000062d87411efb0
+35 triton-shared-opt 0x000062d87411f4af
+36 triton-shared-opt 0x000062d871efb85d
+37 libc.so.6         0x000071455182a1ca
+38 libc.so.6         0x000071455182a28b __libc_start_main + 139
+39 triton-shared-opt 0x000062d871f357e5
+bench_index_select(256, 128, 128) {}, warmup=5, repeats=20, all results in seconds
+Traceback (most recent call last):
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_index_select.py", line 77, in <module>
+    bench_index_select(rows, cols, picks)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/benchmark.py", line 52, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_index_select.py", line 71, in bench_index_select
+    run_index_select(rows, cols, picks)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_index_select.py", line 54, in run_index_select
+    index_select_row_kernel[(1,)](
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 420, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 728, in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 858, in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 319, in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 417, in <lambda>
+    stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 87, in _ttir_to_ttsharedir
+    subprocess.check_call(subprocess_args)
+  File "/usr/lib/python3.12/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt', '/tmp/tmpignaxp1x/tt.mlir', '--triton-to-linalg-experimental', '--mlir-print-debuginfo', '-o', '/tmp/tmpignaxp1x/ttshared.mlir']' died with <Signals.SIGABRT: 6>.
+output_end
+
+== python/performance/test_performance_layernorm.py ==
+start=2026-04-15T12:28:10Z
+verdict=PASS
+exit_code=0
+real 3.02
+user 8.61
+sys 0.46
+output_begin
+bench_layernorm(64, 'triton') {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000848, min=0.000814, std=0.000034, max=0.000954
+CPU: Avg=0.000848, min=0.000814, std=0.000034, max=0.000954
+bench_layernorm(128, 'triton') {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.002517, min=0.002460, std=0.000080, max=0.002711
+CPU: Avg=0.002518, min=0.002460, std=0.000080, max=0.002712
+output_end
+
+== python/performance/test_performance_load_2d_tensor_block.py ==
+start=2026-04-15T12:28:13Z
+verdict=PASS
+exit_code=0
+real 6.18
+user 59.28
+sys 3.68
+output_begin
+bench_load_2d_tensor_block(512, 512) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.011738, min=0.011496, std=0.000069, max=0.011842
+CPU: Avg=0.544853, min=0.489353, std=0.019453, max=0.586019
+bench_load_2d_tensor_block(1024, 1024) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.045769, min=0.045414, std=0.000236, max=0.046539
+CPU: Avg=0.763670, min=0.701841, std=0.035637, max=0.841492
+bench_load_2d_tensor_block(2048, 1024) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.090243, min=0.089491, std=0.001062, max=0.094779
+CPU: Avg=0.829182, min=0.773520, std=0.036277, max=0.915654
+output_end
+
+== python/performance/test_performance_load_2d_tensor_col.py ==
+start=2026-04-15T12:28:20Z
+verdict=PASS
+exit_code=0
+real 3.77
+user 30.04
+sys 0.73
+output_begin
+bench_load_2d_tensor_col(256, 128) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000966, min=0.000890, std=0.000050, max=0.001051
+CPU: Avg=0.000967, min=0.000891, std=0.000050, max=0.001051
+bench_load_2d_tensor_col(512, 256) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.003416, min=0.003166, std=0.000174, max=0.003760
+CPU: Avg=0.326420, min=0.288160, std=0.046636, max=0.383719
+bench_load_2d_tensor_col(1024, 256) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.006867, min=0.006556, std=0.000194, max=0.007287
+CPU: Avg=0.486745, min=0.476814, std=0.006705, max=0.493193
+output_end
+
+== python/performance/test_performance_mask.py ==
+start=2026-04-15T12:28:23Z
+verdict=PASS
+exit_code=0
+real 2.18
+user 7.93
+sys 0.30
+output_begin
+bench_mask(2048,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000136, min=0.000128, std=0.000008, max=0.000167
+CPU: Avg=0.000136, min=0.000128, std=0.000008, max=0.000167
+bench_mask(4096,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000138, min=0.000131, std=0.000005, max=0.000150
+CPU: Avg=0.000138, min=0.000131, std=0.000004, max=0.000149
+bench_mask(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000138, min=0.000129, std=0.000007, max=0.000158
+CPU: Avg=0.000138, min=0.000130, std=0.000007, max=0.000158
+output_end
+
+== python/performance/test_performance_mask_loop_iter_arg.py ==
+start=2026-04-15T12:28:26Z
+verdict=PASS
+exit_code=0
+real 89.57
+user 131.77
+sys 85.43
+output_begin
+bench_mask_loop_iter_arg(1536, 2560) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.070159, min=0.067318, std=0.001914, max=0.074179
+CPU: Avg=0.825673, min=0.751464, std=0.054393, max=0.953178
+bench_mask_loop_iter_arg(4096, 8192) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.692333, min=0.669251, std=0.039081, max=0.791679
+CPU: Avg=1.980435, min=1.809357, std=0.112216, max=2.396211
+bench_mask_loop_iter_arg(8192, 16384) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=2.673440, min=2.659582, std=0.010600, max=2.699891
+CPU: Avg=5.502909, min=5.425253, std=0.044609, max=5.596523
+output_end
+
+== python/performance/test_performance_matmul.py ==
+start=2026-04-15T12:29:55Z
+verdict=FAIL
+exit_code=1
+real 1.78
+user 7.61
+sys 0.22
+output_begin
+/home/zxl/ruyi/triton-riscv/python/performance/test_performance_matmul.py:101:20: error: failed to legalize operation 'tts.load' that was explicitly marked illegal
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+                   ^
+/home/zxl/ruyi/triton-riscv/python/performance/test_performance_matmul.py:101:20: note: see current operation: %91 = "tts.load"(%85, %90, %9) <{operandSegmentSizes = array<i32: 1, 1, 1>, static_mask_dims = array<i64: 32, -9223372036854775808>}> : (tensor<32x16x!tt.ptr<f32>>, index, f32) -> tensor<32x16xf32> loc("a"("/home/zxl/ruyi/triton-riscv/python/performance/test_performance_matmul.py":101:20))
+bench_matmul(512, 512, 512) {}, warmup=5, repeats=20, all results in seconds
+Traceback (most recent call last):
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_matmul.py", line 177, in <module>
+    bench_matmul(X, X, X)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/benchmark.py", line 52, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_matmul.py", line 171, in bench_matmul
+    matmul(a, b)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_matmul.py", line 146, in matmul
+    matmul_kernel[grid](
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 420, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 728, in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 858, in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 319, in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 417, in <lambda>
+    stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 87, in _ttir_to_ttsharedir
+    subprocess.check_call(subprocess_args)
+  File "/usr/lib/python3.12/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt', '/tmp/tmpqvedjsj6/tt.mlir', '--triton-to-linalg-experimental', '--mlir-print-debuginfo', '-o', '/tmp/tmpqvedjsj6/ttshared.mlir']' returned non-zero exit status 1.
+output_end
+
+== python/performance/test_performance_mm.py ==
+start=2026-04-15T12:29:57Z
+verdict=FAIL
+exit_code=1
+real 1.70
+user 7.48
+sys 0.27
+output_begin
+/home/zxl/ruyi/triton-riscv/python/performance/test_performance_mm.py:55:20: error: failed to legalize operation 'tts.load' that was explicitly marked illegal
+        a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
+                   ^
+/home/zxl/ruyi/triton-riscv/python/performance/test_performance_mm.py:55:20: note: see current operation: %87 = "tts.load"(%86) <{operandSegmentSizes = array<i32: 1, 0, 0>, static_mask_dims = array<i64>}> : (tensor<32x32x!tt.ptr<f32>>) -> tensor<32x32xf32> loc("a"("/home/zxl/ruyi/triton-riscv/python/performance/test_performance_mm.py":55:20))
+bench_mm(256, 256, 256) {}, warmup=5, repeats=20, all results in seconds
+Traceback (most recent call last):
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_mm.py", line 151, in <module>
+    bench_mm(M, N, K)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/benchmark.py", line 52, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_mm.py", line 146, in bench_mm
+    mm(a, b)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_mm.py", line 122, in mm
+    mm_kernel[grid](
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 420, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 728, in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 858, in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 319, in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 417, in <lambda>
+    stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 87, in _ttir_to_ttsharedir
+    subprocess.check_call(subprocess_args)
+  File "/usr/lib/python3.12/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt', '/tmp/tmpsike0bbb/tt.mlir', '--triton-to-linalg-experimental', '--mlir-print-debuginfo', '-o', '/tmp/tmpsike0bbb/ttshared.mlir']' returned non-zero exit status 1.
+output_end
+
+== python/performance/test_performance_modulo.py ==
+start=2026-04-15T12:29:59Z
+verdict=PASS
+exit_code=0
+real 43.68
+user 77.36
+sys 63.21
+output_begin
+bench_modulo(2048,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.068918, min=0.066172, std=0.002040, max=0.073785
+CPU: Avg=0.825735, min=0.727324, std=0.050516, max=0.907531
+bench_modulo(4096,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.295990, min=0.292540, std=0.002504, max=0.301836
+CPU: Avg=1.317983, min=1.243171, std=0.040801, max=1.381108
+bench_modulo(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=1.179286, min=1.149199, std=0.022120, max=1.212345
+CPU: Avg=3.012442, min=2.867722, std=0.071903, max=3.181035
+output_end
+
+== python/performance/test_performance_nested_loops.py ==
+start=2026-04-15T12:30:42Z
+verdict=PASS
+exit_code=0
+real 7.81
+user 62.55
+sys 184.26
+output_begin
+bench_nested_use_same_level_loop_results(1024, 1024) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000588, min=0.000552, std=0.000020, max=0.000646
+CPU: Avg=0.057586, min=0.000552, std=0.046543, max=0.095780
+bench_nested_use_same_level_loop_results(4096, 4096) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.014502, min=0.014022, std=0.000326, max=0.014989
+CPU: Avg=0.992871, min=0.965390, std=0.021442, max=1.035334
+bench_nested_use_same_level_loop_results(16384, 16384) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.202900, min=0.194929, std=0.003484, max=0.209937
+CPU: Avg=8.431102, min=8.094412, std=0.195215, max=8.746319
+output_end
+
+== python/performance/test_performance_reduce.py ==
+start=2026-04-15T12:30:50Z
+verdict=PASS
+exit_code=0
+real 3.58
+user 30.78
+sys 0.95
+output_begin
+bench_reduce(256, 256) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000807, min=0.000768, std=0.000033, max=0.000881
+CPU: Avg=0.076797, min=0.000768, std=0.038008, max=0.095918
+bench_reduce(512, 512) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.002448, min=0.002357, std=0.000059, max=0.002568
+CPU: Avg=0.239951, min=0.192356, std=0.047524, max=0.287618
+bench_reduce(1024, 1024) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.006294, min=0.006135, std=0.000092, max=0.006470
+CPU: Avg=0.503261, min=0.500501, std=0.002128, max=0.509273
+output_end
+
+== python/performance/test_performance_scalar_store.py ==
+start=2026-04-15T12:30:54Z
+verdict=PASS
+exit_code=0
+real 3.25
+user 8.79
+sys 0.51
+output_begin
+bench_scalar_store(2048,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000121, min=0.000115, std=0.000007, max=0.000148
+CPU: Avg=0.000121, min=0.000115, std=0.000007, max=0.000148
+bench_scalar_store(4096,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000125, min=0.000116, std=0.000026, max=0.000237
+CPU: Avg=0.000125, min=0.000116, std=0.000026, max=0.000235
+bench_scalar_store(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000187, min=0.000119, std=0.000039, max=0.000238
+CPU: Avg=0.000187, min=0.000119, std=0.000039, max=0.000237
+output_end
+
+== python/performance/test_performance_sign_extend.py ==
+start=2026-04-15T12:30:57Z
+verdict=PASS
+exit_code=0
+real 2.30
+user 15.10
+sys 0.38
+output_begin
+bench_sign_extend(2048,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000311, min=0.000297, std=0.000013, max=0.000347
+CPU: Avg=0.000311, min=0.000297, std=0.000013, max=0.000347
+bench_sign_extend(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000802, min=0.000775, std=0.000037, max=0.000935
+CPU: Avg=0.000802, min=0.000776, std=0.000036, max=0.000928
+bench_sign_extend(32768,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.002799, min=0.002727, std=0.000078, max=0.003006
+CPU: Avg=0.265152, min=0.192754, std=0.039494, max=0.288020
+output_end
+
+== python/performance/test_performance_softmax.py ==
+start=2026-04-15T12:30:59Z
+verdict=PASS
+exit_code=0
+real 58.08
+user 50.14
+sys 14.02
+output_begin
+bench_softmax(1024,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.022342, min=0.021819, std=0.000905, max=0.026219
+CPU: Avg=0.022339, min=0.021820, std=0.000905, max=0.026220
+bench_softmax(2048,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.086216, min=0.084724, std=0.001275, max=0.089601
+CPU: Avg=0.086216, min=0.084725, std=0.001275, max=0.089603
+bench_softmax(4096,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.384859, min=0.381884, std=0.002233, max=0.388747
+CPU: Avg=0.384828, min=0.381890, std=0.002226, max=0.388723
+bench_softmax(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=1.647423, min=1.547657, std=0.140410, max=1.935830
+CPU: Avg=1.647045, min=1.547168, std=0.140403, max=1.935220
+output_end
+
+== python/performance/test_performance_splat.py ==
+start=2026-04-15T12:31:58Z
+verdict=PASS
+exit_code=0
+real 19.56
+user 18.90
+sys 6.71
+output_begin
+bench_splat(2048,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.025274, min=0.024805, std=0.000983, max=0.029499
+CPU: Avg=0.025274, min=0.024805, std=0.000984, max=0.029502
+bench_splat(4096,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.121061, min=0.119810, std=0.001449, max=0.125536
+CPU: Avg=0.121058, min=0.119812, std=0.001442, max=0.125482
+bench_splat(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.484809, min=0.480289, std=0.002601, max=0.489324
+CPU: Avg=0.484772, min=0.480291, std=0.002597, max=0.489268
+output_end
+
+== python/performance/test_performance_swap.py ==
+start=2026-04-15T12:32:17Z
+verdict=PASS
+exit_code=0
+real 2.43
+user 8.12
+sys 0.36
+output_begin
+bench_swap(16384,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000570, min=0.000552, std=0.000012, max=0.000598
+CPU: Avg=0.000570, min=0.000552, std=0.000012, max=0.000598
+bench_swap(65536,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.001822, min=0.001711, std=0.000043, max=0.001941
+CPU: Avg=0.001822, min=0.001711, std=0.000043, max=0.001941
+bench_swap(262144,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.006781, min=0.006530, std=0.000154, max=0.007041
+CPU: Avg=0.006781, min=0.006531, std=0.000154, max=0.007042
+output_end
+
+== python/performance/test_performance_tensor_index_iterargs.py ==
+start=2026-04-15T12:32:20Z
+verdict=PASS
+exit_code=0
+real 2.20
+user 7.92
+sys 0.34
+output_begin
+bench_tensor_index_iterargs(4096,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000241, min=0.000204, std=0.000046, max=0.000356
+CPU: Avg=0.000241, min=0.000204, std=0.000046, max=0.000356
+bench_tensor_index_iterargs(8192,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000296, min=0.000276, std=0.000017, max=0.000331
+CPU: Avg=0.000296, min=0.000276, std=0.000017, max=0.000332
+bench_tensor_index_iterargs(16384,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.000438, min=0.000405, std=0.000023, max=0.000489
+CPU: Avg=0.000438, min=0.000405, std=0.000023, max=0.000489
+output_end
+
+== python/performance/test_performance_unstructured_mask.py ==
+start=2026-04-15T12:32:22Z
+verdict=FAIL
+exit_code=1
+real 2.77
+user 7.48
+sys 0.22
+output_begin
+<unknown>:0: error: invalid memref element type
+triton-shared-opt: /home/zxl/ruyi/buddy-mlir/llvm/mlir/include/mlir/IR/StorageUniquerSupport.h:179: static ConcreteT mlir::detail::StorageUserBase<ConcreteT, BaseT, StorageT, UniquerT, Traits>::get(mlir::MLIRContext*, Args&& ...) [with Args = {mlir::Type&, mlir::Attribute&}; ConcreteT = mlir::UnrankedMemRefType; BaseT = mlir::BaseMemRefType; StorageT = mlir::detail::UnrankedMemRefTypeStorage; UniquerT = mlir::detail::TypeUniquer; Traits = {mlir::PtrLikeTypeInterface::Trait, mlir::ShapedType::Trait}]: Assertion `succeeded( ConcreteT::verifyInvariants(getDefaultDiagnosticEmitFn(ctx), args...))' failed.
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: /tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt /tmp/tmp077waau0/tt.mlir --triton-to-linalg-experimental --mlir-print-debuginfo -o /tmp/tmp077waau0/ttshared.mlir
+Stack dump without symbol names (ensure you have llvm-symbolizer in your PATH or set the environment var `LLVM_SYMBOLIZER_PATH` to point to it):
+0  triton-shared-opt 0x00005f6aab77eb52
+1  triton-shared-opt 0x00005f6aab77b8df
+2  triton-shared-opt 0x00005f6aab77ba2c
+3  libc.so.6         0x00007dadc3245330
+4  libc.so.6         0x00007dadc329eb2c pthread_kill + 284
+5  libc.so.6         0x00007dadc324527e gsignal + 30
+6  libc.so.6         0x00007dadc32288ff abort + 223
+7  libc.so.6         0x00007dadc322881b
+8  libc.so.6         0x00007dadc323b517
+9  triton-shared-opt 0x00005f6aab66aedb
+10 triton-shared-opt 0x00005f6aab66afea
+11 triton-shared-opt 0x00005f6aa8edec36
+12 triton-shared-opt 0x00005f6aab3246ff
+13 triton-shared-opt 0x00005f6aab32df87
+14 triton-shared-opt 0x00005f6aab32efe8
+15 triton-shared-opt 0x00005f6aab380d8a
+16 triton-shared-opt 0x00005f6aab3322b8
+17 triton-shared-opt 0x00005f6aab33283e
+18 triton-shared-opt 0x00005f6aab33711c
+19 triton-shared-opt 0x00005f6aab33875a
+20 triton-shared-opt 0x00005f6aab338882
+21 triton-shared-opt 0x00005f6aa8edfb2c
+22 triton-shared-opt 0x00005f6aaaa84496
+23 triton-shared-opt 0x00005f6aaaa848c1
+24 triton-shared-opt 0x00005f6aaaa85cf8
+25 triton-shared-opt 0x00005f6aa8e75364
+26 triton-shared-opt 0x00005f6aaaa84496
+27 triton-shared-opt 0x00005f6aaaa848c1
+28 triton-shared-opt 0x00005f6aaaa85979
+29 triton-shared-opt 0x00005f6aaaa77367
+30 triton-shared-opt 0x00005f6aaaa77c86
+31 triton-shared-opt 0x00005f6aaaa77e4c
+32 triton-shared-opt 0x00005f6aab6fe5fe
+33 triton-shared-opt 0x00005f6aaaa6ffb0
+34 triton-shared-opt 0x00005f6aaaa77fb0
+35 triton-shared-opt 0x00005f6aaaa784af
+36 triton-shared-opt 0x00005f6aa885485d
+37 libc.so.6         0x00007dadc322a1ca
+38 libc.so.6         0x00007dadc322a28b __libc_start_main + 139
+39 triton-shared-opt 0x00005f6aa888e7e5
+bench_unstructured_mask(128, 192) {}, warmup=5, repeats=20, all results in seconds
+Traceback (most recent call last):
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_unstructured_mask.py", line 77, in <module>
+    bench_unstructured_mask(rows, cols)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/benchmark.py", line 52, in wrapper
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_unstructured_mask.py", line 71, in bench_unstructured_mask
+    run_unstructured_mask(rows, cols)
+  File "/home/zxl/ruyi/triton-riscv/python/performance/test_performance_unstructured_mask.py", line 56, in run_unstructured_mask
+    unstructured_mask_2d_kernel[(1,)](
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 420, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 728, in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 858, in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 319, in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 417, in <lambda>
+    stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(_ttir_to_ttsharedir(src))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/triton-venv/lib/python3.12/site-packages/triton/backends/triton_shared/compiler.py", line 87, in _ttir_to_ttsharedir
+    subprocess.check_call(subprocess_args)
+  File "/usr/lib/python3.12/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/tmp/triton/build/cmake.linux-x86_64-cpython-3.12/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt', '/tmp/tmp077waau0/tt.mlir', '--triton-to-linalg-experimental', '--mlir-print-debuginfo', '-o', '/tmp/tmp077waau0/ttshared.mlir']' died with <Signals.SIGABRT: 6>.
+output_end
+
+== python/performance/test_performance_vec_add.py ==
+start=2026-04-15T12:32:25Z
+verdict=PASS
+exit_code=0
+real 16.36
+user 18.72
+sys 3.68
+output_begin
+bench_vec_add(1048576,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.023259, min=0.022802, std=0.000895, max=0.027092
+CPU: Avg=0.023255, min=0.022803, std=0.000896, max=0.027095
+bench_vec_add(4194304,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.091795, min=0.090195, std=0.001425, max=0.096115
+CPU: Avg=0.091790, min=0.090196, std=0.001426, max=0.096117
+bench_vec_add(16777216,) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.439505, min=0.436462, std=0.001616, max=0.442424
+CPU: Avg=0.439471, min=0.436418, std=0.001599, max=0.442382
+output_end
+
+finished_at=2026-04-15T12:32:41Z
+pass=19
+fail=6
+timeout=0
+
+correction
+== python/performance/test_performance_matmul.py ==
+verdict=PASS
+exit_code=0
+real 40.14
+user 35.10
+sys 11.11
+output_begin
+bench_matmul(512, 512, 512) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.078051, min=0.075839, std=0.001575, max=0.082723
+CPU: Avg=0.078052, min=0.075840, std=0.001575, max=0.082724
+bench_matmul(640, 640, 640) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.148728, min=0.146393, std=0.002011, max=0.154060
+CPU: Avg=0.148728, min=0.146381, std=0.002013, max=0.154062
+bench_matmul(768, 768, 768) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.253725, min=0.251475, std=0.001906, max=0.258752
+CPU: Avg=0.253712, min=0.251451, std=0.001913, max=0.258745
+bench_matmul(896, 896, 896) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.397042, min=0.392775, std=0.002197, max=0.401632
+CPU: Avg=0.397031, min=0.392781, std=0.002198, max=0.401630
+bench_matmul(1024, 1024, 1024) {}, warmup=5, repeats=20, all results in seconds
+Wall: Avg=0.595859, min=0.591900, std=0.002388, max=0.602048
+CPU: Avg=0.595847, min=0.591908, std=0.002388, max=0.602051
+output_end
+corrected_pass=20
+corrected_fail=5
+corrected_timeout=0

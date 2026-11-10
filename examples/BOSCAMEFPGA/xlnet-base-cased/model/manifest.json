@@ -1,0 +1,16 @@
+{
+  "model_id": "xlnet/xlnet-base-cased",
+  "revision": "ceaa69c7bc5e512b5007106a7ccbb7daf24b2c79",
+  "files": [
+    {
+      "name": "config.json",
+      "sha256": "0fde1d9aa1bfabdd3af475ef5811a093ead6b13f443becc06f426a8dba214531",
+      "bytes": 760
+    },
+    {
+      "name": "spiece.model",
+      "sha256": "1f8c1c0bc2854d1af911a8550288c1258af5ba50277f3a5c829b98eb86fc5646",
+      "bytes": 798011
+    }
+  ]
+}

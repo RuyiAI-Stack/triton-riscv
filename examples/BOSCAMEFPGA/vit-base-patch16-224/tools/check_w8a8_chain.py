@@ -27,7 +27,7 @@ from export import ROOT, describe, digest
 CASES = (
     "quantize_1x768",
     "quantize_1000x768",
-    "matmul_i8_overwrite_1x1000x768",
+    "matmul_i8_1x1000x768",
     "dequantize_1x1000",
     "bias_add_1x1000",
     "add_1x1000",

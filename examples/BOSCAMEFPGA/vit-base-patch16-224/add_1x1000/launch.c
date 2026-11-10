@@ -11,7 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 #define R 1
 #define W 1000

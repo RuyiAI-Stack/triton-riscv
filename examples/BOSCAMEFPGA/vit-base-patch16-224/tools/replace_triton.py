@@ -26,6 +26,7 @@ from export import (  # noqa: E402
     describe,
     digest,
 )
+from model_contract import ATTENTION_PRIMITIVES, require_attention_primitive_chain  # noqa: E402
 
 
 def shape_of(op):
@@ -156,6 +157,15 @@ def load_index(directory, rejected=None):
             ):
                 raise ValueError(result.get("reason", "kernel lowering is incomplete"))
             current = describe(data["name"])
+            # The preexisting patch adapter declares its composition only in
+            # export.py's manifest; its numerical kernel is solely im2col.
+            if current["family"] == "patch_embed":
+                current["dependencies"] = [
+                    "quantize_196x768",
+                    "quantize_768x768",
+                    "matmul_i8_196x768x768",
+                    "dequantize_196x768",
+                ]
             for key in (
                 "name",
                 "family",
@@ -165,8 +175,13 @@ def load_index(directory, rejected=None):
                 "constexprs",
                 "grid",
                 "shape",
+                "composition",
+                "dependencies",
+                "implementation",
+                "quantization",
             ):
-                if data.get(key) != current[key]:
+                default = [] if key == "dependencies" else None
+                if data.get(key, default) != current.get(key, default):
                     raise ValueError("current case metadata differs at " + key)
             if data.get("accumulation") != current.get("accumulation"):
                 raise ValueError(
@@ -430,14 +445,399 @@ def match_linear(graph, op, ps):
             return None
     else:
         return None
-    cases = {
-        (197, 768, 768): "linear_197x768x768",
-        (197, 3072, 768): "linear_197x3072x768",
-        (197, 768, 3072): "linear_197x768x3072",
-        (1, 1000, 768): "linear_1x1000x768",
+    # Shape recognition is independent of retired standalone FP32 cases.
+    supported = {(197, 768, 768), (197, 3072, 768), (197, 768, 3072), (1, 1000, 768)}
+    return ((m, n, k), [left, weight]) if (m, n, k) in supported else None
+
+
+def is_matrix_op(op):
+    """Numerical matrix products must never reach the graph scalar lowerer."""
+    name = type(op).__name__.lower()
+    return (
+        "matmul" in name
+        or "bmm" in name
+        or name in {"mmop", "linearop", "addmmop", "baddbmmop"}
+    ) and type(op).__name__ != "CallExternalOp"
+
+
+def _head_shape(node):
+    shape = shape_of(node) or []
+    return shape[1:] if len(shape) == 4 and shape[0] == 1 else shape
+
+
+def match_attention(graph, op):
+    """Match the existing public QK/PV layout and consume the QK scale once.
+
+    Both rank-3 decomposed bmm and rank-4 matmul graphs are supported. QK is
+    anchored at the explicit multiply by 0.125: replacing the unscaled product
+    itself would cause the dequantizer and the graph to scale it twice.
+    """
+    ps = parents(graph, op)
+    shape = _head_shape(op)
+    if is_matrix_op(op) and shape == [12, 197, 64] and len(ps) == 2:
+        if [_head_shape(p) for p in ps] == [[12, 197, 197], [12, 197, 64]]:
+            return {
+                "shape": [12, 197, 64, 197],
+                "family": "attention_pv",
+                "operands": ps,
+                "interior": [],
+            }
+    if type(op).__name__ != "MulOp" or shape != [12, 197, 197]:
+        return None
+    scalars = [arg for arg in op.args if isinstance(arg, (int, float))]
+    if len(ps) != 1 or scalars != [0.125]:
+        return None
+    producer, consumer, views = ps[0], op, []
+    while type(producer).__name__ in ("ViewOp", "ReshapeOp"):
+        upstream = parents(graph, producer)
+        if (
+            _head_shape(producer) != [12, 197, 197]
+            or len(upstream) != 1
+            or set(producer._children) != {consumer.name}
+        ):
+            return None
+        views.append(producer)
+        consumer, producer = producer, upstream[0]
+    operands = parents(graph, producer)
+    if (
+        not is_matrix_op(producer)
+        or _head_shape(producer) != [12, 197, 197]
+        or set(producer._children) != {consumer.name}
+        or len(operands) != 2
+        or [_head_shape(p) for p in operands] != [[12, 197, 64], [12, 64, 197]]
+    ):
+        return None
+    return {
+        "shape": [12, 197, 197, 64],
+        "family": "attention_qk",
+        "operands": operands,
+        "interior": [producer, *reversed(views)],
     }
-    case = cases.get((m, n, k))
-    return (case, [left, weight]) if case else None
+
+
+def install_numerical_call(graph, op, operands, symbol, interior=()):
+    """Install a shape-matched external call and prune its exclusive interior."""
+    from buddy.compiler.graph.operation import CallExternalOp, OpType
+
+    call = CallExternalOp(
+        call_func_name=symbol,
+        args=[operand.name for operand in operands],
+        args_index=[0] * len(operands),
+        tensor_meta=dict(op.tensor_meta),
+        name=op.name,
+    )
+    graph.displace_node(op, call)
+    call._op_type = OpType.Unfusable
+    old_parents = list(getattr(call, "_parents", []) or [])
+    call._parents = []
+    for operand in operands:
+        call.add_parent(operand.name)
+        if call.name not in operand._children:
+            operand.add_children(call.name)
+    for old_name in old_parents:
+        if old_name not in [operand.name for operand in operands]:
+            producer = graph.node_table.get(old_name)
+            if producer is not None and call.name in producer._children:
+                producer._children.remove(call.name)
+    call._arguments = [operand.name for operand in operands]
+    call._args_index = [0] * len(operands)
+    for candidate in reversed(interior):
+        if candidate.name in graph.node_table and not candidate._children:
+            delete_detached(graph, candidate)
+    return call
+
+
+def audit_matrix_routes(graph, calls, report):
+    """Reject incomplete/partial rewrites before any production IR is emitted."""
+    remaining = [
+        {"node": node.name, "op_type": type(node).__name__, "shape": shape_of(node)}
+        for node in graph.body
+        if is_matrix_op(node)
+    ]
+    report["residual_matrix_products"] = remaining
+    report["matrix_routes"] = {
+        "dense_w8a8": report.get("w8a8_linear_count", 0),
+        "qk_w8a8": sum(
+            chain.get("family") == "attention_qk"
+            for chain in report.get("attention_expansions", [])
+        ),
+        "pv_w8a8": sum(
+            chain.get("family") == "attention_pv"
+            for chain in report.get("attention_expansions", [])
+        ),
+        "patch_w8a8": sum(call.get("family") == "patch_embed" for call in calls),
+    }
+    if remaining:
+        raise ValueError(
+            "production graph contains residual matrix products: "
+            + ", ".join(item["node"] for item in remaining)
+        )
+    for chain in report.get("attention_expansions", []):
+        require_attention_primitive_chain(chain, calls)
+    if any(
+        call["case"]["name"].startswith(("attention_qk_", "attention_pv_"))
+        for call in calls
+    ):
+        raise ValueError("retired attention executable in model graph")
+
+
+def rewrite_attention_to_primitives(graph, index, calls, report):
+    """Expand each shape-matched attention into 49 actual graph call nodes.
+
+    Scratch buffers belong to this invocation's caller-owned workspace. Each
+    attention site owns its buffers; its twelve heads reuse them sequentially.
+    Descriptor views select heads. The only data rearrangement is performed by
+    the compiled pack/unpack primitives, required by the 197*197 head stride.
+    """
+    from buddy.compiler.graph import TensorDType
+    from buddy.compiler.graph.operation import CallExternalOp, PlaceholderOp
+
+    params_before, inputs_before = list(graph.params), list(graph.inputs)
+    added, matched = [], 0
+    for op in list(graph.body):
+        if op.name not in graph.node_table:
+            continue
+        match = match_attention(graph, op)
+        if match is None:
+            continue
+        family = match["family"]
+        names = ATTENTION_PRIMITIVES[family]
+        missing = [name for name in names if name not in index]
+        if missing:
+            report.setdefault("uncovered", []).append(
+                {
+                    "node": op.name,
+                    "kind": "attention-primitives",
+                    "reason": "no built primitive(s): " + ", ".join(missing),
+                }
+            )
+            continue
+        qcase, tcase, mcase, dcase, layout = [index[name] for name in names]
+        if (
+            mcase.get("family") != "matmul_i8"
+            or mcase.get("accumulation") != "overwrite"
+        ):
+            raise ValueError("attention requires signed-i8 overwrite matmul")
+        factor = 0.125 if family == "attention_qk" else 1.0
+        if (
+            dcase.get("output_factor") != factor
+            or dcase.get("constexprs", {}).get("FACTOR") != factor
+        ):
+            raise ValueError(
+                "attention dequantizer has the wrong single-use scale factor"
+            )
+        qk = family == "attention_qk"
+        n, k = (197, 64) if qk else (64, 197)
+        prefix = "w8a8_attention_" + re.sub(r"[^A-Za-z0-9_]", "_", op.name)
+        a, b = match["operands"]
+        workspaces = {}
+        for suffix, shape, dtype, role in (
+            ("q", [197, k], TensorDType.Int8, "attention_quantized_left"),
+            ("t", [n, k], TensorDType.Int8, "attention_quantized_right_transposed"),
+            ("row", [197], TensorDType.Float32, "attention_row_scale"),
+            ("column", [n], TensorDType.Float32, "attention_column_scale"),
+            ("acc", [197, n], TensorDType.Int32, "attention_overwrite_accumulator"),
+            (
+                "padded",
+                [12, 38816],
+                TensorDType.Float32,
+                "attention_aligned_head_staging",
+            ),
+            ("out", shape_of(op), TensorDType.Float32, "kernel_output"),
+        ):
+            node = _new_node(
+                graph,
+                PlaceholderOp,
+                prefix + "_" + suffix,
+                [],
+                shape,
+                dtype,
+                before=_input_anchor(graph),
+            )
+            node.workspace_role = role
+            workspaces[suffix] = node
+            added.append(node)
+        chain = {
+            "id": prefix,
+            "node": op.name,
+            "family": family,
+            "shape": match["shape"],
+            "implementation": "model_primitives_w8a8",
+            "quantization": "symmetric_i8",
+            "qk_factor": factor,
+            "inputs": [a.name, b.name],
+            "input_shapes": [shape_of(a), shape_of(b)],
+            "result": workspaces["out"].name,
+            "result_shape": shape_of(op),
+            "buffers": {key: value.name for key, value in workspaces.items()},
+            "workspace": [workspace_record(node) for node in workspaces.values()],
+            "workspace_alignment": 64,
+            "workspace_lifetime": "caller-owned for complete model invocation; sequential per-head scratch reuse",
+            "call_symbols": [],
+        }
+        chain["roots"] = [
+            dict(workspace_record(value), alignment=64)
+            for value in (a, b, *workspaces.values())
+        ]
+
+        def emit(case, operands, offsets, stage, head, destinations):
+            symbol = prefix + (
+                "_layout" if head is None else f"_head_{head:02d}_{stage}"
+            )
+            node = CallExternalOp(
+                call_func_name=symbol,
+                args=[value.name for value in operands],
+                args_index=[0] * len(operands),
+                tensor_meta={},
+                name=symbol,
+                written_args=list(destinations),
+            )
+            graph.node_table[symbol] = node
+            graph.body.insert(graph.body.index(op), node)
+            for position, operand in enumerate(operands):
+                if position not in destinations:
+                    node.add_parent(operand.name)
+                    operand.add_children(symbol)
+            views = [
+                {
+                    "root": operand.name,
+                    "dtype": argument["dtype"],
+                    "element_offset": offset,
+                    "shape": list(shape),
+                }
+                for operand, argument, offset, shape in zip(
+                    operands, case["arguments"], offsets, argument_shapes(case)
+                )
+            ]
+            calls.append(
+                {
+                    "symbol": symbol,
+                    "node": symbol,
+                    "case": case,
+                    "family": "attention_primitive",
+                    "attention_id": prefix,
+                    "attention_family": family,
+                    "stage": stage,
+                    "head": head,
+                    "void": True,
+                    "graph_ranks": [len(shape_of(value)) for value in operands],
+                    "graph_shapes": [shape_of(value) for value in operands],
+                    "operands": list(operands),
+                    "views": views,
+                    "destination_indices": list(destinations),
+                    "result_rank": 0,
+                    "result_shape": None,
+                    "storage": None,
+                }
+            )
+            chain["call_symbols"].append(symbol)
+
+        if not qk:
+            emit(layout, [a, workspaces["padded"]], [0, 0], "pack", None, (1,))
+        for head in range(12):
+            left = a if qk else workspaces["padded"]
+            emit(
+                qcase,
+                [left, workspaces["q"], workspaces["row"]],
+                [head * (12608 if qk else 38816), 0, 0],
+                "quantize_left",
+                head,
+                (1, 2),
+            )
+            emit(
+                tcase,
+                [b, workspaces["t"], workspaces["column"]],
+                [head * 12608, 0, 0],
+                "quantize_right_transpose",
+                head,
+                (1, 2),
+            )
+            emit(
+                mcase,
+                [workspaces["q"], workspaces["t"], workspaces["acc"]],
+                [0, 0, 0],
+                "matmul",
+                head,
+                (2,),
+            )
+            out = workspaces["padded"] if qk else workspaces["out"]
+            emit(
+                dcase,
+                [workspaces["acc"], workspaces["row"], workspaces["column"], out],
+                [0, 0, 0, head * (38816 if qk else 12608)],
+                "dequantize",
+                head,
+                (3,),
+            )
+        if qk:
+            emit(
+                layout,
+                [workspaces["padded"], workspaces["out"]],
+                [0, 0],
+                "unpack",
+                None,
+                (1,),
+            )
+        result = workspaces["out"]
+        for child in children_of(graph, op):
+            child._arguments = [
+                result.name if arg == op.name else arg for arg in child.args
+            ]
+            child._parents[:] = [
+                result.name if parent == op.name else parent
+                for parent in child._parents
+            ]
+            result.add_children(child.name)
+        graph.delete_node(op, parents(graph, op))
+        for candidate in reversed(match["interior"]):
+            if candidate.name in graph.node_table and not candidate._children:
+                delete_detached(graph, candidate)
+        require_attention_primitive_chain(chain, calls)
+        report.setdefault("attention_expansions", []).append(chain)
+        matched += 1
+    _reindex(graph, params_before, inputs_before + added)
+    report.setdefault("attention_workspace_inputs", []).extend(
+        workspace_record(node) for node in added
+    )
+    return matched
+
+
+def attention_call_manifest(calls, report):
+    """Persist the actual generated graph calls and descriptor bindings."""
+    result = []
+    for call in calls:
+        if call.get("family") != "attention_primitive":
+            continue
+        entry = {
+            key: call[key]
+            for key in (
+                "symbol",
+                "node",
+                "family",
+                "attention_id",
+                "attention_family",
+                "stage",
+                "head",
+                "void",
+                "graph_ranks",
+                "graph_shapes",
+                "views",
+                "destination_indices",
+            )
+        }
+        entry["case"] = call["case"]["name"]
+        entry["adapter_symbol"] = "_mlir_ciface_" + call["symbol"]
+        entry["kernel_symbol"] = call["case"]["adapter_entry"]
+        entry["operands"] = [value.name for value in call["operands"]]
+        result.append(entry)
+    return {
+        "schema": 1,
+        "implementation": "model_primitives_w8a8",
+        "chains": report.get("attention_expansions", []),
+        "calls": result,
+        "numerical_execution": False,
+        "full_model_executed": False,
+    }
 
 
 def _w8a8_case(index, prefix, rows, cols):
@@ -449,12 +849,15 @@ def _w8a8_case(index, prefix, rows, cols):
         candidates = [f"dequantize_{rows}x{cols}"]
     elif prefix == "matmul":
         candidates = [
-            f"matmul_i8_overwrite_{rows[0]}x{rows[1]}x{rows[2]}",
+            f"matmul_i8_{rows[0]}x{rows[1]}x{rows[2]}",
         ]
     for name in candidates:
         case = index.get(name)
         if case is not None:
-            if prefix == "matmul" and case.get("accumulation") != "overwrite":
+            if prefix == "matmul" and (
+                case.get("family") != "matmul_i8"
+                or case.get("accumulation") != "overwrite"
+            ):
                 continue
             return case
     return None
@@ -465,8 +868,8 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
 
     The graph receives int8 weight/scale parameters and caller-owned workspace
     descriptors.  External calls are void: each destination is an explicit
-    argument, which prevents one-shot-bufferize from inserting a copy around
-    the AME accumulator.  A dedicated compiled overwrite kernel carries its
+    argument. The model-owned workspace materializer preserves mutable memref
+    roots through one-shot-bufferization. A compiled overwrite kernel carries its
     own zero initial value and never reads the old accumulator workspace.
     """
     from buddy.compiler.graph import TensorDType
@@ -477,6 +880,14 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
     report.setdefault("original_parameters", [p.name for p in params_before])
     added_params, added_inputs = [], []
     matched = 0
+    # The eager graph duplicates the same identity flatten once per qkv branch
+    # (view_1/view_3/view_5, view_23/view_25/view_27, ...).  They are one SSA
+    # value: Buddy emits one tosa.reshape per ViewOp and bufferization CSE
+    # legitimately collapses the identical reshapes into one buffer.  The
+    # captured call contract must name that survivor, so reuse a single
+    # canonical ViewOp per (source, shape, dtype) instead of recording operand
+    # names that only differ by node identity the later CSE deletes.
+    canonical_views = {}
     for op in list(graph.body):
         if type(op).__name__ not in ("MatmulOp", "MmOp", "LinearOp"):
             continue
@@ -486,7 +897,7 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
         found = match_linear(graph, op, ps)
         if found is None:
             continue
-        fp32_case, operands = found
+        linear_shape, operands = found
         activation, weight = operands
         a_shape, w_shape, out_shape = (
             shape_of(activation),
@@ -504,7 +915,7 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
             name
             for name, case in (
                 (f"quantize_{rows}x{k}", qcase),
-                (f"matmul_i8_overwrite_{rows}x{n}x{k}", mcase),
+                (f"matmul_i8_{rows}x{n}x{k}", mcase),
                 (f"dequantize_{rows}x{n}", dcase),
             )
             if case is None
@@ -519,6 +930,32 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
                 }
             )
             continue
+
+        # A ViewOp is a pure identity reshape: equal source and equal result
+        # shape/dtype means equal value.  Reuse one representative so the
+        # captured operand root is the SSA value bufferization keeps; the
+        # readonly-activation audit then compares real roots, not names that
+        # canonicalize/CSE has already merged.
+        if type(activation).__name__ == "ViewOp":
+            (view_source,) = parents(graph, activation)
+            canonical = canonical_views.setdefault(
+                (
+                    view_source.name,
+                    tuple(shape_of(activation) or []),
+                    dtype_of(activation),
+                ),
+                activation,
+            )
+            if canonical is not activation:
+                report.setdefault("deduplicated_views", []).append(
+                    {
+                        "node": activation.name,
+                        "canonical": canonical.name,
+                        "source": view_source.name,
+                        "shape": list(shape_of(activation) or []),
+                    }
+                )
+                operands[0] = activation = canonical
 
         # Add quantised weights/scales as parameters immediately before the
         # first input placeholder.  Their names are stable for the image
@@ -602,6 +1039,7 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
                     "case": case,
                     "family": "w8a8",
                     "void": True,
+                    "destination_indices": list(destination_indices),
                     "graph_ranks": [len(shape_of(x) or []) for x in operands],
                     "graph_shapes": [shape_of(x) for x in operands],
                     "result_rank": 0,
@@ -646,7 +1084,7 @@ def rewrite_linears_to_w8a8(graph, index, calls, report, only=None):
                 "rows": rows,
                 "n": n,
                 "k": k,
-                "fp32_case": fp32_case,
+                "linear_shape": list(linear_shape),
                 "cases": [qcase["name"], mcase["name"], dcase["name"]],
                 "weight_param": weight.name,
                 "weight_param_name": w8.name,
@@ -679,7 +1117,7 @@ def result_descriptor(lines, rank, shape, name):
     lines.append("}")
 
 
-def normalized_arguments(lines, case, source_names, source_shapes):
+def normalized_arguments(lines, case, source_names, source_shapes, views=None):
     """Adapt only contiguous leading-unit batch dimensions, never C layouts.
 
     MemRefN stores N sizes before N strides, so casting between descriptor
@@ -689,6 +1127,8 @@ def normalized_arguments(lines, case, source_names, source_shapes):
     shapes = argument_shapes(case)
     if len(source_names) != len(shapes) or len(source_shapes) != len(shapes):
         raise ValueError("incomplete graph argument shapes for " + case["name"])
+    if views is not None and len(views) != len(shapes):
+        raise ValueError("incomplete descriptor views for " + case["name"])
     references = []
     pointers = []
     for index, (source, original, target, argument) in enumerate(
@@ -698,7 +1138,20 @@ def normalized_arguments(lines, case, source_names, source_shapes):
             raise ValueError("missing graph argument shape for " + case["name"])
         original, target = tuple(original), tuple(target)
         low, high = sorted((original, target), key=len)
-        if high != (1,) * (len(high) - len(low)) + low:
+        view = views[index] if views is not None else None
+        delta = 0
+        if view is not None:
+            delta = view.get("element_offset")
+            if (
+                type(delta) is not int
+                or delta < 0
+                or tuple(view.get("shape", [])) != target
+                or delta + math.prod(target) > math.prod(original)
+            ):
+                raise ValueError(
+                    "invalid bounded dense descriptor view for " + case["name"]
+                )
+        elif high != (1,) * (len(high) - len(low)) + low:
             raise ValueError(
                 "only leading-unit batch rank changes are legal: "
                 + str(original)
@@ -728,6 +1181,11 @@ def normalized_arguments(lines, case, source_names, source_shapes):
         lines.append(
             f"  uintptr_t {pointer} = (uintptr_t){source}->aligned + (uint64_t){source}->offset * {size};"
         )
+        if delta:
+            lines.append(
+                f"  if ({pointer} > UINTPTR_MAX - {delta * size}) __builtin_trap();"
+            )
+            lines.append(f"  {pointer} += {delta * size};")
         lines.append(
             f"  if (!{pointer} || ({pointer} & 63u) || {pointer} > UINTPTR_MAX - {length}) __builtin_trap();"
         )
@@ -744,8 +1202,13 @@ def normalized_arguments(lines, case, source_names, source_shapes):
         if len(target) != rank:
             raise ValueError("kernel argument rank/shape disagreement")
         descriptor = f"case_arg_{index}"
+        address = (
+            f"(void *){pointer}, 0"
+            if view is not None
+            else f"{source}->aligned, {source}->offset"
+        )
         lines.append(
-            f"  MemRef{rank} {descriptor} = {{{source}->allocated, {source}->aligned, {source}->offset, "
+            f"  MemRef{rank} {descriptor} = {{{source}->allocated, {address}, "
             + "{"
             + ", ".join(map(str, target))
             + "}, {"
@@ -814,6 +1277,7 @@ def generate_adapters(calls, output):
                 case,
                 [f"a{i}" for i in range(len(graph_ranks))],
                 call["graph_shapes"],
+                call.get("views"),
             )
             # Pure-product initialization belongs to the compiled overwrite
             # kernel; this ABI bridge never clears or reads the C workspace.
@@ -938,24 +1402,17 @@ def main():
     parser.add_argument("--assets", type=Path)
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--output", type=Path, required=True)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
+    parser.add_argument(
         "--w8a8",
         action="store_true",
         default=True,
         help="default: replace every FP32 linear with quantize -> int8 AME matmul -> dequantize",
     )
-    mode.add_argument(
-        "--fp32-reference",
-        dest="w8a8",
-        action="store_false",
-        help="explicit floating-point dense reference; patch projection stays W8A8",
-    )
     parser.add_argument(
         "--w8a8-only",
         action="append",
         default=None,
-        help="restrict W8A8 rewrite to selected Matmul node names",
+        help="diagnostic only: restrict rewrite; residual products cannot emit production IR",
     )
     parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
@@ -981,6 +1438,10 @@ def main():
         "graphs": {},
         "status": "NO_MATCHES",
         "w8a8_enabled": bool(args.w8a8),
+        "matrix_multiply_policy": "quantize -> signed i8 AME overwrite -> dequantize",
+        "full_model_executed": False,
+        "workspace_buffer_policy": "caller-owned unique mutable memref roots; readonly tensor bridges; single final output tensor view",
+        "workspace_buffer_policy_version": 1,
     }
     calls = []
     # Import the real graph, rather than fabricating MLIR from raw JSON.
@@ -988,11 +1449,7 @@ def main():
         import torch
         from buddy.compiler.frontend import DynamoCompiler
         from buddy.compiler.graph import GraphDriver
-        from buddy.compiler.graph.operation import (
-            CallExternalOp,
-            OpType,
-            PlaceholderOp,
-        )
+        from buddy.compiler.graph.operation import PlaceholderOp
         from buddy.compiler.graph.type import DeviceType
         from buddy.compiler.ops import tosa
 
@@ -1022,6 +1479,7 @@ def main():
         # Matmul is consumed by this pass and replaced by three void calls.
         if args.w8a8:
             rewrite_linears_to_w8a8(graph, index, calls, report, only=args.w8a8_only)
+        rewrite_attention_to_primitives(graph, index, calls, report)
         for op in list(graph.body):
             # A previous pattern (currently scaled QK) may prune producers
             # while this stable snapshot is being visited.
@@ -1039,16 +1497,9 @@ def main():
             operands = None
             family = None
             interior = []
-            # In full W8A8 mode, leave an uncovered linear in the graph so the
-            # coverage report and --require-complete fail loudly when a
-            # quantize/matmul_i8/dequantize specialization is missing.  The
-            # diagnostic --w8a8-only mode intentionally permits the remaining
-            # linears to use their FP32 external kernels.
-            if (
-                args.w8a8
-                and args.w8a8_only is None
-                and typ in ("MatmulOp", "MmOp", "LinearOp")
-            ):
+            # Dense matching is rank-2 only. Attention may also be exposed as
+            # MatmulOp and must reach its own shape/dataflow matcher below.
+            if typ in ("MatmulOp", "MmOp", "LinearOp") and len(shape) == 2:
                 continue
             # Patch projection: Conv2d(3,768,16,16,stride=16).  The
             # Triton case writes NCHW directly, so subsequent flatten/transpose
@@ -1064,61 +1515,11 @@ def main():
                     case_name = "patch_embed_196x768"
                     family = "patch_embed"
                     operands = patch_inputs[:3]
-            # 2-D (or flattened batch) linear projections.
-            if "Matmul" in typ or typ in ("MmOp", "LinearOp"):
-                linear = match_linear(graph, op, ps)
-                if linear is not None:
-                    case_name, operands = linear
-                    family = "linear"
-            # Dynamo's decomposition emits BatchMatmulOp with rank-3 head
-            # tensors (the leading batch dimension is folded into HEADS).
-            # Match the PV product directly; QK is matched below at its
-            # explicit 1/sqrt(head_dim) scale so the Triton kernel owns that
-            # numerical factor exactly once.
-            if case_name is None and typ == "BatchMatmulOp" and len(shape) == 3:
-                if shape == [12, 197, 64] and len(ps) >= 2:
-                    case_name = "attention_pv_12x197x64x197"
-                    family = "attention_pv"
-                    operands = ps[:2]
-                elif shape == [12, 197, 197]:
-                    # The unscaled QK producer is consumed by a scalar 0.125
-                    # MulOp. Leave it for that consumer to replace below.
-                    pass
-            if (
-                case_name is None
-                and typ == "MulOp"
-                and shape in ([12, 197, 197], [1, 12, 197, 197])
-            ):
-                scalar = op.args[1] if len(op.args) == 2 else None
-                if isinstance(scalar, (int, float)) and math.isclose(
-                    float(scalar), 0.125
-                ):
-                    scaled_view = ps[0] if ps else None
-                    qk = (
-                        parents(graph, scaled_view)[0]
-                        if scaled_view is not None and parents(graph, scaled_view)
-                        else None
-                    )
-                    qk_parents = parents(graph, qk) if qk is not None else []
-                    if (
-                        qk is not None
-                        and type(qk).__name__ == "BatchMatmulOp"
-                        and shape_of(qk) == [12, 197, 197]
-                        and len(qk_parents) >= 2
-                    ):
-                        case_name = "attention_qk_12x197x197x64"
-                        family = "attention_qk"
-                        operands = qk_parents[:2]
-            # Explicit attention from TraceableViT: rank-4 batch head tensors.
-            if case_name is None and "Matmul" in typ and len(shape) == 4:
-                if shape[-2:] == [197, 197]:
-                    case_name = "attention_qk_12x197x197x64"
-                    family = "attention_qk"
-                elif shape[-2:] == [197, 64]:
-                    case_name = "attention_pv_12x197x64x197"
-                    family = "attention_pv"
-                if case_name and len(ps) >= 2:
-                    operands = ps[:2]
+            attention = match_attention(graph, op) if case_name is None else None
+            if attention is not None:
+                # Missing primitive builds were recorded by the expansion
+                # pass. Never substitute an executable attention case here.
+                continue
             if case_name is None and "Softmax" in typ and shape[-2:] == [197, 197]:
                 case_name = "softmax_12x197x197"
                 family = "softmax"
@@ -1228,68 +1629,13 @@ def main():
             ):
                 continue
             symbol = "vit_graph_" + re.sub(r"[^A-Za-z0-9_]", "_", op.name)
-            call = CallExternalOp(
-                call_func_name=symbol,
-                args=[p.name for p in operands],
-                args_index=[0] * len(operands),
-                tensor_meta=(
-                    dict(op.tensor_meta)
-                    if isinstance(getattr(op, "tensor_meta", None), dict)
-                    else {"shape": shape, "dtype": dtype_of(op)}
-                ),
-                name=op.name,
+            call = install_numerical_call(
+                graph,
+                op,
+                operands,
+                symbol,
+                interior if family == "attention_qk" else (),
             )
-            graph.displace_node(op, call)
-            call._op_type = OpType.Unfusable
-            # displace_node preserves the old producer list; retarget it to the
-            # physical tensors selected above (especially transposed weights).
-            old_parents = list(getattr(call, "_parents", []) or [])
-            call._parents = []
-            for operand in operands:
-                call.add_parent(operand.name)
-                if call.name not in operand._children:
-                    operand.add_children(call.name)
-            for old_name in old_parents:
-                if old_name not in [p.name for p in operands]:
-                    producer = graph.node_table.get(old_name)
-                    if producer is not None and call.name in producer._children:
-                        producer._children.remove(call.name)
-            call._arguments = [p.name for p in operands]
-            call._args_index = [0] * len(operands)
-            # The original Matmul consumed weight.T.  After the external
-            # call consumes the physical weight, that PermuteOp is dead.  If
-            # it stays in graph.body, GraphDriver treats its old dependency
-            # as another subgraph input and duplicates every linear weight
-            # in @vit's ABI.
-            if family == "linear":
-                transposed_weight = ps[1]
-                if transposed_weight.name in graph.node_table and not getattr(
-                    transposed_weight, "_children", None
-                ):
-                    graph.delete_node(
-                        transposed_weight, parents(graph, transposed_weight)
-                    )
-            # QK replacement is anchored on the scaled rank-4 consumer, so
-            # remove the now-dead view and unscaled BatchMatmul producer after
-            # retargeting the call to their physical Q/K operands.
-            if family == "attention_qk":
-                dead = [p for p in ps if p.name in graph.node_table]
-                for candidate in dead:
-                    if candidate is call or candidate.name not in graph.node_table:
-                        continue
-                    if (
-                        getattr(candidate, "_children", None)
-                        and type(candidate).__name__ != "ViewOp"
-                    ):
-                        continue
-                    delete_detached(graph, candidate)
-                for producer in list(graph.body):
-                    if type(producer).__name__ != "BatchMatmulOp":
-                        continue
-                    if shape_of(producer) != [12, 197, 197]:
-                        continue
-                    if not getattr(producer, "_children", None):
-                        delete_detached(graph, producer)
             # Remove the decomposed LayerNorm arithmetic once its source,
             # affine weight and bias have been retargeted to the Triton call.
             if family == "layernorm":
@@ -1337,26 +1683,6 @@ def main():
                     "operands": [p.name for p in operands],
                 }
             )
-        # QK replacement is anchored on the scaled MulOp.  Some Buddy graph
-        # versions retain the old BatchMatmul -> View reverse chain even after
-        # that consumer is displaced; remove that provably dead chain here.
-        for stale in list(graph.body):
-            if type(stale).__name__ != "BatchMatmulOp" or shape_of(stale) != [
-                12,
-                197,
-                197,
-            ]:
-                continue
-            children = [
-                graph.node_table[n]
-                for n in getattr(stale, "_children", [])
-                if n in graph.node_table
-            ]
-            if children and all(type(child).__name__ == "ViewOp" for child in children):
-                for child in children:
-                    delete_detached(graph, child)
-            if stale.name in graph.node_table and not getattr(stale, "_children", None):
-                delete_detached(graph, stale)
         if args.w8a8:
             before_params = list(graph.params)
             before_inputs = list(graph.inputs)
@@ -1399,18 +1725,58 @@ def main():
         report["uncovered"] = [
             entry for entry in report["uncovered"] if entry["node"] in graph.node_table
         ]
+        audit_matrix_routes(graph, calls, report)
         graph.op_groups = {
             "vit": [op for op in graph.body if not isinstance(op, PlaceholderOp)]
         }
         graph.group_map_device = {"vit": DeviceType.CPU}
+        from model_buffers import (
+            materialize_workspace_buffers,
+            normalize_wrapper_workspace_abi,
+            unique_subgraph_inputs,
+        )
+
         driver = GraphDriver(graph)
+        unique_subgraph_inputs(driver)
         driver.subgraphs[0].lower_to_top_level_ir()
-        (args.output / "subgraph0.triton.mlir").write_text(
-            str(driver.subgraphs[0]._imported_module)
+        raw_ir = str(driver.subgraphs[0]._imported_module)
+        (args.output / "subgraph0.tensor.mlir").write_text(raw_ir)
+        workspace_names = {
+            node.name for node in graph.inputs if hasattr(node, "workspace_role")
+        }
+        calls.sort(
+            key=lambda call: next(
+                index
+                for index, node in enumerate(graph.body)
+                if node.name == call["node"]
+            )
         )
-        (args.output / "forward.triton.mlir").write_text(
-            str(driver.construct_main_graph(True))
+        buffered_ir, buffer_report = materialize_workspace_buffers(
+            raw_ir, "vit", driver._subgraphs_inputs["vit"], workspace_names, calls
         )
+        (args.output / "subgraph0.triton.mlir").write_text(buffered_ir)
+        (args.output / "workspace-buffers.json").write_text(
+            json.dumps(buffer_report, indent=2) + "\n"
+        )
+        report["workspace_buffer_contract"] = {
+            "file": "workspace-buffers.json",
+            "sha256": digest(args.output / "workspace-buffers.json"),
+        }
+        main_ir, wrapper_report = normalize_wrapper_workspace_abi(
+            str(driver.construct_main_graph(True)),
+            "vit",
+            driver._subgraphs_inputs["vit"],
+            workspace_names,
+        )
+        buffer_report["wrapper_abi"] = wrapper_report
+        (args.output / "workspace-buffers.json").write_text(
+            json.dumps(buffer_report, indent=2) + "\n"
+        )
+        report["workspace_buffer_contract"]["sha256"] = digest(
+            args.output / "workspace-buffers.json"
+        )
+        (args.output / "forward.triton.mlir").write_text(main_ir)
+        report["graph_mlir_compiled"] = True
         report["graphs"]["forward"] = {
             "ops_after": len(graph.body),
             "external_calls": len(calls),
@@ -1432,7 +1798,7 @@ def main():
         # The generic matcher records replacement metadata as it walks the
         # graph, while W8A8 emits three void calls per linear before that walk.
         # Rebuild one canonical, ordinal-ordered list so the UART trace
-        # summarizer can validate all 391 adapter boundaries.
+        # summarizer can validate all 1543 adapter boundaries.
         previous = {entry.get("symbol"): entry for entry in report.get("replaced", [])}
         records = []
         for ordinal, call in enumerate(calls, 1):
@@ -1444,8 +1810,17 @@ def main():
                     "symbol": call["symbol"],
                     "case": call["case"]["name"],
                     "family": call.get("family"),
+                    "implementation": call["case"].get(
+                        "implementation",
+                        call["case"].get(
+                            "composition",
+                            call["case"].get("accumulation", "emitted-kernel"),
+                        ),
+                    ),
                 }
             )
+            if call["case"].get("quantization"):
+                record["quantization"] = call["case"]["quantization"]
             if call.get("void"):
                 record.update(
                     {
@@ -1454,16 +1829,39 @@ def main():
                         "operands": [
                             operand.name for operand in call.get("operands", [])
                         ],
+                        "destination_indices": call["destination_indices"],
+                    }
+                )
+            if call.get("family") == "attention_primitive":
+                record.update(
+                    {
+                        key: call[key]
+                        for key in (
+                            "attention_id",
+                            "attention_family",
+                            "stage",
+                            "head",
+                            "views",
+                            "destination_indices",
+                        )
                     }
                 )
             records.append(record)
         report["replaced"] = records
         generate_adapters(calls, args.output / "vit_triton_adapters.c")
+        manifest_path = args.output / "attention-primitive-calls.json"
+        manifest = attention_call_manifest(calls, report)
+        manifest["adapter_sha256"] = digest(args.output / "vit_triton_adapters.c")
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        report["attention_primitive_manifest"] = {
+            "file": manifest_path.name,
+            "sha256": digest(manifest_path),
+        }
     else:
         (args.output / "vit_triton_adapters.c").write_text(
             "/* no graph calls were replaced */\n"
         )
-    if args.w8a8 and args.w8a8_only is None and report.get("w8a8_linear_count") != 73:
+    if args.w8a8 and report.get("w8a8_linear_count") != 73:
         report["uncovered"].append(
             {
                 "node": "model_dense_coverage",
@@ -1471,6 +1869,20 @@ def main():
                 "actual": report.get("w8a8_linear_count", 0),
             }
         )
+    for family in ("attention_qk", "attention_pv"):
+        actual = sum(
+            chain.get("family") == family
+            for chain in report.get("attention_expansions", [])
+        )
+        if actual != 12:
+            report["uncovered"].append(
+                {
+                    "node": "model_" + family + "_coverage",
+                    "actual": actual,
+                    "reason": "production model requires exactly 12 explicit primitive expansions for "
+                    + family,
+                }
+            )
     report["status"] = (
         "CAPTURE_FAILED"
         if report.get("capture_error")
@@ -1480,6 +1892,7 @@ def main():
         if calls
         else "NO_MATCHES"
     )
+    report["production_ready"] = report["status"] == "PASS"
     report["distinct_cases"] = sorted({c["case"]["name"] for c in calls})
     report["adapter"] = str(args.output / "vit_triton_adapters.c")
     report["operator_trace"] = {

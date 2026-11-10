@@ -12,52 +12,21 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Locations
-# ---------------------------------------------------------------------------
+_TRITON_RISCV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-TRITON_RISCV_DIR="${TRITON_RISCV_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-TRITON_DIR="${TRITON_DIR:-${TRITON_RISCV_DIR}/triton}"
-TRITON_VENV="${TRITON_VENV:-${CONDA_PREFIX:-${TRITON_RISCV_DIR}/.venv}}"
+# The LLVM build scripts/setup.sh downloads, which the Triton build links against.
+export LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"
 
-# The toolchains scripts/build.sh downloads.
-LLVM_SYSPATH="${LLVM_SYSPATH:-${TRITON_RISCV_DIR}/.cache/llvm}"
-LLVM_BINARY_DIR="${LLVM_BINARY_DIR:-${LLVM_SYSPATH}/bin}"
-BUDDY_MLIR_BINARY_DIR="${BUDDY_MLIR_BINARY_DIR:-${TRITON_RISCV_DIR}/.cache/buddy/bin}"
-
-# ---------------------------------------------------------------------------
 # Build time
 # ---------------------------------------------------------------------------
 
-# Upstream Triton downloads host-specific GPU toolchains that riscv64 has no
-# builds for; disable them for every build started from this shell.
-# shellcheck source=scripts/_gpu-stub-env.sh
-source "${TRITON_RISCV_DIR}/scripts/_gpu-stub-env.sh" "${TRITON_RISCV_DIR}/.cache/gpu-deps-stub"
-# Triton's plugin support, which packages backend/ as
-# triton.backends.triton_shared and builds the C++ plugin into libtriton.so.
-export TRITON_PLUGIN_DIRS="${TRITON_RISCV_DIR}"
+# build.sh stubs every GPU download location at an empty directory, which is also
+# what skips upstream's AMD codegen fetch during the build. The backend needs the
+# real library at compile time, though, so point it at the one scripts/setup.sh
+# builds -- the same file get_amd_codegen_path() falls back to by default.
+export TRITON_AMD_CODEGEN_PATH="${_TRITON_RISCV_DIR}/triton/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 
-# ---------------------------------------------------------------------------
-# Run time
-# ---------------------------------------------------------------------------
-
-# Read by Triton.
-TRITON_HOME="${TRITON_HOME:-${HOME}}"
-TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${TRITON_HOME}/.triton/cache}"
-TRITON_DUMP_DIR="${TRITON_DUMP_DIR:-${TRITON_HOME}/.triton/dump}"
-TRITON_OVERRIDE_DIR="${TRITON_OVERRIDE_DIR:-${TRITON_HOME}/.triton/override}"
-
-# Read by the backend.
-TRITON_SHARED_DUMP_PATH="${TRITON_SHARED_DUMP_PATH:-${TRITON_DUMP_DIR}/shared}"
-
-# ---------------------------------------------------------------------------
-# Shell
-# ---------------------------------------------------------------------------
-
-export TRITON_RISCV_DIR TRITON_DIR TRITON_VENV
-export LLVM_SYSPATH LLVM_BINARY_DIR BUDDY_MLIR_BINARY_DIR
-export TRITON_HOME TRITON_CACHE_DIR TRITON_DUMP_DIR TRITON_OVERRIDE_DIR
-export TRITON_SHARED_DUMP_PATH
-export PATH="${TRITON_VENV}/bin:${LLVM_BINARY_DIR}:${BUDDY_MLIR_BINARY_DIR}:${PATH}"
+# Both toolchains are found on PATH, the same way an installed wheel finds them.
+export PATH="${LLVM_SYSPATH}/bin:${_TRITON_RISCV_DIR}/.cache/buddy/bin:${PATH}"
 # Keep the repository's own triton/ checkout from shadowing the installed one.
 export PYTHONSAFEPATH=1

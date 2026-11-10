@@ -11,7 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 #ifdef HOST_TEST
 static float oracle_exp(float x) { return (float)exp((double)x); }
@@ -41,18 +40,15 @@ static void compare(float actual, float expected, float atol, float rtol,
 }
 extern void _mlir_ciface_kernel_gelu_128x768(MemRef2 *, MemRef2 *);
 int launch(void) {
-  const int COUNT = 98304;
-  size_t off = 0;
-  float *x = (float *)workspace(off);
-  off = vit_align64(off + (size_t)COUNT * 4u);
-  float *o = (float *)workspace(off);
-  for (int i = 0; i < COUNT; ++i)
+  float *x = (float *)workspace(0),
+        *o = (float *)workspace(((size_t)(128 * 768) * 4 + 63) & ~(size_t)63);
+  for (int i = 0; i < (128 * 768); ++i)
     x[i] = (float)((i * 7) % 41 - 20) * 0.03125f;
   MemRef2 X = make_2(x, 128, 768), O = make_2(o, 128, 768);
   _mlir_ciface_kernel_gelu_128x768(&X, &O);
   int errors = 0;
   float maximum = 0;
-  for (int i = 0; i < COUNT; ++i) {
+  for (int i = 0; i < (128 * 768); ++i) {
     float v = x[i],
           want = 0.5f * v * (1.0f + oracle_erf(v * 0.7071067811865475f));
     compare(o[i], want, 3e-4f, 3e-4f, &errors, &maximum);

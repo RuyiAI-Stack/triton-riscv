@@ -1,8 +1,3 @@
-/*
- * Linker script for bare-metal BOSCAME FPGA binaries (model 'layernorm_197x768').
- * Places boot, text/rodata, and the workspace arena expected by board_support.
- */
-
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 MEMORY { RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 4M }

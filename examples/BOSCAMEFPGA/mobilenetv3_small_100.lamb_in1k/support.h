@@ -10,7 +10,6 @@
 //
 // When used: included by every launch.c and support.c in this model directory.
 //
-
 #ifndef EFFNET_OPERATOR_SUPPORT_H
 #define EFFNET_OPERATOR_SUPPORT_H
 
@@ -65,6 +64,8 @@ void *workspace(size_t byte_offset);
 void nr_copy_bytes(void *destination, const void *source, size_t bytes);
 int check_close(float actual, float expected, float atol, float rtol);
 int print_check(const char *name, unsigned errors, float max_error);
+int print_check_count(const char *name, unsigned checked, unsigned errors,
+                      float max_error);
 void nr_puts(const char *s);
 void nr_hex32(uint32_t x);
 void nr_hex64(uint64_t x);

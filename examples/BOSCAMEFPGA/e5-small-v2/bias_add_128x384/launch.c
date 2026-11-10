@@ -11,56 +11,74 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 #ifdef HOST_TEST
-static float oracle_exp(float x) { return (float)exp((double)x); }
-static float oracle_sqrt(float x) { return (float)sqrt((double)x); }
-static float oracle_erf(float x) { return (float)erf((double)x); }
+static double oracle_exp(double x) { return exp(x); }
+static double oracle_erf(double x) { return erf(x); }
+static double oracle_sqrt(double x) { return sqrt(x); }
 #else
-static float oracle_exp(float x) { return expf(x); }
-static float oracle_sqrt(float x) { return sqrtf(x); }
-static float oracle_erf(float x) { return erff(x); }
+extern float expf(float), erff(float), sqrtf(float), fabsf(float);
+static double oracle_exp(double x) { return expf((float)x); }
+static double oracle_erf(double x) { return erff((float)x); }
+static double oracle_sqrt(double x) { return sqrtf((float)x); }
 #endif
-static void compare(float actual, float expected, float atol, float rtol,
-                    int *errors, float *maximum) {
-  if (actual == expected)
+static void compare(float got, float want, float atol, float rtol,
+                    unsigned *errors, float *maximum) {
+  if (got == want)
     return;
-  if (!__builtin_isfinite(actual) || !__builtin_isfinite(expected)) {
+  if (!__builtin_isfinite(got) || !__builtin_isfinite(want)) {
     ++*errors;
     *maximum = __builtin_inff();
     return;
   }
-  if (!check_close(actual, expected, atol, rtol))
-    ++*errors;
-  float d = actual - expected;
+  float d = got - want;
   if (d < 0)
     d = -d;
   if (d > *maximum)
     *maximum = d;
+  if (!check_close(got, want, atol, rtol))
+    ++*errors;
 }
+static void check_integer(int32_t got, int32_t want, unsigned *errors,
+                          float *maximum) {
+  if (got != want) {
+    ++*errors;
+    float d = (float)((int64_t)got - want);
+    if (d < 0)
+      d = -d;
+    if (d > *maximum)
+      *maximum = d;
+  }
+}
+
 extern void _mlir_ciface_kernel_bias_add_128x384(MemRef2 *, MemRef1 *,
                                                  MemRef2 *);
 int launch(void) {
-  const int ROWS = 128, WIDTH = 384, COUNT = ROWS * WIDTH;
-  size_t off = 0;
-  float *x = (float *)workspace(off);
-  off = vit_align64(off + (size_t)COUNT * 4u);
-  float *b = (float *)workspace(off);
-  off = vit_align64(off + (size_t)WIDTH * 4u);
-  float *o = (float *)workspace(off);
-  for (int i = 0; i < COUNT; ++i) {
-    x[i] = (i % 31 - 15) * 0.0078125f;
-    o[i] = 0;
-  }
-  for (int i = 0; i < WIDTH; ++i)
-    b[i] = (i % 17 - 8) * 0.015625f;
-  MemRef2 X = make_2(x, ROWS, WIDTH), O = make_2(o, ROWS, WIDTH);
-  MemRef1 B = make_1(b, WIDTH);
-  _mlir_ciface_kernel_bias_add_128x384(&X, &B, &O);
-  int errors = 0;
+  float *a0 = workspace(0u);
+  for (int i = 0; i < 49152; ++i)
+    a0[i] = (float)((i * 17) % 67 - 33) * 0.015625f;
+  MemRef2 d0 = make_2(a0, 128, 384);
+  float *a1 = workspace(196608u);
+  for (int i = 0; i < 384; ++i)
+    a1[i] = (float)((i * 17) % 67 - 33) * 0.015625f;
+  MemRef1 d1 = make_1(a1, 384);
+  float *a2 = workspace(198144u);
+  for (int i = 0; i < 49152; ++i)
+    a2[i] = -77;
+  MemRef2 d2 = make_2(a2, 128, 384);
+#ifndef HOST_TEST
+  ame_fence();
+#endif
+  uint64_t begin = nr_cycles();
+  _mlir_ciface_kernel_bias_add_128x384(&d0, &d1, &d2);
+  nr_puts("cycles bias_add_128x384: ");
+  nr_hex64(nr_cycles() - begin);
+  nr_puts("\r\n");
+  unsigned errors = 0;
   float maximum = 0;
-  for (int i = 0; i < COUNT; ++i)
-    compare(o[i], x[i] + b[i % WIDTH], 1e-6f, 1e-6f, &errors, &maximum);
+  for (int r = 0; r < 128; ++r)
+    for (int j = 0; j < 384; ++j)
+      compare(a2[r * 384 + j], a0[r * 384 + j] + a1[j], 0, 0, &errors,
+              &maximum);
   return print_check("bias_add_128x384", errors, maximum);
 }

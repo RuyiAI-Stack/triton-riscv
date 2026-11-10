@@ -82,7 +82,7 @@ void _mlir_ciface_kernel_quantize_768x768(MemRef2 *x, MemRef2 *q,
   patch_wq = patch_rank2(q, 768, 768, 1);
   patch_cs = patch_rank1(scale, 768);
 }
-void _mlir_ciface_kernel_matmul_i8_overwrite_196x768x768(MemRef2 *a, MemRef2 *b,
+void _mlir_ciface_kernel_matmul_i8_196x768x768(MemRef2 *a, MemRef2 *b,
                                              MemRef2 *c) {
   require(patch_children++ == 2, "patch integer matmul order");
   require(patch_rank2(a, 196, 768, 1) == patch_iq &&

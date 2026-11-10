@@ -10,7 +10,6 @@
 # When used: included by each case makefile and the model top-level makefile for
 # AOT and board builds.
 #
-
 .DEFAULT_GOAL := asm
 .DELETE_ON_ERROR:
 CASE := $(notdir $(CURDIR))
@@ -33,6 +32,8 @@ BUDDY_TRANSLATE ?= $(BUDDY_BIN)/buddy-translate
 LLC ?= $(LLVM_BIN)/llc
 CLANG ?= $(LLVM_BIN)/clang
 BUDDY_TOOLS := $(BUDDY_ROOT)/examples/FPGA-BOSCAME/tools
+include $(BUDDY_TOOLS)/ordered_reduction_policy.mk
+BUILD_FILES += $(FPGA_REDUCTION_POLICY_MAKEFILE)
 export BUDDY_ROOT BUDDY_OPT BUDDY_TRANSLATE LLVM_BIN
 export PYTHONPATH := $(VIT_ROOT)/tools:$(PYTHONPATH)
 
@@ -46,7 +47,7 @@ TRANSLATE_FILE := $(shell command -v "$(BUDDY_TRANSLATE)" 2>/dev/null)
 LLC_FILE := $(shell command -v "$(LLC)" 2>/dev/null)
 CLANG_FILE := $(shell command -v "$(CLANG)" 2>/dev/null)
 
-.PHONY: all ttir boscame llvm asm bin simcheck clean FORCE
+.PHONY: all ttir boscame llvm asm simcheck clean FORCE
 all: asm
 FORCE:
 
@@ -66,10 +67,10 @@ $(FRONTEND_ID): | $(KERNELS)
 # artifacts too. Unchanged inputs preserve this file's timestamp.
 $(OUT)/.compiler-inputs.json: FORCE $(REPORTER) | $(OUT)
 	@$(PYTHON) -B "$(REPORTER)" inputs --inputs "$@" \
-	  --value 'opt=$(BUDDY_OPT)' --value 'translate=$(BUDDY_TRANSLATE)' \
+	  --value 'opt=$(BUDDY_OPT)' --value 'reduction-lowering=$(FPGA_REDUCTION_LOWER_OPTIONS)' --value 'translate=$(BUDDY_TRANSLATE)' \
 	  --value 'llc=$(LLC) $(LLC_FLAGS)' --value 'clang=$(CLANG) $(CLANG_FLAGS)' \
 	  --value 'encode=$(PYTHON) $(BUDDY_TOOLS)/ame_to_word.py $(ENCODE_FLAGS)' \
-	  --value 'restrict=$(PYTHON) $(BUDDY_TOOLS)/restrict_fpga_assembly.py $(RESTRICT_FLAGS)'
+	  --value 'restrict=$(PYTHON) $(BUDDY_TOOLS)/restrict_fpga_assembly.py $(RESTRICT_FLAGS) $(FPGA_REDUCTION_FILTER_FLAGS)'
 
 # Invalidate old PASS evidence before touching an artifact. A failed command
 # records its stage/log; successful commands are followed by the public-stage
@@ -93,8 +94,8 @@ $(OUT)/kernel.planned.mlir: $(OUT)/kernel.bufferized.mlir $(BACKEND_INPUTS) $(OP
 	$(call run_stage,planned,"$(BUDDY_OPT)" "$<" --bosc-ame-plan --bosc-ame-plan-verify -o "$@")
 $(OUT)/kernel.boscame.mlir: $(OUT)/kernel.planned.mlir $(BACKEND_INPUTS) $(OPT_FILE)
 	$(call run_stage,boscame,"$(BUDDY_OPT)" "$<" --bosc-ame-emit -o "$@")
-$(OUT)/kernel.llvm.mlir: $(OUT)/kernel.boscame.mlir $(BACKEND_INPUTS) $(OPT_FILE)
-	$(call run_stage,llvm,"$(BUDDY_OPT)" "$<" --lower-bosc-ame -o "$@")
+$(OUT)/kernel.llvm.mlir: $(OUT)/kernel.boscame.mlir $(BACKEND_INPUTS) $(OPT_FILE) $(OUT)/.ordered-reduction-policy
+	$(call run_stage,llvm,"$(BUDDY_OPT)" "$<" --lower-bosc-ame="$(FPGA_REDUCTION_LOWER_OPTIONS)" -o "$@")
 $(OUT)/kernel.ll: $(OUT)/kernel.llvm.mlir $(BACKEND_INPUTS) $(TRANSLATE_FILE)
 	$(call run_stage,llvm-ir,"$(BUDDY_TRANSLATE)" --buddy-to-llvmir "$<" -o "$@")
 $(OUT)/kernel.s: $(OUT)/kernel.ll $(BACKEND_INPUTS) $(LLC_FILE)
@@ -102,7 +103,7 @@ $(OUT)/kernel.s: $(OUT)/kernel.ll $(BACKEND_INPUTS) $(LLC_FILE)
 $(OUT)/kernel.encoded.s: $(OUT)/kernel.s $(BACKEND_INPUTS) $(BUDDY_TOOLS)/ame_to_word.py
 	$(call run_stage,encode,"$(PYTHON)" "$(BUDDY_TOOLS)/ame_to_word.py" $(ENCODE_FLAGS) < "$<" > "$@.tmp"; mv "$@.tmp" "$@")
 $(OUT)/kernel.nr.s: $(OUT)/kernel.encoded.s $(BACKEND_INPUTS) $(BUDDY_TOOLS)/restrict_fpga_assembly.py
-	$(call run_stage,restrict,"$(PYTHON)" "$(BUDDY_TOOLS)/restrict_fpga_assembly.py" $(RESTRICT_FLAGS) < "$<" > "$@.tmp"; mv "$@.tmp" "$@")
+	$(call run_stage,restrict,"$(PYTHON)" "$(BUDDY_TOOLS)/restrict_fpga_assembly.py" $(RESTRICT_FLAGS) $(FPGA_REDUCTION_FILTER_FLAGS) < "$<" > "$@.tmp"; mv "$@.tmp" "$@")
 $(OUT)/kernel.o: $(OUT)/kernel.nr.s $(BACKEND_INPUTS) $(CLANG_FILE)
 	$(call run_stage,object,"$(CLANG)" $(CLANG_FLAGS) -c "$<" -o "$@")
 
@@ -113,10 +114,6 @@ asm: $(OUT)/kernel.o $(FRONTEND_OUTPUTS)
 ttir boscame llvm asm:
 	@$(PYTHON) -B "$(REPORTER)" success --case "$(CASE)" --output "$(KERNELS)" --stage "$@" $(if $(REPORT),--report "$(REPORT)")
 simcheck: boscame
-	$(PYTHON) -B "$(VIT_ROOT)/tools/simcheck.py" --case "$(CASE)" --output "$(KERNELS)" $(if $(COLLECT),--collect,)
+	$(PYTHON) -B "$(VIT_ROOT)/tools/simcheck.py" --case "$(CASE)" --output "$(KERNELS)"
 clean:
 	rm -rf "$(OUT)"
-
-# asm compiles kernel.o. board.mk links that object into the NH/E6 image.
-bin: asm
-	$(MAKE) -f $(VIT_ROOT)/board.mk bin

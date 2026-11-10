@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock k blocked 64x64x256
 // lowering and contract facts.
 //
-
 module {
   tt.func public @k_blocked(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
     %c256 = arith.constant dense<256> : tensor<64x1xi32>

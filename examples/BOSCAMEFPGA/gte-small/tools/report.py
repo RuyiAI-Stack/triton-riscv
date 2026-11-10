@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from export import describe, digest, inventory, summary_report_path  # noqa: E402
+from export import describe, digest, inventory, summary_report_path
 
 STAGE_FILES = {
     "ttir": ["ttir", "frontend.mlir"],

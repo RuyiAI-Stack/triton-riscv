@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock diag too wide lowering and
 // contract facts.
 //
-
 module {
   tt.func public @too_wide(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %pid: i32) {
     %cpitch = arith.constant dense<64> : tensor<128x1xi32>

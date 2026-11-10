@@ -11,7 +11,6 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
 .DEFAULT_GOAL := all
 .DELETE_ON_ERROR :=
 
@@ -29,6 +28,9 @@ endif
 REPO := $(if $(BUDDY_ROOT),$(abspath $(BUDDY_ROOT)))
 FRONTEND_TOOLS := $(abspath $(ROOT)/../tools)
 TOOLS := $(REPO)/examples/FPGA-BOSCAME/tools
+ifneq ($(strip $(BUDDY_ROOT)),)
+include $(TOOLS)/ordered_reduction_policy.mk
+endif
 
 # Shared platform toolchain: prefers the in-tree LLVM build, then PATH.
 REPO_ROOT := $(REPO)
@@ -156,8 +158,8 @@ boscame: $(V_DIR)/kernel.boscame.mlir
 # fixed addresses, lowers the DMA requests to the runtime ABI, turns the tile
 # operations into `bosc_ame.intr.*` with the configuration and byte strides
 # the hardware needs, and finishes the memref/func/arith/scf lowering.
-$(V_DIR)/kernel.llvm.mlir: $(V_DIR)/kernel.boscame.mlir $(BUILD_MAKEFILE) $(wildcard $(BUDDY_OPT))
-	$(BUDDY_OPT) $< --lower-bosc-ame -o $@
+$(V_DIR)/kernel.llvm.mlir: $(V_DIR)/kernel.boscame.mlir $(BUILD_MAKEFILE) $(wildcard $(BUDDY_OPT)) $(V_DIR)/.ordered-reduction-policy $(FPGA_REDUCTION_POLICY_MAKEFILE)
+	$(BUDDY_OPT) $< --lower-bosc-ame="$(FPGA_REDUCTION_LOWER_OPTIONS)" -o $@
 
 $(V_DIR)/kernel.ll: $(V_DIR)/kernel.llvm.mlir $(BUILD_MAKEFILE) $(wildcard $(BUDDY_TRANSLATE))
 	$(BUDDY_TRANSLATE) --buddy-to-llvmir $< -o $@
@@ -174,11 +176,11 @@ $(V_DIR)/kernel.encoded.s: $(V_DIR)/kernel.s $(TOOLS)/ame_to_word.py
 
 # FORCE keeps the fence policy switch effective without relinking when the
 # filtered output is byte-identical (the recipe only replaces the file then).
-$(V_DIR)/kernel.nr.s: $(V_DIR)/kernel.encoded.s $(TOOLS)/restrict_fpga_assembly.py FORCE
+$(V_DIR)/kernel.nr.s: $(V_DIR)/kernel.encoded.s $(TOOLS)/restrict_fpga_assembly.py FORCE $(V_DIR)/.ordered-reduction-policy $(FPGA_REDUCTION_POLICY_MAKEFILE)
 	@set -eu; \
 	tmp="$@.tmp"; \
 	trap 'rm -f "$$tmp"' EXIT INT TERM; \
-	$(PYTHON) $(TOOLS)/restrict_fpga_assembly.py $(FENCE_FLAGS) --order-vector-copies < $< > "$$tmp"; \
+	$(PYTHON) $(TOOLS)/restrict_fpga_assembly.py $(FPGA_REDUCTION_FILTER_FLAGS) $(FENCE_FLAGS) --order-vector-copies < $< > "$$tmp"; \
 	test -s "$$tmp" || { echo "error: assembly filter produced no output" >&2; exit 1; }; \
 	if test -r "$@" && cmp -s "$$tmp" "$@"; then rm -f "$$tmp"; else mv -f "$$tmp" "$@"; fi; \
 	trap - EXIT INT TERM
@@ -257,8 +259,8 @@ audit: $(ELF)
 	  || { echo "FAIL: the platform's PMP/satp setup sequence is missing"; exit 1; }
 	@echo "ok: DDR window exported and the PMP/satp setup sequence is in the image"
 
-$(BIN): $(ELF) $(TOOLS)/check_nr_elf.py
-	$(PYTHON) $(TOOLS)/check_nr_elf.py $< --objdump $(OBJDUMP) $(AUDIT_FENCE_FLAGS) --output $(V_DIR)/elf-audit.json
+$(BIN): $(ELF) $(TOOLS)/check_nr_elf.py $(V_DIR)/.ordered-reduction-policy $(FPGA_REDUCTION_POLICY_MAKEFILE)
+	$(PYTHON) $(TOOLS)/check_nr_elf.py $< --objdump $(OBJDUMP) $(FPGA_REDUCTION_AUDIT_FLAGS) $(AUDIT_FENCE_FLAGS) --output $(V_DIR)/elf-audit.json
 	$(OBJCOPY) -O binary $< $@
 	@echo "built $@"
 

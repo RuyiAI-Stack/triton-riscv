@@ -16,10 +16,11 @@ import triton.language as tl
 
 @triton.jit
 def gelu(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
-    """Exact Hugging Face GELU (approximate=none, erf form)."""
+    """Exact Hugging Face GELU (the ViT config uses approximate="none")."""
     index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = index < COUNT
     x = tl.load(X + index, valid, other=0.0).to(tl.float32)
+    # tl.erf is lowered by triton-riscv to the target math implementation.
     y = 0.5 * x * (1.0 + tl.erf(x * 0.7071067811865475))
     tl.store(Out + index, y, valid)
 
@@ -33,6 +34,7 @@ KERNEL_CONFIG = {
         {"name": "Out", "rank": 2, "dtype": "f32"},
     ],
     "shape": [128, 1536],
+    "argument_shapes": [[128, 1536], [128, 1536]],
     "constexprs": {"COUNT": 196608, "BLOCK": 128},
     "grid": [1536, 1, 1],
     "roles": [],
@@ -44,10 +46,12 @@ KERNEL_CONFIG = {
             "max_rel_error": 0.0,
         }
     },
+    "outputs": [1],
+    "checked_elements": 196608,
     "metadata": {
-        "dtype": "f32",
         "model": "thenlper/gte-small",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+        "batch": 1,
+        "sequence_length": 128,
+        "target": "nr-fpga",
     },
 }

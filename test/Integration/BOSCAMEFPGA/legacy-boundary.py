@@ -13,6 +13,7 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t
+
 import os
 import re
 import subprocess

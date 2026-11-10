@@ -141,6 +141,9 @@ def adapter_source(case):
     lines = [
         "/* Generated from this case; offsets and lengths are in elements. */",
         '#include "support.h"',
+        "extern void nr_kernel_begin(const char *) __attribute__((weak));",
+        "extern void nr_kernel_end(const char *) __attribute__((weak));",
+        "extern void ame_fence(void) __attribute__((weak));",
         "typedef struct { void *allocated, *aligned; int64_t offset, size, stride; } Descriptor1D;",
         "typedef struct { int64_t rank; void *descriptor; } Unranked;",
         f"extern void _mlir_ciface_{case['symbol']}("
@@ -162,7 +165,10 @@ def adapter_source(case):
             "static int32_t patch_acc[196 * 768] __attribute__((aligned(64)));",
             "static float patch_gemm[196 * 768] __attribute__((aligned(64)));",
         ]
-    lines += [f"void _mlir_ciface_kernel_{case['name']}({params}) {{"]
+    lines += [
+        f"void _mlir_ciface_kernel_{case['name']}({params}) {{",
+        f'  if (nr_kernel_begin) nr_kernel_begin("{case["name"]}");',
+    ]
     item_sizes = {"f32": 4, "i32": 4, "i8": 1}
     for i, (arg, shape) in enumerate(zip(arguments, shapes)):
         elements = 1
@@ -224,7 +230,12 @@ def adapter_source(case):
             "    for (int o = 0; o < 768; ++o)",
             "      ((float *)p3)[o * 196 + p] = patch_gemm[p * 768 + o] + ((const float *)p2)[o];",
         ]
-    lines += ["}", ""]
+    lines += [
+        "  if (ame_fence) ame_fence();",
+        f'  if (nr_kernel_end) nr_kernel_end("{case["name"]}");',
+        "}",
+        "",
+    ]
     return "\n".join(lines)
 
 

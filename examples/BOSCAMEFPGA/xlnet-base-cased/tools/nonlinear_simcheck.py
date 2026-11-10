@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 from boscame_paths import buddy_tools, source_identity
+from export import ROOT, argument_shapes, digest
 from oracles import (
     compare,
     make_inputs,
@@ -27,8 +28,6 @@ from oracles import (
     nonlinear_reference64,
     reference,
 )
-
-from export import ROOT, argument_shapes, digest
 
 
 def _hash(value):
@@ -84,7 +83,7 @@ def audit_nonlinear_program(case, point, accesses):
             not spans
             or spans[0][0] != start
             or spans[-1][1] != end
-            or any(left[1] != right[0] for left, right in zip(spans, spans[1:]))
+            or any(left[1] != right[0] for left, right in itertools.pairwise(spans))
         ):
             raise AssertionError("nonlinear missing/duplicate DDR coverage: " + name)
     return dict.fromkeys(intervals, end - start)
@@ -311,7 +310,7 @@ def check_nonlinear_sharded(case, output_root, workers):
         )
     except SimulationBlocked as error:
         record["reason"] = str(error)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - Persist this case's failure for the caller.
         record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
     (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(

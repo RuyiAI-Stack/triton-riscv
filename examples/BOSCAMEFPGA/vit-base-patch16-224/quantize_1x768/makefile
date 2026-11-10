@@ -11,5 +11,6 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
+BOARD_LINK_SCRIPT := $(CURDIR)/rodata-shifted.ld
 include ../common.mk
+include ../board.mk

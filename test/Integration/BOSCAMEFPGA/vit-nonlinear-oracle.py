@@ -11,6 +11,7 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s
+
 import copy
 import hashlib
 import itertools

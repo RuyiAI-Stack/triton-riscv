@@ -41,6 +41,14 @@ def success(name, output, stage):
     manifest = json.loads((directory / "frontend.json").read_text())
     if manifest["kernel_module_sha256"] != digest(case["kernel_source"]):
         raise ValueError("frontend manifest does not match current kernel.py")
+    for key, path in (
+        ("exporter_sha256", Path(__file__).with_name("export.py")),
+        ("cases_sha256", Path(__file__).resolve().parents[1] / "cases.py"),
+        ("adapter_sha256", directory / "adapter.c"),
+        ("contract_manifest_sha256", directory / "contract-manifest.json"),
+    ):
+        if manifest.get(key) != digest(path):
+            raise ValueError("frontend manifest does not match current " + key)
     for key in (
         "name",
         "family",
@@ -55,7 +63,10 @@ def success(name, output, stage):
     ):
         if manifest.get(key) != case.get(key):
             raise ValueError("frontend manifest does not match current " + key)
-    artifacts = {}
+    artifacts = {
+        name: digest(directory / name)
+        for name in ("adapter.c", "contract-manifest.json", "frontend.json")
+    }
     for checkpoint, extensions in STAGE_FILES.items():
         for extension in extensions:
             filename = "kernel." + extension

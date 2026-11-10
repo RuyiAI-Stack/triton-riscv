@@ -11,13 +11,12 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
 .DEFAULT_GOAL := all
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PYTHON ?= python3
 KERNELS ?= $(ROOT)/build/kernels
 KERNELS := $(abspath $(KERNELS))
-BUDDY_ROOT ?= $(abspath $(ROOT)/../../../buddy-mlir)
+BUDDY_ROOT ?= $(or $(BUDDY_DIR),$(abspath $(ROOT)/../../../buddy-mlir))
 export BUDDY_ROOT
 export PYTHONPATH := $(ROOT)/tools:$(PYTHONPATH)
 ALL_CASES := $(notdir $(patsubst %/kernel.py,%,$(wildcard $(ROOT)/*/kernel.py)))
@@ -42,7 +41,7 @@ bin:
 _suite: $(CASE_TARGETS)
 $(CASE_TARGETS): build-%: $(FRONTEND_ID)
 	+@rm -f "$(KERNELS)/$*/build-result.json"; \
-	  $(MAKE) --no-print-directory -C "$(ROOT)/$*" $(STAGE) KERNELS="$(KERNELS)" PYTHON="$(PYTHON)" FRONTEND_CHECKED=1 REPORT= || { \
+	  $(MAKE) --no-print-directory -C "$(ROOT)/$*" $(STAGE) KERNELS="$(KERNELS)" OUT="$(KERNELS)/$*" PYTHON="$(PYTHON)" FRONTEND_CHECKED=1 REPORT= || { \
 	    if ! test -f "$(KERNELS)/$*/build-result.json"; then \
 	      $(PYTHON) -B "$(REPORTER)" failure --case "$*" --output "$(KERNELS)" --stage "$(STAGE)" || :; \
 	    fi; exit 1; }

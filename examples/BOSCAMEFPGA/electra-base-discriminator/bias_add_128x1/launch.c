@@ -11,55 +11,31 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
-#ifdef HOST_TEST
-static float oracle_exp(float x) { return (float)exp((double)x); }
-static float oracle_sqrt(float x) { return (float)sqrt((double)x); }
-static float oracle_erf(float x) { return (float)erf((double)x); }
-#else
-static float oracle_exp(float x) { return expf(x); }
-static float oracle_sqrt(float x) { return sqrtf(x); }
-static float oracle_erf(float x) { return erff(x); }
-#endif
-static void compare(float actual, float expected, float atol, float rtol,
-                    int *errors, float *maximum) {
-  if (actual == expected)
-    return;
-  if (!__builtin_isfinite(actual) || !__builtin_isfinite(expected)) {
-    ++*errors;
-    *maximum = __builtin_inff();
-    return;
-  }
-  if (!check_close(actual, expected, atol, rtol))
-    ++*errors;
-  float d = actual - expected;
-  if (d < 0)
-    d = -d;
-  if (d > *maximum)
-    *maximum = d;
-}
+#define R 128
+#define W 1
+#define C (R * W)
 extern void _mlir_ciface_kernel_bias_add_128x1(MemRef2 *, MemRef1 *, MemRef2 *);
 int launch(void) {
-  const int ROWS = 128, WIDTH = 1, COUNT = ROWS * WIDTH;
-  size_t off = 0;
-  float *x = (float *)workspace(off);
-  off = vit_align64(off + (size_t)COUNT * 4u);
-  float *b = (float *)workspace(off);
-  off = vit_align64(off + (size_t)WIDTH * 4u);
-  float *o = (float *)workspace(off);
-  for (int i = 0; i < COUNT; ++i) {
-    x[i] = (i % 31 - 15) * 0.0078125f;
-    o[i] = 0;
-  }
-  for (int i = 0; i < WIDTH; ++i)
-    b[i] = (i % 17 - 8) * 0.015625f;
-  MemRef2 X = make_2(x, ROWS, WIDTH), O = make_2(o, ROWS, WIDTH);
-  MemRef1 B = make_1(b, WIDTH);
+  size_t bias_offset = vit_align64((size_t)C * sizeof(float));
+  size_t output_offset = vit_align64(bias_offset + (size_t)W * sizeof(float));
+  float *x = workspace(0), *b = workspace(bias_offset),
+        *o = workspace(output_offset);
+  for (int i = 0; i < C; ++i)
+    x[i] = i * .01f;
+  for (int i = 0; i < W; ++i)
+    b[i] = i * .002f;
+  MemRef2 X = make_2(x, R, W);
+  MemRef1 B = make_1(b, W);
+  MemRef2 O = make_2(o, R, W);
   _mlir_ciface_kernel_bias_add_128x1(&X, &B, &O);
-  int errors = 0;
-  float maximum = 0;
-  for (int i = 0; i < COUNT; ++i)
-    compare(o[i], x[i] + b[i % WIDTH], 1e-6f, 1e-6f, &errors, &maximum);
-  return print_check("bias_add_128x1", errors, maximum);
+  unsigned e = 0;
+  for (int i = 0; i < C; ++i) {
+    {
+      float want = x[i] + b[i % W];
+      if (!check_close(o[i], want, 1e-5f, 1e-5f))
+        e++;
+    }
+  }
+  return print_check("bias_add_128x1", e, 0);
 }

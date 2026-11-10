@@ -11,53 +11,44 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
-.DEFAULT_GOAL := all
+.DEFAULT_GOAL := asm
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PYTHON ?= python3
 KERNELS ?= $(ROOT)/build/kernels
 KERNELS := $(abspath $(KERNELS))
 BUDDY_ROOT ?= $(abspath $(ROOT)/../../../buddy-mlir)
-export BUDDY_ROOT
-export PYTHONPATH := $(ROOT)/tools:$(PYTHONPATH)
-ALL_CASES := $(notdir $(patsubst %/kernel.py,%,$(wildcard $(ROOT)/*/kernel.py)))
-# An explicit CASES selection writes a subset report, preserving suite evidence.
+MODEL_CLANG ?= $(BUDDY_ROOT)/llvm/build/bin/clang
 SCOPE := $(if $(filter undefined,$(origin CASES)),--all,)
-CASES ?= $(ALL_CASES)
-CASE_ARGS = $(foreach case,$(sort $(CASES)),--case $(case))
-CASE_TARGETS := $(addprefix build-,$(sort $(CASES)))
-REPORTER := $(ROOT)/tools/report.py
-FRONTEND := $(abspath $(ROOT)/../tools/contract_frontend.py)
-FRONTEND_ID := $(KERNELS)/.frontend-inputs.json
-STAGE ?= asm
-
-.PHONY: all ttir boscame llvm asm _suite $(CASE_TARGETS) FORCE simcheck clean
-all: asm
-ttir boscame llvm asm:
-	+@code=0; $(MAKE) --no-print-directory -k _suite STAGE=$@ || code=$$?; \
-	  $(PYTHON) -B "$(REPORTER)" collect --output "$(KERNELS)" --stage "$@" $(CASE_ARGS) $(SCOPE) $(if $(REPORT),--report "$(REPORT)") || code=1; \
-	  exit $$code
-
-# -k attempts every selected case, including when another case fails. Recursive
-# Make shares the parent's jobserver, so make -jN also builds cases in parallel.
-_suite: $(CASE_TARGETS)
-$(CASE_TARGETS): build-%: $(FRONTEND_ID)
-	+@rm -f "$(KERNELS)/$*/build-result.json"; \
-	  $(MAKE) --no-print-directory -C "$(ROOT)/$*" $(STAGE) KERNELS="$(KERNELS)" PYTHON="$(PYTHON)" FRONTEND_CHECKED=1 REPORT= || { \
-	    if ! test -f "$(KERNELS)/$*/build-result.json"; then \
-	      $(PYTHON) -B "$(REPORTER)" failure --case "$*" --output "$(KERNELS)" --stage "$(STAGE)" || :; \
-	    fi; exit 1; }
-FORCE:
-$(KERNELS):
-	mkdir -p "$@"
-$(FRONTEND_ID): FORCE | $(KERNELS)
-	@$(PYTHON) -B "$(FRONTEND)" --identity "$@" > "$(KERNELS)/frontend-identity.log" 2>&1 || { \
-	  cat "$(KERNELS)/frontend-identity.log" >&2; \
-	  for name in $(CASES); do \
-	    $(PYTHON) -B "$(REPORTER)" failure --case "$$name" --output "$(KERNELS)" --stage ttir --log "$(KERNELS)/frontend-identity.log" || :; \
-	  done; exit 1; }
-
+CASES ?= $(notdir $(patsubst %/kernel.py,%,$(wildcard $(ROOT)/*/kernel.py)))
+export PYTHONPATH := $(ROOT)/tools:$(PYTHONPATH)
+CASE_ARGS := $(foreach case,$(CASES),--case $(case))
+.PHONY: ttir boscame llvm asm bin hostcheck launchcheck modelcheck model-abicheck model-runtime-object model-bin model-host simcheck assets weights clean
+ttir boscame llvm asm bin:
+	+@status=0; for case in $(CASES); do $(MAKE) --no-print-directory -C "$(ROOT)/$$case" $@ PYTHON="$(PYTHON)" KERNELS="$(KERNELS)" || status=1; done; \
+	  $(PYTHON) -B "$(ROOT)/tools/report.py" collect --output "$(KERNELS)" --stage "$(if $(filter bin,$@),asm,$@)" $(CASE_ARGS) $(SCOPE) || status=1; exit $$status
+hostcheck:
+	$(PYTHON) -B "$(ROOT)/tools/check_kernels.py" $(CASE_ARGS)
+launchcheck:
+	$(PYTHON) -B "$(ROOT)/tools/prepare_adapters.py" --output "$(KERNELS)"
+	$(PYTHON) -B "$(ROOT)/tools/check_launch.py" $(CASE_ARGS) --build-dir "$(KERNELS)"
+modelcheck:
+	$(PYTHON) -B "$(ROOT)/tools/model_reference.py" $(if $(ASSETS),--assets "$(ASSETS)",)
+model-abicheck:
+	$(PYTHON) -B "$(ROOT)/tools/check_model_abi.py"
+model-runtime-object:
+	mkdir -p "$(ROOT)/build/model-runtime"
+	$(MODEL_CLANG) --target=riscv64-unknown-elf -march=rv64imafdc_zicsr_zifencei -mabi=lp64d -mcmodel=medany -mno-relax -O2 -nostdlib -ffreestanding -fno-builtin -I"$(ROOT)" -c "$(ROOT)/model_runtime/model.c" -o "$(ROOT)/build/model-runtime/model.o"
 simcheck:
-	$(PYTHON) -B "$(ROOT)/tools/simcheck.py" $(if $(SCOPE),--all,$(CASE_ARGS)) --output "$(KERNELS)" $(if $(COLLECT),--collect,)
+	$(PYTHON) -B "$(ROOT)/tools/simcheck.py" $(CASE_ARGS) --output "$(KERNELS)"
+assets:
+	$(PYTHON) -B "$(ROOT)/tools/fetch_assets.py" $(if $(ASSETS),--output "$(ASSETS)",)
+weights:
+	$(PYTHON) -B "$(ROOT)/tools/prepare_weights.py" $(if $(ASSETS),--assets "$(ASSETS)",)
+model-bin:
+	$(PYTHON) -B "$(ROOT)/tools/prepare_model_board.py" $(if $(ASSETS),--assets "$(ASSETS)",)
+	$(PYTHON) -B "$(ROOT)/tools/check_model_weights.py"
+	$(PYTHON) -B "$(ROOT)/tools/build_model_bin.py" --kernels "$(KERNELS)"
+model-host:
+	$(PYTHON) -B "$(ROOT)/tools/build_model_host.py" --kernels "$(KERNELS)"
 clean:
 	rm -rf "$(ROOT)/build"

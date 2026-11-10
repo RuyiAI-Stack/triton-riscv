@@ -11,72 +11,91 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 #ifdef HOST_TEST
-static float oracle_exp(float x) { return (float)exp((double)x); }
-static float oracle_sqrt(float x) { return (float)sqrt((double)x); }
-static float oracle_erf(float x) { return (float)erf((double)x); }
+static double oracle_exp(double x) { return exp(x); }
+static double oracle_erf(double x) { return erf(x); }
+static double oracle_sqrt(double x) { return sqrt(x); }
 #else
-static float oracle_exp(float x) { return expf(x); }
-static float oracle_sqrt(float x) { return sqrtf(x); }
-static float oracle_erf(float x) { return erff(x); }
+extern float expf(float), erff(float), sqrtf(float), fabsf(float);
+static double oracle_exp(double x) { return expf((float)x); }
+static double oracle_erf(double x) { return erff((float)x); }
+static double oracle_sqrt(double x) { return sqrtf((float)x); }
 #endif
-static void compare(float actual, float expected, float atol, float rtol,
-                    int *errors, float *maximum) {
-  if (actual == expected)
+static void compare(float got, float want, float atol, float rtol,
+                    unsigned *errors, float *maximum) {
+  if (got == want)
     return;
-  if (!__builtin_isfinite(actual) || !__builtin_isfinite(expected)) {
+  if (!__builtin_isfinite(got) || !__builtin_isfinite(want)) {
     ++*errors;
     *maximum = __builtin_inff();
     return;
   }
-  if (!check_close(actual, expected, atol, rtol))
-    ++*errors;
-  float d = actual - expected;
+  float d = got - want;
   if (d < 0)
     d = -d;
   if (d > *maximum)
     *maximum = d;
+  if (!check_close(got, want, atol, rtol))
+    ++*errors;
 }
+static void check_integer(int32_t got, int32_t want, unsigned *errors,
+                          float *maximum) {
+  if (got != want) {
+    ++*errors;
+    float d = (float)((int64_t)got - want);
+    if (d < 0)
+      d = -d;
+    if (d > *maximum)
+      *maximum = d;
+  }
+}
+
 extern void _mlir_ciface_kernel_layernorm_128x384(MemRef2 *, MemRef1 *,
                                                   MemRef1 *, MemRef2 *);
 int launch(void) {
-  const int ROWS = 128, WIDTH = 384, COUNT = ROWS * WIDTH;
-  size_t off = 0;
-  float *x = (float *)workspace(off);
-  off = vit_align64(off + (size_t)COUNT * 4u);
-  float *w = (float *)workspace(off);
-  off = vit_align64(off + (size_t)WIDTH * 4u);
-  float *b = (float *)workspace(off);
-  off = vit_align64(off + (size_t)WIDTH * 4u);
-  float *o = (float *)workspace(off);
-  for (int i = 0; i < COUNT; ++i)
-    x[i] = (float)((i * 5) % 37 - 18) * 0.015625f;
-  for (int i = 0; i < WIDTH; ++i) {
-    w[i] = 1.0f + (i % 11) * 0.01f;
-    b[i] = (i % 17 - 8) * 0.00390625f;
-  }
-  MemRef2 X = make_2(x, ROWS, WIDTH), O = make_2(o, ROWS, WIDTH);
-  MemRef1 W = make_1(w, WIDTH), B = make_1(b, WIDTH);
-  _mlir_ciface_kernel_layernorm_128x384(&X, &W, &B, &O);
-  int errors = 0;
+  float *a0 = workspace(0u);
+  for (int i = 0; i < 49152; ++i)
+    a0[i] = (float)((i * 17) % 67 - 33) * 0.015625f;
+  MemRef2 d0 = make_2(a0, 128, 384);
+  float *a1 = workspace(196608u);
+  for (int i = 0; i < 384; ++i)
+    a1[i] = 1.0f + (i % 7) * 0.01f;
+  MemRef1 d1 = make_1(a1, 384);
+  float *a2 = workspace(198144u);
+  for (int i = 0; i < 384; ++i)
+    a2[i] = (float)((i * 17) % 67 - 33) * 0.015625f;
+  MemRef1 d2 = make_1(a2, 384);
+  float *a3 = workspace(199680u);
+  for (int i = 0; i < 49152; ++i)
+    a3[i] = -77;
+  MemRef2 d3 = make_2(a3, 128, 384);
+#ifndef HOST_TEST
+  ame_fence();
+#endif
+  uint64_t begin = nr_cycles();
+  _mlir_ciface_kernel_layernorm_128x384(&d0, &d1, &d2, &d3);
+  nr_puts("cycles layernorm_128x384: ");
+  nr_hex64(nr_cycles() - begin);
+  nr_puts("\r\n");
+  unsigned errors = 0;
   float maximum = 0;
-  for (int r = 0; r < ROWS; ++r) {
-    float mean = 0, var = 0;
-    for (int j = 0; j < WIDTH; ++j)
-      mean += x[r * WIDTH + j];
-    mean /= WIDTH;
-    for (int j = 0; j < WIDTH; ++j) {
-      float d = x[r * WIDTH + j] - mean;
+  for (int r = 0; r < 128; ++r) {
+    double mean = 0, var = 0;
+    for (int j = 0; j < 384; ++j)
+      mean += a0[r * 384 + j];
+    mean /= 384;
+    for (int j = 0; j < 384; ++j) {
+      double d = a0[r * 384 + j] - mean;
       var += d * d;
     }
-    var /= WIDTH;
-    for (int j = 0; j < WIDTH; ++j) {
-      float want =
-          (x[r * WIDTH + j] - mean) / oracle_sqrt(var + 1e-12f) * w[j] + b[j];
-      compare(o[r * WIDTH + j], want, 4e-4f, 4e-4f, &errors, &maximum);
-    }
+    var /= 384;
+    for (int j = 0; j < 384; ++j)
+      compare(
+          a3[r * 384 + j],
+          (float)((a0[r * 384 + j] - mean) / oracle_sqrt(var + 1e-12) * a1[j] +
+                  a2[j]),
+          4e-4f, 4e-4f, &errors, &maximum);
   }
   return print_check("layernorm_128x384", errors, maximum);
 }

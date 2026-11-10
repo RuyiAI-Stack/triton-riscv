@@ -10,7 +10,6 @@
 // When used: linked into each case image via common.mk / board.mk after the
 // kernel object is produced.
 //
-
 #include "support.h"
 
 #ifndef HOST_TEST
@@ -38,9 +37,8 @@ uint64_t nr_cycles(void) { return (uint64_t)clock(); }
 
 void *workspace(size_t byte_offset) {
   if (byte_offset >= sizeof(arena)) {
-    fputs(
-        "EfficientNet operator workspace offset exceeds VIT_WORKSPACE_BYTES\n",
-        stderr);
+    fputs("MobileNet operator workspace offset exceeds VIT_WORKSPACE_BYTES\n",
+          stderr);
     abort();
   }
   return arena + byte_offset;
@@ -72,5 +70,23 @@ int print_check(const char *name, unsigned errors, float max_error) {
   } value = {max_error};
   nr_hex32(value.u);
   nr_puts("\r\n");
+  return errors != 0;
+}
+
+int print_check_count(const char *name, unsigned checked, unsigned errors,
+                      float max_error) {
+  nr_puts("verify ");
+  nr_puts(name);
+  nr_puts(errors ? ": FAIL errors=" : ": PASS errors=");
+  nr_hex32(errors);
+  nr_puts(" max_abs_error_f32_bits=");
+  union {
+    float f;
+    uint32_t u;
+  } value = {max_error};
+  nr_hex32(value.u);
+  nr_puts(" checked=");
+  nr_hex32(checked);
+  nr_puts(" validation_executed=1\r\n");
   return errors != 0;
 }

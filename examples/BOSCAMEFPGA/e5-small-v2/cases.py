@@ -55,6 +55,13 @@ def describe(name):
             raise ValueError(f"{source}: {key} must contain positive integers")
     if len(config["grid"]) != 3:
         raise ValueError(f"{source}: grid must have three dimensions")
+    if config["family"] in ("matmul_i8", "gemm_i8"):
+        for tile, extent in zip(("BM", "BN", "BK"), config["shape"]):
+            value = config["constexprs"].get(tile)
+            if type(value) is not int or not 0 < value <= extent:
+                raise ValueError(
+                    f"{source}: {tile}={value} must be within [1, {extent}]"
+                )
     return {
         "name": name,
         **config,

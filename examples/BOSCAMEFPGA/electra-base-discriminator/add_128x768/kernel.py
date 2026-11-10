@@ -41,10 +41,5 @@ KERNEL_CONFIG = {
     "constexprs": {"COUNT": 98304, "BLOCK": 128},
     "grid": [768, 1, 1],
     "roles": [],
-    "metadata": {
-        "dtype": "f32",
-        "model": "google/electra-base-discriminator",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
-    },
+    "metadata": {"dtype": "f32", "model": "google/electra-base-discriminator"},
 }

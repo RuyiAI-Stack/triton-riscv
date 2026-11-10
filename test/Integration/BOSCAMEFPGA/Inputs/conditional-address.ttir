@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock conditional address
 // lowering and contract facts.
 //
-
 module {
   tt.func public @conditional_address(%left: !tt.ptr<f32>,
                                       %right: !tt.ptr<f32>,

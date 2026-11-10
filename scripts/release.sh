@@ -67,6 +67,10 @@ if [ -z "${IN_DOCKER:-}" ]; then
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         DOCKER_ENV_ARGS+=(-e GITHUB_TOKEN)
     fi
+    # Forwarded only when set: gives a nightly build a unique wheel version.
+    if [ -n "${TRITON_WHEEL_VERSION_SUFFIX:-}" ]; then
+        DOCKER_ENV_ARGS+=(-e TRITON_WHEEL_VERSION_SUFFIX)
+    fi
 
     docker "${DOCKER_RUN_ARGS[@]}" \
         "${DOCKER_ENV_ARGS[@]}" \
@@ -106,15 +110,34 @@ trap cleanup EXIT INT TERM
 export PYTHON="/opt/python/${PY_TAG}/bin/python"
 export PATH="/opt/python/${PY_TAG}/bin:$PATH"
 
-if [ -f /opt/rh/gcc-toolset-14/enable ]; then
-    source /opt/rh/gcc-toolset-14/enable
-fi
+dnf install -y clang lld git libstdc++-devel
 
-dnf install -y clang lld git
+# clang needs a GCC installation to find crtbeginS.o, libgcc and libstdc++ when
+# it links, and on this image it does not detect the riscv64 layout by itself --
+# the whole link is handed to ld with bare -lstdc++ / -lgcc, which fails. Ask gcc
+# where it lives and pass that on explicitly. Images that ship the compiler as an
+# SCL toolset under /opt/rh (which is also where clang's dependency chain used to
+# land it) are enabled first, so `gcc` below is the right one either way.
+toolset_root=""
+for enable in $(ls -1 /opt/rh/gcc-toolset-*/enable 2>/dev/null | sort -V); do
+    source "${enable}"
+    toolset_root="$(dirname "${enable}")/root/usr"
+done
+gcc_install_dir="$(dirname "$(gcc -print-libgcc-file-name 2>/dev/null)" 2>/dev/null || true)"
+if [ -n "${gcc_install_dir}" ] && [ -d "${gcc_install_dir}" ]; then
+    export TRITON_APPEND_CMAKE_ARGS="${TRITON_APPEND_CMAKE_ARGS:-} -DCMAKE_CXX_FLAGS=--gcc-install-dir=${gcc_install_dir} -DCMAKE_C_FLAGS=--gcc-install-dir=${gcc_install_dir}"
+fi
+ls -d /usr/lib/gcc/*/* 2>/dev/null | sed 's/^/[release] gccdir /'
+echo "[release] toolset=${toolset_root:-<none>} gcc-install-dir=${gcc_install_dir:-<none>} g++=$(command -v g++ || echo none)"
 
 export TRITON_PYTHON_TAG="${PY_TAG}"
+# Same stable-ABI build as an ordinary `make build`, so the released wheel is
+# tagged cp312-abi3 and covers Python 3.12 and later.
+export TRITON_STABLE_ABI="${TRITON_STABLE_ABI:-ON}"
+# Makes setup.py package backend/ into the wheel and register its
+# triton.backends entry point, which is how Triton discovers backends.
+export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 
-# shellcheck source=scripts/_gpu-stub-env.sh
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
 
 # setup.sh fetches the toolchains and the pinned Triton checkout; build.sh builds
@@ -138,6 +161,18 @@ RAW_WHEEL_DIR="$(mktemp -d)"
 
 cd "${CONTAINER_TRITON_DIR}"
 "${PYTHON}" setup.py bdist_wheel -d "${RAW_WHEEL_DIR}"
+# A wheel that does not register the backend installs fine and then fails on the
+# first kernel, so check it here rather than in a bug report.
+"${PYTHON}" - "${RAW_WHEEL_DIR}"/*.whl <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    entries = [name for name in wheel.namelist() if name.endswith("dist-info/entry_points.txt")]
+    text = wheel.read(entries[0]).decode() if entries else ""
+if "triton_shared = triton.backends.triton_shared" not in text:
+    sys.exit(f"{sys.argv[1]} does not register the triton_shared backend")
+PY
 if [[ "${TRITON_RISCV_SKIP_REPAIR:-0}" == "1" ]]; then
     cp "${RAW_WHEEL_DIR}"/*.whl "${CONTAINER_OUTPUT_DIR}/"
 else

@@ -18,7 +18,7 @@ import triton.language as tl
 
 
 @triton.jit
-def silu(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
+def silu_scalar_reference(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
     """SiLU as x / (1 + exp(-x)), with an authorized exp approximation."""
     index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = index < COUNT
@@ -29,7 +29,12 @@ def silu(X, Out, COUNT: tl.constexpr, BLOCK: tl.constexpr):
 # Fixed specialization; cases.py reads this literal without importing Triton.
 KERNEL_CONFIG = {
     "family": "silu",
-    "kernel": "silu",
+    "implementation": "hybrid_rvv_c",
+    "implementation_source": "diagnostics/model_integration/silu_rvv_direct_output_candidate.c",
+    "implementation_symbol_prefix": "efficientnet_rvv_",
+    "kernel_module": "silu_rvv_kernels",
+    "reference_kernel": "silu_scalar_reference",
+    "kernel": "silu_rvv",
     "arguments": [
         {
             "name": "X",

@@ -9,31 +9,21 @@
 //
 // When used: included by every launch.c and support.c in this model directory.
 //
-
-#ifndef EFFNET_OPERATOR_SUPPORT_H
-#define EFFNET_OPERATOR_SUPPORT_H
+#ifndef VIT_OPERATOR_SUPPORT_H
+#define VIT_OPERATOR_SUPPORT_H
 
 #include <stddef.h>
 #include <stdint.h>
 
 #ifdef HOST_TEST
 #include <math.h>
-#else
-// Freestanding image: no libm. fabsf is in board_support.c; the rest are
-// provided by runtime/boscame/nr/nr_math.c.
-float fabsf(float);
-float expf(float);
-float sqrtf(float);
-float erff(float);
-float tanhf(float);
 #endif
 
-// Host oracles use 64 MiB. The NH/E6 image overrides this to 16 MiB so the
-// arena stays inside link.ld's PMP window at 0x80100000..0x81100000.
+// The FP32 [32000,768] word table needs 93.75 MiB. This arena serves
+// independent operator fixtures; the composed model owns its allocations.
 #ifndef VIT_WORKSPACE_BYTES
-#define VIT_WORKSPACE_BYTES (64u * 1024u * 1024u)
+#define VIT_WORKSPACE_BYTES (104u * 1024u * 1024u)
 #endif
-int launch(void);
 
 #define MEMREF(R)                                                              \
   typedef struct {                                                             \

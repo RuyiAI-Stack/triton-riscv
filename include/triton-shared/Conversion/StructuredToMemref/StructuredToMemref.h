@@ -8,7 +8,6 @@
 //
 // When used: after TritonArithToLinalg when the access is proven contiguous.
 //
-
 #ifndef TRITON_CONVERSION_STRUCTUREDTOMEMREF_STRUCTUREDTOMEMREF_H
 #define TRITON_CONVERSION_STRUCTUREDTOMEMREF_STRUCTUREDTOMEMREF_H
 

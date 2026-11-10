@@ -11,6 +11,7 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t 2>&1 | FileCheck %s
+
 import os
 import subprocess
 import sys

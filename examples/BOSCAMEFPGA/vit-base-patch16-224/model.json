@@ -47,6 +47,20 @@
     "add"
   ],
   "linear_mode": "w8a8",
-  "fp32_reference_option": "--fp32-reference",
-  "accumulator_semantics": "compiled overwrite kernel; no old C input"
+  "accumulator_semantics": "compiled overwrite kernel; no old C input",
+  "matrix_multiply_policy": "quantize -> signed i8 AME matmul (overwrite) -> dequantize",
+  "fpga_fp32_reference_enabled": false,
+  "host_fp32_baseline": "tools/compare_accuracy.py reference",
+  "matrix_routes": {
+    "patch_w8a8": 1,
+    "dense_w8a8": 73,
+    "qk_w8a8": 12,
+    "pv_w8a8": 12
+  },
+  "attention_implementation": "model_primitives_w8a8: four explicit compiled primitive calls per head plus compiled 197x197 head layout staging; no attention executable",
+  "production_dependency_cases": 32,
+  "inventory_cases": 43,
+  "external_model_calls": 1543,
+  "attention_primitive_calls": 1176,
+  "workspace_abi": "caller-owned aligned mutable memrefs; read-only activation tensor bridges and one output tensor bridge after final writer; no tensor workspace copies"
 }

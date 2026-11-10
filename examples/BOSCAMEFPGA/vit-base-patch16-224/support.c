@@ -10,7 +10,6 @@
 // When used: linked into each case image via common.mk / board.mk after the
 // kernel object is produced.
 //
-
 #include "support.h"
 
 #ifndef HOST_TEST

@@ -31,7 +31,7 @@ def matmul(
     INTEGER: tl.constexpr,
 ):
     """Signed INT8 C[M, N] += A[M, K] @ B[N, K]^T."""
-    tl.static_assert(INTEGER)
+    tl.static_assert(INTEGER == True)  # noqa: E712
     rows = tl.program_id(0) * BM + tl.arange(0, BM)
     cols = tl.program_id(1) * BN + tl.arange(0, BN)
     k = tl.arange(0, BK)

@@ -24,24 +24,45 @@ from pathlib import Path
 
 import numpy as np
 
+from model_contract import (
+    require_attention_manifest,
+    require_no_matrix_fallback,
+    require_production_replacement,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 from boscame_paths import llvm_lib_dir  # noqa: E402
 
 
 def parse_arguments(source: str, entry: str):
-    match = re.search(rf"func\.func\s+@{re.escape(entry)}\((.*?)\)\s*->", source, re.S)
-    if match is None:
-        raise RuntimeError(f"entry @{entry} is missing from saved subgraph")
-    values = re.findall(r"%arg(\d+): tensor<([^>]+)>", match.group(1))
-    if [int(i) for i, _ in values] != list(range(len(values))):
-        raise RuntimeError("saved subgraph argument indices are not contiguous")
-    result = []
-    for _, typ in values:
-        m = re.fullmatch(r"((?:\d+x)*)(f32|i8|i32)", typ)
-        if m is None:
-            raise RuntimeError(f"unsupported tensor type tensor<{typ}>")
-        result.append((tuple(int(x) for x in m.group(1).split("x") if x), m.group(2)))
-    return result
+    from buddy_mlir import ir
+
+    with ir.Context() as context:
+        context.allow_unregistered_dialects = True
+        module = ir.Module.parse(source)
+        function = next(
+            (
+                op
+                for op in module.body.operations
+                if op.operation.name == "func.func"
+                and ir.StringAttr(op.attributes["sym_name"]).value == entry
+            ),
+            None,
+        )
+        if function is None or not function.regions[0].blocks:
+            raise RuntimeError(f"entry @{entry} is missing from saved subgraph")
+        result = []
+        for value in function.regions[0].blocks[0].arguments:
+            typ = value.type
+            if not isinstance(typ, (ir.RankedTensorType, ir.MemRefType)) or any(
+                dim <= 0 for dim in typ.shape
+            ):
+                raise RuntimeError(f"unsupported graph argument {typ}")
+            dtype = str(typ.element_type)
+            if dtype not in ("f32", "i8", "i32"):
+                raise RuntimeError(f"unsupported graph element type {dtype}")
+            result.append((tuple(typ.shape), dtype))
+        return result
 
 
 def np_dtype(dtype: str):
@@ -82,6 +103,11 @@ def main():
         "--replacement", type=Path, default=ROOT / "build/replacement-w8a8"
     )
     parser.add_argument("--host-library", type=Path, required=True)
+    parser.add_argument(
+        "--oracle-dispatch",
+        action="store_true",
+        help="evaluate external kernel calls with tools/model_host_oracle.py",
+    )
     parser.add_argument("--llvm-lib-dir", type=Path, default=llvm_lib_dir())
     parser.add_argument(
         "--output", type=Path, default=ROOT / "build/w8a8-graph-host-check.json"
@@ -109,9 +135,47 @@ def main():
     ):
         require(path)
     report = json.loads(report_path.read_text())
-    if report.get("status") != "PASS" or report.get("w8a8_linear_count") != 73:
-        raise RuntimeError("replacement report is not a complete 73-linear W8A8 graph")
+    require_production_replacement(report)
+    manifest_identity = report["attention_primitive_manifest"]
+    manifest_path = args.replacement / manifest_identity["file"]
+    if (
+        manifest_path.name != "attention-primitive-calls.json"
+        or hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        != manifest_identity["sha256"]
+    ):
+        raise RuntimeError("attention primitive manifest identity is stale")
+    manifest = json.loads(manifest_path.read_text())
+    require_attention_manifest(report, manifest)
+    if (
+        manifest.get("adapter_sha256")
+        != hashlib.sha256(
+            (args.replacement / "vit_triton_adapters.c").read_bytes()
+        ).hexdigest()
+    ):
+        raise RuntimeError(
+            "generated descriptor adapters differ from the graph manifest"
+        )
+    if (
+        report.get("workspace_buffer_policy_version") != 1
+        or report.get("graph_mlir_compiled") is not True
+    ):
+        raise RuntimeError(
+            "host execution requires current mutable-workspace graph plumbing"
+        )
+    identity = report.get("workspace_buffer_contract", {})
+    contract_path = args.replacement / identity.get("file", "")
+    if contract_path.name != "workspace-buffers.json" or hashlib.sha256(
+        contract_path.read_bytes()
+    ).hexdigest() != identity.get("sha256"):
+        raise RuntimeError("mutable-workspace ABI contract is missing or stale")
+    buffer_contract = json.loads(contract_path.read_text())
+    if (
+        buffer_contract.get("status") != "PASS"
+        or buffer_contract.get("wrapper_abi", {}).get("status") != "PASS"
+    ):
+        raise RuntimeError("mutable-workspace graph ABI has not passed materialization")
     source = subgraph.read_text()
+    require_no_matrix_fallback(source)
     entry_match = re.search(r"func\.func\s+@([A-Za-z0-9_]+)\(", source)
     if entry_match is None:
         raise RuntimeError("cannot find subgraph entry")
@@ -196,47 +260,13 @@ def main():
                     dtype=np_dtype(report_dtype(record["dtype"])),
                 )
             )
-    # The lowered function interleaves parameter and workspace placeholders at
-    # their first use.  Recover that exact order from the recorded external
-    # call operands and the saved IR; never use placeholder order or equal
-    # shapes as a positional guess.  An unused parameter is accepted only when
-    # its shape/type identifies one unique remaining argument.
+    # Exact argument roots come from GraphDriver's deduplicated signature.
+    # Primitive read operands may have tensor-to-buffer/layout bridges; their
+    # printed SSA spellings are not a positional ABI authority.
     records = {x["name"]: x for x in [*parameter_layout, *input_layout]}
-    index_by_name = {}
-    for call in report["replaced"]:
-        match = re.search(
-            r"call @" + re.escape(call["symbol"]) + r"\(([^)]*)\)", source
-        )
-        if match is None:
-            raise RuntimeError(
-                f"replacement call {call['symbol']} is missing from subgraph"
-            )
-        operands = [
-            token.strip().split(":", 1)[0].strip()
-            for token in match.group(1).split(",")
-        ]
-        for name, operand in zip(call.get("operands", []), operands):
-            if name not in records or not operand.startswith("%arg"):
-                continue
-            index = int(operand[4:])
-            previous = index_by_name.setdefault(name, index)
-            if previous != index:
-                raise RuntimeError(
-                    f"placeholder {name} maps to both arg{previous} and arg{index}"
-                )
-    unassigned = set(range(len(signature))) - set(index_by_name.values())
-    for name, record in records.items():
-        if name in index_by_name:
-            continue
-        expected = (tuple(record["shape"]), report_dtype(record["dtype"]))
-        candidates = [index for index in unassigned if signature[index] == expected]
-        if len(candidates) != 1:
-            raise RuntimeError(
-                f"cannot uniquely map unused placeholder {name}: {expected}, candidates={candidates}"
-            )
-        index_by_name[name] = candidates[0]
-        unassigned.remove(candidates[0])
-    if len(index_by_name) != len(signature) or unassigned:
+    argument_roots = buffer_contract["argument_roots"]
+    index_by_name = {name: index for index, name in enumerate(argument_roots)}
+    if len(index_by_name) != len(signature) or not set(index_by_name).issubset(records):
         raise RuntimeError(
             "saved report and subgraph do not describe the same placeholder ABI"
         )
@@ -257,13 +287,23 @@ def main():
             signature[index][1]
         ):
             raise RuntimeError(f"ABI value mismatch for {name} at arg{index}")
-        actual_inputs[index] = value
+        # Every descriptor consumed by a compiled kernel obeys the same
+        # 64-byte base alignment as FPGA caller-owned buffers.
+        backing = np.empty(value.nbytes + 63, dtype=np.uint8)
+        offset = (-backing.ctypes.data) % 64
+        aligned = (
+            backing[offset : offset + value.nbytes]
+            .view(value.dtype)
+            .reshape(value.shape)
+        )
+        np.copyto(aligned, value)
+        actual_inputs[index] = aligned
 
     graph.lower_to_top_level_ir()
     with ir.Location.unknown(graph._ctx):
         graph._imported_module = ir.Module.parse(source, context=graph._ctx)
     started = time.time()
-    graph.lower_to_llvm_ir(enable_openmp=False)
+    graph.lower_to_llvm_ir()
     lowering_seconds = round(time.time() - started, 3)
     llvm_lib = args.llvm_lib_dir
     libs = [
@@ -273,6 +313,12 @@ def main():
     ]
     for path in libs:
         require(path)
+    dispatcher = None
+    if args.oracle_dispatch:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from model_host_oracle import HostOracleDispatcher
+
+        dispatcher = HostOracleDispatcher(args.replacement, args.host_library)
     engine = ExecutionEngine(
         graph._imported_module,
         opt_level=args.opt_level,
@@ -287,6 +333,8 @@ def main():
     started = time.time()
     engine.invoke(entry, output_slot, *input_slots)
     invocation_seconds = round(time.time() - started, 3)
+    if dispatcher is not None and dispatcher.errors:
+        raise RuntimeError("host kernel dispatch failed:\n" + dispatcher.errors[0])
     result = np.array(
         rt.ranked_memref_to_numpy(ctypes.pointer(getattr(output_struct, "0"))),
         copy=True,
@@ -297,6 +345,10 @@ def main():
     summary = {
         "status": "PASS" if ok else "FAIL",
         "replacement_status": report["status"],
+        "execution": "host-only",
+        "host_model_executed": True,
+        "full_model_executed": False,
+        "matrix_routes": report["matrix_routes"],
         "w8a8_linear_count": report["w8a8_linear_count"],
         "external_calls": report["graphs"]["forward"]["external_calls"],
         "entry": entry,
@@ -318,6 +370,7 @@ def main():
         ),
         "lowering_seconds": lowering_seconds,
         "invocation_seconds": invocation_seconds,
+        "host_oracle": None if dispatcher is None else dispatcher.summary(),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, indent=2) + "\n")

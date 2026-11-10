@@ -49,10 +49,5 @@ KERNEL_CONFIG = {
             "max_rel_error": 2e-06,
         }
     },
-    "metadata": {
-        "dtype": "f32",
-        "model": "xlnet/xlnet-base-cased",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
-    },
+    "metadata": {"dtype": "f32", "model": "xlnet/xlnet-base-cased"},
 }

@@ -10,7 +10,6 @@
 // When used: early in TritonToLinalgExperimental before contract tile
 // specialization.
 //
-
 #ifndef TRITON_CONVERSION_TRITONARITHTOLINALG_TRITONARITHTOLINALG_H
 #define TRITON_CONVERSION_TRITONARITHTOLINALG_TRITONARITHTOLINALG_H
 

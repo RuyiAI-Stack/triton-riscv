@@ -13,6 +13,7 @@ docstrings that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t triton-shared-opt
+
 import subprocess
 import sys
 from pathlib import Path

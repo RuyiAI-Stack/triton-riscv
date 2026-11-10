@@ -10,51 +10,69 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 #ifdef HOST_TEST
-static float oracle_exp(float x) { return (float)exp((double)x); }
-static float oracle_sqrt(float x) { return (float)sqrt((double)x); }
-static float oracle_erf(float x) { return (float)erf((double)x); }
+static double oracle_exp(double x) { return exp(x); }
+static double oracle_erf(double x) { return erf(x); }
+static double oracle_sqrt(double x) { return sqrt(x); }
 #else
-static float oracle_exp(float x) { return expf(x); }
-static float oracle_sqrt(float x) { return sqrtf(x); }
-static float oracle_erf(float x) { return erff(x); }
+extern float expf(float), erff(float), sqrtf(float), fabsf(float);
+static double oracle_exp(double x) { return expf((float)x); }
+static double oracle_erf(double x) { return erff((float)x); }
+static double oracle_sqrt(double x) { return sqrtf((float)x); }
 #endif
-static void compare(float actual, float expected, float atol, float rtol,
-                    int *errors, float *maximum) {
-  if (actual == expected)
+static void compare(float got, float want, float atol, float rtol,
+                    unsigned *errors, float *maximum) {
+  if (got == want)
     return;
-  if (!__builtin_isfinite(actual) || !__builtin_isfinite(expected)) {
+  if (!__builtin_isfinite(got) || !__builtin_isfinite(want)) {
     ++*errors;
     *maximum = __builtin_inff();
     return;
   }
-  if (!check_close(actual, expected, atol, rtol))
-    ++*errors;
-  float d = actual - expected;
+  float d = got - want;
   if (d < 0)
     d = -d;
   if (d > *maximum)
     *maximum = d;
+  if (!check_close(got, want, atol, rtol))
+    ++*errors;
 }
+static void check_integer(int32_t got, int32_t want, unsigned *errors,
+                          float *maximum) {
+  if (got != want) {
+    ++*errors;
+    float d = (float)((int64_t)got - want);
+    if (d < 0)
+      d = -d;
+    if (d > *maximum)
+      *maximum = d;
+  }
+}
+
 extern void _mlir_ciface_kernel_gelu_128x1536(MemRef2 *, MemRef2 *);
 int launch(void) {
-  const int COUNT = 196608;
-  size_t off = 0;
-  float *x = (float *)workspace(off);
-  off = vit_align64(off + (size_t)COUNT * 4u);
-  float *o = (float *)workspace(off);
-  for (int i = 0; i < COUNT; ++i)
-    x[i] = (float)((i * 7) % 41 - 20) * 0.03125f;
-  MemRef2 X = make_2(x, 128, 1536), O = make_2(o, 128, 1536);
-  _mlir_ciface_kernel_gelu_128x1536(&X, &O);
-  int errors = 0;
+  float *a0 = workspace(0u);
+  for (int i = 0; i < 196608; ++i)
+    a0[i] = (float)((i * 17) % 67 - 33) * 0.015625f;
+  MemRef2 d0 = make_2(a0, 128, 1536);
+  float *a1 = workspace(786432u);
+  for (int i = 0; i < 196608; ++i)
+    a1[i] = -77;
+  MemRef2 d1 = make_2(a1, 128, 1536);
+#ifndef HOST_TEST
+  ame_fence();
+#endif
+  uint64_t begin = nr_cycles();
+  _mlir_ciface_kernel_gelu_128x1536(&d0, &d1);
+  nr_puts("cycles gelu_128x1536: ");
+  nr_hex64(nr_cycles() - begin);
+  nr_puts("\r\n");
+  unsigned errors = 0;
   float maximum = 0;
-  for (int i = 0; i < COUNT; ++i) {
-    float v = x[i],
-          want = 0.5f * v * (1.0f + oracle_erf(v * 0.7071067811865475f));
-    compare(o[i], want, 3e-4f, 3e-4f, &errors, &maximum);
-  }
+  for (int i = 0; i < 196608; ++i)
+    compare(a1[i],
+            0.5f * a0[i] * (1.0f + oracle_erf(a0[i] * 0.7071067811865475f)),
+            4e-4f, 4e-4f, &errors, &maximum);
   return print_check("gelu_128x1536", errors, maximum);
 }

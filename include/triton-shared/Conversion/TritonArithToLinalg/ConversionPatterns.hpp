@@ -8,19 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-//
-// Triton arith/tensor rewrite patterns, including contract-aware DotOp
-// emission.
-//
-// Inputs: tt.dot / arith / tensor ops during TritonArithToLinalg, plus
-// KernelContract when enabled.
-//
-// Outputs: Linalg matmul/elementwise that preserve buffer facts for later
-// BOSCAME AOT.
-//
-// When used: shared conversion instead of a GPU-only dot lowering.
-//
-
 #include "triton-shared/Analysis/MaskAnalysis.h"
 #include "triton-shared/Analysis/OpFoldResultUtils.h"
 #include "triton-shared/Analysis/PtrAnalysis.h"
@@ -218,19 +205,19 @@ private:
     Value block2Row = memref::DimOp::create(rewriter, loc, block2, 0);
     Value block2Col = memref::DimOp::create(rewriter, loc, block2, 1);
 
-    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, /* offsets */
+    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, // offsets
                                                ValueRange{zero, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block1Row, block1Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     auto block2Dst = memref::SubViewOp::create(rewriter, loc, dst,
-                                               /* offsets */
+                                               // offsets
                                                ValueRange{zero, block1Col},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block2Row, block2Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     memref::CopyOp::create(rewriter, loc, block1, block1Dst);
@@ -251,19 +238,19 @@ private:
     Value block2Row = memref::DimOp::create(rewriter, loc, block2, 0);
     Value block2Col = memref::DimOp::create(rewriter, loc, block2, 1);
 
-    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, /* offsets */
+    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, // offsets
                                                ValueRange{zero, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block1Row, block1Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     auto block2Dst = memref::SubViewOp::create(rewriter, loc, dst,
-                                               /* offsets */
+                                               // offsets
                                                ValueRange{block1Row, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block2Row, block2Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     memref::CopyOp::create(rewriter, loc, block1, block1Dst);
@@ -1386,7 +1373,8 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
                                     arith::FastMathFlagsAttr());
       }
 
-      if (integers && (aElemType != elementType)) {
+      bool isMixedIntPrecision = integers && (aElemType != elementType);
+      if (isMixedIntPrecision) {
         auto castAttr = linalg::TypeFnAttr::get(rewriter.getContext(),
                                                 linalg::TypeFn::cast_signed);
         res = linalg::MatmulOp::create(

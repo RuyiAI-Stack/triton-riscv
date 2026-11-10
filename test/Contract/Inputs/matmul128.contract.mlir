@@ -9,7 +9,6 @@
 //
 // When used: Contract suite to lock 128-wide matmul contract IR.
 //
-
 module attributes {
   contract.version = 1 : i32,
   contract.producer = "neutral-design-reference",

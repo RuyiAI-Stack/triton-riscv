@@ -11,7 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -59,7 +58,7 @@ int launch(void) {
     b[i] = (float)((i * 5) % 9 - 4) * 0.0078125f;
 
   for (int i = 0; i < 200704; ++i)
-    o[i] = 0.0f;
+    o[i] = __builtin_nanf("");
 
   MemRef4 X = make_4(x, 1, 3, 224, 224);
   MemRef4 W = make_4(weight, 16, 3, 3, 3);
@@ -85,5 +84,6 @@ int launch(void) {
         compare(o[(oc * 112 + oy) * 112 + ox], (float)acc, 1e-3f, 1e-3f,
                 &errors, &maximum);
       }
-  return print_check("conv_stem_cin3_cout16_h224_k3_s2_p1", errors, maximum);
+  return print_check_count("conv_stem_cin3_cout16_h224_k3_s2_p1", 200704u,
+                           errors, maximum);
 }

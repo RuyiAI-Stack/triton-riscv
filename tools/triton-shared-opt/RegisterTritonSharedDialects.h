@@ -9,7 +9,6 @@
 //
 // When used: tools/triton-shared-opt startup before parsing IR.
 //
-
 #pragma once
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"

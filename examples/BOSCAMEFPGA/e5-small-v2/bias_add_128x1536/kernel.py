@@ -23,7 +23,7 @@ def bias_add(
     """Add a broadcast row bias without vector remainder/modulo operations."""
     row = tl.program_id(0)
     channel = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
-    valid = (row < ROWS) & (channel < WIDTH)
+    valid = channel < WIDTH
     index = row * WIDTH + channel
     x = tl.load(X + index, valid, other=0.0)
     bias = tl.load(Bias + channel, channel < WIDTH, other=0.0)
@@ -40,13 +40,16 @@ KERNEL_CONFIG = {
         {"name": "Out", "rank": 2, "dtype": "f32"},
     ],
     "shape": [128, 1536],
-    "constexprs": {"ROWS": 128, "WIDTH": 1536, "BLOCK": 1024},
-    "grid": [128, 2, 1],
+    "argument_shapes": [[128, 1536], [1536], [128, 1536]],
+    "constexprs": {"ROWS": 128, "WIDTH": 1536, "BLOCK": 2048},
+    "grid": [128, 1, 1],
     "roles": [],
+    "outputs": [2],
+    "checked_elements": 196608,
     "metadata": {
-        "dtype": "f32",
         "model": "intfloat/e5-small-v2",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+        "batch": 1,
+        "sequence_length": 128,
+        "target": "nr-fpga",
     },
 }

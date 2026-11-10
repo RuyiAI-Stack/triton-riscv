@@ -11,38 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
-/*
- * matmul_i8_196x768x768 launch: application startup, E6 driver and NH report.
- *
- * The image runs on the shared NH/E6 platform (runtime/boscame/nh_e6):
- * NH boots at 0x80000000, owns the UART and the verdict; E6 starts at
- * 0x80010000, and `nh_e6_e6_main()` runs the platform's address-space setup
- * (seven TOR PMP regions, `satp = 0`, `sfence.vma`) and the CSR 0xbc0 cache
- * policy *before* `e6_main()`.  That ordering is what makes the first AME
- * access in the kernel legal: the AME bus master reaches the DDR operand
- * windows through the PMP region bounded by
- * `__nh_e6_ddr_window_start/end`, which link.ld exports and places
- * `.dma_source`/`.dma_output` inside.
- *
- * This file does three things:
- *
- *   e6_main()          fill the operands, call the kernel through the
- *                      generated ABI bridge, then run the scalar INT32 oracle
- *                      and publish the diagnostics.
- *   nh_e6_app_tag()    report tag for the platform prefixes.
- *   nh_e6_app_report() NH-side report, printed on every outcome (PASS, FAIL,
- *                      TRAP, TIMEOUT), so a hang still produces evidence.
- *
- * The kernel keeps the Triton boundary masks of the reference kernel: M=196 is
- * not a multiple of BM=32, so the last M program masks the rows past M and the
- * masked store leaves excluded C elements untouched.  The launcher keeps the
- * logical [196,768] operand shapes and validates only those 196 rows.
- *
- * Progress markers (`nh_e6_progress`) are published at every phase boundary
- * and periodically inside the oracle: NH prints each new marker while it waits,
- * so the last marker on the console says exactly how far the run got.
- */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -51,9 +19,9 @@
 #include "nh_e6_platform.h"
 #include "uart.h"
 
-/* ------------------------------------------------------------------ */
-/* Problem size (the same numbers the TTIR and build.py use)           */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Problem size (the same numbers the TTIR and build.py use)
+// ------------------------------------------------------------------
 
 #define M MATMUL_I8_M
 #define N MATMUL_I8_N
@@ -74,10 +42,10 @@
 #define C_ELEMENTS ((size_t)M * N)
 #define C_BYTES (C_ELEMENTS * 4u)
 
-/* How much of C the on-board oracle re-computes.  The default checks every
- * logical row; `-DMATMUL_I8_CHECK_ROWS=16` (the debug image) checks the first
- * 16 rows plus the final partial BM tile (rows 192..195), which is what the
- * board capture window can afford for the full 115M multiply-add oracle. */
+// How much of C the on-board oracle re-computes.  The default checks every
+// logical row; `-DMATMUL_I8_CHECK_ROWS=16` (the debug image) checks the first
+// 16 rows plus the final partial BM tile (rows 192..195), which is what the
+// board capture window can afford for the full 115M multiply-add oracle.
 #ifndef MATMUL_I8_CHECK_ROWS
 #define MATMUL_I8_CHECK_ROWS M
 #endif
@@ -88,9 +56,9 @@
 #error "MATMUL_I8_BOARD_CHECK requires a full-output oracle"
 #endif
 
-/* ------------------------------------------------------------------ */
-/* ABI bridge interface (build.py --adapter experimental-boscame)      */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// ABI bridge interface (build.py --adapter experimental-boscame)
+// ------------------------------------------------------------------
 
 typedef struct {
   void *allocated;
@@ -114,15 +82,15 @@ static inline MemRef2 make_2(void *pointer, int64_t rows, int64_t columns) {
   return descriptor;
 }
 
-/* ------------------------------------------------------------------ */
-/* DDR operand windows, pinned by link.ld inside the PMP DDR window    */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// DDR operand windows, pinned by link.ld inside the PMP DDR window
+// ------------------------------------------------------------------
 
 #if defined(MATMUL_I8_BOARD_CHECK)
-/* Separate guard words from the payload without weakening its 64B alignment.
- * The public symbols and fixed payload offsets also let an independent
- * post-execution DDR checker inspect a full dump without using the E6
- * diagnostics. */
+// Separate guard words from the payload without weakening its 64B alignment.
+// The public symbols and fixed payload offsets also let an independent
+// post-execution DDR checker inspect a full dump without using the E6
+// diagnostics.
 #define GUARD_WORDS 256u
 #define GUARD_VALUE UINT32_C(0x6e5a1234)
 typedef struct {
@@ -155,9 +123,9 @@ static int32_t c_matrix[C_ELEMENTS]
     __attribute__((section(".dma_output"), aligned(4096), used));
 #endif
 
-/* ------------------------------------------------------------------ */
-/* Diagnostics read by nh_e6_app_report()                              */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Diagnostics read by nh_e6_app_report()
+// ------------------------------------------------------------------
 
 #define DIAG __attribute__((section(".bss.e6_diag")))
 
@@ -175,12 +143,12 @@ volatile int32_t e6_diag_first_got[8] DIAG;
 volatile int32_t e6_diag_first_want[8] DIAG;
 #endif
 
-/*
- * Phase boundary: publish the marker through the platform, then re-select the
- * write-through store policy the delivered E6 needs for its pending writes.
- * The PMP regions and `satp = 0` this policy depends on were installed by
- * `nh_e6_e6_main()` before `e6_main()`.
- */
+//
+// Phase boundary: publish the marker through the platform, then re-select the
+// write-through store policy the delivered E6 needs for its pending writes.
+// The PMP regions and `satp = 0` this policy depends on were installed by
+// `nh_e6_e6_main()` before `e6_main()`.
+//
 static inline void e6_stage(uint32_t value) {
   e6_diag_phase = value;
   nh_e6_progress(value);
@@ -193,13 +161,13 @@ static inline uint64_t cycles(void) {
   return value;
 }
 
-/* The kernel accumulates into C (`mqma.b.mm` has += semantics), so C starts at
- * the same deterministic pattern the oracle expects. */
+// The kernel accumulates into C (`mqma.b.mm` has += semantics), so C starts at
+// the same deterministic pattern the oracle expects.
 #if defined(MATMUL_I8_BOARD_CHECK)
-/* All arithmetic in the generators is bounded. Product accumulation in the
- * oracle uses uint32_t to model the kernel's exact INT32 wrap semantics.
- * B is physically [N,K], and the independent post-execution checker models
- * that layout. */
+// All arithmetic in the generators is bounded. Product accumulation in the
+// oracle uses uint32_t to model the kernel's exact INT32 wrap semantics.
+// B is physically [N,K], and the independent post-execution checker models
+// that layout.
 static int32_t board_a(unsigned i, unsigned q, unsigned round) {
   return (int32_t)((i * 13u + q * 7u + round * 71u) % 256u) - 128;
 }
@@ -263,8 +231,8 @@ static uint32_t validate(unsigned round) {
       errors += got != want;
     }
     ++e6_diag_checked_rows;
-    /* Two full grids share the same SPM contents; only DDR operands are
-     * reinitialized between them. Distinct markers identify the oracle row. */
+    // Two full grids share the same SPM contents; only DDR operands are
+    // reinitialized between them. Distinct markers identify the oracle row.
     nh_e6_progress(0x2000u + round * M + i);
   }
   return errors;
@@ -282,8 +250,8 @@ static void fill_operands(void) {
       c_matrix[(size_t)i * N + j] = (int32_t)((i * 3u + j) % 7u) - 3;
 }
 
-/* C[i,j] = previous C[i,j] + sum_q A[i,q] * B[j,q] (B is the physical
- * [N,K] tile, exactly what MQMA.B.MM expects). */
+// C[i,j] = previous C[i,j] + sum_q A[i,q] * B[j,q] (B is the physical
+// [N,K] tile, exactly what MQMA.B.MM expects).
 static uint32_t validate(void) {
   uint32_t errors = 0;
   int32_t max_abs = 0;
@@ -313,7 +281,7 @@ static uint32_t validate(void) {
         errors++;
     }
     e6_diag_checked_rows = checked;
-    /* Keep the platform's progress report moving during the long check. */
+    // Keep the platform's progress report moving during the long check.
     if ((i & 7u) == 0u)
       nh_e6_progress(0x200u + (i >> 3));
     if (errors != 0u)
@@ -324,13 +292,13 @@ static uint32_t validate(void) {
 }
 #endif
 
-/* ------------------------------------------------------------------ */
-/* E6 entry                                                            */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// E6 entry
+// ------------------------------------------------------------------
 
 int e6_main(void) {
-  /* A failed transfer records channel/reason/STATUS/token and traps; the E6
-   * trap entry publishes 0xed and NH prints the failure context. */
+  // A failed transfer records channel/reason/STATUS/token and traps; the E6
+  // trap entry publishes 0xed and NH prints the failure context.
   bosc_ame_dma_fail_hook = nh_e6_publish_dma_failure;
 
 #if defined(MATMUL_I8_BOARD_CHECK)
@@ -362,15 +330,15 @@ int e6_main(void) {
   return errors == 0u ? 0 : 1;
 #else
   e6_stage(0x11u);
-  /* The operands keep their logical shape; the kernel masks the boundary
-   * tile's rows past M. */
+  // The operands keep their logical shape; the kernel masks the boundary
+  // tile's rows past M.
   fill_operands();
   __asm__ volatile("fence rw, rw" ::: "memory");
 
   MemRef2 a = make_2(a_matrix, M, K);
   MemRef2 b = make_2(b_matrix, N, K);
-  /* B is physically [N,K], so its descriptor has strides [K,1]. The
-   * compiler's logical [K,N] AME view is built inside the kernel. */
+  // B is physically [N,K], so its descriptor has strides [K,1]. The
+  // compiler's logical [K,N] AME view is built inside the kernel.
   MemRef2 c = make_2(c_matrix, M, N);
 
   e6_stage(0x30u);
@@ -380,7 +348,7 @@ int e6_main(void) {
   __asm__ volatile("fence rw, rw" ::: "memory");
   e6_stage(0x31u);
 
-  /* Read the AME-updated C with the reference's uncached-load policy. */
+  // Read the AME-updated C with the reference's uncached-load policy.
   nh_e6_cache_uncached_loads();
   uint32_t errors = validate();
   e6_diag_errors = errors;
@@ -391,12 +359,12 @@ int e6_main(void) {
 #endif
 }
 
-/* ------------------------------------------------------------------ */
-/* NH report                                                           */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// NH report
+// ------------------------------------------------------------------
 
-/* The tag identifies the image variant on the console; the tester selects the
- * image by file name, not by tag. */
+// The tag identifies the image variant on the console; the tester selects the
+// image by file name, not by tag.
 #if defined(MATMUL_I8_BOARD_CHECK)
 const char *nh_e6_app_tag(void) { return "matmul-i8-196x768x768-boardcheck"; }
 #else

@@ -11,8 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
-/* NH/E6 execution and independent padded-TTIR oracle for LayerNorm. */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -60,7 +58,14 @@ volatile uint32_t layernorm_errors DIAG;
 volatile uint32_t layernorm_guard_errors DIAG;
 volatile uint32_t layernorm_exact DIAG;
 volatile uint32_t layernorm_max_abs_bits DIAG;
-volatile uint64_t layernorm_cycles DIAG;
+volatile uint32_t layernorm_max_row DIAG;
+volatile uint32_t layernorm_max_column DIAG;
+volatile uint32_t layernorm_max_actual_bits DIAG;
+volatile uint32_t layernorm_max_expected_bits DIAG;
+volatile uint32_t layernorm_sample_actual_bits[8] DIAG;
+volatile uint32_t layernorm_sample_expected_bits[8] DIAG;
+volatile uint64_t layernorm_cycles[2] DIAG;
+volatile uint32_t layernorm_cycle_valid[2] DIAG;
 
 extern void _mlir_ciface_kernel_layernorm_197x768(MemRef2 *, MemRef1 *,
                                                   MemRef1 *, MemRef2 *);
@@ -108,9 +113,9 @@ static void initialize(unsigned round) {
     }
 }
 
-/* Only complete one-dimensional vectors access SPM. Poison once before the
- * first launch; all 394 programs then share persistent, initially dirty banks.
- */
+// Only complete one-dimensional vectors access SPM. Poison once before the
+// first launch; all 394 programs then share persistent, initially dirty banks.
+//
 static void poison_spm(void) {
   for (unsigned bank = 0; bank < 2; ++bank) {
     uintptr_t base = bank ? UINT32_C(0x20400000) : UINT32_C(0x20000000);
@@ -147,8 +152,17 @@ static uint32_t validate(unsigned round) {
                      bias(column, round);
       float actual = layernorm_out.values[row * WIDTH + column];
       float delta = __builtin_fabsf(actual - wanted);
-      if (delta > max_abs)
+      if (delta > max_abs) {
         max_abs = delta;
+        layernorm_max_row = row;
+        layernorm_max_column = column;
+        layernorm_max_actual_bits = bits(actual);
+        layernorm_max_expected_bits = bits(wanted);
+      }
+      if (row == 0 && column < 8) {
+        layernorm_sample_actual_bits[column] = bits(actual);
+        layernorm_sample_expected_bits[column] = bits(wanted);
+      }
       errors += !(delta <= 2.0e-5f * (1.0f + __builtin_fabsf(wanted)));
       errors += bits(layernorm_x.values[row * WIDTH + column]) !=
                 bits(input(row, column, round));
@@ -190,7 +204,8 @@ int e6_main(void) {
     __asm__ volatile("rdcycle %0" : "=r"(begin));
     _mlir_ciface_kernel_layernorm_197x768(&x, &w, &b, &out);
     __asm__ volatile("rdcycle %0" : "=r"(end));
-    layernorm_cycles += end - begin;
+    layernorm_cycles[round] = end - begin;
+    layernorm_cycle_valid[round] = 1;
     nh_e6_cache_uncached_loads();
     uint32_t errors = validate(round);
     nh_e6_cache_writes();
@@ -202,7 +217,22 @@ int e6_main(void) {
 }
 
 const char *nh_e6_app_tag(void) { return "layernorm-197x768-dma"; }
+void board_init_uart(uint32_t frequency, uint32_t baud) {
+  init_uart(frequency, baud);
+  print_uart("@@FPGA_START {\"version\":1}\r\n");
+}
+
 void nh_e6_app_report(void) {
+  for (unsigned round = 0; round < 2; ++round) {
+    if (!layernorm_cycle_valid[round])
+      continue;
+    nh_e6_print_tag_prefix();
+    print_uart("round=");
+    print_uart_dec32(round);
+    print_uart(" kernel_cycles=0x");
+    print_uart_hex64(layernorm_cycles[round]);
+    print_uart("\r\n");
+  }
   nh_e6_print_mhz_prefix();
   print_uart("checked=");
   print_uart_dec32(layernorm_checked);
@@ -214,9 +244,45 @@ void nh_e6_app_report(void) {
   print_uart_dec32(layernorm_exact);
   print_uart(" max_abs_bits=0x");
   print_uart_hex32(layernorm_max_abs_bits);
-  print_uart(" cycles=0x");
-  print_uart_hex64(layernorm_cycles);
+  print_uart(" max_at=");
+  print_uart_dec32(layernorm_max_row);
+  print_uart(",");
+  print_uart_dec32(layernorm_max_column);
+  print_uart(" max_actual_bits=0x");
+  print_uart_hex32(layernorm_max_actual_bits);
+  print_uart(" max_expected_bits=0x");
+  print_uart_hex32(layernorm_max_expected_bits);
   print_uart(" round=");
   print_uart_dec32(layernorm_round);
   print_uart("\r\n");
+  for (unsigned column = 0; column < 8; ++column) {
+    print_uart("[layernorm-197x768-dma] sample0_");
+    print_uart_dec32(column);
+    print_uart(" actual=0x");
+    print_uart_hex32(layernorm_sample_actual_bits[column]);
+    print_uart(" expected=0x");
+    print_uart_hex32(layernorm_sample_expected_bits[column]);
+    print_uart("\r\n");
+  }
+
+  uint32_t done = *(volatile uint32_t *)NH_E6_DONE_REG;
+  if (done == NH_E6_DONE_TRAP) {
+    print_uart(
+        "@@FPGA_RESULT {\"version\":1,\"status\":\"trap\",\"mcause\":\"0x");
+    print_uart_hex64(e6_diag_mcause);
+    print_uart("\",\"mepc\":\"0x");
+    print_uart_hex64(e6_diag_mepc);
+    print_uart("\",\"mtval\":\"0x");
+    print_uart_hex64(e6_diag_mtval);
+    print_uart("\"}\r\n");
+    return;
+  }
+  int ok = done == NH_E6_DONE_PASS && layernorm_round == 1 &&
+           layernorm_checked == 2u * ROWS * WIDTH && !layernorm_errors &&
+           !layernorm_guard_errors;
+  print_uart(
+      ok ? "@@FPGA_RESULT "
+           "{\"version\":1,\"status\":\"exited\",\"app_exit_code\":0}\r\n"
+         : "@@FPGA_RESULT "
+           "{\"version\":1,\"status\":\"exited\",\"app_exit_code\":1}\r\n");
 }

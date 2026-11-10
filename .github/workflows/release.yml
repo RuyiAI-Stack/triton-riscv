@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -123,20 +123,26 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x64, riscv64]
-        python: ["3.12", "3.13", "3.14"]
+        # The wheel is built against the stable ABI (see scripts/release.sh), so
+        # it is tagged cp312-abi3 and a single build covers every Python from
+        # 3.12 on; one build per interpreter would only repeat the same wheel.
+        python: ["3.12"]
         include:
           - arch: x64
             target_arch: x86_64
             runner: ubuntu-24.04
           - arch: riscv64
             target_arch: riscv64
-            runner: ubuntu-24.04-riscv
+            # Same labels as .github/workflows/ci.yml: the bare ubuntu-24.04-riscv
+            # label matches any machine that carries it, and a build that got one
+            # of the slow ones took hours.
+            runner: [ubuntu-24.04-riscv, rva23, xlarge]
 
     runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: "false"
 
@@ -160,6 +166,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Every build shares Triton's version, and an index refuses a version
+          # it already holds, so give each nightly a unique one.
+          if [ "${{ needs.prepare_release.outputs.is_prerelease }}" = "true" ]; then
+            export TRITON_WHEEL_VERSION_SUFFIX=".dev$(date -u +%Y%m%d)"
+          fi
           ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
 
       - name: Upload release assets
@@ -179,6 +190,26 @@ jobs:
           fi
 
           gh release upload "${TAG_NAME}" "${wheels[@]}" --clobber
+
+      # The same wheels go to the package index too, straight from the build tree.
+      # Skipped until the secrets exist, and non-fatal for now so a broken index
+      # cannot block a release: the GitHub release stays the primary channel.
+      - name: Publish the wheels to the package index
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ secrets.PYPI_URL }}" ] || [ -z "${{ secrets.PYPI_USERNAME }}" ] || [ -z "${{ secrets.PYPI_PASSWORD }}" ]; then
+            echo "PYPI_URL / PYPI_USERNAME / PYPI_PASSWORD are not set; skipping the package index upload."
+            exit 0
+          fi
+
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="${HOME}/.local/bin:${PATH}"
+          UV_PUBLISH_URL="${{ secrets.PYPI_URL }}" \
+          UV_PUBLISH_USERNAME="${{ secrets.PYPI_USERNAME }}" \
+          UV_PUBLISH_PASSWORD="${{ secrets.PYPI_PASSWORD }}" \
+            uv publish --no-attestations "${{ steps.vars.outputs.wheel_dir }}"/*.whl
 
   publish_release:
     needs: [prepare_release, wheel]

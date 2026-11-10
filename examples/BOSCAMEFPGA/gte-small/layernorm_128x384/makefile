@@ -10,5 +10,5 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
 include ../common.mk
+include ../board.mk

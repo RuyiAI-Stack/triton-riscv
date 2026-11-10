@@ -3,8 +3,14 @@
   "source": "https://hf-mirror.com/google/vit-base-patch16-224",
   "task": "image-classification",
   "batch": 1,
-  "image_size": [224, 224],
-  "patch_size": [16, 16],
+  "image_size": [
+    224,
+    224
+  ],
+  "patch_size": [
+    16,
+    16
+  ],
   "num_patches": 196,
   "sequence_length": 197,
   "hidden_size": 768,
@@ -15,5 +21,19 @@
   "num_labels": 1000,
   "dtype": "float32",
   "layer_norm_eps": 1e-12,
-  "operators": ["patch_embed", "add", "bias_add", "linear", "attention_qk", "softmax", "attention_pv", "layernorm", "gelu"]
+  "operators": [
+    "patch_embed",
+    "add",
+    "bias_add",
+    "linear",
+    "attention_qk",
+    "softmax",
+    "attention_pv",
+    "layernorm",
+    "gelu"
+  ],
+  "matrix_multiply_policy": "quantize -> signed i8 AME matmul (overwrite) -> dequantize",
+  "fpga_fp32_reference_enabled": false,
+  "attention_implementation": "model_primitives_w8a8: four explicit compiled primitive calls per head plus compiled 197x197 head layout staging; no attention executable",
+  "workspace_abi": "caller-owned aligned mutable memrefs; read-only activation tensor bridges and one output tensor bridge after final writer; no tensor workspace copies"
 }

@@ -13,6 +13,7 @@ scenario.
 """
 
 # RUN: %PYTHON %s %t
+
 import hashlib
 import json
 import os

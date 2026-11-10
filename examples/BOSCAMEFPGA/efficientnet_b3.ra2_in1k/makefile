@@ -11,13 +11,12 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
 .DEFAULT_GOAL := all
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PYTHON ?= python3
 KERNELS ?= $(ROOT)/build/kernels
 KERNELS := $(abspath $(KERNELS))
-BUDDY_ROOT ?= $(abspath $(ROOT)/../../../buddy-mlir)
+BUDDY_ROOT ?= $(or $(BUDDY_DIR),$(abspath $(ROOT)/../../../buddy-mlir))
 export BUDDY_ROOT
 export PYTHONPATH := $(ROOT)/tools:$(PYTHONPATH)
 ALL_CASES := $(notdir $(patsubst %/kernel.py,%,$(wildcard $(ROOT)/*/kernel.py)))
@@ -31,12 +30,15 @@ FRONTEND := $(abspath $(ROOT)/../tools/contract_frontend.py)
 FRONTEND_ID := $(KERNELS)/.frontend-inputs.json
 STAGE ?= asm
 
-.PHONY: all ttir boscame llvm asm _suite $(CASE_TARGETS) FORCE simcheck clean
+.PHONY: all ttir boscame llvm asm bin _suite $(CASE_TARGETS) FORCE simcheck launchcheck clean
 all: asm
 ttir boscame llvm asm:
 	+@code=0; $(MAKE) --no-print-directory -k _suite STAGE=$@ || code=$$?; \
 	  $(PYTHON) -B "$(REPORTER)" collect --output "$(KERNELS)" --stage "$@" $(CASE_ARGS) $(SCOPE) $(if $(REPORT),--report "$(REPORT)") || code=1; \
 	  exit $$code
+
+bin:
+	+$(MAKE) --no-print-directory -k _suite STAGE=bin
 
 # -k attempts every selected case, including when another case fails. Recursive
 # Make shares the parent's jobserver, so make -jN also builds cases in parallel.
@@ -59,5 +61,7 @@ $(FRONTEND_ID): FORCE | $(KERNELS)
 
 simcheck:
 	$(PYTHON) -B "$(ROOT)/tools/simcheck.py" $(if $(SCOPE),--all,$(CASE_ARGS)) --output "$(KERNELS)" $(if $(COLLECT),--collect,)
+launchcheck:
+	$(PYTHON) -B "$(ROOT)/tools/check_launch.py" $(if $(SCOPE),--all,$(CASE_ARGS)) --build-dir "$(KERNELS)"
 clean:
 	rm -rf "$(ROOT)/build"

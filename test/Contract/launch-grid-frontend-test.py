@@ -13,6 +13,7 @@ scenario.
 """
 
 # RUN: %PYTHON %s
+
 import importlib.util
 import sys
 import tempfile

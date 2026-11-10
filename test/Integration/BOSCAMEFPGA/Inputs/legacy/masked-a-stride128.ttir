@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock masked a stride128 lowering
 // and contract facts.
 //
-
 module {
   tt.func public @masked_dot(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>) {
     %c64 = arith.constant dense<64> : tensor<64x1xi32>

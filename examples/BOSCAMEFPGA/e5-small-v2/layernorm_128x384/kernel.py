@@ -35,6 +35,7 @@ def layernorm(
     weight = tl.load(Weight + channel, valid, other=1.0).to(tl.float32)
     bias = tl.load(Bias + channel, valid, other=0.0).to(tl.float32)
     mean = tl.sum(x, axis=0) / WIDTH
+    # Padding must stay zero after subtraction, or it changes the variance.
     centered = tl.where(valid, x - mean, 0.0)
     variance = tl.sum(centered * centered, axis=0) / WIDTH
     out = centered * tl.rsqrt(variance + EPS) * weight + bias
@@ -52,13 +53,16 @@ KERNEL_CONFIG = {
         {"name": "Out", "rank": 2, "dtype": "f32"},
     ],
     "shape": [128, 384],
-    "constexprs": {"ROWS": 128, "WIDTH": 384, "BLOCK": 1024, "EPS": 1e-12},
+    "argument_shapes": [[128, 384], [384], [384], [128, 384]],
+    "constexprs": {"ROWS": 128, "WIDTH": 384, "BLOCK": 512, "EPS": 1e-12},
     "grid": [128, 1, 1],
     "roles": [],
+    "outputs": [3],
+    "checked_elements": 49152,
     "metadata": {
-        "dtype": "f32",
         "model": "intfloat/e5-small-v2",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+        "batch": 1,
+        "sequence_length": 128,
+        "target": "nr-fpga",
     },
 }

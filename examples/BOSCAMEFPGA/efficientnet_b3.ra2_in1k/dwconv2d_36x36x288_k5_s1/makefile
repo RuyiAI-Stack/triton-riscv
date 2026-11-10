@@ -11,5 +11,6 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
+CONV_LLVM_SCALAR_O2 := 1
+CONV_PATCH_DDR_PHASES := 1
 include ../common.mk

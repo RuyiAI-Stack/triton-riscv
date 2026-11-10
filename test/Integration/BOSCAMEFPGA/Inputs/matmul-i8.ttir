@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock matmul i8 lowering and
 // contract facts.
 //
-
 module {
   tt.func public @triton_matmul_i8_128x1024x128(%arg0: !tt.ptr<i8>, %arg1: !tt.ptr<i8>, %arg2: !tt.ptr<i32>) attributes {noinline = false} {
     %cst = arith.constant dense<0> : tensor<64x16xi8>

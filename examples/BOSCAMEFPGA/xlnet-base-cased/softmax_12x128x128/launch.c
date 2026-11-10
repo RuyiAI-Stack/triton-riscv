@@ -11,16 +11,15 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 #ifdef HOST_TEST
 static float oracle_exp(float x) { return (float)exp((double)x); }
 static float oracle_sqrt(float x) { return (float)sqrt((double)x); }
-static float oracle_erf(float x) { return (float)erf((double)x); }
+static float oracle_tanh(float x) { return (float)tanh((double)x); }
 #else
 static float oracle_exp(float x) { return expf(x); }
 static float oracle_sqrt(float x) { return sqrtf(x); }
-static float oracle_erf(float x) { return erff(x); }
+static float oracle_tanh(float x) { return tanhf(x); }
 #endif
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -41,14 +40,12 @@ static void compare(float actual, float expected, float atol, float rtol,
 }
 extern void _mlir_ciface_kernel_softmax_12x128x128(MemRef3 *, MemRef3 *);
 int launch(void) {
-  const int H = 12, L = 128, R = H * L, COUNT = R * L;
-  size_t off = 0;
-  float *x = (float *)workspace(off);
-  off = vit_align64(off + (size_t)COUNT * 4u);
-  float *o = (float *)workspace(off);
-  for (int i = 0; i < COUNT; ++i)
+  const int R = 1536, L = 128;
+  float *x = (float *)workspace(0),
+        *o = (float *)workspace(((size_t)196608 * 4 + 63) & ~(size_t)63);
+  for (int i = 0; i < R * L; ++i)
     x[i] = (i % 31 - 15) * 0.03125f;
-  MemRef3 X = make_3(x, H, L, L), O = make_3(o, H, L, L);
+  MemRef3 X = make_3(x, 12, 128, L), O = make_3(o, 12, 128, L);
   _mlir_ciface_kernel_softmax_12x128x128(&X, &O);
   int errors = 0;
   float maximum = 0;

@@ -723,7 +723,10 @@ def median_fp32_strided_key_select_kernel(
 
 
 def _has_names(inp):
-    return any(name is not None for name in inp.names)
+    # Named tensors are a deprecated prototype and have started disappearing, so
+    # some torch builds have no Tensor.names at all; without it nothing has names.
+    names = getattr(inp, "names", None)
+    return names is not None and any(name is not None for name in names)
 
 
 def _anonymous(inp):
@@ -742,9 +745,10 @@ def _canonical_dim(ndim, dim):
 
 
 def _name_to_dim(inp, dim):
-    if dim not in inp.names:
-        raise RuntimeError(f"Name '{dim}' not found in Tensor{inp.names}.")
-    return inp.names.index(dim)
+    names = getattr(inp, "names", ())
+    if dim not in names:
+        raise RuntimeError(f"Name '{dim}' not found in Tensor{names}.")
+    return names.index(dim)
 
 
 def _kept_names(names, dim, keepdim):

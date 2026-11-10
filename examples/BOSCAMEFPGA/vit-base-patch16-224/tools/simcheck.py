@@ -11,12 +11,10 @@ directory.
 """
 
 import argparse
-import concurrent.futures
 import hashlib
 import itertools
 import json
 import math
-import multiprocessing
 import subprocess
 import sys
 import tempfile
@@ -54,150 +52,30 @@ class SimulationBlocked(RuntimeError):
 
 
 def scenarios_for(case):
+    if case["family"] in (
+        "per_token_quantization",
+        "quantize_transpose",
+        "dequantization",
+        "head_layout",
+    ):
+        return [
+            ("normal", False, "forward"),
+            ("quantized-boundaries-tail-first", True, "tail-first"),
+            ("quantized-boundaries-reverse", True, "reverse"),
+        ]
     if case["family"] in ("gelu", "softmax"):
         return [
             ("normal", False, "forward"),
             ("boundaries-special-reverse", True, "reverse"),
             ("boundaries-special-forward", True, "forward"),
         ]
-    if case["family"] in ("matmul_i8", "matmul_i8_overwrite"):
+    if case["family"] in ("gemm_i8", "matmul_i8"):
         return [
             ("normal", False, "forward"),
             ("signed-wrap-tail-first", True, "tail-first"),
             ("signed-wrap-reverse", True, "reverse"),
         ]
-    if case["family"] == "attention_pv":
-        return [
-            ("normal", False, "forward"),
-            ("ordered-blocks-tail-first", True, "tail-first"),
-            ("ordered-blocks-reverse", True, "reverse"),
-        ]
     return [("normal", False, "reverse")]
-
-
-def pv_program_mask(case, programs):
-    """Validate a nonempty disjoint subset of real PV launch programs."""
-    if case["family"] != "attention_pv":
-        raise ValueError("program subsets are restricted to PV validation")
-    _, m, n, _ = case["shape"]
-    bm, bn = (case["constexprs"][key] for key in ("BM", "BN"))
-    mask = np.zeros(argument_shapes(case)[2], dtype=bool)
-    if not programs:
-        raise ValueError("empty PV program selection")
-    for point in programs:
-        if len(point) != 3 or any(
-            not isinstance(value, int) or not 0 <= value < extent
-            for value, extent in zip(point, case["grid"])
-        ):
-            raise ValueError("out-of-grid PV program: " + str(point))
-        x, y, head = point
-        region = (
-            head,
-            slice(x * bm, min((x + 1) * bm, m)),
-            slice(y * bn, min((y + 1) * bn, n)),
-        )
-        if np.any(mask[region]):
-            raise ValueError("overlapping PV programs: " + str(point))
-        mask[region] = True
-    return mask
-
-
-def check_pv_selected_output(case, programs, actual, expected, initial):
-    """Compare authorized tiles and require all other output bytes unchanged."""
-    mask = pv_program_mask(case, programs)
-    bits = actual.view(np.uint32)
-    if not np.array_equal(bits[mask], expected.view(np.uint32)[mask]):
-        raise AssertionError("PV ordered f32 output is not bit-exact")
-    if not np.array_equal(bits[~mask], initial.view(np.uint32)[~mask]):
-        raise AssertionError("PV program subset wrote an unauthorized C tile")
-    return mask
-
-
-def audit_pv_program(case, point, accesses, dma, matrix):
-    """Check this launch's exact logical rows, not only backing-buffer bounds."""
-    _, m, n, k = case["shape"]
-    bm, bn, bk = (case["constexprs"][key] for key in ("BM", "BN", "BK"))
-    x, y, head = point
-    m0, n0 = x * bm, y * bn
-    rows, columns = min(bm, m - m0), min(bn, n - n0)
-    regions = {
-        "%arg0": (m, k, m0, m0 + rows, 0, k, "read"),
-        "%arg1": (k, n, 0, k, n0, n0 + columns, "read"),
-        "%arg2": (m, n, m0, m0 + rows, n0, n0 + columns, "write"),
-    }
-    byte_counts = dict.fromkeys(regions, 0)
-    intervals = {name: [] for name in regions}
-    for name, start, end, action in accesses:
-        height, width, r0, r1, c0, c1, expected_action = regions[name]
-        first, last = start // 4, end // 4 - 1
-        row, column = divmod(first - head * height * width, width)
-        last_row, last_column = divmod(last - head * height * width, width)
-        if (
-            start % 4
-            or end % 4
-            or action != expected_action
-            or not r0 <= row < r1
-            or last_row != row
-            or not c0 <= column <= last_column < c1
-        ):
-            raise AssertionError(
-                f"PV logical row violation at {point}: {(name, start, end, action)}"
-            )
-        byte_counts[name] += end - start
-        intervals[name].append((start, end))
-    expected_bytes = {
-        "%arg0": rows * k * 4,
-        "%arg1": k * columns * 4,
-        "%arg2": rows * columns * 4,
-    }
-    if byte_counts != expected_bytes:
-        raise AssertionError(
-            f"PV transfer coverage at {point}: {byte_counts} != {expected_bytes}"
-        )
-    for name, spans in intervals.items():
-        ordered = sorted(spans)
-        if any(right[0] < left[1] for left, right in zip(ordered, ordered[1:])):
-            raise AssertionError(f"PV duplicate DDR access at {point}: {name}")
-    # The current strided A cannot use the 64-byte-aligned DMA route. ACC32
-    # copies move raw f32 bits; all arithmetic remains the ordered RVV path.
-    geometry = {}
-    if (k * 4) % 64:
-        a_copies = [event for event in matrix if event["source"] == "%arg0"]
-        if len(a_copies) != math.ceil(k / bk):
-            raise AssertionError(f"PV A matrix-copy count at {point}: {len(a_copies)}")
-        for block, event in enumerate(a_copies):
-            valid = min(bk, k - block * bk)
-            expected = {
-                # Offsets are relative to the already offset DDR subview;
-                # accesses above independently validate absolute addresses.
-                "source_offset": 0,
-                "rows": rows,
-                "row_bytes": valid * 4,
-                "source_pitch": k * 4,
-                "target_pitch": bk * 4,
-                "instruction_bits": 32,
-                "register_class": "acc",
-            }
-            if any(event[key] != value for key, value in expected.items()):
-                raise AssertionError(f"PV A matrix-copy geometry at {point}: {event}")
-            label = (
-                ("full-M" if rows == bm else "tail-M")
-                + "/"
-                + ("full-K" if valid == bk else "tail-K")
-            )
-            geometry[label] = geometry.get(label, 0) + 1
-        if any(event[0] == "%arg0" for event in dma):
-            raise AssertionError("PV unaligned A incorrectly used DMA")
-    b_packets = [event for event in dma if event[0] == "%arg1"]
-    if len(b_packets) != k or any(event[4] != columns * 4 for event in b_packets):
-        raise AssertionError(f"PV B DMA packets at {point}: {len(b_packets)}")
-    if any(event["source"] == "%arg1" for event in matrix):
-        raise AssertionError("PV legal B DMA unexpectedly became a matrix transfer")
-    return {
-        "a_matrix_geometry": geometry,
-        "b_dma_packets": len(b_packets),
-        "ddr_bytes": byte_counts,
-    }
 
 
 def check_artifacts(case, output_root):
@@ -263,9 +141,8 @@ def simulate_case(
     Inputs and outputs are copied, so callers can safely retain their own data.
     The same Machine and poisoned SPM banks persist throughout this launch.
     Passing a machines dictionary also preserves them between invocations.
-    Internal PV workers may select disjoint programs; unselected output bytes
-    must then retain their initial values and only selected tiles are compared.
-    These subsets require assemble_pv_round's independent full-grid acceptance.
+    Nonlinear workers may select disjoint programs; unselected output bytes
+    retain their initial values and only selected elements are compared.
     Without selected_programs, the complete real grid is executed.
     """
     module = check_artifacts(case, output_root)
@@ -326,13 +203,16 @@ def simulate_case(
         if machines is not None:
             machines[machine_key] = machine
     access_start, dma_start = len(machine.accesses), len(machine.dma_log)
+    frame_start = len(getattr(machine, "frame_accesses", []))
+    ame_frame_start = len(getattr(machine, "ame_frame_accesses", []))
+    frame_log_start = len(getattr(machine, "frame_log", []))
     grid = case["grid"]
     programs = list(itertools.product(*(range(extent) for extent in grid)))
     if selected_programs is not None:
         if case["family"] in ("gelu", "softmax"):
             nonlinear_program_mask(case, selected_programs)
         else:
-            pv_program_mask(case, selected_programs)
+            raise ValueError("program subsets require a GELU or Softmax case")
         programs = list(selected_programs)
     if order == "reverse":
         programs.reverse()
@@ -341,11 +221,6 @@ def simulate_case(
     elif order != "forward":
         raise ValueError("unknown program order: " + order)
     count = len(case["arguments"])
-    pv_audit = {
-        "a_matrix_geometry": {},
-        "b_dma_packets": 0,
-        "ddr_bytes": dict.fromkeys(("%arg0", "%arg1", "%arg2"), 0),
-    }
     nonlinear_bytes = {"%arg0": 0, "%arg1": 0}
     for launched, point in enumerate(programs, 1):
         scalars = {f"%arg{count + i}": value for i, value in enumerate([*grid, *point])}
@@ -365,20 +240,7 @@ def simulate_case(
             raise AssertionError(
                 f"strict simulator at program {point}: {message}"
             ) from error
-        if case["family"] == "attention_pv":
-            access_index, dma_index, matrix_index = program_start
-            audit = audit_pv_program(
-                case,
-                point,
-                machine.accesses[access_index:],
-                machine.dma_log[dma_index:],
-                machine.matrix_log[matrix_index:],
-            )
-            pv_audit["b_dma_packets"] += audit["b_dma_packets"]
-            for key in ("a_matrix_geometry", "ddr_bytes"):
-                for label, value in audit[key].items():
-                    pv_audit[key][label] = pv_audit[key].get(label, 0) + value
-        elif case["family"] in ("gelu", "softmax"):
+        if case["family"] in ("gelu", "softmax"):
             audit = audit_nonlinear_program(
                 case, point, machine.accesses[program_start[0] :]
             )
@@ -418,20 +280,41 @@ def simulate_case(
         index = int(name.removeprefix("%arg"))
         if action == "write" and case["arguments"][index]["name"] not in writable:
             raise AssertionError("write to read-only input: " + name)
-    if case["family"] == "matmul_i8_overwrite" and any(
+    if case["family"] == "matmul_i8" and any(
         name == "%arg2" and action == "read"
         for name, _, _, action in machine.accesses[access_start:]
     ):
-        raise AssertionError("overwrite matmul read old external C")
+        raise AssertionError("overwrite operation read old external C")
+    private_frames = {
+        frame["name"]: frame for frame in getattr(machine, "private_frames", [])
+    }
+    frame_events = getattr(machine, "frame_log", [])[frame_log_start:]
+    acquired = [event[1] for event in frame_events if event[0] == "acquire"]
+    released = [event[1] for event in frame_events if event[0] == "release"]
+    if len(set(acquired)) != len(acquired) or sorted(acquired) != sorted(released):
+        raise AssertionError("private DDR frames lack matching invocation releases")
+    for name in acquired:
+        if name not in private_frames or private_frames[name]["alive"]:
+            raise AssertionError("private DDR frame remains live after invocation")
+    frame_bytes = {kind: 0 for kind in ("read", "write")}
+    ame_frame_bytes = dict(frame_bytes)
+    for accesses, counts in (
+        (getattr(machine, "frame_accesses", [])[frame_start:], frame_bytes),
+        (getattr(machine, "ame_frame_accesses", [])[ame_frame_start:], ame_frame_bytes),
+    ):
+        for name, start, end, action in accesses:
+            frame = private_frames.get(name)
+            if (
+                frame is None
+                or name not in acquired
+                or action not in counts
+                or not frame["begin"] <= start < end <= frame["end"]
+            ):
+                raise AssertionError("private DDR access outside invocation frame")
+            counts[action] += end - start
     comparison_actual, comparison_expected = actual, expected
     nonlinear_metrics = None
-    if case["family"] == "attention_pv":
-        mask = check_pv_selected_output(
-            case, programs, actual["C"], expected["C"], initial["C"]
-        )
-        comparison_actual = {"C": actual["C"][mask]}
-        comparison_expected = {"C": expected["C"][mask]}
-    elif case["family"] in ("gelu", "softmax"):
+    if case["family"] in ("gelu", "softmax"):
         comparison_actual, comparison_expected, nonlinear_metrics = (
             selected_nonlinear_comparison(case, programs, actual, expected, initial)
         )
@@ -441,27 +324,40 @@ def simulate_case(
         "total_programs": math.prod(grid),
         "outputs": sum(value.size for value in comparison_expected.values()),
         "max_abs": max_abs,
+        "guard_bytes_checked": len(guard) * len(buffers),
+        "guard_errors": 0,
+        "input_errors": 0,
+        "readonly_bytes_checked": sum(
+            initial[name].nbytes for name in initial if name not in writable
+        ),
+        "outside_selected_output_unchanged": True,
         "module_sha256": digest(module),
         "kernel_module_sha256": digest(case["kernel_source"]),
         "order": order,
         "ddr_accesses": len(machine.accesses) - access_start,
         "dma_transfers": len(machine.dma_log) - dma_start,
+        "private_ddr": {
+            "frames_acquired": len(acquired),
+            "frames_released": len(released),
+            "frame_bytes": frame_bytes,
+            "ame_bytes": ame_frame_bytes,
+            "poison": getattr(machine, "private_poison", None),
+        },
+        "argument_bytes": {
+            argument["name"]: {
+                action: sum(
+                    end - start
+                    for name, start, end, kind in machine.accesses[access_start:]
+                    if name == f"%arg{index}" and kind == action
+                )
+                for action in ("read", "write")
+            }
+            for index, argument in enumerate(case["arguments"])
+        },
         "output_sha256": {
             name: hashlib.sha256(comparison_actual[name].tobytes()).hexdigest()
             for name in comparison_expected
         },
-        **(
-            {
-                "pv_access_audit": pv_audit,
-                "bit_exact_f32": True,
-                "reference_sha256": {
-                    name: hashlib.sha256(value.tobytes()).hexdigest()
-                    for name, value in comparison_expected.items()
-                },
-            }
-            if case["family"] == "attention_pv"
-            else {}
-        ),
         **(
             {
                 "nonlinear_error": nonlinear_metrics,
@@ -472,271 +368,6 @@ def simulate_case(
         ),
         **({"selected_programs": programs} if selected_programs is not None else {}),
     }
-
-
-def pv_shards(case):
-    """Keep all M tiles of one (head, N tile) on the same dirty SPM."""
-    return [
-        [(x, y, head) for x in range(case["grid"][0])]
-        for head in range(case["grid"][2])
-        for y in range(case["grid"][1])
-    ]
-
-
-def pv_shard_worker(case, output_root, programs):
-    """Interpret all three real rounds, retaining one Machine across them."""
-    machines = {}
-    mask = pv_program_mask(case, programs)
-    runs = []
-    for name, stress, order in scenarios_for(case):
-        arrays = make_inputs(case, argument_shapes(case), stress=stress)
-        actual, metrics = simulate_case(
-            case,
-            arrays,
-            output_root,
-            order=order,
-            progress=False,
-            machines=machines,
-            selected_programs=programs,
-        )
-        if len(machines) != 1:
-            raise AssertionError("PV shard did not retain one Machine/SPM")
-        runs.append(
-            {
-                "name": name,
-                "metrics": metrics,
-                "values": actual["C"][mask].copy(),
-            }
-        )
-    return {"programs": programs, "runs": runs}
-
-
-def assemble_pv_round(case, pieces, expected):
-    """Reconstruct every output exclusively from disjoint executed slices."""
-    shape = argument_shapes(case)[2]
-    assembled = np.empty(shape, dtype=DTYPES["f32"])
-    covered = np.zeros(shape, dtype=bool)
-    programs = set()
-    for piece in pieces:
-        points = piece["programs"]
-        mask = pv_program_mask(case, points)
-        point_set = {tuple(point) for point in points}
-        if programs & point_set or np.any(covered & mask):
-            raise AssertionError(
-                "PV aggregate contains duplicate program/output coverage"
-            )
-        metrics, values = piece["metrics"], piece["values"]
-        if (
-            metrics["programs"] != len(points)
-            or metrics["outputs"] != np.count_nonzero(mask)
-            or {tuple(point) for point in metrics["selected_programs"]} != point_set
-            or len(metrics["selected_programs"]) != len(points)
-            or values.shape != (np.count_nonzero(mask),)
-            or values.dtype != DTYPES["f32"]
-            or hashlib.sha256(values.tobytes()).hexdigest()
-            != metrics["output_sha256"]["C"]
-            or metrics.get("bit_exact_f32") is not True
-            or metrics.get("reference_sha256") != metrics["output_sha256"]
-        ):
-            raise AssertionError("PV aggregate lacks executed slice/hash evidence")
-        assembled[mask] = values
-        covered |= mask
-        programs |= point_set
-    complete = set(itertools.product(*(range(extent) for extent in case["grid"])))
-    if programs != complete or not np.all(covered):
-        raise AssertionError("PV aggregate is missing full-grid programs/outputs")
-    if not np.array_equal(assembled.view(np.uint32), expected.view(np.uint32)):
-        raise AssertionError("PV aggregate ordered f32 output is not bit-exact")
-    return assembled
-
-
-def check_pv_sharded(case, output_root, workers):
-    if case["family"] != "attention_pv" or workers <= 1:
-        raise ValueError("parallel shards require PV and at least two workers")
-    record = {
-        "name": case["name"],
-        "status": "BLOCKED",
-        "programs": 0,
-        "total_programs": math.prod(case["grid"]) * 3,
-        "outputs": 0,
-        "max_abs": None,
-        "reason": "",
-        "execution": "parallel-shards",
-        "order_scope": "within each fixed (head, N tile) shard; no global inter-shard order",
-        "spm_lifetime": "one Machine per shard, poisoned once and retained across all selected programs and three rounds",
-        "comparison_rounds": 3,
-        "full_grid_programs": math.prod(case["grid"]),
-    }
-    output = Path(output_root) / case["name"]
-    output.mkdir(parents=True, exist_ok=True)
-    try:
-        module = check_artifacts(case, output_root)
-        record["module_sha256"] = digest(module)
-        record["kernel_module_sha256"] = digest(case["kernel_source"])
-        shards = pv_shards(case)
-        record.update(workers=min(workers, len(shards)), shard_count=len(shards))
-        results = []
-        with concurrent.futures.ProcessPoolExecutor(
-            max_workers=record["workers"],
-            mp_context=multiprocessing.get_context("spawn"),
-        ) as pool:
-            futures = [
-                pool.submit(pv_shard_worker, case, output_root, points)
-                for points in shards
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                result = future.result()
-                results.append(result)
-                print(
-                    f"  {case['name']}: {len(results)}/{len(shards)} shards, three rounds each",
-                    flush=True,
-                )
-        results.sort(key=lambda result: result["programs"][0])
-        runs = []
-        for index, (name, stress, order) in enumerate(scenarios_for(case)):
-            expected = reference(
-                case, make_inputs(case, argument_shapes(case), stress=stress)
-            )["C"]
-            pieces = [
-                {"programs": result["programs"], **result["runs"][index]}
-                for result in results
-            ]
-            assembled = assemble_pv_round(case, pieces, expected)
-            audit = {
-                "a_matrix_geometry": {},
-                "b_dma_packets": 0,
-                "ddr_bytes": dict.fromkeys(("%arg0", "%arg1", "%arg2"), 0),
-            }
-            for piece in pieces:
-                metrics = piece["metrics"]
-                if (
-                    metrics["module_sha256"] != digest(module)
-                    or metrics["kernel_module_sha256"] != digest(case["kernel_source"])
-                    or piece["name"] != name
-                    or metrics["order"] != order
-                ):
-                    raise AssertionError("PV shard source/module/scenario differs")
-                per_shard = metrics["pv_access_audit"]
-                audit["b_dma_packets"] += per_shard["b_dma_packets"]
-                for key in ("a_matrix_geometry", "ddr_bytes"):
-                    for label, value in per_shard[key].items():
-                        audit[key][label] = audit[key].get(label, 0) + value
-            hashes = {"C": hashlib.sha256(assembled.tobytes()).hexdigest()}
-            runs.append(
-                {
-                    "name": name,
-                    "order": "shard-" + order,
-                    "programs": math.prod(case["grid"]),
-                    "total_programs": math.prod(case["grid"]),
-                    "outputs": assembled.size,
-                    "max_abs": 0.0,
-                    "bit_exact_f32": True,
-                    "module_sha256": digest(module),
-                    "kernel_module_sha256": digest(case["kernel_source"]),
-                    "output_sha256": hashes,
-                    "reference_sha256": {
-                        "C": hashlib.sha256(expected.tobytes()).hexdigest()
-                    },
-                    "ddr_accesses": sum(
-                        piece["metrics"]["ddr_accesses"] for piece in pieces
-                    ),
-                    "dma_transfers": sum(
-                        piece["metrics"]["dma_transfers"] for piece in pieces
-                    ),
-                    "pv_access_audit": audit,
-                }
-            )
-        if runs[1]["output_sha256"] != runs[2]["output_sha256"]:
-            raise AssertionError("PV shard launch order changed output")
-        record.update(
-            status="PASS",
-            runs=runs,
-            programs=sum(run["programs"] for run in runs),
-            outputs=sum(run["outputs"] for run in runs),
-            max_abs=0.0,
-            shards=[
-                {
-                    "programs": result["programs"],
-                    "runs": [
-                        {"name": run["name"], **run["metrics"]}
-                        for run in result["runs"]
-                    ],
-                }
-                for result in results
-            ],
-        )
-    except SimulationBlocked as error:
-        record["reason"] = str(error)
-    except Exception as error:
-        record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
-    (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
-    print(
-        f"{record['status']}: {case['name']} ({record['programs']}/{record['total_programs']}; sharded)",
-        flush=True,
-    )
-    return record
-
-
-def validate_pv_shard_evidence(case, saved, module_hash):
-    """Reject incomplete/overlapping stored shard metadata during collection."""
-    shards = saved.get("shards", [])
-    if len(shards) != len(pv_shards(case)) or saved.get("shard_count") != len(shards):
-        raise SimulationBlocked("incomplete PV shard count")
-    references = {
-        stress: reference(
-            case, make_inputs(case, argument_shapes(case), stress=stress)
-        )["C"]
-        for stress in (False, True)
-    }
-    fixed_shards = {frozenset(points) for points in pv_shards(case)}
-    points_seen = set()
-    for shard in shards:
-        points = shard.get("programs", [])
-        try:
-            mask = pv_program_mask(case, points)
-        except ValueError as error:
-            raise SimulationBlocked("invalid PV shard program selection") from error
-        point_set = {tuple(point) for point in points}
-        if frozenset(point_set) not in fixed_shards:
-            raise SimulationBlocked(
-                "PV shard is not one complete fixed (head, N tile) M set"
-            )
-        if points_seen & point_set:
-            raise SimulationBlocked("duplicate PV shard programs")
-        points_seen |= point_set
-        runs = shard.get("runs", [])
-        if len(runs) != 3:
-            raise SimulationBlocked("incomplete PV shard rounds")
-        for run, (name, stress, order) in zip(runs, scenarios_for(case)):
-            expected = references[stress][mask]
-            expected_hash = {"C": hashlib.sha256(expected.tobytes()).hexdigest()}
-            ordered_points = sorted(point_set)
-            if order == "reverse":
-                ordered_points.reverse()
-            elif order == "tail-first":
-                ordered_points.sort(key=lambda point: (-point[0], point[1], point[2]))
-            if (
-                run.get("name") != name
-                or run.get("order") != order
-                or run.get("module_sha256") != module_hash
-                or run.get("kernel_module_sha256") != digest(case["kernel_source"])
-                or run.get("programs") != len(points)
-                or run.get("outputs") != np.count_nonzero(mask)
-                or len(run.get("selected_programs", [])) != len(points)
-                or {tuple(point) for point in run["selected_programs"]} != point_set
-                or [tuple(point) for point in run["selected_programs"]]
-                != ordered_points
-                or run.get("bit_exact_f32") is not True
-                or run.get("output_sha256") != expected_hash
-                or run.get("reference_sha256") != expected_hash
-                or "pv_access_audit" not in run
-            ):
-                raise SimulationBlocked(
-                    "incomplete PV shard numerical/coverage evidence"
-                )
-    complete = set(itertools.product(*(range(extent) for extent in case["grid"])))
-    if points_seen != complete:
-        raise SimulationBlocked("PV shards do not cover the full grid")
 
 
 def check_case(case, output_root):
@@ -763,7 +394,7 @@ def check_case(case, output_root):
         record["total_programs"] *= len(scenarios)
         record["comparison_rounds"] = len(scenarios)
         runs = []
-        machines = {} if case["family"] == "attention_pv" else None
+        machines = {}
         for name, stress, order in scenarios:
             arrays = make_inputs(case, argument_shapes(case), stress=stress)
             _, metrics = simulate_case(
@@ -846,21 +477,9 @@ def collect_case(case, output_root):
                 raise SimulationBlocked(
                     "incomplete simulation: a round lacks complete current-module evidence"
                 )
-            if case["family"] == "attention_pv" and (
-                run.get("bit_exact_f32") is not True
-                or run.get("reference_sha256") != run.get("output_sha256")
-                or "pv_access_audit" not in run
-            ):
-                raise SimulationBlocked(
-                    "incomplete PV bit-exact/transfer-geometry evidence"
-                )
-        order_prefix = ""
-        if saved.get("execution") == "parallel-shards":
-            validate_pv_shard_evidence(case, saved, digest(module))
-            order_prefix = "shard-"
         if rounds == 3 and (
             [(run.get("name"), run.get("order")) for run in runs]
-            != [(name, order_prefix + order) for name, _, order in scenarios]
+            != [(name, order) for name, _, order in scenarios]
             or runs[1]["output_sha256"] != runs[2]["output_sha256"]
         ):
             raise SimulationBlocked("incomplete numerical/launch-order stress evidence")
@@ -886,12 +505,6 @@ def main():
     )
     parser.add_argument("--output", type=Path, default=ROOT / "build/kernels")
     parser.add_argument(
-        "--pv-workers",
-        type=int,
-        default=1,
-        help="explicitly interpret PV full-grid (head,N-tile) shards in separate processes; each retains dirty SPM across its three rounds",
-    )
-    parser.add_argument(
         "--nonlinear-workers",
         type=int,
         default=1,
@@ -910,10 +523,6 @@ def main():
         if args.cases
         else inventory()
     )
-    if args.pv_workers < 1 or (
-        args.pv_workers > 1 and any(case["family"] != "attention_pv" for case in cases)
-    ):
-        parser.error("--pv-workers requires positive workers and PV-only cases")
     if args.nonlinear_workers < 1 or (
         args.nonlinear_workers > 1
         and any(case["family"] not in ("gelu", "softmax") for case in cases)
@@ -927,10 +536,6 @@ def main():
 
         def run(case, output):
             return check_nonlinear_sharded(case, output, args.nonlinear_workers)
-    elif args.pv_workers > 1:
-
-        def run(case, output):
-            return check_pv_sharded(case, output, args.pv_workers)
     else:
         run = check_case
     results = [run(case, args.output) for case in cases]

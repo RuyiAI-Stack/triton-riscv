@@ -115,16 +115,16 @@ def output_names(case):
     family = case["family"]
     if family in (
         "linear",
+        "gemm_i8",
         "matmul_i8",
-        "matmul_i8_overwrite",
     ) or family.startswith("attention_"):
         return ("C",)
-    if family == "per_token_quantization":
+    if family in ("per_token_quantization", "quantize_transpose"):
         return ("Q", "Scale")
     return ("Out",)
 
 
-def make_inputs(case, shapes, stress=False, pattern=None):
+def make_inputs(case, shapes, stress=False):
     """Deterministic inputs, including zero rows and signed integer extremes."""
     rng = np.random.default_rng(107 if stress else 71)
     outputs = output_names(case)
@@ -158,57 +158,102 @@ def make_inputs(case, shapes, stress=False, pattern=None):
             # A visible sentinel proves every required element was written.
             value = np.full(shape, 0x55 if dtype.kind == "i" else np.nan, dtype=dtype)
         arrays[name] = np.ascontiguousarray(value, dtype=dtype)
-    if case["family"] == "per_token_quantization":
-        width = arrays["X"].shape[-1]
-        ties = np.resize(
-            np.array(
-                [-127, -2.5, -1.5, -0.5, 0, 0.5, 1.5, 2.5, 127],
-                dtype=np.float32,
-            ),
-            width,
-        )
-        rows = arrays["X"].shape[0]
-        if rows > 1:
-            arrays["X"][0] = 0.0
-            arrays["X"][1] = ties
-        else:
-            # One row cannot hold the zero-scale case and the rounding
-            # boundaries at the same time. Callers select one pattern per run.
-            selected = pattern or ("ties" if stress else "random")
-            if selected == "zeros":
-                arrays["X"][0] = 0.0
-            elif selected == "ties":
-                arrays["X"][0] = ties
-    if stress and case["family"] == "attention_pv":
-        # Distinguish block-local accumulation from reassociation across K
-        # blocks. The unit term is rounded away inside the second block.
-        a, b = arrays["A"], arrays["B"]
-        block = case["constexprs"]["BK"]
-        a.fill(0)
-        signs = np.where((np.indices(a.shape[:-1]).sum(axis=0) % 2) == 0, 1, -1).astype(
-            np.float32
-        )
-        if a.shape[-1] > block + 1:
-            a[..., 0] = signs * np.float32(2**25)
-            a[..., block] = -signs * np.float32(2**25)
-            a[..., block + 1] = signs
-        if a.shape[-1] > 2 * block:
-            a[..., 2 * block] = signs * np.float32(0.125)
-        tail = a.shape[-1] % block
-        if tail:
-            a[..., -tail:] = signs[..., None] * np.resize(
-                np.array([2, -4, 0.5, 1.25, -0.25], dtype=np.float32), tail
+    if case["family"] in ("per_token_quantization", "quantize_transpose"):
+        rows = arrays["X"].T if case["family"] == "quantize_transpose" else arrays["X"]
+        rows[0] = 0.0
+        if rows.shape[0] > 1:
+            width = rows.shape[-1]
+            ties = np.resize(
+                np.array(
+                    [-127, -2.5, -1.5, -0.5, 0, 0.5, 1.5, 2.5, 127],
+                    dtype=np.float32,
+                ),
+                width,
             )
-        columns = np.arange(b.shape[-1])
-        scales = np.ldexp(
-            np.where(columns % 2, np.float32(-1), np.float32(1)),
-            columns % 5 - 2,
-        )
-        b[...] = scales
-        arrays["C"].fill(np.nan)
+            rows[1] = ties
+            if stress:
+                quantization_stress(rows)
     if stress:
         _nonlinear_stress(case, arrays)
     return arrays
+
+
+def quantization_stress(rows):
+    """Zero, signed extrema, half ties and neighbors on both scale axes."""
+    ties = np.array(
+        [-127, -126.5, -2.5, -1.5, -0.5, -0.0, 0.0, 0.5, 1.5, 2.5, 126.5, 127],
+        np.float32,
+    )
+    patterns = [
+        np.zeros_like(ties),
+        ties,
+        np.nextafter(ties, np.float32(-np.inf)),
+        np.nextafter(ties, np.float32(np.inf)),
+        np.array([-127, 127, -1, 0, 1], np.float32),
+    ]
+    for index, row in enumerate(rows):
+        row[:] = np.resize(patterns[index % len(patterns)], row.size)
+        # Powers of two preserve exact half ties while varying each scale.
+        row *= np.float32(2.0 ** ((index % 17) - 8))
+    if len(rows) > 5:
+        rows[-1] = np.resize(
+            np.array(
+                [-np.finfo(np.float32).max, 0, np.finfo(np.float32).max], np.float32
+            ),
+            rows.shape[-1],
+        )
+        rows[-2] = np.resize(
+            np.array(
+                [-np.finfo(np.float32).tiny, 0, np.finfo(np.float32).tiny], np.float32
+            ),
+            rows.shape[-1],
+        )
+
+
+def quantize_rows(value):
+    """Independent scalar f32 quantizer; Python integers implement saturation."""
+    quantized = np.empty(value.shape, dtype=np.int8)
+    scales = np.empty(value.shape[0], dtype=np.float32)
+    for row, values in enumerate(value):
+        maximum = np.float32(max(abs(float(x)) for x in values))
+        scale = np.float32(1) if maximum == 0 else np.float32(maximum / np.float32(127))
+        scales[row] = scale
+        for column, x in enumerate(values):
+            ratio = np.float32(x / scale)
+            base = int(ratio)
+            remainder = float(ratio) - base
+            adjustment = 1 if remainder >= 0.5 else -1 if remainder <= -0.5 else 0
+            quantized[row, column] = min(127, max(-127, base + adjustment))
+    return quantized, scales
+
+
+def quantized_attention_reference(case, arrays):
+    """Runtime per-head row/column quantization, INT64 oracle, ordered f32 restore."""
+    result = np.empty(arrays["C"].shape, np.float32)
+    factor = np.float32(0.125 if case["family"] == "attention_qk" else 1)
+    for head, (a, b) in enumerate(zip(arrays["A"], arrays["B"])):
+        aq, rs = quantize_rows(a)
+        bq, cs = quantize_rows(b.T)
+        acc = (aq.astype(np.int64) @ bq.astype(np.int64).T).astype(np.int32)
+        with np.errstate(over="ignore", invalid="ignore"):
+            first = np.multiply(acc.astype(np.float32), rs[:, None], dtype=np.float32)
+            second = np.multiply(first, cs[None, :], dtype=np.float32)
+            result[head] = np.multiply(second, factor, dtype=np.float32)
+    return {"C": result}
+
+
+def attention_fp32_reference(case, arrays):
+    """Retain the former ordered FP32 arithmetic solely as a host baseline."""
+    product = (
+        _matmul_blocked_sequential(arrays["A"], arrays["B"], 64)
+        if case["family"] == "attention_pv"
+        else _matmul_sequential(arrays["A"], arrays["B"])
+    )
+    return np.multiply(
+        product,
+        np.float32(0.125 if case["family"] == "attention_qk" else 1),
+        dtype=np.float32,
+    )
 
 
 def nonlinear_reference64(case, arrays):
@@ -319,122 +364,26 @@ def _matmul_blocked_sequential(a, b, block):
     return result
 
 
-def _conv2d_nchw(case, arrays):
-    """NCHW convolution in the kernel's ic/kh/kw reduction order."""
-    spec = case["constexprs"]
-    x = arrays["X"][0]
-    weight = arrays["Weight"]
-    oh, ow = spec["OH"], spec["OW"]
-    acc = np.zeros((spec["OC"], oh, ow), dtype=np.float32)
-    for ic in range(spec["C"]):
-        for kh in range(spec["KH"]):
-            ih = np.arange(oh, dtype=np.int64) * spec["SH"] - spec["PH"] + kh
-            for kw in range(spec["KW"]):
-                iw = np.arange(ow, dtype=np.int64) * spec["SW"] - spec["PW"] + kw
-                valid_h = (ih >= 0) & (ih < spec["H"])
-                valid_w = (iw >= 0) & (iw < spec["W"])
-                gathered = np.zeros((oh, ow), dtype=np.float32)
-                if np.any(valid_h) and np.any(valid_w):
-                    rows = np.clip(ih, 0, spec["H"] - 1)
-                    cols = np.clip(iw, 0, spec["W"] - 1)
-                    gathered = x[ic][rows[:, None], cols[None, :]].astype(np.float32)
-                    gathered *= valid_h[:, None] & valid_w[None, :]
-                acc = np.add(
-                    acc,
-                    gathered[None, :, :] * weight[:, ic, kh, kw, None, None],
-                    dtype=np.float32,
-                )
-    acc = np.add(acc, arrays["Bias"][:, None, None], dtype=np.float32)
-    return acc.reshape(1, spec["OC"], oh, ow)
-
-
-def _dwconv2d_nchw(case, arrays):
-    """Depthwise NCHW convolution, one output channel per input channel."""
-    spec = case["constexprs"]
-    x = arrays["X"][0]
-    weight = arrays["Weight"][:, 0]
-    oh, ow = spec["OH"], spec["OW"]
-    acc = np.zeros((spec["C"], oh, ow), dtype=np.float32)
-    for kh in range(spec["KH"]):
-        ih = np.arange(oh, dtype=np.int64) * spec["SH"] - spec["PH"] + kh
-        valid_h = (ih >= 0) & (ih < spec["H"])
-        rows = np.clip(ih, 0, spec["H"] - 1)
-        for kw in range(spec["KW"]):
-            iw = np.arange(ow, dtype=np.int64) * spec["SW"] - spec["PW"] + kw
-            valid_w = (iw >= 0) & (iw < spec["W"])
-            cols = np.clip(iw, 0, spec["W"] - 1)
-            gathered = x[:, rows[:, None], cols[None, :]].astype(np.float32)
-            gathered *= valid_h[None, :, None] & valid_w[None, None, :]
-            acc = np.add(
-                acc,
-                gathered * weight[:, kh, kw, None, None],
-                dtype=np.float32,
-            )
-    acc = np.add(acc, arrays["Bias"][:, None, None], dtype=np.float32)
-    return acc.reshape(1, spec["C"], oh, ow)
-
-
 def reference(case, arrays):
     """Return references only for the writable arguments of this case."""
     family = case["family"]
-    if family in ("matmul_i8", "matmul_i8_overwrite"):
+    if family in ("gemm_i8", "matmul_i8"):
         a, b, c = (arrays[name] for name in ("A", "B", "C"))
         return {
             "C": (
-                (c.astype(np.int64) if family == "matmul_i8" else 0)
+                (c.astype(np.int64) if family == "gemm_i8" else 0)
                 + a.astype(np.int64) @ b.astype(np.int64).T
             ).astype("<i4")
         }
     if family == "linear":
         product = _matmul_sequential(arrays["A"], arrays["B"].T)
         return {"C": np.add(product, arrays["C"], dtype=np.float32)}
-    if family == "linear_f32":
-        # Same BK tiles as tl.dot. Each tile is still a sequential f32 dot;
-        # the kernel may contract a tile with FMA, so compare() keeps a tolerance.
-        product = _matmul_blocked_sequential(
-            arrays["A"], arrays["W"].T, case["constexprs"]["BK"]
-        )
-        return {"Out": np.add(product, arrays["Bias"][None, :], dtype=np.float32)}
-    if family == "conv2d_f32":
-        return {"Out": _conv2d_nchw(case, arrays)}
-    if family == "dwconv2d_f32":
-        return {"Out": _dwconv2d_nchw(case, arrays)}
-    if family == "gap":
-        spatial = case["constexprs"]["SPATIAL"]
-        channels = arrays["X"].reshape(arrays["X"].shape[1], spatial)
-        acc = np.zeros(channels.shape[0], dtype=np.float32)
-        for pixel in range(spatial):
-            acc = np.add(acc, channels[:, pixel], dtype=np.float32)
-        return {
-            "Out": np.divide(acc, np.float32(spatial), dtype=np.float32).reshape(1, -1)
-        }
-    if family == "silu":
-        x = arrays["X"]
-        denom = np.add(
-            np.float32(1), np.exp(np.negative(x), dtype=np.float32), dtype=np.float32
-        )
-        return {"Out": np.divide(x, denom, dtype=np.float32)}
-    if family.startswith("attention_"):
-        product = (
-            _matmul_blocked_sequential(
-                arrays["A"], arrays["B"], case["constexprs"]["BK"]
-            )
-            if family == "attention_pv"
-            else _matmul_sequential(arrays["A"], arrays["B"])
-        )
-        return {
-            "C": np.multiply(
-                product,
-                np.float32(case["constexprs"]["SCALE"]),
-                dtype=np.float32,
-            )
-        }
     if family == "add":
         return {"Out": np.add(arrays["X"], arrays["Y"], dtype=np.float32)}
     if family == "bias_add":
         return {"Out": np.add(arrays["X"], arrays["Bias"], dtype=np.float32)}
     if family == "layernorm":
-        rows, width = case["shape"]
+        _rows, width = case["shape"]
         block = case["constexprs"]["BLOCK"]
         padded = np.pad(arrays["X"], ((0, 0), (0, block - width)))
         mean = np.divide(
@@ -461,8 +410,14 @@ def reference(case, arrays):
         )
         scaled = np.multiply(normalized, arrays["Weight"], dtype=np.float32)
         return {"Out": np.add(scaled, arrays["Bias"], dtype=np.float32)}
+    if family == "quantize_transpose":
+        q, scale = quantize_rows(arrays["X"].T)
+        return {"Q": q, "Scale": scale}
+    if family == "head_layout":
+        result = arrays["Out"].copy()
+        result[:, :38809] = arrays["X"][:, :38809]
+        return {"Out": result}
     if family == "per_token_quantization":
-        # Matches the kernel: truncate toward zero, then ties away from zero.
         x = arrays["X"]
         maximum = np.max(np.abs(x), axis=-1)
         scale = np.where(
@@ -479,14 +434,20 @@ def reference(case, arrays):
             np.where(saturated >= 0, 1, -1),
             0,
         )
-        return {"Q": (base + adjustment).astype(np.int8), "Scale": scale}
+        q = (base + adjustment).astype(np.int8)
+        return {"Q": q, "Scale": scale}
     if family == "dequantization":
         first = np.multiply(
             arrays["X"].astype(np.float32),
             arrays["Row"][:, None],
             dtype=np.float32,
         )
-        return {"Out": np.multiply(first, arrays["Column"][None, :], dtype=np.float32)}
+        second = np.multiply(first, arrays["Column"][None, :], dtype=np.float32)
+        return {
+            "Out": np.multiply(
+                second, np.float32(case.get("output_factor", 1)), dtype=np.float32
+            )
+        }
     if family == "gelu":
         x = arrays["X"]
         erf_input = np.multiply(x, np.float32(0.7071067811865475), dtype=np.float32)
@@ -518,16 +479,7 @@ def reference(case, arrays):
 def compare(case, actual, expected):
     """Exact arithmetic cases compare bits; nonlinear f32 keeps tolerances."""
     max_abs = 0.0
-    tolerant = case["family"] in (
-        "layernorm",
-        "gelu",
-        "softmax",
-        "silu",
-        "linear_f32",
-        "conv2d_f32",
-        "dwconv2d_f32",
-        "gap",
-    )
+    tolerant = case["family"] in ("layernorm", "gelu", "softmax")
     for name, want in expected.items():
         got = actual[name]
         if got.shape != want.shape or got.dtype != want.dtype:
@@ -583,3 +535,94 @@ def nonlinear_error_metrics(actual, expected):
         "positive_infinity_outputs": int(np.count_nonzero(np.isposinf(got))),
         "negative_infinity_outputs": int(np.count_nonzero(np.isneginf(got))),
     }
+
+
+_base_output_names = output_names
+_base_make_inputs = make_inputs
+_base_reference = reference
+_base_compare = compare
+CUSTOM = {
+    "embedding",
+    "split_heads",
+    "merge_heads",
+    "head_bias_add",
+    "relative_shift",
+    "segment_gather",
+    "attention_score",
+}
+
+
+def output_names(case):
+    return ("Out",) if case["family"] in CUSTOM else _base_output_names(case)
+
+
+def make_inputs(case, shapes, stress=False):
+    arrays = _base_make_inputs(case, shapes, stress)
+    family = case["family"]
+    if family == "embedding":
+        arrays["Ids"][:] = (np.arange(128) * 251) % 32000
+    if family == "segment_gather":
+        ids = np.where(np.arange(128) < 64, 0, 1)
+        ids[-1] = 2
+        arrays["Segments"][0] = ids[:, None] == ids[None, :]
+        arrays["Segments"][1] = ids[:, None] != ids[None, :]
+    if family == "attention_score":
+        arrays["Mask"][:] = (np.arange(128)[None, :] >= 117) & ~np.eye(128, dtype=bool)
+    return arrays
+
+
+def reference(case, arrays):
+    f = case["family"]
+    if f == "embedding":
+        ids = arrays["Ids"]
+        out = np.zeros((128, 768), np.float32)
+        valid = (ids >= 0) & (ids < 32000)
+        out[valid] = arrays["Table"][ids[valid]]
+        return {"Out": out}
+    if f == "split_heads":
+        n = case["constexprs"]["LENGTH"]
+        return {"Out": arrays["X"].reshape(n, 12, 64).transpose(1, 0, 2).copy()}
+    if f == "merge_heads":
+        return {"Out": arrays["X"].transpose(1, 0, 2).reshape(128, 768).copy()}
+    if f == "head_bias_add":
+        return {
+            "Out": np.add(arrays["X"], arrays["Bias"][:, None, :], dtype=np.float32)
+        }
+    if f == "relative_shift":
+        # The reshape/drop/reshape definition is independent of the kernel index formula.
+        x = arrays["X"].reshape(12, 256, 128)[:, 1:, :]
+        return {"Out": x.reshape(12, 128, 255)[:, :, :128].copy()}
+    if f == "segment_gather":
+        different = arrays["Segments"][1].astype(bool)
+        return {
+            "Out": np.take_along_axis(
+                arrays["X"],
+                np.broadcast_to(different, (12, 128, 128)).astype(np.int64),
+                axis=2,
+            )
+        }
+    if f == "attention_score":
+        x = np.add(
+            np.add(arrays["Content"], arrays["Position"], dtype=np.float32),
+            arrays["Segment"],
+            dtype=np.float32,
+        )
+        x = np.multiply(x, np.float32(0.125), dtype=np.float32)
+        blocked = arrays["Mask"] != 0
+        return {
+            "Out": np.subtract(
+                x, np.where(blocked, np.float32(1e30), np.float32(0)), dtype=np.float32
+            )
+        }
+    return _base_reference(case, arrays)
+
+
+def compare(case, actual, expected):
+    if case["family"] not in CUSTOM:
+        return _base_compare(case, actual, expected)
+    for name, want in expected.items():
+        np.testing.assert_allclose(actual[name], want, atol=2e-6, rtol=2e-6)
+    return max(
+        float(np.max(np.abs(actual[name].astype(np.float64) - want.astype(np.float64))))
+        for name, want in expected.items()
+    )

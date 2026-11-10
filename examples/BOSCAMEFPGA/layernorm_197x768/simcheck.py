@@ -101,6 +101,7 @@ def main():
     max_error = 0.0
     for row in reversed(range(example.ROWS)):
         start, end = row * example.WIDTH * 4, (row + 1) * example.WIDTH * 4
+        access_start = len(machine.accesses)
         machine.launch(
             buffers,
             {"%arg4": example.ROWS, "%arg5": 1, "%arg6": 1, "%arg7": row},
@@ -115,12 +116,24 @@ def main():
             err_msg=f"row {row}: output exceeds vector-reduction tolerance",
         )
         max_error = max(max_error, float(np.max(np.abs(actual - expected))))
-        assert machine.accesses[-4:] == [
-            ("%arg0", start, end, "read"),
-            ("%arg1", 0, example.WIDTH * 4, "read"),
-            ("%arg2", 0, example.WIDTH * 4, "read"),
-            ("%arg3", start, end, "write"),
-        ]
+        expected_ranges = {
+            "%arg0": (start, end, "read", 3),
+            "%arg1": (0, example.WIDTH * 4, "read", 1),
+            "%arg2": (0, example.WIDTH * 4, "read", 1),
+            "%arg3": (start, end, "write", 1),
+        }
+        coverage = {
+            name: np.zeros(example.WIDTH, dtype=np.int32) for name in expected_ranges
+        }
+        for name, begin, finish, kind in machine.accesses[access_start:]:
+            lower, upper, expected_kind, _ = expected_ranges[name]
+            assert kind == expected_kind
+            assert lower <= begin < finish <= upper
+            assert begin % 4 == finish % 4 == 0
+            coverage[name][(begin - lower) // 4 : (finish - lower) // 4] += 1
+        for name, (_, _, _, count) in expected_ranges.items():
+            assert np.all(coverage[name] == count), (row, name, count)
+        assert not machine.dma_log
     assert all(bytes(buffers[name]) == snapshot for name, snapshot in original.items())
     assert buffers["%arg3"][-len(guard) :] == guard
     output = bytes(buffers["%arg3"][: x.nbytes])
@@ -142,7 +155,7 @@ def main():
     if args.write_output is not None:
         args.write_output.write_bytes(output)
     print(
-        f"SIM CHECK PASS: {example.ROWS} programs, masked-lane f32 oracle rtol=2e-5, atol=2e-5, four exact 3072 B DMA ranges per row, DDR guards intact; max absolute error {max_error:.3g}"
+        f"SIM CHECK PASS: {example.ROWS} programs, masked-lane f32 oracle rtol=2e-5, atol=2e-5, exact DDR coverage X x3 / Weight x1 / Bias x1 / Out x1, no DMA, DDR guards intact; max absolute error {max_error:.3g}"
     )
 
 

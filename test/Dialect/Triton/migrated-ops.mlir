@@ -38,13 +38,12 @@ module {
     // CHECK: %[[PTR:.*]] = tt.addptr {{.*}} : tensor<16x!tt.ptr<f32>>, tensor<16xi32>
     %2 = tt.addptr %1, %0 : tensor<16x!tt.ptr<f32>>, tensor<16xi32>
 
-    // The historical spelling used by Triton-generated TTIR: the cache and
-    // eviction enumerations arrive as plain i32 attributes.
-    // CHECK: %[[LD0:.*]] = tt.load %[[PTR]]{{.*}} : tensor<16x!tt.ptr<f32>>
+    // The pinned Triton prints cache and eviction as i32 attributes. The
+    // default isVolatile = false is omitted on the round trip.
+    // CHECK: %[[LD0:.*]] = tt.load %[[PTR]] {cache = 1 : i32, evict = 1 : i32} : tensor<16x!tt.ptr<f32>>
     %3 = tt.load %2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<16x!tt.ptr<f32>>
-    // The current Triton spelling prints the enumerations as keywords, and the
-    // non-default attribute is printed in the attribute dictionary.
-    // CHECK: tt.load %[[PTR]]{{.*}}isVolatile = true{{.*}} : tensor<16x!tt.ptr<f32>>
+    // A non-default volatile load keeps isVolatile in the same dictionary.
+    // CHECK: tt.load %[[PTR]] {cache = 2 : i32, evict = 2 : i32, isVolatile = true} : tensor<16x!tt.ptr<f32>>
     %4 = tt.load %2 {cache = 2 : i32, evict = 2 : i32, isVolatile = true} : tensor<16x!tt.ptr<f32>>
     // A scalar load.
     // CHECK: tt.load %arg0 : !tt.ptr<f32>

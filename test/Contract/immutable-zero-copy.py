@@ -13,6 +13,7 @@ scenario.
 """
 
 # RUN: %PYTHON %s triton-shared-opt
+
 import subprocess
 import sys
 

@@ -11,7 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -51,7 +50,7 @@ int launch(void) {
     scale[i] = (float)((i * 3) % 7 - 3) * 0.125f;
 
   for (int i = 0; i < 18816; ++i)
-    o[i] = 0.0f;
+    o[i] = __builtin_nanf("");
 
   MemRef1 X = make_1(x, 18816), S = make_1(scale, 96), O = make_1(o, 18816);
   _mlir_ciface_kernel_se_mul_c96_h14_w14(&X, &S, &O);
@@ -61,5 +60,5 @@ int launch(void) {
     for (int s = 0; s < 196; ++s)
       compare(o[c * 196 + s], x[c * 196 + s] * scale[c], 1e-6f, 1e-6f, &errors,
               &maximum);
-  return print_check("se_mul_c96_h14_w14", errors, maximum);
+  return print_check_count("se_mul_c96_h14_w14", 18816u, errors, maximum);
 }

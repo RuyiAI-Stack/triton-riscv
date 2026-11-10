@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock diag spm capacity lowering
 // and contract facts.
 //
-
 module {
   tt.func public @spm_overflow(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %pid: i32) {
     %cpitch = arith.constant dense<2048> : tensor<64x1xi32>

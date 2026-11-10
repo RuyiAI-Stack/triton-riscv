@@ -13,6 +13,7 @@ docstrings that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t triton-shared-opt
+
 import re
 import subprocess
 import sys

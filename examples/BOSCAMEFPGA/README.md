@@ -1,8 +1,9 @@
 # BOSCAME FPGA examples
 
 This tree owns every Triton kernel and Python frontend driver in the
-repository. There are no per-model README files: shape, grid and ABI live
-in each case's `kernel.py` (`KERNEL_CONFIG`). The AOT API is
+repository. Shape, grid and ABI live in each case's `kernel.py`
+(`KERNEL_CONFIG`). Each model directory has a README for its fixed graph
+and commands. The AOT API is
 [docs/BoscameAOT.md](../../docs/BoscameAOT.md).
 
 Export (`make ttir` / `tools/export.py`) needs the installed triton-riscv
@@ -28,13 +29,13 @@ make -C "$BUDDY_ROOT/examples/FPGA-BOSCAME/matmul_i8_196x768x768" \
 
 | Directory | Role | Cases |
 | --- | --- | ---: |
-| `e5-small-v2` | E5-small encoder ops | 12 |
-| `gte-small` | GTE-small encoder ops | 12 |
-| `electra-base-discriminator` | ELECTRA-base ops | 15 |
-| `xlnet-base-cased` | XLNet-base ops | 12 |
+| `e5-small-v2` | E5-small encoder ops | 30 |
+| `gte-small` | GTE-small encoder ops | 30 |
+| `electra-base-discriminator` | ELECTRA-base ops | 32 |
+| `xlnet-base-cased` | XLNet-base ops | 44 |
 | `efficientnet_b3.ra2_in1k` | EfficientNet-B3 ops | 99 |
 | `mobilenetv3_small_100.lamb_in1k` | MobileNetV3-Small ops | 88 |
-| `vit-base-patch16-224` | ViT-B/16 ops plus graph tools | 40 |
+| `vit-base-patch16-224` | ViT-B/16 ops plus graph tools | 43 |
 | `layernorm_197x768` | Standalone LayerNorm `[197,768]` | 1 |
 | `matmul_i8_128x1024x128` | Standalone i8 GEMM `128x1024x128` | 1 |
 | `matmul_i8_196x768x768` | Standalone i8 GEMM `196x768x768` | 1 |
@@ -87,42 +88,4 @@ Integration tests are `test/Integration/BOSCAMEFPGA`. Enable them with
 `-DBUDDY_ROOT=... -DBUDDY_MLIR_BINARY_DIR=...`; they are not part of the
 frontend core lit suite.
 
-## ViT graph (only this model)
-
-`vit-base-patch16-224` is the only tree that also captures a complete
-HuggingFace graph. The pinned checkpoint is
-`google/vit-base-patch16-224` (batch 1, `[1,3,224,224]`, 196 patches plus
-CLS, 12 blocks, hidden 768, 12 heads of 64, MLP 3072, 1000 logits).
-`model/model.json` records the revision and checkpoint digest. The
-checkpoint (~346 MB) is not in git; `tools/fetch_assets.py` verifies
-SHA256.
-
-Attention is QK, scale `1/sqrt(64)`, softmax, PV. Dense biases stay
-separate. Exact GELU uses `erf`; LayerNorm uses `eps=1e-12`. The ordinary
-graph has 245 numerical calls. W8A8 is the default AME path: each of 73
-linears becomes quantize, signed i8 matmul (`matmul_i8_overwrite_*`,
-`C=A*B` from a zero fill) and dequantize. `--fp32-reference` selects
-float dense kernels; composed patch projection stays mixed precision.
-
-```sh
-VIT=examples/BOSCAMEFPGA/vit-base-patch16-224
-export PYTHONPATH="$PWD/buddy-mlir/build/python_packages${PYTHONPATH:+:$PYTHONPATH}"
-
-python "$VIT/tools/fetch_assets.py" --output "$VIT/assets"
-python "$VIT/tools/import_model.py" --assets "$VIT/assets" \
-  --checkpoint "$VIT/assets/model.safetensors" \
-  --output "$VIT/build/import" --save-mlir
-make -C "$VIT" boscame PYTHON=python3
-python "$VIT/tools/replace_triton.py" --import-dir "$VIT/build/import" \
-  --triton-build "$VIT/build/kernels" --output "$VIT/build/replacement-w8a8" \
-  --require-complete
-python "$VIT/tools/lower_model.py" --replacement "$VIT/build/replacement-w8a8" \
-  --output "$VIT/build/lowered"
-python "$VIT/tools/model_simcheck.py" --mode w8a8 \
-  --replacement "$VIT/build/replacement-w8a8"
-```
-
-`model_simcheck.py` is a prerequisite audit (exit 2 / `SKIP` if a required
-kernel is missing). It does not claim a full-graph FPGA run. Accuracy
-comparison uses `tools/compare_accuracy.py` against the pinned processor
-and checkpoint hashes.
+Graph capture, replacement and board checks for a model are in that model's README.

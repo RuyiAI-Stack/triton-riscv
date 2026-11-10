@@ -18,6 +18,13 @@ import re
 import subprocess
 from pathlib import Path
 
+from model_contract import (
+    require_attention_manifest,
+    require_no_matrix_fallback,
+    require_production_replacement,
+)
+from model_buffers import verify_bufferized_workspace_dataflow
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -52,6 +59,7 @@ def main():
         "stage": "Buddy graph plumbing lowering",
         "status": "FAIL",
         "numerical_validation": False,
+        "full_model_executed": False,
     }
     tosa_pipeline = (
         "builtin.module("
@@ -66,12 +74,14 @@ def main():
         )
         + ")"
     )
-    passes = [
+    buffer_passes = [
         "--canonicalize",
         "--cse",
         "--empty-tensor-to-alloc-tensor",
         "--one-shot-bufferize=bufferize-function-boundaries "
         "allow-return-allocs-from-loops=true buffer-alignment=64",
+    ]
+    scalar_passes = [
         "--convert-linalg-to-loops",
         "--expand-strided-metadata",
         "--lower-affine",
@@ -88,13 +98,55 @@ def main():
         replacement = json.loads(
             (args.replacement / "triton-call-replacement.json").read_text()
         )
-        if replacement.get("status") != "PASS":
-            raise ValueError("a complete PASS replacement report is required")
+        require_production_replacement(replacement)
+        if (
+            replacement.get("workspace_buffer_policy_version") != 1
+            or replacement.get("graph_mlir_compiled") is not True
+        ):
+            raise ValueError(
+                "a current graph with materialized mutable workspace memrefs is required"
+            )
+        contract_identity = replacement.get("workspace_buffer_contract", {})
+        contract_path = args.replacement / contract_identity.get("file", "")
+        if contract_path.name != "workspace-buffers.json" or hashlib.sha256(
+            contract_path.read_bytes()
+        ).hexdigest() != contract_identity.get("sha256"):
+            raise ValueError("mutable workspace contract identity is missing or stale")
+        buffer_contract = json.loads(contract_path.read_text())
+        if (
+            buffer_contract.get("status") != "PASS"
+            or buffer_contract.get("wrapper_abi", {}).get("status") != "PASS"
+        ):
+            raise ValueError("mutable workspace or wrapper ABI was not materialized")
+        argument_roots = buffer_contract["argument_roots"]
+        workspace_names = set(buffer_contract["workspace_roots"])
+        if len(argument_roots) != len(set(argument_roots)):
+            raise ValueError(
+                "caller-owned workspace roots are aliased across function arguments"
+            )
+        identity = replacement["attention_primitive_manifest"]
+        manifest_path = args.replacement / identity["file"]
+        if (
+            manifest_path.name != "attention-primitive-calls.json"
+            or hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            != identity["sha256"]
+        ):
+            raise ValueError("attention primitive manifest identity is stale")
+        manifest = json.loads(manifest_path.read_text())
+        require_attention_manifest(replacement, manifest)
+        if (
+            manifest.get("adapter_sha256")
+            != hashlib.sha256(
+                (args.replacement / "vit_triton_adapters.c").read_bytes()
+            ).hexdigest()
+        ):
+            raise ValueError(
+                "generated primitive descriptor adapters differ from manifest"
+            )
         source = args.replacement / "subgraph0.triton.mlir"
         main_source = args.replacement / "forward.triton.mlir"
-        for required in (source, main_source):
-            if not required.is_file():
-                raise FileNotFoundError(required)
+        for path in (source, main_source):
+            require_no_matrix_fallback(path.read_text())
         # Preserve the ordinary lowered ABI of @vit. Only the public wrapper
         # @forward gets a C interface for a separately linked model launcher.
         main_text = main_source.read_text()
@@ -115,6 +167,7 @@ def main():
         outputs = {}
         for stem, input_path in (("forward", source), ("main", main_input)):
             tosa = args.output / f"{stem}.tosa-lowered.mlir"
+            bufferized = args.output / f"{stem}.bufferized.mlir"
             lowered = args.output / f"{stem}.lowered.mlir"
             llvm = args.output / f"{stem}.ll"
             run(
@@ -122,13 +175,43 @@ def main():
                     args.buddy_opt,
                     input_path,
                     "--pass-pipeline=" + tosa_pipeline,
+                    "--mlir-print-debuginfo",
                     "-o",
                     tosa,
                 ],
                 args.output / f"{stem}.tosa.log",
             )
+            # The TOSA conversion must not introduce a matrix product that
+            # convert-linalg-to-loops could silently scalarize.
+            require_no_matrix_fallback(tosa.read_text())
             run(
-                [args.buddy_opt, tosa, *passes, "-o", lowered],
+                [
+                    args.buddy_opt,
+                    tosa,
+                    *buffer_passes,
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    bufferized,
+                ],
+                args.output / f"{stem}.bufferize.log",
+            )
+            if stem == "forward":
+                audit = verify_bufferized_workspace_dataflow(
+                    bufferized.read_text(),
+                    "vit",
+                    argument_roots,
+                    workspace_names,
+                    replacement["replaced"],
+                )
+                audit["bufferized_ir_sha256"] = hashlib.sha256(
+                    bufferized.read_bytes()
+                ).hexdigest()
+                (args.output / "workspace-dataflow.json").write_text(
+                    json.dumps(audit, indent=2) + "\n"
+                )
+                report["workspace_dataflow"] = audit
+            run(
+                [args.buddy_opt, bufferized, *scalar_passes, "-o", lowered],
                 args.output / f"{stem}.lower.log",
             )
             run(

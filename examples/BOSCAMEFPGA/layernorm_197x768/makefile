@@ -10,7 +10,6 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
 .DEFAULT_GOAL := all
 .DELETE_ON_ERROR :=
 
@@ -48,6 +47,9 @@ LINKER ?= $(firstword $(wildcard $(LLVM_BIN)/ld.lld) ld.lld)
 PYTHON ?= python3
 
 TOOLS := $(REPO)/examples/FPGA-BOSCAME/tools
+ifneq ($(strip $(BUDDY_ROOT)),)
+include $(TOOLS)/ordered_reduction_policy.mk
+endif
 NAME := layernorm_197x768
 OUT := $(ROOT)/build/$(NAME)
 RUNTIME := $(REPO)/runtime/boscame/runtime
@@ -101,8 +103,8 @@ $(OUT)/kernel.boscame.mlir: $(OUT)/kernel.planned.mlir $(BUILD_MAKEFILE) $(wildc
 boscame: $(OUT)/kernel.boscame.mlir
 
 # --- 3. BOSCAME -> LLVM dialect -> LLVM IR -----------------------------
-$(OUT)/kernel.llvm.mlir: $(OUT)/kernel.boscame.mlir $(BUILD_MAKEFILE) $(wildcard $(BUDDY_OPT))
-	$(BUDDY_OPT) $< --lower-bosc-ame -o $@
+$(OUT)/kernel.llvm.mlir: $(OUT)/kernel.boscame.mlir $(BUILD_MAKEFILE) $(wildcard $(BUDDY_OPT)) $(OUT)/.ordered-reduction-policy $(FPGA_REDUCTION_POLICY_MAKEFILE)
+	$(BUDDY_OPT) $< --lower-bosc-ame="$(FPGA_REDUCTION_LOWER_OPTIONS)" -o $@
 $(OUT)/kernel.ll: $(OUT)/kernel.llvm.mlir $(BUILD_MAKEFILE) $(wildcard $(BUDDY_TRANSLATE))
 	$(BUDDY_TRANSLATE) --buddy-to-llvmir $< -o $@
 llvm: $(OUT)/kernel.ll
@@ -112,8 +114,8 @@ $(OUT)/kernel.s: $(OUT)/kernel.ll $(BUILD_MAKEFILE)
 	$(LLC) $< -O2 -filetype=asm -mtriple=riscv64 -target-abi=lp64d -mattr=+m,+a,+f,+d,+c,+v -code-model=medium -o $@
 
 # --- 5. NR post-processing: restricted NR instruction stream ------------
-$(OUT)/kernel.nr.s: $(OUT)/kernel.s $(TOOLS)/restrict_fpga_assembly.py
-	$(PYTHON) $(TOOLS)/restrict_fpga_assembly.py --expand-f32-sub < $< > $@
+$(OUT)/kernel.nr.s: $(OUT)/kernel.s $(TOOLS)/restrict_fpga_assembly.py $(OUT)/.ordered-reduction-policy $(FPGA_REDUCTION_POLICY_MAKEFILE)
+	$(PYTHON) $(TOOLS)/restrict_fpga_assembly.py $(FPGA_REDUCTION_FILTER_FLAGS) --expand-f32-sub < $< > $@
 asm: $(OUT)/kernel.nr.s
 
 $(OUT)/kernel.o: $(OUT)/kernel.nr.s $(BUILD_MAKEFILE)
@@ -135,7 +137,7 @@ $(OBJ)/adapter.o: $(OUT)/adapter.c $(BUILD_MAKEFILE) | $(OBJ)
 $(OBJ)/nh_e6_boot.o: $(PLATFORM)/nh_e6_boot.S $(BUILD_MAKEFILE) | $(OBJ)
 	$(RISCV_CC) $(RISCV_FLAGS) -c $< -o $@
 $(OBJ)/nh_e6_platform.o: $(PLATFORM)/nh_e6_platform.c $(PLATFORM)/nh_e6_platform.h $(BUILD_MAKEFILE) | $(OBJ)
-	$(RISCV_CC) $(C_FLAGS) -c $< -o $@
+	$(RISCV_CC) $(C_FLAGS) -Dinit_uart=board_init_uart -c $< -o $@
 $(OBJ)/uart.o: $(UART)/uart.c $(UART)/uart.h $(BUILD_MAKEFILE) | $(OBJ)
 	$(RISCV_CC) $(C_FLAGS) -c $< -o $@
 $(OBJ)/bosc_ame_dma.o: $(RUNTIME)/bosc_ame_dma.c $(RUNTIME)/bosc_ame_dma.h $(BUILD_MAKEFILE) | $(OBJ)
@@ -149,8 +151,8 @@ IMAGE_OBJECTS := $(OBJ)/nh_e6_boot.o $(OBJ)/nh_e6_platform.o $(OBJ)/uart.o \
 # --- 7. NH/E6 image, its audit and the flat .bin ------------------------
 $(ELF): $(IMAGE_OBJECTS) $(ROOT)/link.ld $(BUILD_MAKEFILE)
 	$(LINKER) -m elf64lriscv --gc-sections -T $(ROOT)/link.ld -Map=$(OUT)/$(NAME).map -o $@ $(IMAGE_OBJECTS)
-$(BIN): $(ELF) $(TOOLS)/check_nr_elf.py
-	$(PYTHON) $(TOOLS)/check_nr_elf.py $< --objdump $(OBJDUMP) --output $(OUT)/elf-audit.json
+$(BIN): $(ELF) $(TOOLS)/check_nr_elf.py $(OUT)/.ordered-reduction-policy $(FPGA_REDUCTION_POLICY_MAKEFILE)
+	$(PYTHON) $(TOOLS)/check_nr_elf.py $< --objdump $(OBJDUMP) $(FPGA_REDUCTION_AUDIT_FLAGS) --output $(OUT)/elf-audit.json
 	$(OBJCOPY) -O binary $< $@
 	@echo "built $@"
 bin: $(BIN)
@@ -165,10 +167,10 @@ simcheck: boscame
 # --- 9. image checks ----------------------------------------------------
 check: bin
 	$(PYTHON) -B $(ROOT)/build.py --check-abi $(OUT)/kernel.ll
-# The placement build keeps only the four external boundary transfers.
-	@test "$$(grep -c 'bosc_ame.dma.start' $(OUT)/kernel.boscame.mlir)" = "4" \
-	  || { echo "FAIL: expected four boundary DMA operations in the BOSCAME IR"; exit 1; }
-	@echo "ok: $(NAME) passed the typed ABI, boundary DMA and NR ELF audits"
+# Check exact user-buffer ranges for the default DDR/register route or the
+# frozen four-DMA compatibility route, including every launched row.
+	$(PYTHON) -B $(TOOLS)/check_layernorm_boundary.py $(OUT)/kernel.boscame.mlir
+	@echo "ok: $(NAME) passed the typed ABI, external boundary and NR ELF audits"
 
 clean:
 	rm -rf $(ROOT)/build

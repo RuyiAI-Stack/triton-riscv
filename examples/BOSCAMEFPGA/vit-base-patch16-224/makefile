@@ -11,7 +11,6 @@
 # When used: `make` inside the case directory or via the model top-level
 # makefile.
 #
-
 .DEFAULT_GOAL := all
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PYTHON ?= python3
@@ -20,6 +19,9 @@ KERNELS ?= $(ROOT)/build/kernels
 KERNELS := $(abspath $(KERNELS))
 IMPORT ?= $(ROOT)/build/import
 MODE ?= w8a8
+ifneq ($(MODE),w8a8)
+$(error Only MODE=w8a8 is supported for FPGA; use the independent host FP32 baseline for accuracy)
+endif
 REPLACEMENT ?= $(ROOT)/build/replacement-$(MODE)
 BUDDY_ROOT ?= $(abspath $(ROOT)/../../../buddy-mlir)
 export BUDDY_ROOT
@@ -35,7 +37,7 @@ FRONTEND := $(abspath $(ROOT)/../tools/contract_frontend.py)
 FRONTEND_ID := $(KERNELS)/.frontend-inputs.json
 STAGE ?= asm
 
-.PHONY: all ttir boscame llvm asm _suite $(CASE_TARGETS) FORCE simcheck w8a8-chaincheck model-simcheck launchcheck assets import replace lower clean
+.PHONY: all ttir boscame llvm asm _suite $(CASE_TARGETS) FORCE simcheck w8a8-chaincheck patch-chaincheck operatorcheck model-simcheck launchcheck assets import replace lower model-bin clean
 all: asm
 ttir boscame llvm asm:
 	+@code=0; $(MAKE) --no-print-directory -k _suite STAGE=$@ || code=$$?; \
@@ -63,11 +65,15 @@ $(FRONTEND_ID): FORCE | $(KERNELS)
 
 simcheck:
 	$(PYTHON) -B "$(ROOT)/tools/simcheck.py" $(if $(SCOPE),--all,$(CASE_ARGS)) --output "$(KERNELS)" $(if $(COLLECT),--collect,)
+patch-chaincheck:
+	$(PYTHON) -B "$(ROOT)/tools/check_patch_chain.py" --kernels "$(KERNELS)" $(if $(COLLECT),--collect,) $(if $(REPORT),--report "$(REPORT)")
+operatorcheck:
+	$(PYTHON) -B "$(ROOT)/tools/check_all_operators.py" --kernels "$(KERNELS)" $(if $(REPORT_DIR),--report-dir "$(REPORT_DIR)")
 w8a8-chaincheck:
-	+$(MAKE) boscame CASES='quantize_1x768 quantize_1000x768 matmul_i8_overwrite_1x1000x768 dequantize_1x1000 bias_add_1x1000 add_1x1000'
+	+$(MAKE) boscame CASES='quantize_1x768 quantize_1000x768 matmul_i8_1x1000x768 dequantize_1x1000 bias_add_1x1000 add_1x1000'
 	$(PYTHON) -B "$(ROOT)/tools/check_w8a8_chain.py" --kernels "$(KERNELS)"
 model-simcheck:
-	$(PYTHON) -B "$(ROOT)/tools/model_simcheck.py" --kernels "$(KERNELS)" --mode $(MODE)
+	$(PYTHON) -B "$(ROOT)/tools/model_simcheck.py" --kernels "$(KERNELS)" --mode $(MODE) --replacement "$(REPLACEMENT)" --checkpoint "$(ASSETS)/model.safetensors"
 launchcheck:
 	$(PYTHON) -B "$(ROOT)/tools/check_launch.py" $(if $(SCOPE),--all,$(CASE_ARGS)) --build-dir "$(KERNELS)"
 assets:
@@ -75,8 +81,14 @@ assets:
 import:
 	$(PYTHON) -B "$(ROOT)/tools/import_model.py" --assets "$(ASSETS)" --checkpoint "$(ASSETS)/model.safetensors" --output "$(IMPORT)" --save-mlir
 replace:
-	$(PYTHON) -B "$(ROOT)/tools/replace_triton.py" --import-dir "$(IMPORT)" --triton-build "$(KERNELS)" --output "$(REPLACEMENT)" --require-complete $(if $(filter w8a8,$(MODE)),--w8a8,--fp32-reference)
+	$(PYTHON) -B "$(ROOT)/tools/replace_triton.py" --import-dir "$(IMPORT)" --triton-build "$(KERNELS)" --output "$(REPLACEMENT)" --require-complete --w8a8
 lower:
 	$(PYTHON) -B "$(ROOT)/tools/lower_model.py" --replacement "$(REPLACEMENT)" --output "$(ROOT)/build/lowered"
 clean:
 	rm -rf "$(ROOT)/build"
+# Whole-model ViT-B/16 image (artifact only; board fit/run tracked separately).
+MODEL_OUT ?= $(ROOT)/build/model-bin
+model-bin:
+	$(PYTHON) -B "$(ROOT)/tools/build_model_bin.py" --output "$(MODEL_OUT)" \
+	  --replacement "$(REPLACEMENT)" --kernels "$(KERNELS)" --assets "$(ASSETS)" \
+	  $(if $(REUSE_LOWERED),--reuse-lowered,)

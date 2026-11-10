@@ -9,7 +9,6 @@
 //
 // When used: included by every launch.c and support.c in this model directory.
 //
-
 #ifndef EFFNET_OPERATOR_SUPPORT_H
 #define EFFNET_OPERATOR_SUPPORT_H
 
@@ -29,7 +28,8 @@ float tanhf(float);
 #endif
 
 // Host oracles use 64 MiB. The NH/E6 image overrides this to 16 MiB so the
-// arena stays inside link.ld's PMP window at 0x80100000..0x81100000.
+// arena and the following private DDR frames fit in link.ld's PMP window
+// at 0x80100000..0x81140000; the E6 stack starts after that window.
 #ifndef VIT_WORKSPACE_BYTES
 #define VIT_WORKSPACE_BYTES (64u * 1024u * 1024u)
 #endif

@@ -377,6 +377,14 @@ def _dwconv2d_nchw(case, arrays):
 def reference(case, arrays):
     """Return references only for the writable arguments of this case."""
     family = case["family"]
+    if family == "conv2d_i8":
+        # The raw packed kernel overwrites Out with X @ Weight.T. The C
+        # smoke launcher adds Bias afterward; it is outside this kernel ABI.
+        return {
+            "Out": (
+                arrays["X"].astype(np.int64) @ arrays["Weight"].astype(np.int64).T
+            ).astype("<i4")
+        }
     if family in ("matmul_i8", "matmul_i8_overwrite"):
         a, b, c = (arrays[name] for name in ("A", "B", "C"))
         return {
@@ -389,6 +397,10 @@ def reference(case, arrays):
         product = _matmul_sequential(arrays["A"], arrays["B"].T)
         return {"C": np.add(product, arrays["C"], dtype=np.float32)}
     if family == "linear_f32":
+        if case.get("implementation") == "w8a8_gemm":
+            from quantized_linear_oracle import reference as w8a8_linear_reference
+
+            return w8a8_linear_reference(arrays)
         # Same BK tiles as tl.dot. Each tile is still a sequential f32 dot;
         # the kernel may contract a tile with FMA, so compare() keeps a tolerance.
         product = _matmul_blocked_sequential(
@@ -434,7 +446,7 @@ def reference(case, arrays):
     if family == "bias_add":
         return {"Out": np.add(arrays["X"], arrays["Bias"], dtype=np.float32)}
     if family == "layernorm":
-        rows, width = case["shape"]
+        _rows, width = case["shape"]
         block = case["constexprs"]["BLOCK"]
         padded = np.pad(arrays["X"], ((0, 0), (0, block - width)))
         mean = np.divide(

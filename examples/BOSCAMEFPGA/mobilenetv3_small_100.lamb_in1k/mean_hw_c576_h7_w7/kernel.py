@@ -37,7 +37,7 @@ KERNEL_CONFIG = {
         {"name": "Out", "rank": 1, "dtype": "f32"},
     ],
     "shape": [1, 576, 7, 7],
-    "constexprs": {"SPATIAL": 49, "C": 576, "BLOCK": 128},
+    "constexprs": {"SPATIAL": 49, "C": 576, "BLOCK": 32},
     "grid": [576, 1, 1],
     "roles": [],
 }

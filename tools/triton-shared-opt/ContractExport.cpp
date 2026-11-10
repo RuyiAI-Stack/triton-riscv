@@ -17,7 +17,6 @@
 //
 // When used: `triton-shared-opt --contract-*` and FPGA export scripts.
 //
-
 #include "ContractExport.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

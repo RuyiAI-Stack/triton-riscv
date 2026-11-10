@@ -10,7 +10,6 @@
 // When used: BOSCAME FPGA integration suite to lock padded k initializer
 // lowering and contract facts.
 //
-
 module {
   tt.func public @padded_k(%A: !tt.ptr<i8>, %B: !tt.ptr<i8>, %C: !tt.ptr<i32>, %validK: i32) {
     %r = tt.make_range {end = 2 : i32, start = 0 : i32} : tensor<2xi32>

@@ -1,8 +1,3 @@
-/*
- * Linker script for bare-metal BOSCAME FPGA binaries (model 'mobilenetv3_small_100.lamb_in1k').
- * Places boot, text/rodata, and the workspace arena expected by board_support.
- */
-
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 
@@ -17,7 +12,7 @@ SECTIONS {
   .text.e6_start 0x80010000 : { KEEP(*(.text.e6_start)) } > RAM
   .text.e6 : { *(.text .text.*) } > RAM
   .rodata : { *(.rodata .rodata.* .srodata .srodata.*) } > RAM
-  .data : { *(.data .data.* .sdata .sdata.*) } > RAM
+  .data : { *(.data .data.* .sdata .sdata.*) *(.got .got.*) } > RAM
   . = ALIGN(16);
   .bss (NOLOAD) : {
     __bss_start = .;

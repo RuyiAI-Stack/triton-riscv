@@ -17,7 +17,6 @@
 //
 // When used: `triton-shared-opt --contract-*` and FPGA export scripts.
 //
-
 #pragma once
 
 void registerContractExportPasses();

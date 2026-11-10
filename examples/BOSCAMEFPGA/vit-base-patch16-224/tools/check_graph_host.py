@@ -65,25 +65,20 @@ def main():
     parser.add_argument("--assets", type=Path, default=ROOT / "assets")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument(
-        "--replacement", type=Path, default=ROOT / "build/replacement-fp32"
-    )
-    parser.add_argument(
         "--subgraph",
         type=Path,
-        help="override saved subgraph (use import/subgraph0.mlir for a Buddy baseline)",
+        required=True,
+        help="unmodified import/subgraph0.mlir; host-only FP32 baseline",
     )
     parser.add_argument(
         "--import-dir",
         type=Path,
         help="verify captured parameter order against import/params.json",
     )
-    parser.add_argument("--host-library", type=Path, required=True)
-    parser.add_argument("--llvm-lib-dir", type=Path, default=llvm_lib_dir())
     parser.add_argument(
-        "--allow-partial",
-        action="store_true",
-        help="diagnose a PARTIAL replacement before coverage is complete",
+        "--host-library", type=Path, help="optional extra host runtime library"
     )
+    parser.add_argument("--llvm-lib-dir", type=Path, default=llvm_lib_dir())
     parser.add_argument(
         "--output", type=Path, default=ROOT / "build/host-graph-check.json"
     )
@@ -96,32 +91,17 @@ def main():
     if args.llvm_lib_dir is None:
         parser.error("set --llvm-lib-dir, LLVM_LIB_DIR or LLVM_BIN")
     args.checkpoint = args.checkpoint or args.assets / "model.safetensors"
-    subgraph = args.subgraph or args.replacement / "subgraph0.triton.mlir"
+    subgraph = args.subgraph
     subgraph_source = subgraph.read_text()
     match = re.search(r"func\.func\s+@([A-Za-z0-9_]+)\(", subgraph_source)
     if match is None:
         raise SystemExit(f"cannot find entry function in {subgraph}")
     entry = match.group(1)
-    replacement_report = args.replacement / "triton-call-replacement.json"
-    require_paths(
-        [
-            args.assets / "config.json",
-            args.checkpoint,
-            subgraph,
-            replacement_report,
-            args.host_library,
-        ]
-    )
-    report = json.loads(replacement_report.read_text())
-    if (
-        args.subgraph is None
-        and report.get("status") != "PASS"
-        and not args.allow_partial
-    ):
-        raise SystemExit(f"replacement status is {report.get('status')}, expected PASS")
+    require_paths([args.assets / "config.json", args.checkpoint, subgraph])
+    if re.search(r"(?:vit_graph_|w8a8_|triton_|_mlir_ciface_kernel_)", subgraph_source):
+        raise SystemExit("host FP32 baseline requires an unmodified imported graph")
 
-    # libomp and MLIR's runner libraries must be present before the JIT engine
-    # starts.  The supplied Triton bridge exports all graph external calls.
+    # Host runner libraries must be present before the JIT engine starts.
     os.environ["OMP_NUM_THREADS"] = str(args.threads)
     os.environ["OMP_DYNAMIC"] = "FALSE"
     import torch
@@ -181,7 +161,7 @@ def main():
         raise RuntimeError(
             f"saved subgraph @{entry} expects {len(expected_shapes)} tensor inputs, "
             f"but the captured model supplies {len(actual_inputs)}; "
-            "regenerate the replacement graph with the same capture ABI"
+            "regenerate the imported host graph with the same capture ABI"
         )
     for index, (shape, value) in enumerate(zip(expected_shapes, actual_inputs)):
         if shape != value.shape or value.dtype != np.float32:
@@ -190,7 +170,7 @@ def main():
                 f"but captured input is {value.dtype}{value.shape}"
             )
     # Build Buddy's output descriptor from the captured graph, then replace its
-    # high-level module with the saved Triton-call graph in the same context.
+    # high-level module with the saved host graph in the same context.
     graph.lower_to_top_level_ir()
     with ir.Location.unknown(graph._ctx):
         graph._imported_module = ir.Module.parse(subgraph_source, context=graph._ctx)
@@ -201,8 +181,9 @@ def main():
     libs = [
         llvm_lib / "libmlir_runner_utils.so",
         llvm_lib / "libmlir_c_runner_utils.so",
-        args.host_library,
     ]
+    if args.host_library is not None:
+        libs.append(args.host_library)
     require_paths(libs)
     engine = ExecutionEngine(
         graph._imported_module,
@@ -228,18 +209,14 @@ def main():
     ok = bool(np.all(np.isfinite(result)) and np.all(delta <= tolerance))
     summary = {
         "status": "PASS" if ok else "FAIL",
-        "mode": "Buddy baseline"
-        if args.subgraph is not None
-        else "Buddy and Triton replacement",
+        "mode": "independent host FP32 Buddy baseline",
+        "full_model_executed": False,
+        "host_model_executed": True,
+        "execution": "host-only",
         "subgraph": str(subgraph),
         "subgraph_sha256": hashlib.sha256(subgraph.read_bytes()).hexdigest(),
         "entry": entry,
-        "replacement_status": (report["status"] if args.subgraph is None else None),
-        "external_calls": (
-            report["graphs"]["forward"]["external_calls"]
-            if args.subgraph is None
-            else 0
-        ),
+        "external_calls": 0,
         "parameter_order_verified": args.import_dir is not None,
         "checkpoint_sha256": weights["checkpoint_sha256"],
         "input_shape": list(pixels_np.shape),

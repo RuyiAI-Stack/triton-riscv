@@ -9,7 +9,6 @@
 //
 // When used: Contract suite to lock layernorm buffer contract IR.
 //
-
 #identity = affine_map<(d0) -> (d0)>
 
 module attributes {

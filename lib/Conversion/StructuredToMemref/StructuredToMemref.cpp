@@ -1358,9 +1358,9 @@ private:
 
     auto resultType = getResultMemrefType(
         op, /* offset */ ShapedType::kDynamic,
-        /* staticStrides */
+        // staticStrides
         SmallVector<int64_t>(resultShape.size(), ShapedType::kDynamic),
-        /* result shape */
+        // result shape
         SmallVector<int64_t>{
 
             // Row stays the same, but mlir doesn't allow this anymore. Put
@@ -1489,9 +1489,9 @@ private:
 
     auto resultType = getResultMemrefType(
         op, /* offset */ ShapedType::kDynamic,
-        /* staticStrides */
+        // staticStrides
         SmallVector<int64_t>(resultShape.size(), ShapedType::kDynamic),
-        /* result shape */
+        // result shape
         SmallVector<int64_t>{
             // Row is dynamic, in most cases, this should
             // be the same as the original row. The last
@@ -2160,19 +2160,19 @@ private:
     Value block2Row = memref::DimOp::create(rewriter, loc, block2, 0);
     Value block2Col = memref::DimOp::create(rewriter, loc, block2, 1);
 
-    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, /* offsets */
+    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, // offsets
                                                ValueRange{zero, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block1Row, block1Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     auto block2Dst = memref::SubViewOp::create(rewriter, loc, dst,
-                                               /* offsets */
+                                               // offsets
                                                ValueRange{zero, block1Col},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block2Row, block2Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     memref::CopyOp::create(rewriter, loc, block1, block1Dst);
@@ -2193,19 +2193,19 @@ private:
     Value block2Row = memref::DimOp::create(rewriter, loc, block2, 0);
     Value block2Col = memref::DimOp::create(rewriter, loc, block2, 1);
 
-    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, /* offsets */
+    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, // offsets
                                                ValueRange{zero, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block1Row, block1Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     auto block2Dst = memref::SubViewOp::create(rewriter, loc, dst,
-                                               /* offsets */
+                                               // offsets
                                                ValueRange{block1Row, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block2Row, block2Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     memref::CopyOp::create(rewriter, loc, block1, block1Dst);

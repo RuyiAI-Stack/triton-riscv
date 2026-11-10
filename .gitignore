@@ -19,5 +19,6 @@ dist/
 __pycache__/
 wheelhouse/
 
-# FPGA example generated artifacts
-examples/BOSCAMEFPGA/**/build/
+# Local agent skills, credentials, and connection state.
+/.agent/
+/ModelZoo/

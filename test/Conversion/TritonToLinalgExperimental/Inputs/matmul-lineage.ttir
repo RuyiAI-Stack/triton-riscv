@@ -10,7 +10,6 @@
 // When used: TritonToLinalgExperimental conversion suite to lock matmul lineage
 // lowering and contract facts.
 //
-
 module {
   tt.func public @matmul_load_lineage(%a_ptr: !tt.ptr<i8>, %b_ptr: !tt.ptr<i8>) -> tensor<16x16xi32> {
     %acc_zero = arith.constant dense<0> : tensor<16x16xi32>

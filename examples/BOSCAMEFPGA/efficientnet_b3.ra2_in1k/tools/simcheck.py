@@ -17,6 +17,7 @@ import itertools
 import json
 import math
 import multiprocessing
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,15 +27,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 from boscame_paths import buddy_tools
-from nonlinear_simcheck import (
-    audit_nonlinear_program,
-    check_nonlinear_sharded,
-    collect_nonlinear_case,
-    nonlinear_program_mask,
-    selected_nonlinear_comparison,
-)
-from oracles import DTYPES, compare, make_inputs, output_names, reference
-
 from export import (
     ROOT,
     argument_shapes,
@@ -44,9 +36,27 @@ from export import (
     summary_report_path,
     tool,
 )
+from nonlinear_simcheck import (
+    audit_nonlinear_program,
+    check_nonlinear_sharded,
+    collect_nonlinear_case,
+    nonlinear_program_mask,
+    selected_nonlinear_comparison,
+)
+from oracles import DTYPES, compare, make_inputs, output_names, reference
+from quantized_conv_oracle import (
+    is_quantized_conv,
+    quantization_error_metrics,
+    quantize_rows,
+    stage_reference,
+    weight_rows,
+)
+from quantized_conv_oracle import reference as quantized_conv_reference
+from quantized_linear_pipeline import is_quantized_linear
+from quantized_linear_simcheck import program_counts as linear_program_counts
 
 sys.path.insert(0, str(buddy_tools()))
-from boscame_buffer_sim import Machine, SimError  # noqa: E402
+from boscame_buffer_sim import Machine, SimError
 
 
 class SimulationBlocked(RuntimeError):
@@ -54,6 +64,16 @@ class SimulationBlocked(RuntimeError):
 
 
 def scenarios_for(case):
+    if is_quantized_linear(case):
+        return [("normal", False, "adapter"), ("stress", True, "adapter")]
+    if is_quantized_conv(case):
+        return [("normal", False, "adapter")]
+    if case["family"] == "conv2d_i8":
+        return [
+            ("normal", False, "forward"),
+            ("signed-extremes-tail-first", True, "tail-first"),
+            ("signed-extremes-reverse", True, "reverse"),
+        ]
     if case["family"] in ("gelu", "softmax"):
         return [
             ("normal", False, "forward"),
@@ -173,7 +193,7 @@ def audit_pv_program(case, point, accesses, dma, matrix):
         )
     for name, spans in intervals.items():
         ordered = sorted(spans)
-        if any(right[0] < left[1] for left, right in zip(ordered, ordered[1:])):
+        if any(right[0] < left[1] for left, right in itertools.pairwise(ordered)):
             raise AssertionError(f"PV duplicate DDR access at {point}: {name}")
     # The current strided A cannot use the 64-byte-aligned DMA route. ACC32
     # copies move raw f32 bits; all arithmetic remains the ordered RVV path.
@@ -243,6 +263,9 @@ def check_artifacts(case, output_root):
     for key in (
         "name",
         "family",
+        "kernel",
+        "kernel_module",
+        "implementation",
         "symbol",
         "signature",
         "constexprs",
@@ -250,10 +273,77 @@ def check_artifacts(case, output_root):
         "shape",
         "arguments",
     ):
-        if manifest.get(key) != case[key]:
+        if manifest.get(key) != case.get(key):
             raise SimulationBlocked(
                 "stale build: current case metadata differs at " + key
             )
+    if is_quantized_conv(case):
+        from quantized_conv_pipeline import pipeline_layout, scratch_initialization
+
+        pipeline_manifest = output / "contract-manifest.json"
+        if not pipeline_manifest.is_file():
+            raise SimulationBlocked("composite build is missing its stage manifest")
+        composite = json.loads(pipeline_manifest.read_text())
+        if (
+            composite.get("kind") != "composite-im2col-w8a8-convolution"
+            or composite.get("entry") != "_mlir_ciface_kernel_" + case["name"]
+            or manifest.get("pipeline_layout") != pipeline_layout(case)
+            or manifest.get("scratch_initialization") != scratch_initialization(case)
+            or composite.get("scratch_initialization") != scratch_initialization(case)
+            or manifest.get("contract_manifest_sha256") != digest(pipeline_manifest)
+            or composite.get("outputs", {}).get("contract_sha256")
+            != digest(output / "kernel.frontend.mlir")
+            or composite.get("outputs", {}).get("ttir_sha256")
+            != digest(output / "kernel.ttir")
+        ):
+            raise SimulationBlocked("stale or malformed composite build manifest")
+        stage_names = {stage.get("stage") for stage in manifest.get("stages", [])}
+        expected_stages = {
+            "weight_quantize",
+            "im2col_quantize",
+            "gemm_i8",
+            "dequantize_bias",
+        }
+        if stage_names != expected_stages or len(manifest["stages"]) != len(
+            expected_stages
+        ):
+            raise SimulationBlocked("composite build has an incomplete stage list")
+        emitted_functions = set(
+            re.findall(
+                r"^\s*func\.func(?:\s+\w+)?\s+@([^ (]+)\(",
+                module.read_text(),
+                re.MULTILINE,
+            )
+        )
+        expected_functions = {stage["symbol"] for stage in manifest["stages"]}
+        if emitted_functions != expected_functions:
+            raise SimulationBlocked(
+                "BOSCAME module must contain exactly the four W8A8 stages; "
+                f"found {sorted(emitted_functions)}"
+            )
+        if "triton_" + case["name"] + "(" in module.read_text():
+            raise SimulationBlocked(
+                "BOSCAME module contains a legacy scalar conv entry"
+            )
+        if composite.get("raw_entries") != [
+            stage["symbol"] for stage in manifest["stages"]
+        ] or len(composite.get("stages", [])) != len(expected_stages):
+            raise SimulationBlocked("composite stage entries differ from frontend")
+        for stage in composite["stages"]:
+            for relative, expected_stage_hash in stage.get("artifacts", {}).items():
+                artifact = output / relative
+                if not artifact.is_file() or digest(artifact) != expected_stage_hash:
+                    raise SimulationBlocked(
+                        "stale composite stage artifact: " + relative
+                    )
+        for relative, expected_source_hash in manifest.get("source_sha256", {}).items():
+            source = ROOT.parents[2] / relative
+            if not source.is_file() or digest(source) != expected_source_hash:
+                raise SimulationBlocked("stale composite pipeline source: " + relative)
+    if is_quantized_linear(case):
+        from quantized_linear_simcheck import check_pipeline
+
+        check_pipeline(case, output)
     expected_hash = result.get("artifacts", {}).get(module.name)
     if expected_hash != digest(module):
         raise SimulationBlocked(
@@ -265,6 +355,413 @@ def check_artifacts(case, output_root):
     return module
 
 
+def quantized_pipeline_program_counts(case):
+    """Count the exact raw launches made by the generated C adapter."""
+    from quantized_conv_pipeline import pipeline_layout
+
+    layout = pipeline_layout(case)
+    channels = layout["channels"]
+    groups = layout["groups"]
+    blocks = layout["blocks"]
+    depthwise = layout["depthwise"]
+    bm = 1 if depthwise else 16
+    m_tiles = math.ceil(layout["matrix_rows"] / bm)
+    return {
+        "weight_quantize": channels,
+        "im2col_quantize": blocks * groups,
+        "gemm_i8": blocks * (groups if depthwise else m_tiles),
+        "dequantize_bias": blocks * channels,
+    }
+
+
+def _composite_stage_machines(case, module, output_root, machines):
+    """Create one persistent strict-simulator Machine for each raw entry."""
+    output = Path(output_root) / case["name"]
+    frontend = json.loads((output / "frontend.json").read_text())
+    module_hash = digest(module)
+    stage_machines = {}
+    missing = []
+    for stage in frontend["stages"]:
+        key = (case["name"], module_hash, "composite-stage", stage["symbol"])
+        machine = machines.get(key) if machines is not None else None
+        if machine is None:
+            missing.append((stage, key))
+        else:
+            stage_machines[stage["stage"]] = machine
+    if missing:
+        with tempfile.TemporaryDirectory(
+            prefix="efficientnet-composite-sim-"
+        ) as directory:
+            loops = Path(directory) / "kernel.loops.mlir"
+            try:
+                process = subprocess.run(
+                    [
+                        tool("buddy-opt"),
+                        str(module),
+                        "--convert-linalg-to-loops",
+                        "--lower-affine",
+                        "--canonicalize",
+                        "-o",
+                        str(loops),
+                    ],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    check=False,
+                )
+            except OSError as error:
+                raise SimulationBlocked(
+                    "cannot invoke buddy-opt for composite simulation: " + str(error)
+                ) from error
+            if process.returncode:
+                raise SimulationBlocked(
+                    "cannot prepare composite module for strict simulation: "
+                    + process.stdout.strip()
+                )
+            for stage, key in missing:
+                machine = Machine(loops, stage["symbol"])
+                for bank in machine.spm:
+                    bank[:] = bytes([0xD3]) * len(bank)
+                stage_machines[stage["stage"]] = machine
+                if machines is not None:
+                    machines[key] = machine
+    return frontend, stage_machines
+
+
+def _simulate_quantized_conv(
+    case, arrays, output_root, progress=True, machines=None, selected_tiles=None
+):
+    """Run the composite im2col/W8A8 adapter in its exact stage order."""
+    module = check_artifacts(case, output_root)
+    output = Path(output_root) / case["name"]
+    frontend = json.loads((output / "frontend.json").read_text())
+    pipeline_manifest = json.loads((output / "contract-manifest.json").read_text())
+    layout = frontend["pipeline_layout"]
+    stage_machines_meta, stage_machines = _composite_stage_machines(
+        case, module, output_root, machines
+    )
+    if stage_machines_meta != frontend:
+        raise SimulationBlocked("composite frontend manifest changed during simulation")
+
+    initial = {}
+    for argument, shape in zip(case["arguments"], argument_shapes(case)):
+        name = argument["name"]
+        value = np.asarray(arrays[name])
+        if value.shape != tuple(shape) or value.dtype != DTYPES[argument["dtype"]]:
+            raise ValueError(
+                f"{name}: expected {shape} {DTYPES[argument['dtype']]}, "
+                f"got {value.shape} {value.dtype}"
+            )
+        initial[name] = np.ascontiguousarray(value).copy()
+
+    expected = quantized_conv_reference(case, initial)["Out"]
+    guard = bytes([0xC7]) * 1024
+    public_buffers = {
+        name: bytearray(value.tobytes() + guard) for name, value in initial.items()
+    }
+    public_lengths = {name: value.nbytes for name, value in initial.items()}
+    scratch_guard = bytes([0x9B]) * 1024
+    scratch = bytearray([0xA9]) * layout["total_bytes"] + bytearray(scratch_guard)
+    scratch_view = memoryview(scratch)
+    # Emulate the public adapter clear exactly once; keep every other byte dirty.
+    init = frontend["scratch_initialization"]
+    scratch_view[init["offset"] : init["offset"] + init["bytes"]] = bytes(init["bytes"])
+    writable_scratch = bytearray(layout["total_bytes"])
+    for item in layout.values():
+        if not isinstance(item, dict) or "offset" not in item:
+            continue
+        writable_scratch[item["offset"] : item["offset"] + item["bytes"]] = (
+            b"\x01" * item["bytes"]
+        )
+    stage_regions = {
+        "QWeight": "qweight",
+        "WeightScale": "weight_scale",
+        "QPatch": "qpatch",
+        "PatchScale": "patch_scale",
+        "Acc": "acc",
+    }
+    stage_meta = {item["stage"]: item for item in frontend["stages"]}
+    counts = dict.fromkeys(stage_meta, 0)
+    accesses = dict.fromkeys(stage_meta, 0)
+    dma_transfers = dict.fromkeys(stage_meta, 0)
+    access_starts = {
+        name: (len(stage_machines[name].accesses), len(stage_machines[name].dma_log))
+        for name in stage_meta
+    }
+
+    def scratch_region(name, offset=0, size=None):
+        field = layout[name]
+        length = field["bytes"] if size is None else size
+        start = field["offset"] + offset
+        return scratch_view[start : start + length]
+
+    def stage_view(stage, argument, pids, pointer_group=None):
+        name = argument["name"]
+        if name in public_buffers:
+            return memoryview(public_buffers[name])[: public_lengths[name]]
+        field = stage_regions[name]
+        if name == "QWeight" and stage["stage"] == "gemm_i8" and layout["depthwise"]:
+            if pointer_group is None:
+                raise AssertionError("depthwise GEMM needs its host QWeight row")
+            return scratch_region(field, pointer_group * 64, 64)
+        return scratch_region(field)
+
+    def launch(stage_name, pids, pointer_group=None):
+        stage = stage_meta[stage_name]
+        machine = stage_machines[stage_name]
+        buffers = {
+            f"%arg{index}": stage_view(stage, argument, pids, pointer_group)
+            for index, argument in enumerate(stage["arguments"])
+        }
+        grid = stage["grid"]
+        scalars = {
+            f"%arg{len(buffers) + index}": value
+            for index, value in enumerate([*grid, *pids])
+        }
+        try:
+            machine.launch(buffers, scalars)
+        except SimError as error:
+            message = str(error)
+            if "unsupported" in message or "only " in message:
+                raise SimulationBlocked(
+                    f"strict simulator in {stage_name} at {pids}: {message}"
+                ) from error
+            raise AssertionError(
+                f"strict simulator in {stage_name} at {pids}: {message}"
+            ) from error
+        for name, start, end, action in machine.accesses[
+            access_starts[stage_name][0] + accesses[stage_name] :
+        ]:
+            if name not in buffers or not 0 <= start < end <= len(buffers[name]):
+                raise AssertionError(
+                    f"composite stage access outside argument at {stage_name}/{pids}: "
+                    f"{(name, start, end, action)}"
+                )
+        counts[stage_name] += 1
+        accesses[stage_name] = len(machine.accesses) - access_starts[stage_name][0]
+        dma_transfers[stage_name] = len(machine.dma_log) - access_starts[stage_name][1]
+
+    weight_matrix = weight_rows(case, initial)
+    expected_qweight, expected_weight_scale = quantize_rows(weight_matrix, 64)
+    for row in range(layout["channels"]):
+        launch("weight_quantize", (row, 0, 0))
+    qweight = np.frombuffer(scratch_region("qweight"), dtype=np.int8).reshape(
+        layout["channels"], 64
+    )
+    weight_scale = np.frombuffer(scratch_region("weight_scale"), dtype=np.float32)
+    if not np.array_equal(qweight, expected_qweight) or not np.array_equal(
+        weight_scale.view(np.uint32), expected_weight_scale.view(np.uint32)
+    ):
+        raise AssertionError("weight_quantize stage differs from quantize_rows")
+
+    groups = layout["groups"]
+    blocks = layout["blocks"]
+    tile = layout["tile"]
+    if selected_tiles is not None:
+        selected_tiles = {tuple(point) for point in selected_tiles}
+        if not selected_tiles or any(
+            len(point) != 2
+            or any(type(value) is not int for value in point)
+            or not 0 <= point[0] < groups
+            or not 0 <= point[1] < blocks
+            for point in selected_tiles
+        ):
+            raise ValueError(
+                "selected convolution tiles must be valid (group, block) pairs"
+            )
+    bm = stage_meta["gemm_i8"]["constexprs"]["BM"]
+    m_tiles = stage_meta["gemm_i8"]["grid"][0]
+    output_buffer = np.frombuffer(
+        public_buffers["Out"], dtype=np.float32, count=initial["Out"].size
+    ).reshape(initial["Out"].shape)
+    for group in range(groups):
+        for block in range(blocks):
+            if selected_tiles is not None and (group, block) not in selected_tiles:
+                continue
+            start = block * tile
+            valid = min(tile, layout["pixels"] - start)
+            stage_expected = stage_reference(case, initial, group, start, tile)
+            launch("im2col_quantize", (block, 0, group))
+            patch_q = np.frombuffer(scratch_region("qpatch"), dtype=np.int8).reshape(
+                tile, 64
+            )
+            patch_scale = np.frombuffer(scratch_region("patch_scale"), dtype=np.float32)
+            if not np.array_equal(patch_q, stage_expected["patch_q"]):
+                raise AssertionError(
+                    f"im2col_quantize QPatch mismatch at group={group}, block={block}"
+                )
+            if not np.array_equal(
+                patch_scale.view(np.uint32),
+                stage_expected["patch_scale"].view(np.uint32),
+            ):
+                raise AssertionError(
+                    f"im2col_quantize PatchScale mismatch at group={group}, block={block}"
+                )
+
+            if layout["depthwise"]:
+                launch("gemm_i8", (0, 0, 0), pointer_group=group)
+                accumulator = np.frombuffer(
+                    scratch_region("acc"), dtype=np.int32
+                ).reshape(1, tile)
+                if not np.array_equal(accumulator, stage_expected["Acc"]):
+                    raise AssertionError(
+                        f"gemm_i8 Acc mismatch at group={group}, block={block}"
+                    )
+                launch("dequantize_bias", (group, block, 0))
+                got = output_buffer[0, group].reshape(-1)[start : start + valid]
+                want = stage_expected["Out"][0, :valid]
+                if not np.array_equal(got.view(np.uint32), want.view(np.uint32)):
+                    raise AssertionError(
+                        f"dequantize_bias Out mismatch at group={group}, block={block}"
+                    )
+            else:
+                for m_tile in range(m_tiles):
+                    launch("gemm_i8", (m_tile, 0, 0))
+                    accumulator = np.frombuffer(
+                        scratch_region("acc"), dtype=np.int32
+                    ).reshape(bm, tile)
+                    first = m_tile * bm
+                    last = min(first + bm, layout["channels"])
+                    if not np.array_equal(
+                        accumulator[: last - first],
+                        stage_expected["Acc"][first:last],
+                    ):
+                        raise AssertionError(
+                            f"gemm_i8 Acc mismatch at M tile={m_tile}, block={block}"
+                        )
+                    for oc in range(first, last):
+                        launch("dequantize_bias", (oc, block, m_tile))
+                        got = output_buffer[0, oc].reshape(-1)[start : start + valid]
+                        want = stage_expected["Out"][oc, :valid]
+                        if not np.array_equal(
+                            got.view(np.uint32), want.view(np.uint32)
+                        ):
+                            mismatch = int(
+                                np.flatnonzero(
+                                    got.view(np.uint32) != want.view(np.uint32)
+                                )[0]
+                            )
+                            raise AssertionError(
+                                "dequantize_bias Out mismatch at "
+                                f"oc={oc}, block={block}, lane={mismatch}: "
+                                f"got={got[mismatch]}, expected={want[mismatch]}"
+                            )
+            if progress and (
+                block == 0
+                or block + 1 == blocks
+                or (block + 1) % max(1, blocks // 10) == 0
+            ):
+                print(
+                    f"  {case['name']}: adapter group={group + 1}/{groups}, "
+                    f"block={block + 1}/{blocks}",
+                    flush=True,
+                )
+
+    actual = {}
+    for name, value in initial.items():
+        buffer = public_buffers[name]
+        if buffer[-len(guard) :] != guard:
+            raise AssertionError(name + ": DDR guard was modified")
+        if name != "Out" and bytes(buffer) != value.tobytes() + guard:
+            raise AssertionError(name + ": composite pipeline modified an input")
+        actual[name] = (
+            np.frombuffer(buffer, dtype=value.dtype, count=value.size)
+            .copy()
+            .reshape(value.shape)
+        )
+    if bytes(scratch[layout["total_bytes"] :]) != scratch_guard:
+        raise AssertionError("composite workspace guard was modified")
+    if any(
+        value != 0xA9
+        for value, allowed in zip(scratch[: layout["total_bytes"]], writable_scratch)
+        if not allowed
+    ):
+        raise AssertionError("composite stage wrote into workspace alignment padding")
+    output_mask = np.ones(expected.shape, dtype=bool)
+    if selected_tiles is None:
+        if not np.array_equal(actual["Out"].view(np.uint32), expected.view(np.uint32)):
+            raise AssertionError("composite output differs from W8A8 stage reference")
+        expected_counts = quantized_pipeline_program_counts(case)
+    else:
+        output_mask.fill(False)
+        for group, block in selected_tiles:
+            start = block * tile
+            end = min(start + tile, layout["pixels"])
+            if layout["depthwise"]:
+                output_mask[0, group].reshape(-1)[start:end] = True
+            else:
+                output_mask[0].reshape(layout["channels"], -1)[:, start:end] = True
+        if not np.array_equal(
+            actual["Out"][output_mask].view(np.uint32),
+            expected[output_mask].view(np.uint32),
+        ):
+            raise AssertionError("sampled composite output differs from W8A8 reference")
+        if not np.array_equal(
+            actual["Out"][~output_mask].view(np.uint32),
+            initial["Out"][~output_mask].view(np.uint32),
+        ):
+            raise AssertionError("sampled composite modified an unselected output")
+        tile_count = len(selected_tiles)
+        expected_counts = {
+            "weight_quantize": layout["channels"],
+            "im2col_quantize": tile_count,
+            "gemm_i8": tile_count * (1 if layout["depthwise"] else m_tiles),
+            "dequantize_bias": tile_count
+            * (1 if layout["depthwise"] else layout["channels"]),
+        }
+    if counts != expected_counts:
+        raise AssertionError(
+            f"composite adapter launch counts {counts} != {expected_counts}"
+        )
+    error_metrics = quantization_error_metrics(case, initial, actual, mask=output_mask)
+    stage_evidence = {}
+    for stage_name, stage in stage_meta.items():
+        artifact = next(
+            item for item in pipeline_manifest["stages"] if item["stage"] == stage_name
+        )
+        stage_evidence[stage_name] = {
+            "programs": counts[stage_name],
+            "ddr_accesses": accesses[stage_name],
+            "dma_transfers": dma_transfers[stage_name],
+            "symbol": stage["symbol"],
+            "source_sha256": artifact["kernel_source_sha256"],
+            "artifact_sha256": artifact["artifacts"],
+        }
+    total_programs = sum(counts.values())
+    hashed_output = (
+        actual["Out"] if selected_tiles is None else actual["Out"][output_mask]
+    )
+    hashed_reference = expected if selected_tiles is None else expected[output_mask]
+    return actual, {
+        "programs": total_programs,
+        "total_programs": total_programs,
+        "outputs": int(np.count_nonzero(output_mask)),
+        "max_abs": 0.0,
+        "module_sha256": digest(module),
+        "kernel_module_sha256": digest(case["kernel_source"]),
+        "contract_sha256": frontend["contract_sha256"],
+        "contract_manifest_sha256": digest(output / "contract-manifest.json"),
+        "order": "adapter",
+        "coverage": "full" if selected_tiles is None else "sampled-tiles",
+        "selected_tiles": (
+            None
+            if selected_tiles is None
+            else [list(point) for point in sorted(selected_tiles)]
+        ),
+        "stage_programs": counts,
+        "stages": stage_evidence,
+        "quantization_error": error_metrics,
+        "ddr_accesses": sum(accesses.values()),
+        "dma_transfers": sum(dma_transfers.values()),
+        "output_sha256": {"Out": hashlib.sha256(hashed_output.tobytes()).hexdigest()},
+        "reference_sha256": {
+            "Out": hashlib.sha256(hashed_reference.tobytes()).hexdigest()
+        },
+        "workspace_bytes": layout["total_bytes"],
+        "scratch_initialization": frontend["scratch_initialization"],
+    }
+
+
 def simulate_case(
     case,
     arrays,
@@ -273,6 +770,7 @@ def simulate_case(
     progress=True,
     machines=None,
     selected_programs=None,
+    selected_conv_tiles=None,
 ):
     """Return arrays and metrics after interpreting the requested real programs.
 
@@ -285,6 +783,25 @@ def simulate_case(
     These subsets require assemble_pv_round's independent full-grid acceptance.
     Without selected_programs, the complete real grid is executed.
     """
+    if is_quantized_linear(case):
+        from quantized_linear_simcheck import simulate as simulate_linear
+
+        if selected_programs is not None or selected_conv_tiles is not None:
+            raise ValueError("classifier requires its full adapter")
+        return simulate_linear(case, arrays, output_root, progress, machines)
+    if is_quantized_conv(case):
+        if selected_programs is not None:
+            raise ValueError(
+                "composite convolution simulation executes its full adapter"
+            )
+        return _simulate_quantized_conv(
+            case,
+            arrays,
+            output_root,
+            progress=progress,
+            machines=machines,
+            selected_tiles=selected_conv_tiles,
+        )
     module = check_artifacts(case, output_root)
     if case["family"] == "patch_embed":
         raise SimulationBlocked(
@@ -311,7 +828,9 @@ def simulate_case(
     machine_key = (case["name"], digest(module))
     machine = machines.get(machine_key) if machines is not None else None
     if machine is None:
-        with tempfile.TemporaryDirectory(prefix="vit-boscame-sim-") as directory:
+        with tempfile.TemporaryDirectory(
+            prefix="efficientnet-boscame-sim-"
+        ) as directory:
             loops = Path(directory) / "kernel.loops.mlir"
             try:
                 process = subprocess.run(
@@ -327,6 +846,7 @@ def simulate_case(
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
+                    check=False,
                 )
             except OSError as error:
                 raise SimulationBlocked(
@@ -435,11 +955,15 @@ def simulate_case(
         index = int(name.removeprefix("%arg"))
         if action == "write" and case["arguments"][index]["name"] not in writable:
             raise AssertionError("write to read-only input: " + name)
-    if case["family"] == "matmul_i8_overwrite" and any(
-        name == "%arg2" and action == "read"
+    overwrite_output = {
+        "matmul_i8_overwrite": "%arg2",
+        "conv2d_i8": "%arg3",
+    }.get(case["family"])
+    if overwrite_output is not None and any(
+        name == overwrite_output and action == "read"
         for name, _, _, action in machine.accesses[access_start:]
     ):
-        raise AssertionError("overwrite matmul read old external C")
+        raise AssertionError("overwrite matmul read its previous output")
     comparison_actual, comparison_expected = actual, expected
     nonlinear_metrics = None
     if case["family"] == "attention_pv":
@@ -684,7 +1208,7 @@ def check_pv_sharded(case, output_root, workers):
         )
     except SimulationBlocked as error:
         record["reason"] = str(error)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - record each case's simulator failure
         record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
     (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(
@@ -759,16 +1283,23 @@ def validate_pv_shard_evidence(case, saved, module_hash):
 def check_case(case, output_root):
     if case["family"] in ("gelu", "softmax"):
         return check_nonlinear_sharded(case, output_root, 1)
+    full_grid = (
+        sum(quantized_pipeline_program_counts(case).values())
+        if is_quantized_conv(case)
+        else sum(linear_program_counts(case).values())
+        if is_quantized_linear(case)
+        else math.prod(case["grid"])
+    )
     record = {
         "name": case["name"],
         "status": "BLOCKED",
         "programs": 0,
-        "total_programs": math.prod(case["grid"]),
+        "total_programs": full_grid,
         "outputs": 0,
         "max_abs": None,
         "reason": "",
         "module_sha256": None,
-        "full_grid_programs": math.prod(case["grid"]),
+        "full_grid_programs": full_grid,
     }
     output = Path(output_root) / case["name"]
     output.mkdir(parents=True, exist_ok=True)
@@ -780,7 +1311,13 @@ def check_case(case, output_root):
         record["total_programs"] *= len(scenarios)
         record["comparison_rounds"] = len(scenarios)
         runs = []
-        machines = {} if case["family"] == "attention_pv" else None
+        machines = (
+            {}
+            if case["family"] == "attention_pv"
+            or is_quantized_conv(case)
+            or is_quantized_linear(case)
+            else None
+        )
         for name, stress, order in scenarios:
             arrays = make_inputs(
                 case,
@@ -807,7 +1344,7 @@ def check_case(case, output_root):
         record.update(status="PASS", runs=runs)
     except SimulationBlocked as error:
         record["reason"] = str(error)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - record each case's simulator failure
         record.update(status="FAIL", reason=f"{type(error).__name__}: {error}")
     (output / "simcheck-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(
@@ -844,7 +1381,13 @@ def collect_case(case, output_root):
             return saved
         scenarios = scenarios_for(case)
         rounds = len(scenarios)
-        full_grid = math.prod(case["grid"])
+        full_grid = (
+            sum(quantized_pipeline_program_counts(case).values())
+            if is_quantized_conv(case)
+            else sum(linear_program_counts(case).values())
+            if is_quantized_linear(case)
+            else math.prod(case["grid"])
+        )
         runs = saved.get("runs", [])
         outputs = set(output_names(case))
         per_round = sum(
@@ -873,6 +1416,62 @@ def collect_case(case, output_root):
                 raise SimulationBlocked(
                     "incomplete simulation: a round lacks complete current-module evidence"
                 )
+            if is_quantized_conv(case):
+                counts = quantized_pipeline_program_counts(case)
+                frontend = json.loads(
+                    (Path(output_root) / case["name"] / "frontend.json").read_text()
+                )
+                stages = run.get("stages", {})
+                if (
+                    run.get("order") != "adapter"
+                    or run.get("stage_programs") != counts
+                    or run.get("contract_sha256") != frontend.get("contract_sha256")
+                    or set(stages) != set(counts)
+                ):
+                    raise SimulationBlocked(
+                        "incomplete composite stage/program evidence"
+                    )
+                expected_stage_hashes = {
+                    stage["stage"]: stage["kernel_source_sha256"]
+                    for stage in frontend["stages"]
+                }
+                for name, count in counts.items():
+                    stage = stages[name]
+                    if (
+                        stage.get("programs") != count
+                        or stage.get("source_sha256") != expected_stage_hashes[name]
+                        or not stage.get("artifact_sha256")
+                    ):
+                        raise SimulationBlocked(
+                            "incomplete composite evidence for stage " + name
+                        )
+            if is_quantized_linear(case):
+                counts = linear_program_counts(case)
+                frontend = json.loads(
+                    (Path(output_root) / case["name"] / "frontend.json").read_text()
+                )
+                if (
+                    run.get("order") != "adapter"
+                    or run.get("stage_programs") != counts
+                    or run.get("contract_sha256") != frontend["contract_sha256"]
+                    or run.get("bit_exact_w8a8") is not True
+                    or run.get("reference_sha256") != run.get("output_sha256")
+                    or not run.get("fp32_error", {}).get("within_quantization_bound")
+                ):
+                    raise SimulationBlocked("incomplete W8A8 classifier evidence")
+                expected_sources = {
+                    s["stage"]: s["kernel_source_sha256"] for s in frontend["stages"]
+                }
+                if set(run.get("stages", {})) != set(counts):
+                    raise SimulationBlocked("incomplete classifier stage list")
+                for name, count in counts.items():
+                    stage = run["stages"][name]
+                    if (
+                        stage.get("programs") != count
+                        or stage.get("source_sha256") != expected_sources[name]
+                        or stage.get("artifact_sha256") != digest(module)
+                    ):
+                        raise SimulationBlocked("incomplete classifier stage " + name)
             if case["family"] == "attention_pv" and (
                 run.get("bit_exact_f32") is not True
                 or run.get("reference_sha256") != run.get("output_sha256")
@@ -885,11 +1484,12 @@ def collect_case(case, output_root):
         if saved.get("execution") == "parallel-shards":
             validate_pv_shard_evidence(case, saved, digest(module))
             order_prefix = "shard-"
-        if rounds == 3 and (
-            [(run.get("name"), run.get("order")) for run in runs]
-            != [(name, order_prefix + order) for name, _, order in scenarios]
-            or runs[1]["output_sha256"] != runs[2]["output_sha256"]
-        ):
+        repeated_stress = (
+            rounds > 2 and scenarios[1][1] and scenarios[1][1] == scenarios[2][1]
+        )
+        if [(run.get("name"), run.get("order")) for run in runs] != [
+            (name, order_prefix + order) for name, _, order in scenarios
+        ] or (repeated_stress and runs[1]["output_sha256"] != runs[2]["output_sha256"]):
             raise SimulationBlocked("incomplete numerical/launch-order stress evidence")
         saved.update(
             kernel_module_sha256=digest(case["kernel_source"]),

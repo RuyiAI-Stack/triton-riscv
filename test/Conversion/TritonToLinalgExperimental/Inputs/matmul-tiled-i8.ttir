@@ -10,7 +10,6 @@
 // When used: TritonToLinalgExperimental conversion suite to lock matmul tiled
 // i8 lowering and contract facts.
 //
-
 module {
   tt.func public @triton_matmul_i8_196x768x768(%arg0: !tt.ptr<i8>, %arg1: !tt.ptr<i8>, %arg2: !tt.ptr<i32>) attributes {noinline = false} {
     %cst = arith.constant dense<0> : tensor<128x128xi8>

@@ -18,7 +18,9 @@ import triton.language as tl
 
 
 @triton.jit
-def gap(X, Out, SPATIAL: tl.constexpr, C: tl.constexpr, BLOCK: tl.constexpr):
+def gap_scalar_reference(
+    X, Out, SPATIAL: tl.constexpr, C: tl.constexpr, BLOCK: tl.constexpr
+):
     """Global average pool. One program reduces one channel along unit-stride pixels."""
     tl.static_assert(C > 0)
     ch = tl.program_id(0)
@@ -32,7 +34,12 @@ def gap(X, Out, SPATIAL: tl.constexpr, C: tl.constexpr, BLOCK: tl.constexpr):
 # Fixed specialization; cases.py reads this literal without importing Triton.
 KERNEL_CONFIG = {
     "family": "gap",
-    "kernel": "gap",
+    "kernel": "gap_phase_ordered",
+    "implementation": "hybrid_ordered_c",
+    "implementation_source": "diagnostics/model_integration/gap_torch_order_candidate.c",
+    "implementation_symbol_prefix": "efficientnet_phase_",
+    "kernel_module": "gap_phase_kernels",
+    "reference_kernel": "gap_scalar_reference",
     "arguments": [
         {"name": "X", "rank": 4, "dtype": "f32"},
         {"name": "Out", "rank": 2, "dtype": "f32"},

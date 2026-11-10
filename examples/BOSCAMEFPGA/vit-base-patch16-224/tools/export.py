@@ -41,19 +41,20 @@ def tool(name):
 
 def argument_shapes(case):
     """Physical entry shapes, including the graph-facing patch ABI."""
+    if "argument_shapes" in case:
+        return [tuple(s) for s in case["argument_shapes"]]
     family, shape = case["family"], case["shape"]
-    if family in ("linear", "matmul_i8", "matmul_i8_overwrite"):
+    if family in ("linear", "gemm_i8", "matmul_i8"):
         m, n, k = shape
         return [(m, k), (n, k), (m, n)]
-    if family.startswith("attention_"):
-        h, m, n, k = shape
-        return [(h, m, k), (h, k, n), (h, m, n)]
     if family == "patch_embed":
         return [(1, 3, 224, 224), (768, 3, 16, 16), (768,), (1, 768, 14, 14)]
     if family == "layernorm":
         return [tuple(shape), (shape[-1],), (shape[-1],), tuple(shape)]
     if family == "bias_add":
         return [tuple(shape), (shape[-1],), tuple(shape)]
+    if family == "quantize_transpose":
+        return [tuple(shape), tuple(reversed(shape)), (shape[1],)]
     if family == "per_token_quantization":
         return [tuple(shape), tuple(shape), (shape[0],)]
     if family == "dequantization":
@@ -80,7 +81,7 @@ def adapter_source(case):
         lines += [
             "extern void _mlir_ciface_kernel_quantize_196x768(MemRef2 *, MemRef2 *, MemRef1 *);",
             "extern void _mlir_ciface_kernel_quantize_768x768(MemRef2 *, MemRef2 *, MemRef1 *);",
-            "extern void _mlir_ciface_kernel_matmul_i8_overwrite_196x768x768(MemRef2 *, MemRef2 *, MemRef2 *);",
+            "extern void _mlir_ciface_kernel_matmul_i8_196x768x768(MemRef2 *, MemRef2 *, MemRef2 *);",
             "extern void _mlir_ciface_kernel_dequantize_196x768(MemRef2 *, MemRef1 *, MemRef1 *, MemRef2 *);",
             "static float patch_im2col[196 * 768] __attribute__((aligned(64)));",
             "static int8_t patch_im2col_q[196 * 768] __attribute__((aligned(64)));",
@@ -145,7 +146,7 @@ def adapter_source(case):
             "  MemRef1 cs = make_1(patch_weight_scale, 768);",
             "  _mlir_ciface_kernel_quantize_768x768(&w, &wq, &cs);",
             "  MemRef2 c = make_2(patch_acc, 196, 768);",
-            "  _mlir_ciface_kernel_matmul_i8_overwrite_196x768x768(&iq, &wq, &c);",
+            "  _mlir_ciface_kernel_matmul_i8_196x768x768(&iq, &wq, &c);",
             "  MemRef2 y = make_2(patch_gemm, 196, 768);",
             "  _mlir_ciface_kernel_dequantize_196x768(&c, &rs, &cs, &y);",
             "  for (int p = 0; p < 196; ++p)",
@@ -201,7 +202,7 @@ def export_case(case, output):
         dependencies=[
             "quantize_196x768",
             "quantize_768x768",
-            "matmul_i8_overwrite_196x768x768",
+            "matmul_i8_196x768x768",
             "dequantize_196x768",
         ]
         if case["family"] == "patch_embed"

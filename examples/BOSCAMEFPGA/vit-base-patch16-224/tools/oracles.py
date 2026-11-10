@@ -115,11 +115,11 @@ def output_names(case):
     family = case["family"]
     if family in (
         "linear",
+        "gemm_i8",
         "matmul_i8",
-        "matmul_i8_overwrite",
     ) or family.startswith("attention_"):
         return ("C",)
-    if family == "per_token_quantization":
+    if family in ("per_token_quantization", "quantize_transpose"):
         return ("Q", "Scale")
     return ("Out",)
 
@@ -158,10 +158,11 @@ def make_inputs(case, shapes, stress=False):
             # A visible sentinel proves every required element was written.
             value = np.full(shape, 0x55 if dtype.kind == "i" else np.nan, dtype=dtype)
         arrays[name] = np.ascontiguousarray(value, dtype=dtype)
-    if case["family"] == "per_token_quantization":
-        arrays["X"][0] = 0.0
-        if arrays["X"].shape[0] > 1:
-            width = arrays["X"].shape[-1]
+    if case["family"] in ("per_token_quantization", "quantize_transpose"):
+        rows = arrays["X"].T if case["family"] == "quantize_transpose" else arrays["X"]
+        rows[0] = 0.0
+        if rows.shape[0] > 1:
+            width = rows.shape[-1]
             ties = np.resize(
                 np.array(
                     [-127, -2.5, -1.5, -0.5, 0, 0.5, 1.5, 2.5, 127],
@@ -169,37 +170,90 @@ def make_inputs(case, shapes, stress=False):
                 ),
                 width,
             )
-            arrays["X"][1] = ties
-    if stress and case["family"] == "attention_pv":
-        # Distinguish block-local accumulation from reassociation across K
-        # blocks. The unit term is rounded away inside the second block.
-        a, b = arrays["A"], arrays["B"]
-        block = case["constexprs"]["BK"]
-        a.fill(0)
-        signs = np.where((np.indices(a.shape[:-1]).sum(axis=0) % 2) == 0, 1, -1).astype(
-            np.float32
-        )
-        if a.shape[-1] > block + 1:
-            a[..., 0] = signs * np.float32(2**25)
-            a[..., block] = -signs * np.float32(2**25)
-            a[..., block + 1] = signs
-        if a.shape[-1] > 2 * block:
-            a[..., 2 * block] = signs * np.float32(0.125)
-        tail = a.shape[-1] % block
-        if tail:
-            a[..., -tail:] = signs[..., None] * np.resize(
-                np.array([2, -4, 0.5, 1.25, -0.25], dtype=np.float32), tail
-            )
-        columns = np.arange(b.shape[-1])
-        scales = np.ldexp(
-            np.where(columns % 2, np.float32(-1), np.float32(1)),
-            columns % 5 - 2,
-        )
-        b[...] = scales
-        arrays["C"].fill(np.nan)
+            rows[1] = ties
+            if stress:
+                quantization_stress(rows)
     if stress:
         _nonlinear_stress(case, arrays)
     return arrays
+
+
+def quantization_stress(rows):
+    """Zero, signed extrema, half ties and neighbors on both scale axes."""
+    ties = np.array(
+        [-127, -126.5, -2.5, -1.5, -0.5, -0.0, 0.0, 0.5, 1.5, 2.5, 126.5, 127],
+        np.float32,
+    )
+    patterns = [
+        np.zeros_like(ties),
+        ties,
+        np.nextafter(ties, np.float32(-np.inf)),
+        np.nextafter(ties, np.float32(np.inf)),
+        np.array([-127, 127, -1, 0, 1], np.float32),
+    ]
+    for index, row in enumerate(rows):
+        row[:] = np.resize(patterns[index % len(patterns)], row.size)
+        # Powers of two preserve exact half ties while varying each scale.
+        row *= np.float32(2.0 ** ((index % 17) - 8))
+    if len(rows) > 5:
+        rows[-1] = np.resize(
+            np.array(
+                [-np.finfo(np.float32).max, 0, np.finfo(np.float32).max], np.float32
+            ),
+            rows.shape[-1],
+        )
+        rows[-2] = np.resize(
+            np.array(
+                [-np.finfo(np.float32).tiny, 0, np.finfo(np.float32).tiny], np.float32
+            ),
+            rows.shape[-1],
+        )
+
+
+def quantize_rows(value):
+    """Independent scalar f32 quantizer; Python integers implement saturation."""
+    quantized = np.empty(value.shape, dtype=np.int8)
+    scales = np.empty(value.shape[0], dtype=np.float32)
+    for row, values in enumerate(value):
+        maximum = np.float32(max(abs(float(x)) for x in values))
+        scale = np.float32(1) if maximum == 0 else np.float32(maximum / np.float32(127))
+        scales[row] = scale
+        for column, x in enumerate(values):
+            ratio = np.float32(x / scale)
+            base = int(ratio)
+            remainder = float(ratio) - base
+            adjustment = 1 if remainder >= 0.5 else -1 if remainder <= -0.5 else 0
+            quantized[row, column] = min(127, max(-127, base + adjustment))
+    return quantized, scales
+
+
+def quantized_attention_reference(case, arrays):
+    """Runtime per-head row/column quantization, INT64 oracle, ordered f32 restore."""
+    result = np.empty(arrays["C"].shape, np.float32)
+    factor = np.float32(0.125 if case["family"] == "attention_qk" else 1)
+    for head, (a, b) in enumerate(zip(arrays["A"], arrays["B"])):
+        aq, rs = quantize_rows(a)
+        bq, cs = quantize_rows(b.T)
+        acc = (aq.astype(np.int64) @ bq.astype(np.int64).T).astype(np.int32)
+        with np.errstate(over="ignore", invalid="ignore"):
+            first = np.multiply(acc.astype(np.float32), rs[:, None], dtype=np.float32)
+            second = np.multiply(first, cs[None, :], dtype=np.float32)
+            result[head] = np.multiply(second, factor, dtype=np.float32)
+    return {"C": result}
+
+
+def attention_fp32_reference(case, arrays):
+    """Retain the former ordered FP32 arithmetic solely as a host baseline."""
+    product = (
+        _matmul_blocked_sequential(arrays["A"], arrays["B"], 64)
+        if case["family"] == "attention_pv"
+        else _matmul_sequential(arrays["A"], arrays["B"])
+    )
+    return np.multiply(
+        product,
+        np.float32(0.125 if case["family"] == "attention_qk" else 1),
+        dtype=np.float32,
+    )
 
 
 def nonlinear_reference64(case, arrays):
@@ -313,32 +367,17 @@ def _matmul_blocked_sequential(a, b, block):
 def reference(case, arrays):
     """Return references only for the writable arguments of this case."""
     family = case["family"]
-    if family in ("matmul_i8", "matmul_i8_overwrite"):
+    if family in ("gemm_i8", "matmul_i8"):
         a, b, c = (arrays[name] for name in ("A", "B", "C"))
         return {
             "C": (
-                (c.astype(np.int64) if family == "matmul_i8" else 0)
+                (c.astype(np.int64) if family == "gemm_i8" else 0)
                 + a.astype(np.int64) @ b.astype(np.int64).T
             ).astype("<i4")
         }
     if family == "linear":
         product = _matmul_sequential(arrays["A"], arrays["B"].T)
         return {"C": np.add(product, arrays["C"], dtype=np.float32)}
-    if family.startswith("attention_"):
-        product = (
-            _matmul_blocked_sequential(
-                arrays["A"], arrays["B"], case["constexprs"]["BK"]
-            )
-            if family == "attention_pv"
-            else _matmul_sequential(arrays["A"], arrays["B"])
-        )
-        return {
-            "C": np.multiply(
-                product,
-                np.float32(case["constexprs"]["SCALE"]),
-                dtype=np.float32,
-            )
-        }
     if family == "add":
         return {"Out": np.add(arrays["X"], arrays["Y"], dtype=np.float32)}
     if family == "bias_add":
@@ -371,6 +410,13 @@ def reference(case, arrays):
         )
         scaled = np.multiply(normalized, arrays["Weight"], dtype=np.float32)
         return {"Out": np.add(scaled, arrays["Bias"], dtype=np.float32)}
+    if family == "quantize_transpose":
+        q, scale = quantize_rows(arrays["X"].T)
+        return {"Q": q, "Scale": scale}
+    if family == "head_layout":
+        result = arrays["Out"].copy()
+        result[:, :38809] = arrays["X"][:, :38809]
+        return {"Out": result}
     if family == "per_token_quantization":
         x = arrays["X"]
         maximum = np.max(np.abs(x), axis=-1)
@@ -396,7 +442,12 @@ def reference(case, arrays):
             arrays["Row"][:, None],
             dtype=np.float32,
         )
-        return {"Out": np.multiply(first, arrays["Column"][None, :], dtype=np.float32)}
+        second = np.multiply(first, arrays["Column"][None, :], dtype=np.float32)
+        return {
+            "Out": np.multiply(
+                second, np.float32(case.get("output_factor", 1)), dtype=np.float32
+            )
+        }
     if family == "gelu":
         x = arrays["X"]
         erf_input = np.multiply(x, np.float32(0.7071067811865475), dtype=np.float32)

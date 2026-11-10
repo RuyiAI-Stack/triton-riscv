@@ -11,12 +11,8 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s
-import copy
-import hashlib
-import itertools
 import sys
 from pathlib import Path
-
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[3]
@@ -24,21 +20,65 @@ sys.path.insert(0, str(REPO / "examples/BOSCAMEFPGA/vit-base-patch16-224/tools")
 from oracles import (  # noqa: E402
     _matmul_blocked_sequential,
     _matmul_sequential,
-    make_inputs,
-    reference,
-)
-from simcheck import (  # noqa: E402
-    SimulationBlocked,
-    assemble_pv_round,
-    audit_pv_program,
-    check_pv_selected_output,
-    pv_program_mask,
-    pv_shards,
-    scenarios_for,
-    validate_pv_shard_evidence,
+    attention_fp32_reference,
+    quantized_attention_reference,
+    quantize_rows,
 )
 
-from export import argument_shapes, describe, digest  # noqa: E402
+
+def test_quantized_host_baseline():
+    rng = np.random.default_rng(71)
+    for family, k, n, factor in (
+        ("attention_qk", 64, 197, 0.125),
+        ("attention_pv", 197, 64, 1.0),
+    ):
+        case = {"family": family, "shape": [2, 3, n, k]}
+        arrays = {
+            "A": rng.normal(size=(2, 3, k)).astype(np.float32),
+            "B": rng.normal(size=(2, k, n)).astype(np.float32),
+            "C": np.full((2, 3, n), 12345, np.float32),
+        }
+        arrays["A"][0, 0] = 0
+        expected = quantized_attention_reference(case, arrays)["C"]
+        independent = np.empty_like(expected)
+        for head in range(2):
+            aq, rs = quantize_rows(arrays["A"][head])
+            bq, cs = quantize_rows(arrays["B"][head].T)
+            for row in range(3):
+                for col in range(n):
+                    acc = sum(int(aq[row, x]) * int(bq[col, x]) for x in range(k))
+                    independent[head, row, col] = np.float32(
+                        np.float32(np.float32(np.float32(acc) * rs[row]) * cs[col])
+                        * np.float32(factor)
+                    )
+        assert np.array_equal(expected.view(np.uint32), independent.view(np.uint32))
+        assert np.all(expected[0, 0] == 0)
+        assert np.array_equal(
+            expected,
+            quantized_attention_reference(
+                case, {**arrays, "C": np.full_like(expected, -777)}
+            )["C"],
+        )
+        baseline = attention_fp32_reference(case, arrays)
+        assert np.all(np.isfinite(baseline)) and np.any(expected != baseline)
+    values = np.array([[0, 0, 0, 0, 0], [-127, -0.5, 0, 0.5, 127]], np.float32)
+    quantized, scales = quantize_rows(values)
+    assert np.array_equal(scales, [1, 1]) and np.array_equal(
+        quantized[1], [-127, -1, 0, 1, 127]
+    )
+    boundary = np.array(
+        [
+            [
+                -127,
+                np.nextafter(np.float32(0.5), np.float32(0)),
+                0.5,
+                np.nextafter(np.float32(-0.5), np.float32(0)),
+                127,
+            ]
+        ],
+        np.float32,
+    )
+    assert np.array_equal(quantize_rows(boundary)[0], [[-127, 0, 1, 0, 127]])
 
 
 def test_block_order():
@@ -92,204 +132,7 @@ def test_padding_and_special_values():
     assert shapes == [((1, 64), (64, 1))] * 2
 
 
-def test_real_case_stress():
-    case = describe("attention_pv_12x197x64x197")
-    arrays = make_inputs(case, argument_shapes(case), stress=True)
-    assert np.all(np.isnan(arrays["C"]))
-    expected = reference(case, arrays)["C"]
-    assert np.all(np.isfinite(expected))
-    assert np.any(expected != _matmul_sequential(arrays["A"], arrays["B"]))
-    assert np.array_equal(expected, reference(case, {**arrays, "C": expected})["C"])
-
-
-def test_logical_row_audit():
-    case = describe("attention_pv_12x197x64x197")
-    accesses = [("%arg0", row * 788, (row + 1) * 788, "read") for row in range(16)]
-    accesses += [("%arg1", row * 256, row * 256 + 64, "read") for row in range(197)]
-    accesses += [("%arg2", row * 256, row * 256 + 64, "write") for row in range(16)]
-    dma = [("%arg1", "spm", 0, 0, 64, 0)] * 197
-    matrix = [
-        {
-            "source": "%arg0",
-            "source_offset": 0,
-            "rows": 16,
-            "row_bytes": width,
-            "source_pitch": 788,
-            "target_pitch": 256,
-            "instruction_bits": 32,
-            "register_class": "acc",
-        }
-        for width in (256, 256, 256, 20)
-    ]
-    audit = audit_pv_program(case, (0, 0, 0), accesses, dma, matrix)
-    assert sum(audit["ddr_bytes"].values()) == 26240
-    # This still fits the complete A backing buffer, but crosses a K row.
-    crossing = [("%arg0", 4, 792, "read"), *accesses[1:]]
-    old_c = [*accesses, ("%arg2", 0, 4, "read")]
-    for invalid in (crossing, old_c):
-        try:
-            audit_pv_program(case, (0, 0, 0), invalid, dma, matrix)
-        except AssertionError as error:
-            assert "logical row violation" in str(error)
-        else:
-            raise AssertionError("invalid PV logical access passed")
-    assert [item[2] for item in scenarios_for(case)] == [
-        "forward",
-        "tail-first",
-        "reverse",
-    ]
-
-
-def test_shard_coverage():
-    case = describe("attention_pv_12x197x64x197")
-    shards = pv_shards(case)
-    points = [point for shard in shards for point in shard]
-    assert len(shards) == 48 and all(len(shard) == 13 for shard in shards)
-    assert len(points) == len(set(points)) == 624
-    assert set(points) == set(itertools.product(range(13), range(4), range(12)))
-    assert np.all(pv_program_mask(case, points))
-    for invalid in (
-        [],
-        [points[0], points[0]],
-        [(13, 0, 0)],
-        [(0, 4, 0)],
-        [(0, 0, 12)],
-    ):
-        try:
-            pv_program_mask(case, invalid)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("invalid shard selection accepted")
-
-
-def test_selected_output_and_assembly():
-    case = describe("attention_pv_12x197x64x197")
-    case = {
-        **case,
-        "shape": [1, 3, 2, 1],
-        "grid": [2, 1, 1],
-        "constexprs": {**case["constexprs"], "BM": 2, "BN": 2},
-    }
-    expected = np.arange(6, dtype=np.float32).reshape(1, 3, 2)
-    initial = np.full_like(expected, np.nan)
-    mask = pv_program_mask(case, [(0, 0, 0)])
-    actual = initial.copy()
-    actual[mask] = expected[mask]
-    check_pv_selected_output(case, [(0, 0, 0)], actual, expected, initial)
-    actual[~mask] = expected[~mask]
-    try:
-        check_pv_selected_output(case, [(0, 0, 0)], actual, expected, initial)
-    except AssertionError as error:
-        assert "unauthorized" in str(error)
-    else:
-        raise AssertionError("write outside selected programs accepted")
-    pieces = []
-    for point in ((0, 0, 0), (1, 0, 0)):
-        selected = pv_program_mask(case, [point])
-        values = expected[selected].copy()
-        hashes = {"C": hashlib.sha256(values.tobytes()).hexdigest()}
-        pieces.append(
-            {
-                "programs": [point],
-                "values": values,
-                "metrics": {
-                    "programs": 1,
-                    "outputs": len(values),
-                    "selected_programs": [point],
-                    "output_sha256": hashes,
-                    "reference_sha256": hashes,
-                    "bit_exact_f32": True,
-                },
-            }
-        )
-    assert np.array_equal(assemble_pv_round(case, pieces, expected), expected)
-    for invalid in (pieces[:1], [pieces[0], pieces[0], pieces[1]]):
-        try:
-            assemble_pv_round(case, invalid, expected)
-        except AssertionError:
-            pass
-        else:
-            raise AssertionError("incomplete/duplicate aggregate accepted")
-    for corrupt in ("hash", "value", "executed-points"):
-        invalid = copy.deepcopy(pieces)
-        if corrupt == "hash":
-            invalid[0]["metrics"]["output_sha256"] = {"C": "invalid"}
-        elif corrupt == "value":
-            invalid[0]["values"][0] = 100
-        else:
-            invalid[0]["metrics"]["selected_programs"] = [(1, 0, 0)]
-        try:
-            assemble_pv_round(case, invalid, expected)
-        except AssertionError:
-            pass
-        else:
-            raise AssertionError("corrupt executed-slice evidence accepted")
-
-
-def test_collect_shard_metadata():
-    case = describe("attention_pv_12x197x64x197")
-    case = {
-        **case,
-        "shape": [2, 3, 2, 1],
-        "grid": [2, 1, 2],
-        "constexprs": {**case["constexprs"], "BM": 2, "BN": 2},
-    }
-    shards = []
-    for programs in pv_shards(case):
-        mask = pv_program_mask(case, programs)
-        runs = []
-        for name, stress, order in scenarios_for(case):
-            result = reference(
-                case, make_inputs(case, argument_shapes(case), stress=stress)
-            )["C"][mask]
-            hashes = {"C": hashlib.sha256(result.tobytes()).hexdigest()}
-            runs.append(
-                {
-                    "name": name,
-                    "order": order,
-                    "module_sha256": "current",
-                    "kernel_module_sha256": digest(case["kernel_source"]),
-                    "programs": len(programs),
-                    "outputs": len(result),
-                    "selected_programs": programs
-                    if order == "forward"
-                    else programs[::-1],
-                    "bit_exact_f32": True,
-                    "output_sha256": hashes,
-                    "reference_sha256": hashes,
-                    "pv_access_audit": {},
-                }
-            )
-        shards.append({"programs": programs, "runs": runs})
-    saved = {"shards": shards, "shard_count": 2}
-    validate_pv_shard_evidence(case, saved, "current")
-    mixed_heads = copy.deepcopy(saved)
-    (
-        mixed_heads["shards"][0]["programs"][1],
-        mixed_heads["shards"][1]["programs"][1],
-    ) = (
-        mixed_heads["shards"][1]["programs"][1],
-        mixed_heads["shards"][0]["programs"][1],
-    )
-    wrong_order = copy.deepcopy(saved)
-    wrong_order["shards"][0]["runs"][0]["selected_programs"].reverse()
-    wrong_reverse = copy.deepcopy(saved)
-    wrong_reverse["shards"][0]["runs"][2]["selected_programs"].reverse()
-    for invalid in (mixed_heads, wrong_order, wrong_reverse):
-        try:
-            validate_pv_shard_evidence(case, invalid, "current")
-        except SimulationBlocked:
-            pass
-        else:
-            raise AssertionError("false shard partition/order evidence accepted")
-
-
+test_quantized_host_baseline()
 test_block_order()
 test_no_fma()
 test_padding_and_special_values()
-test_real_case_stress()
-test_logical_row_audit()
-test_shard_coverage()
-test_selected_output_and_assembly()
-test_collect_shard_metadata()

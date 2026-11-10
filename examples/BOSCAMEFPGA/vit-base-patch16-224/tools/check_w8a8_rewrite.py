@@ -120,13 +120,30 @@ def main():
         adapter = Path(directory) / "adapter.c"
         rewrite.generate_adapters(calls, adapter)
         text = adapter.read_text()
-        assert "acc[i] = 0" not in text and "matmul_i8_overwrite_" in text
+        assert "acc[i] = 0" not in text and "matmul_i8_" in text
         assert "MemRef2 case_arg_2" in text
-    missing = {name: case for name, case in index.items() if "overwrite" not in name}
+    missing = {
+        name: case
+        for name, case in index.items()
+        if case.get("accumulation") != "overwrite"
+    }
     graph, _ = fixture([(1, 1000, 768)])
     rejected = {"uncovered": []}
     assert rewrite.rewrite_linears_to_w8a8(graph, missing, [], rejected) == 0
-    assert "matmul_i8_overwrite_1x1000x768" in rejected["uncovered"][0]["reason"]
+    assert "matmul_i8_1x1000x768" in rejected["uncovered"][0]["reason"]
+    # Product selection is based on the declared contract as well as its
+    # public matmul name. A misleading name cannot admit accumulating GEMM.
+    product_name = "matmul_i8_1x1000x768"
+    disguised = dict(index["gemm_i8_1x1000x768"], name=product_name)
+    assert (
+        rewrite._w8a8_case({product_name: disguised}, "matmul", (1, 1000, 768), None)
+        is None
+    )
+    wrong_family = dict(index[product_name], family="gemm_i8")
+    assert (
+        rewrite._w8a8_case({product_name: wrong_family}, "matmul", (1, 1000, 768), None)
+        is None
+    )
     result = {
         "schema": 1,
         "status": "PASS",
@@ -134,6 +151,7 @@ def main():
         "dense_rewrites": 73,
         "external_calls": 219,
         "fallback_to_accumulating_kernel_rejected": True,
+        "misnamed_accumulating_kernel_rejected": True,
         "numerical_validation": False,
         "full_model_executed": False,
     }

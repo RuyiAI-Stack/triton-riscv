@@ -14,4 +14,6 @@ def test_sinh_(size, dtype):
     x_ref.sinh_()
     sinh_(x)
 
-    torch.testing.assert_close(x, x_ref, rtol=1e-4, atol=1e-4)
+    # float16 carries ~3 decimal digits, so the float32 tolerance is too tight.
+    tolerance = 1e-4 if dtype == torch.float32 else 1e-3
+    torch.testing.assert_close(x, x_ref, rtol=tolerance, atol=tolerance)

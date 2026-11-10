@@ -10,6 +10,7 @@
 # When used: before rebuild-triton-riscv.sh, lit, or FPGA export from a
 # developer shell.
 #
+#!/usr/bin/env bash
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   echo "Source this script instead of executing it: source scripts/triton-riscv-env.sh" >&2

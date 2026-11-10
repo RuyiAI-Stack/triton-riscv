@@ -11,11 +11,15 @@ When used: after a batch host-check or board run.
 
 import argparse
 import json
+import shlex
+import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from export import describe, digest, inventory, summary_report_path  # noqa: E402
+
+MODEL = Path(__file__).resolve().parents[1]
 
 STAGE_FILES = {
     "ttir": ["ttir", "frontend.mlir"],
@@ -45,6 +49,10 @@ def success(name, output, stage):
         "name",
         "family",
         "kernel",
+        "implementation",
+        "implementation_source",
+        "implementation_symbol",
+        "reference_kernel",
         "signature",
         "constexprs",
         "grid",
@@ -62,9 +70,80 @@ def success(name, output, stage):
             artifacts[filename] = digest(directory / filename)
         if checkpoint == stage:
             break
+    inputs_path = directory / ".compiler-inputs.json"
+    inputs = (
+        dict(
+            value.split("=", 1)
+            for value in json.loads(inputs_path.read_text())
+            if "=" in value
+        )
+        if inputs_path.is_file()
+        else {}
+    )
+    optimization = None
+    phases = None
+    if "conv-patch-ddr-phases" in inputs:
+        from add_conv_patch_ddr_phases import transform
+
+        tool = Path(inputs["conv-patch-ddr-phases"]).resolve()
+        phases = {
+            "pipeline": "per-patch im2col DDR read/write phases",
+            "tool": str(tool),
+            "tool_sha256": digest(tool),
+            "applied": stage in ("llvm", "asm"),
+        }
+        if phases["applied"]:
+            transformed, expected = transform(
+                (directory / "kernel.ll").read_text(), case
+            )
+            actual = json.loads((directory / "kernel.phase.json").read_text())
+            if (
+                actual != expected
+                or (directory / "kernel.phase.ll").read_text() != transformed
+            ):
+                raise ValueError(
+                    "im2col phase artifacts do not match original LLVM math/current transformer"
+                )
+            artifacts["kernel.phase.ll"] = digest(directory / "kernel.phase.ll")
+            artifacts["kernel.phase.json"] = digest(directory / "kernel.phase.json")
+            phases["transformation"] = actual
+            phases["input_sha256"] = artifacts["kernel.ll"]
+            phases["output_sha256"] = artifacts["kernel.phase.ll"]
+    if "llvm-scalar-o2-tool" in inputs:
+        tool = Path(inputs["llvm-scalar-o2-tool"])
+        resolved = Path(shutil.which(str(tool)) or tool).resolve()
+        optimization = {
+            "pipeline": "scalar LLVM O2",
+            "tool": str(resolved),
+            "tool_sha256": digest(resolved),
+            "flags": shlex.split(inputs["llvm-scalar-o2-flags"]),
+            "applied": stage in ("llvm", "asm"),
+        }
+        if optimization["applied"]:
+            artifacts["kernel.optimized.ll"] = digest(directory / "kernel.optimized.ll")
+            optimization["input_sha256"] = (
+                artifacts["kernel.phase.ll"]
+                if phases is not None
+                else artifacts["kernel.ll"]
+            )
+            optimization["output_sha256"] = artifacts["kernel.optimized.ll"]
     if artifacts["kernel.ttir"] != manifest["ttir_sha256"]:
         raise ValueError("TTIR does not match frontend manifest")
-    return {
+    native = None
+    if (
+        case.get("implementation") in ("hybrid_rvv_c", "hybrid_ordered_c")
+        and stage == "asm"
+    ):
+        native = json.loads((directory / "native-implementation.json").read_text())
+        if (
+            native.get("implementation") != case["implementation"]
+            or native.get("candidate_source_sha256")
+            != digest(MODEL / case["implementation_source"])
+            or native.get("object_sha256") != digest(directory / "kernel.o")
+            or native.get("adapter_sha256") != digest(directory / "adapter.c")
+        ):
+            raise ValueError("native build does not match declared source/artifacts")
+    record = {
         "name": name,
         "status": "PASS",
         "stage": stage,
@@ -72,6 +151,16 @@ def success(name, output, stage):
         "artifacts": artifacts,
         "kernel_module_sha256": digest(case["kernel_source"]),
     }
+    if optimization is not None:
+        record["llvm_optimization"] = optimization
+    if phases is not None:
+        record["conv_patch_ddr_phases"] = phases
+    if native is not None:
+        record["native_implementation"] = native
+        record["kernel_ir_role"] = (
+            "Triton/BOSCAME/LLVM artifacts are explicit numerical reference; kernel.o uses declared native C source"
+        )
+    return record
 
 
 def failure(name, output, stage, reason):
@@ -96,6 +185,14 @@ def collect(output, names, stage):
                 for filename, sha in checked["artifacts"].items():
                     if record.get("artifacts", {}).get(filename) != sha:
                         raise ValueError("unrecorded or stale artifact: " + filename)
+                if stage in ("llvm", "asm") and record.get(
+                    "llvm_optimization"
+                ) != checked.get("llvm_optimization"):
+                    raise ValueError("unrecorded or stale scalar LLVM optimization")
+                if stage in ("llvm", "asm") and record.get(
+                    "conv_patch_ddr_phases"
+                ) != checked.get("conv_patch_ddr_phases"):
+                    raise ValueError("unrecorded or stale im2col DDR phases")
                 record = checked
         except (OSError, ValueError, KeyError) as error:
             record = failure(name, output, stage, str(error))
@@ -122,6 +219,10 @@ def main():
             "bufferized",
             "planned",
             "llvm-ir",
+            "llvm-phase",
+            "llvm-opt",
+            "native-rvv",
+            "native-ordered",
             "encode",
             "restrict",
             "object",

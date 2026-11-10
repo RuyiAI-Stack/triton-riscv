@@ -1,15 +1,3 @@
-#
-# Git ignore rules for this BOSCAME FPGA case or model tree.
-#
-# Inputs: local build/ directories and Python bytecode produced by kernel export
-# and simcheck.
-#
-# Outputs: those paths stay untracked so case sources remain the only committed
-# files.
-#
-# When used: automatically by git in this directory and below.
-#
-
 /build/
 __pycache__/
 *.pyc

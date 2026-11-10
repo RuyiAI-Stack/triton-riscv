@@ -36,6 +36,7 @@ KERNEL_CONFIG = {
         {"name": "Out", "rank": 3, "dtype": "f32"},
     ],
     "shape": [12, 128, 128],
+    "argument_shapes": [[12, 128, 128], [12, 128, 128]],
     "constexprs": {"ROWS": 1536, "LENGTH": 128, "BLOCK": 128},
     "grid": [1536, 1, 1],
     "roles": [],
@@ -47,10 +48,12 @@ KERNEL_CONFIG = {
             "max_rel_error": 2e-06,
         }
     },
+    "outputs": [1],
+    "checked_elements": 196608,
     "metadata": {
-        "dtype": "f32",
         "model": "thenlper/gte-small",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
+        "batch": 1,
+        "sequence_length": 128,
+        "target": "nr-fpga",
     },
 }

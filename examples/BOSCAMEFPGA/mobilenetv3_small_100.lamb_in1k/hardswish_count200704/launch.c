@@ -11,7 +11,6 @@
 // When used: linked with support.c after AOT compile; run on NH/E6 or as
 // HOST_TEST.
 //
-
 #include "support.h"
 static void compare(float actual, float expected, float atol, float rtol,
                     int *errors, float *maximum) {
@@ -44,7 +43,7 @@ int launch(void) {
     x[i] = (float)((i * 17) % 29 - 14) * 0.0625f;
 
   for (int i = 0; i < 200704; ++i)
-    o[i] = 0.0f;
+    o[i] = __builtin_nanf("");
 
   MemRef1 X = make_1(x, 200704), O = make_1(o, 200704);
   _mlir_ciface_kernel_hardswish_count200704(&X, &O);
@@ -58,5 +57,5 @@ int launch(void) {
               (x[i] * clamped) / 6.0f;
             }),
             1e-5f, 1e-5f, &errors, &maximum);
-  return print_check("hardswish_count200704", errors, maximum);
+  return print_check_count("hardswish_count200704", 200704u, errors, maximum);
 }

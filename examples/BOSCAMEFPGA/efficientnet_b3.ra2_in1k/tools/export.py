@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[2]
 
 sys.path.insert(0, str(ROOT))
-from cases import describe  # noqa: E402
+from cases import describe, inventory  # noqa: E402, F401 - public API for suite tools
 
 
 def digest(path):
@@ -40,10 +40,10 @@ def tool(name):
 
 
 def argument_shapes(case):
-    """Physical entry shapes, including the graph-facing patch ABI."""
+    """Physical entry shapes; packed i8 convolution uses a two-dimensional ABI."""
     family, shape = case["family"], case["shape"]
     spec = case["constexprs"]
-    if family == "linear_f32":
+    if family in ("linear_f32", "conv2d_i8"):
         m, n, k = spec["M"], spec["N"], spec["K"]
         return [(m, k), (n, k), (n,), (m, n)]
     if family == "conv2d_f32":
@@ -81,36 +81,40 @@ def argument_shapes(case):
     return [tuple(shape)] * len(case["arguments"])
 
 
-def adapter_source(case):
-    """The same typed-unranked descriptor/grid bridge as matmul128."""
+def is_quantized_conv_case(case):
+    """Validate and identify a case bound to the shared W8A8 conv pipeline."""
+    bindings = {
+        "conv2d_f32": (
+            "conv2d_im2col_w8a8",
+            "im2col_w8a8",
+            "quantized_conv_kernels",
+        ),
+        "dwconv2d_f32": (
+            "dwconv2d_im2col_w8a8",
+            "im2col_w8a8_depthwise",
+            "quantized_conv_kernels",
+        ),
+    }
+    expected = bindings.get(case["family"])
+    if expected is None:
+        return False
+    if (
+        case.get("kernel"),
+        case.get("implementation"),
+        case.get("kernel_module"),
+    ) != expected:
+        raise ValueError(f"{case['name']}: FP32 convolution must bind to {expected[0]}")
+    return True
+
+
+def descriptor_checks(case, shapes):
+    """Return public C-ABI validation, including typed unranked descriptor views."""
     arguments = case["arguments"]
-    shapes = argument_shapes(case)
-    params = ", ".join(f"MemRef{arg['rank']} *a{i}" for i, arg in enumerate(arguments))
-    lines = [
-        "/* Generated from this case; offsets and lengths are in elements. */",
-        '#include "support.h"',
-        "typedef struct { void *allocated, *aligned; int64_t offset, size, stride; } Descriptor1D;",
-        "typedef struct { int64_t rank; void *descriptor; } Unranked;",
-        f"extern void _mlir_ciface_{case['symbol']}("
-        + ", ".join(["Unranked *"] * len(arguments) + ["int32_t"] * 6)
-        + ");",
-    ]
-    patch = case["family"] == "patch_embed"
-    if patch:
-        lines += [
-            "extern void _mlir_ciface_kernel_quantize_196x768(MemRef2 *, MemRef2 *, MemRef1 *);",
-            "extern void _mlir_ciface_kernel_quantize_768x768(MemRef2 *, MemRef2 *, MemRef1 *);",
-            "extern void _mlir_ciface_kernel_matmul_i8_overwrite_196x768x768(MemRef2 *, MemRef2 *, MemRef2 *);",
-            "extern void _mlir_ciface_kernel_dequantize_196x768(MemRef2 *, MemRef1 *, MemRef1 *, MemRef2 *);",
-            "static float patch_im2col[196 * 768] __attribute__((aligned(64)));",
-            "static int8_t patch_im2col_q[196 * 768] __attribute__((aligned(64)));",
-            "static float patch_im2col_scale[196] __attribute__((aligned(64)));",
-            "static int8_t patch_weight_q[768 * 768] __attribute__((aligned(64)));",
-            "static float patch_weight_scale[768] __attribute__((aligned(64)));",
-            "static int32_t patch_acc[196 * 768] __attribute__((aligned(64)));",
-            "static float patch_gemm[196 * 768] __attribute__((aligned(64)));",
-        ]
-    lines += [f"void _mlir_ciface_kernel_{case['name']}({params}) {{"]
+    if len(shapes) != len(arguments) or any(
+        len(shape) != argument["rank"] for argument, shape in zip(arguments, shapes)
+    ):
+        raise ValueError(case["name"] + ": physical shapes disagree with ABI ranks")
+    lines = []
     item_sizes = {"f32": 4, "i32": 4, "i8": 1}
     for i, (arg, shape) in enumerate(zip(arguments, shapes)):
         elements = 1
@@ -139,6 +143,95 @@ def adapter_source(case):
             lines += [
                 f"  if (!(p{i} + {elements * size} <= p{j} || p{j} + {other_elements * other_size} <= p{i})) __builtin_trap();"
             ]
+    return lines
+
+
+def adapter_source(case):
+    """The same typed-unranked descriptor/grid bridge as matmul128."""
+    if case.get("implementation") == "hybrid_ordered_c":
+        arguments = case["arguments"]
+        checks = descriptor_checks(case, argument_shapes(case))
+        params = ", ".join(
+            f"MemRef{arg['rank']} *a{i}" for i, arg in enumerate(arguments)
+        )
+        symbol = case["implementation_symbol"]
+        spec = case["constexprs"]
+        return "\n".join(
+            [
+                "/* Native ordered scalar GAP adapter; BOSCAME remains an explicit reference. */",
+                '#include "support.h"',
+                f"extern void {symbol}(const float *, float *, __SIZE_TYPE__, __SIZE_TYPE__, __SIZE_TYPE__);",
+                "typedef struct { void *allocated, *aligned; int64_t offset, size, stride; } Descriptor1D;",
+                "typedef struct { int64_t rank; void *descriptor; } Unranked;",
+                f"void _mlir_ciface_kernel_{case['name']}({params}) {{",
+                *checks,
+                f"  {symbol}((const float *)p0, (float *)p1, {spec['SPATIAL']}u, {spec['C']}u, {spec['BLOCK']}u);",
+                "}",
+                "",
+            ]
+        )
+    if case.get("implementation") == "hybrid_rvv_c":
+        arguments = case["arguments"]
+        shapes = argument_shapes(case)
+        checks = descriptor_checks(case, shapes)
+        params = ", ".join(
+            f"MemRef{arg['rank']} *a{i}" for i, arg in enumerate(arguments)
+        )
+        count = 1
+        for extent in case["shape"]:
+            count *= extent
+        symbol = case["implementation_symbol"]
+        return "\n".join(
+            [
+                "/* Native full-array SiLU adapter; scalar BOSCAME remains a reference. */",
+                '#include "support.h"',
+                f"extern void {symbol}(const float *, float *, __SIZE_TYPE__);",
+                "typedef struct { void *allocated, *aligned; int64_t offset, size, stride; } Descriptor1D;",
+                "typedef struct { int64_t rank; void *descriptor; } Unranked;",
+                f"void _mlir_ciface_kernel_{case['name']}({params}) {{",
+                *checks,
+                f"  {symbol}((const float *)p0, (float *)p1, {count}u);",
+                "}",
+                "",
+            ]
+        )
+    if case["family"] == "linear_f32":
+        from quantized_linear_pipeline import adapter_source as linear_adapter
+
+        return linear_adapter(case)
+    if is_quantized_conv_case(case):
+        from quantized_conv_pipeline import adapter_source as pipeline_adapter_source
+
+        return pipeline_adapter_source(case)
+    arguments = case["arguments"]
+    shapes = argument_shapes(case)
+    public_checks = descriptor_checks(case, shapes)
+    params = ", ".join(f"MemRef{arg['rank']} *a{i}" for i, arg in enumerate(arguments))
+    lines = [
+        "/* Generated from this case; offsets and lengths are in elements. */",
+        '#include "support.h"',
+        "typedef struct { void *allocated, *aligned; int64_t offset, size, stride; } Descriptor1D;",
+        "typedef struct { int64_t rank; void *descriptor; } Unranked;",
+        f"extern void _mlir_ciface_{case['symbol']}("
+        + ", ".join(["Unranked *"] * len(arguments) + ["int32_t"] * 6)
+        + ");",
+    ]
+    patch = case["family"] == "patch_embed"
+    if patch:
+        lines += [
+            "extern void _mlir_ciface_kernel_quantize_196x768(MemRef2 *, MemRef2 *, MemRef1 *);",
+            "extern void _mlir_ciface_kernel_quantize_768x768(MemRef2 *, MemRef2 *, MemRef1 *);",
+            "extern void _mlir_ciface_kernel_matmul_i8_overwrite_196x768x768(MemRef2 *, MemRef2 *, MemRef2 *);",
+            "extern void _mlir_ciface_kernel_dequantize_196x768(MemRef2 *, MemRef1 *, MemRef1 *, MemRef2 *);",
+            "static float patch_im2col[196 * 768] __attribute__((aligned(64)));",
+            "static int8_t patch_im2col_q[196 * 768] __attribute__((aligned(64)));",
+            "static float patch_im2col_scale[196] __attribute__((aligned(64)));",
+            "static int8_t patch_weight_q[768 * 768] __attribute__((aligned(64)));",
+            "static float patch_weight_scale[768] __attribute__((aligned(64)));",
+            "static int32_t patch_acc[196 * 768] __attribute__((aligned(64)));",
+            "static float patch_gemm[196 * 768] __attribute__((aligned(64)));",
+        ]
+    lines += [f"void _mlir_ciface_kernel_{case['name']}({params}) {{", *public_checks]
     gx, gy, gz = case["grid"]
     if patch:
         lines += [
@@ -177,17 +270,25 @@ def adapter_source(case):
 
 
 def export_case(case, output):
+    if case["family"] == "linear_f32":
+        from quantized_linear_pipeline import export_pipeline as export_linear
+
+        return export_linear(case, output)
+    if is_quantized_conv_case(case):
+        from quantized_conv_pipeline import export_pipeline
+
+        return export_pipeline(case, output)
     import triton
 
     sys.path.insert(0, str(REPO / "examples/BOSCAMEFPGA/tools"))
     from contract_frontend import export_kernel
 
-    module_name = "vit_operator_" + case["name"]
+    module_name = "efficientnet_operator_" + case["name"]
     spec = importlib.util.spec_from_file_location(module_name, case["kernel_source"])
     kernel_module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = kernel_module
     spec.loader.exec_module(kernel_module)
-    fn = getattr(kernel_module, case["kernel"])
+    fn = getattr(kernel_module, case.get("reference_kernel", case["kernel"]))
     # These are the same explicit budgets, domain and special-value promises
     # carried by the original example exporter.
     accuracy = {
@@ -206,6 +307,8 @@ def export_case(case, output):
     (output / "adapter.c").write_text(adapter_source(case))
     manifest = dict(case)
     manifest["kernel_source"] = Path(case["kernel_source"]).relative_to(REPO).as_posix()
+    if case.get("implementation_source"):
+        manifest["implementation_source"] = case["implementation_source"]
     manifest.update(
         frontend="triton-riscv export_contract -> verified standard MLIR",
         contract_manifest_sha256=digest(output / "contract-manifest.json"),
@@ -216,6 +319,10 @@ def export_case(case, output):
         kernel_module_sha256=digest(case["kernel_source"]),
         ttir_sha256=digest(output / "kernel.ttir"),
         adapter_sha256=digest(output / "adapter.c"),
+        implementation_source_sha256=digest(ROOT / case["implementation_source"])
+        if case.get("implementation_source")
+        else None,
+        implementation_symbol=case.get("implementation_symbol"),
         exporter_sha256=digest(__file__),
         cases_sha256=digest(ROOT / "cases.py"),
         dependencies=[

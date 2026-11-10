@@ -13,6 +13,7 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t contract-pipeline-opt
+
 import itertools
 import os
 import re

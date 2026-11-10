@@ -13,6 +13,7 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t
+
 import os
 import shutil
 import sys

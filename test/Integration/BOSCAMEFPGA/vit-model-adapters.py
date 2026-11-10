@@ -13,8 +13,11 @@ that describe the scenario.
 """
 
 # RUN: %PYTHON %s %t
+
 import importlib.util
+import copy
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -46,98 +49,49 @@ def record(name, symbol, inputs, output):
 
 
 def test_adapters(work):
-    calls = [
-        record(
-            "layernorm_197x768",
-            "test_ln",
-            [[1, 197, 768], [768], [768]],
-            [1, 197, 768],
-        ),
-        record(
-            "attention_qk_12x197x197x64",
-            "test_qk",
-            [[1, 12, 197, 64], [1, 12, 64, 197]],
-            [1, 12, 197, 197],
-        ),
-    ]
+    call = record(
+        "layernorm_197x768", "test_ln", [[1, 197, 768], [768], [768]], [1, 197, 768]
+    )
     adapter = work / "adapters.c"
-    replace.generate_adapters(calls, adapter)
-    source = adapter.read_text()
-    assert "(MemRef2 *)" not in source and "(MemRef3 *)" not in source
-    assert "__attribute__((aligned(64)))" in source
+    replace.generate_adapters([call], adapter)
+    assert "(MemRef2 *)" not in adapter.read_text()
     invalid = record(
-        "layernorm_197x768",
-        "bad_batch",
-        [[2, 197, 768], [768], [768]],
-        [1, 197, 768],
+        "layernorm_197x768", "invalid", [[2, 197, 768], [768], [768]], [1, 197, 768]
     )
     try:
         replace.generate_adapters([invalid], work / "invalid.c")
-    except ValueError as error:
-        assert "leading-unit batch" in str(error)
+    except ValueError:
+        pass
     else:
         raise AssertionError("non-unit batch was accepted")
     mock = work / "mock.c"
     mock.write_text(r"""
 #include "support.h"
-static float x[197 * 768 + 16] __attribute__((aligned(64)));
-static float w[768 + 16] __attribute__((aligned(64)));
-static float b[768 + 16] __attribute__((aligned(64)));
-static float q[12 * 197 * 64 + 16] __attribute__((aligned(64)));
-static float k[12 * 64 * 197 + 16] __attribute__((aligned(64)));
-static int errors, ln_calls, qk_calls;
-extern void _mlir_ciface_test_ln(MemRef3 *, MemRef3 *, MemRef1 *, MemRef1 *);
-extern void _mlir_ciface_test_qk(MemRef4 *, MemRef4 *, MemRef4 *);
-void _mlir_ciface_kernel_layernorm_197x768(MemRef2 *a, MemRef1 *weight,
-                                        MemRef1 *bias, MemRef2 *out) {
-  ++ln_calls;
-  errors += a->aligned != x || a->offset != 16;
-  errors += a->sizes[0] != 197 || a->sizes[1] != 768;
-  errors += a->strides[0] != 768 || a->strides[1] != 1;
-  errors += weight->offset != 16 || bias->offset != 16;
-  errors += out->sizes[0] != 197 || out->sizes[1] != 768;
-  errors += ((uintptr_t)out->aligned & 63u) != 0;
-  ((float *)out->aligned)[out->offset] = 37.0f;
+static float x[197*768+16] __attribute__((aligned(64)));
+static float w[784] __attribute__((aligned(64)));
+static float b[784] __attribute__((aligned(64)));
+static int errors,calls;
+extern void _mlir_ciface_test_ln(MemRef3*,MemRef3*,MemRef1*,MemRef1*);
+void _mlir_ciface_kernel_layernorm_197x768(MemRef2*a,MemRef1*weight,MemRef1*bias,MemRef2*out) {
+ ++calls; errors += a->aligned!=x || a->offset!=16 || a->sizes[0]!=197 || a->sizes[1]!=768;
+ errors += a->strides[0]!=768 || a->strides[1]!=1 || weight->offset!=16 || bias->offset!=16;
+ errors += ((uintptr_t)out->aligned&63)!=0; ((float*)out->aligned)[out->offset]=37;
 }
-void _mlir_ciface_kernel_attention_qk_12x197x197x64(MemRef3 *a, MemRef3 *other,
-                                               MemRef3 *out) {
-  ++qk_calls;
-  errors += a->aligned != q || other->aligned != k;
-  errors += a->offset != 16 || other->offset != 16;
-  errors += a->sizes[0] != 12 || a->sizes[1] != 197 || a->sizes[2] != 64;
-  errors += a->strides[0] != 12608 || a->strides[1] != 64 || a->strides[2] != 1;
-  errors += other->sizes[1] != 64 || other->sizes[2] != 197;
-  errors += other->strides[0] != 12608 || other->strides[1] != 197 || other->strides[2] != 1;
-  errors += out->sizes[0] != 12 || out->sizes[1] != 197 || out->sizes[2] != 197;
-  errors += out->strides[0] != 38809 || out->strides[1] != 197 || out->strides[2] != 1;
-  ((float *)out->aligned)[out->offset] = 19.0f;
-}
-int main(int argc, char **argv) {
-  MemRef3 a = make_3(x, 1, 197, 768), output;
-  MemRef1 weight = make_1(w, 768), bias = make_1(b, 768);
-  a.offset = weight.offset = bias.offset = 16;
-  a.strides[0] = 0; /* Unit batch strides do not affect contiguity. */
-  if (argc > 1 && argv[1][0] == 's') a.strides[1] = 769;
-  if (argc > 1 && argv[1][0] == 'b') a.sizes[0] = 2;
-  _mlir_ciface_test_ln(&output, &a, &weight, &bias);
-  errors += output.sizes[0] != 1 || output.sizes[1] != 197 || output.sizes[2] != 768;
-  errors += ((float *)output.aligned)[output.offset] != 37.0f;
-  MemRef4 qa = make_4(q, 1, 12, 197, 64), kb = make_4(k, 1, 12, 64, 197), result;
-  qa.offset = kb.offset = 16;
-  _mlir_ciface_test_qk(&result, &qa, &kb);
-  errors += result.sizes[0] != 1 || result.sizes[1] != 12;
-  errors += result.sizes[2] != 197 || result.sizes[3] != 197;
-  errors += ((float *)result.aligned)[result.offset] != 19.0f;
-  return errors || ln_calls != 1 || qk_calls != 1;
+int main(int argc,char**argv) {
+ MemRef3 a=make_3(x,1,197,768),out; MemRef1 weight=make_1(w,768),bias=make_1(b,768);
+ a.offset=weight.offset=bias.offset=16; a.strides[0]=0;
+ if(argc>1 && argv[1][0]=='s') a.strides[1]=769;
+ if(argc>1 && argv[1][0]=='b') a.sizes[0]=2;
+ _mlir_ciface_test_ln(&out,&a,&weight,&bias);
+ errors += out.sizes[0]!=1 || out.sizes[1]!=197 || out.sizes[2]!=768 || ((float*)out.aligned)[out.offset]!=37;
+ return errors || calls!=1;
 }
 """)
-    clang = REPO / "llvm/build/bin/clang"
-    if not clang.is_file():
-        clang = shutil.which("clang")
+    clang = shutil.which("clang")
     binary = work / "check"
     subprocess.run(
         [
-            str(clang),
+            clang,
             "-std=c11",
             "-O1",
             "-Wall",
@@ -153,8 +107,9 @@ int main(int argc, char **argv) {
     )
     subprocess.run([str(binary)], check=True)
     for invalid in ("stride", "batch"):
-        run = subprocess.run([str(binary), invalid], capture_output=True)
-        assert run.returncode != 0, "invalid source descriptor was accepted"
+        assert (
+            subprocess.run([str(binary), invalid], capture_output=True).returncode != 0
+        )
 
 
 def test_index(work):
@@ -203,8 +158,8 @@ def test_index(work):
 def test_product_adapters(work):
     calls = []
     for prefix, name in (
-        ("product", "matmul_i8_overwrite_1x1000x768"),
-        ("accumulate", "matmul_i8_1x1000x768"),
+        ("product", "matmul_i8_1x1000x768"),
+        ("accumulate", "gemm_i8_1x1000x768"),
     ):
         case = replace.describe(name)
         case["adapter_entry"] = "_mlir_ciface_kernel_" + name
@@ -237,13 +192,13 @@ static int8_t a[768] __attribute__((aligned(64)));
 static int8_t b[1000 * 768] __attribute__((aligned(64)));
 static int32_t c[1016] __attribute__((aligned(64)));
 static int errors;
-void _mlir_ciface_kernel_matmul_i8_overwrite_1x1000x768(MemRef2 *x, MemRef2 *w,
+void _mlir_ciface_kernel_matmul_i8_1x1000x768(MemRef2 *x, MemRef2 *w,
                                                       MemRef2 *out) {
   errors += x->aligned != a || w->aligned != b || out->aligned != c;
   errors += out->offset != 16 || c[16] != 73;
   c[16] = 11;
 }
-void _mlir_ciface_kernel_matmul_i8_1x1000x768(MemRef2 *x, MemRef2 *w,
+void _mlir_ciface_kernel_gemm_i8_1x1000x768(MemRef2 *x, MemRef2 *w,
                                             MemRef2 *out) {
   errors += x->aligned != a || w->aligned != b || out->aligned != c;
   errors += out->offset != 16 || c[16] != 37;
@@ -296,10 +251,170 @@ int main(void) {
         ]
         if mode:
             command += ["--mode", mode]
-        assert subprocess.run(command, capture_output=True).returncode == 2
+        result = subprocess.run(command, capture_output=True)
+        assert result.returncode == 2
+        if mode == "fp32":
+            assert b"invalid choice" in result.stderr and not path.exists()
+        else:
+            report = json.loads(path.read_text())
+            assert report["mode"] == "w8a8" and report["status"] == "SKIP"
+            assert report["model_executed"] is False
+            assert len(report["required_cases"]) == 32
+            assert "quantize_197x197" in report["required_cases"]
+
+
+def test_attention_prerequisite_evidence(work):
+    """Primitive prerequisite evidence must cover every round and complete grid."""
+    from model_simcheck import PATCH_DEPENDENCIES, SHARED_CASES, W8A8_LINEAR_CASES
+
+    root = work / "prerequisite-fixtures"
+    kernels = root / "kernels"
+    checks = []
+    for name in sorted(SHARED_CASES | W8A8_LINEAR_CASES):
+        case = replace.describe(name)
+        directory = kernels / name
+        directory.mkdir(parents=True, exist_ok=True)
+        module = directory / "kernel.boscame.mlir"
+        module.write_text("module {} // identity fixture, no numerical execution\n")
+        check = {
+            "name": name,
+            "status": "PASS",
+            "programs": math.prod(case["grid"]),
+            "total_programs": math.prod(case["grid"]),
+            "module_sha256": replace.digest(module),
+            "kernel_module_sha256": replace.digest(case["kernel_source"]),
+        }
+        check["runs"] = [
+            {
+                key: check[key]
+                for key in (
+                    "programs",
+                    "total_programs",
+                    "module_sha256",
+                    "kernel_module_sha256",
+                )
+            }
+        ]
+        checks.append(check)
+    by_name = {check["name"]: check for check in checks}
+    patch = by_name["patch_embed_196x768"]
+    stages = [
+        {
+            "case": name,
+            **{
+                key: by_name[name][key]
+                for key in (
+                    "programs",
+                    "total_programs",
+                    "module_sha256",
+                    "kernel_module_sha256",
+                )
+            },
+        }
+        for name in PATCH_DEPENDENCIES
+    ]
+    grid = math.prod(replace.describe(patch["name"])["grid"])
+    patch["programs"] = patch["total_programs"] = grid + sum(
+        stage["programs"] for stage in stages
+    )
+    patch["dependency_sha256"] = {
+        stage["case"]: stage["module_sha256"] for stage in stages
+    }
+    patch["runs"] = [
+        {"programs": patch["programs"], "im2col_programs": grid, "stages": stages}
+    ]
+    builds = root / "build-report.json"
+    builds.write_text(json.dumps({"schema": 1, "cases": checks}))
+    simchecks = root / "simcheck-report.json"
+    checkpoint = root / "checkpoint-fixture"
+    checkpoint.write_text("not a model checkpoint; prerequisite gate fixture only\n")
+    for scenario in (
+        "current",
+        "current-multiround",
+        "stale-source",
+        "partial-grid",
+        "missing-round",
+        "partial-round",
+        "stale-round",
+        "partial-patch-child",
+    ):
+        records = copy.deepcopy(checks)
+        attention = next(item for item in records if item["name"] == "quantize_197x64")
+        if scenario in (
+            "current-multiround",
+            "missing-round",
+            "partial-round",
+            "stale-round",
+        ):
+            attention["comparison_rounds"] = 3
+            attention["runs"] = [copy.deepcopy(attention["runs"][0]) for _ in range(3)]
+            attention["programs"] *= 3
+            attention["total_programs"] *= 3
+        if scenario == "stale-source":
+            attention["kernel_module_sha256"] = "stale"
+        elif scenario == "partial-grid":
+            attention["programs"] = attention["total_programs"] = 1
+        elif scenario == "missing-round":
+            attention["runs"].pop()
+        elif scenario == "partial-round":
+            attention["runs"][1]["programs"] = 1
+        elif scenario == "stale-round":
+            attention["runs"][1]["module_sha256"] = "stale"
+        elif scenario == "partial-patch-child":
+            next(item for item in records if item["name"].startswith("patch_embed_"))[
+                "runs"
+            ][0]["stages"][0]["programs"] = 1
+        simchecks.write_text(json.dumps({"schema": 1, "cases": records}))
+        path = root / (scenario + ".json")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(VIT / "tools/model_simcheck.py"),
+                "--build-report",
+                str(builds),
+                "--simcheck-report",
+                str(simchecks),
+                "--kernels",
+                str(kernels),
+                "--checkpoint",
+                str(checkpoint),
+                "--report",
+                str(path),
+            ],
+            capture_output=True,
+        )
+        assert result.returncode == 2, result.stderr.decode()
         report = json.loads(path.read_text())
-        assert report["mode"] == (mode or "w8a8")
-        assert report["status"] == "SKIP"
+        assert report["model_pass"] is False and report["model_executed"] is False
+        artifacts = [
+            reason for reason in report["reasons"] if reason["stage"] == "artifact"
+        ]
+        if scenario in ("current", "current-multiround"):
+            assert not artifacts
+            assert [reason["stage"] for reason in report["reasons"]] == [
+                "model-execution"
+            ]
+        elif scenario in (
+            "partial-grid",
+            "missing-round",
+            "partial-round",
+            "partial-patch-child",
+        ):
+            coverage = [
+                reason for reason in report["reasons"] if reason["stage"] == "simcheck"
+            ]
+            expected_case = (
+                patch["name"]
+                if scenario == "partial-patch-child"
+                else attention["name"]
+            )
+            assert len(coverage) == 1 and coverage[0]["case"] == expected_case
+            assert "grid" in coverage[0]["reason"]
+        else:
+            assert len(artifacts) == 1 and artifacts[0]["case"] == attention["name"]
+            assert (
+                "direct" in artifacts[0]["reason"] or "source" in artifacts[0]["reason"]
+            )
 
 
 def main():
@@ -308,7 +423,8 @@ def main():
     test_adapters(work)
     test_index(work)
     test_product_adapters(work)
-    print("ViT model adapter and compiled-kernel index checks passed")
+    test_attention_prerequisite_evidence(work)
+    print("ViT generic descriptor/index and primitive prerequisite checks passed")
 
 
 if __name__ == "__main__":

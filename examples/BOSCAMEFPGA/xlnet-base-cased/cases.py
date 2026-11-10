@@ -55,6 +55,16 @@ def describe(name):
             raise ValueError(f"{source}: {key} must contain positive integers")
     if len(config["grid"]) != 3:
         raise ValueError(f"{source}: grid must have three dimensions")
+    if config["family"] in ("matmul_i8", "gemm_i8"):
+        dimensions = config["shape"]
+        tiles = [config["constexprs"][key] for key in ("BM", "BN", "BK")]
+        if any(
+            type(tile) is not int or tile <= 0 or tile > extent
+            for tile, extent in zip(tiles, dimensions)
+        ):
+            raise ValueError(
+                f"{source}: matmul tiles {tiles} exceed logical dimensions {dimensions}"
+            )
     return {
         "name": name,
         **config,

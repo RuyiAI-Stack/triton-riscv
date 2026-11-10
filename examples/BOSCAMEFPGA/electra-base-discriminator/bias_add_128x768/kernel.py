@@ -24,7 +24,7 @@ def bias_add(
     """Add a broadcast row bias without vector remainder/modulo operations."""
     row = tl.program_id(0)
     channel = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
-    valid = (row < ROWS) & (channel < WIDTH)
+    valid = channel < WIDTH
     index = row * WIDTH + channel
     x = tl.load(X + index, valid, other=0.0)
     bias = tl.load(Bias + channel, channel < WIDTH, other=0.0)
@@ -46,8 +46,8 @@ KERNEL_CONFIG = {
     "roles": [],
     "metadata": {
         "dtype": "f32",
+        "target": "nr-fpga",
+        "checked_elements": 151296,
         "model": "google/electra-base-discriminator",
-        "seq_len": 128,
-        "note": "Unique encoder shapes at seq_len 128. Twelve layers share these bins.",
     },
 }
