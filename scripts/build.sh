@@ -10,10 +10,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 
-# Upstream Triton downloads host-specific GPU toolchains that riscv64 has no
-# builds for, and builds Proton and the NVIDIA sanitizer runtime, none of which
-# this backend needs. Stub them before env.sh, so that whatever env.sh points at
-# a real file -- the AMD codegen library -- wins over the stub.
+# Stub the GPU toolchain downloads; env.sh runs after and repoints the AMD codegen.
 source "${ROOT_DIR}/scripts/_gpu-stub-env.sh" "${ROOT_DIR}/.cache/gpu-deps-stub"
 source "${ROOT_DIR}/scripts/env.sh"
 
@@ -41,26 +38,18 @@ export CXX="${CXX:-clang++}"
 # source tree; the tool is staged below instead.
 export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-staging${TRITON_APPEND_CMAKE_ARGS:+ ${TRITON_APPEND_CMAKE_ARGS}}"
 
-# Triton's plugin support, which packages backend/ as triton.backends.triton_shared
-# and builds the C++ plugin into libtriton.so. setup.py turns this into
-# -DTRITON_PLUGIN_DIRS, which cmake caches, so only the build needs it.
+# Packages backend/ as triton.backends.triton_shared; cmake caches it, so only the build needs it.
 export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
-# The AMD codegen library: upstream either downloads a prebuilt copy or builds one
-# against a separately pinned LLVM, and there is no riscv64 build of either. It
-# builds against the LLVM already here, in under a minute when cold and instantly
-# after that, and the AMD backend cannot compile anything without it. It has to
-# exist before the install, which is what puts it into the imported package and
-# the wheel.
+amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
 amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
 if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
-    cmake -G Ninja -S "${TRITON_DIR}/third_party/amd/backend/codegen" \
-        -B "${ROOT_DIR}/.cache/amd-codegen" \
+    cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
         -DLLVM_DIR="${llvm_cmake}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DTRITON_AMD_LLVM_REVISION=local >/dev/null
-    cmake --build "${ROOT_DIR}/.cache/amd-codegen" --target triton_amd_codegen >/dev/null
-    cp "${ROOT_DIR}/.cache/amd-codegen/libtriton_amd_codegen.so" "${amd_codegen_lib}"
+    cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
+    cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
 else
     echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
 fi
