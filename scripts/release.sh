@@ -146,21 +146,7 @@ source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DI
 rm -rf "${CONTAINER_TRITON_DIR}/build"
 "${CONTAINER_PLUGIN_DIR}/scripts/setup.sh"
 
-# Build riscv64 AMD codegen library with the existing Buddy LLVM SDK.
-if [[ "${TARGET_ARCH}" == riscv64 ]]; then
-    llvm_dir="${LLVM_SYSPATH:-${CONTAINER_PLUGIN_DIR}/.cache/llvm}"
-    amd_backend_dir="${CONTAINER_TRITON_DIR}/third_party/amd/backend"
-    amd_build_dir="${CONTAINER_TRITON_DIR}/build/amd-codegen"
-    cmake -G Ninja -S "${amd_backend_dir}/codegen" -B "${amd_build_dir}" \
-        -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${llvm_dir}/lib/cmake/llvm" \
-        -DCMAKE_CXX_COMPILER="${llvm_dir}/bin/clang++" \
-        -DCMAKE_CXX_FLAGS="${CXXFLAGS:-} --gcc-install-dir=${gcc_install_dir}" \
-        -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS:--fuse-ld=lld}"
-    cmake --build "${amd_build_dir}"
-    cmake --install "${amd_build_dir}" --prefix "${amd_backend_dir}"
-fi
-
-"${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
+${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
 
 # Statically linked against MLIR/LLVM with debug info: stripping takes the tool
 # from hundreds of MB down to well under a hundred. It is bundled in the wheel,
