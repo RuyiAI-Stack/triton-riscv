@@ -891,8 +891,6 @@ class CPUDriver(DriverBase):
     def is_active():
         if os.environ.get("TRITON_DEFAULT_BACKEND") == "triton_shared":
             return True
-        if os.environ.get("TRITON_RISCV_CPU_ACTIVE", "") == "1":
-            return True
         try:
             import torch
         except ImportError:
