@@ -197,16 +197,10 @@ target = triton.runtime.driver.active.get_current_target()
 print(f"ok: {torch.allclose(c, a @ b, rtol=1e-3, atol=1e-3)} | {device.type} / {target.backend}")
 ```
 
-On a machine with ROCm the AMD backend activates on its own (`is_active()` asks torch for
-`torch.version.hip`), so nothing else changes: these are ordinary Triton kernels, and
-upstream's tutorials are written the same way.
+If torch and ROCm are installed, Triton finds the AMD GPU on its own; the wheel ships
+neither, so both have to be installed.
 
-On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
-active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
-`triton.runtime.driver.set_active(HIPDriver())`).
-
-The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
-GPU.
+To force the CPU backend, set `TRITON_DEFAULT_BACKEND=triton_shared`.
 
 ## Generate and run RVV ELF files with QEMU
 

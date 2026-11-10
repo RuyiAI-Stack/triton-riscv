@@ -889,13 +889,7 @@ class CPUDriver(DriverBase):
 
     @staticmethod
     def is_active():
-        # This backend has no dedicated device, so it must only claim to be the
-        # active driver when no GPU backend is present. That keeps
-        # `triton.runtime.driver` selection unambiguous on GPU machines while
-        # still making ``pip install triton-riscv`` usable on CPU-only hosts.
         if os.environ.get("TRITON_DEFAULT_BACKEND") == "triton_shared":
-            return True
-        if platform.machine() == "riscv64":
             return True
         if os.environ.get("TRITON_RISCV_CPU_ACTIVE", "") == "1":
             return True
@@ -903,10 +897,7 @@ class CPUDriver(DriverBase):
             import torch
         except ImportError:
             return True
-        try:
-            return not torch.cuda.is_available()
-        except Exception:
-            return True
+        return not torch.cuda.is_available()
 
     def get_benchmarker(self):
         from triton.testing import do_bench
