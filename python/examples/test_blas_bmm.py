@@ -1,7 +1,3 @@
-import os
-from pathlib import Path
-from tempfile import mkdtemp
-
 import pytest
 import torch
 import triton
@@ -27,13 +23,11 @@ def _activate_cpu_driver():
     triton.runtime.driver.set_active(CPUDriver())
 
 
-
-
 @triton.jit
 def bmm_kernel(
     A,
     B,
-    O,
+    out,
     M,
     N,
     K,
@@ -54,7 +48,7 @@ def bmm_kernel(
     pid_b = tl.program_id(2)
     A += pid_b * stride_ab
     B += pid_b * stride_bb
-    O += pid_b * stride_ob
+    out += pid_b * stride_ob
 
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
@@ -84,7 +78,7 @@ def bmm_kernel(
 
     a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
     b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-    o_ptrs = O + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
+    o_ptrs = out + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
 
     num_iters = tl.cdiv(K, TILE_K)
     acc = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
@@ -111,7 +105,9 @@ def bmm(a, b):
     if a.dtype != torch.float32 or b.dtype != torch.float32:
         raise ValueError("bmm only supports torch.float32 inputs in this example")
     if a.dim() != 3 or b.dim() != 3:
-        raise ValueError("bmm expects 3D tensors shaped as (batch, m, k) and (batch, k, n)")
+        raise ValueError(
+            "bmm expects 3D tensors shaped as (batch, m, k) and (batch, k, n)"
+        )
     if a.shape[0] != b.shape[0]:
         raise ValueError("Batch dim mismatch")
     if a.shape[2] != b.shape[1]:
@@ -123,11 +119,13 @@ def bmm(a, b):
     _, _, N = b.shape
     out = torch.empty((batch, M, N), dtype=a.dtype, device=a.device)
 
-    grid_fn = lambda meta: (
-        triton.cdiv(M, meta["TILE_M"]),
-        triton.cdiv(N, meta["TILE_N"]),
-        batch,
-    )
+    def grid_fn(meta):
+        return (
+            triton.cdiv(M, meta["TILE_M"]),
+            triton.cdiv(N, meta["TILE_N"]),
+            batch,
+        )
+
     bmm_kernel[grid_fn](
         a,
         b,
@@ -158,8 +156,12 @@ triton_bmm = bmm
 def make_bmm_inputs(batch=2, m=8, n=10, k=6):
     generator = torch.Generator(device="cpu")
     generator.manual_seed(0)
-    a = torch.randn((batch, m, k), device="cpu", dtype=torch.float32, generator=generator)
-    b = torch.randn((batch, k, n), device="cpu", dtype=torch.float32, generator=generator)
+    a = torch.randn(
+        (batch, m, k), device="cpu", dtype=torch.float32, generator=generator
+    )
+    b = torch.randn(
+        (batch, k, n), device="cpu", dtype=torch.float32, generator=generator
+    )
     return a, b
 
 

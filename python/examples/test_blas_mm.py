@@ -1,11 +1,7 @@
-import os
-
 import pytest
 import torch
 import triton
 import triton.language as tl
-from pathlib import Path
-from tempfile import mkdtemp
 
 try:
     from triton.backends.riscv.driver import CPUDriver
@@ -124,8 +120,6 @@ def _activate_cpu_driver():
     if CPUDriver is None:
         raise RuntimeError(f"CPUDriver unavailable: {_CPU_DRIVER_IMPORT_ERROR}")
     triton.runtime.driver.set_active(CPUDriver())
-
-
 
 
 def _validate_mm_inputs(a, b):

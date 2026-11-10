@@ -1,8 +1,5 @@
-import os
 from math import isfinite
 from contextlib import contextmanager
-from pathlib import Path
-from tempfile import mkdtemp
 
 import pytest
 import torch
@@ -28,9 +25,6 @@ def _use_cpu_driver():
             triton.runtime.driver._active = None
         else:
             triton.runtime.driver.set_active(previous_driver)
-
-
-
 
 
 def _as_tuple(normalized_shape):
@@ -155,15 +149,21 @@ def layer_norm_loop_kernel(
         n_offsets = start_n + tl.arange(0, TILE_N)
         mask = n_offsets < N
         x = tl.load(in_ptr + pid * N + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        new_mean = tl.where(mask, mean_tiles + (x - mean_tiles) / (step + 1), mean_tiles)
-        new_sum = tl.where(mask, sum_tiles + (x - new_mean) * (x - mean_tiles), sum_tiles)
+        new_mean = tl.where(
+            mask, mean_tiles + (x - mean_tiles) / (step + 1), mean_tiles
+        )
+        new_sum = tl.where(
+            mask, sum_tiles + (x - new_mean) * (x - mean_tiles), sum_tiles
+        )
         counts += mask.to(tl.int32)
         mean_tiles = new_mean
         sum_tiles = new_sum
 
     final_mean = tl.sum(mean_tiles * counts) / N
     var = (
-        tl.sum(sum_tiles + counts * (mean_tiles - final_mean) * (mean_tiles - final_mean))
+        tl.sum(
+            sum_tiles + counts * (mean_tiles - final_mean) * (mean_tiles - final_mean)
+        )
         / N
     )
     rstd = tl.math.rsqrt(var + eps)
@@ -213,9 +213,13 @@ def _validate_layer_norm_inputs(x, normalized_shape, weight, bias, eps):
     if x.device.type != "cpu":
         raise ValueError("layer_norm only supports CPU inputs in this example")
     if x.dtype != torch.float32:
-        raise ValueError("layer_norm only supports torch.float32 inputs in this example")
+        raise ValueError(
+            "layer_norm only supports torch.float32 inputs in this example"
+        )
     if x.ndim == 0:
-        raise ValueError("layer_norm expects an input tensor with at least one dimension")
+        raise ValueError(
+            "layer_norm expects an input tensor with at least one dimension"
+        )
 
     normalized_shape = _as_tuple(normalized_shape)
     if not normalized_shape:
@@ -223,7 +227,9 @@ def _validate_layer_norm_inputs(x, normalized_shape, weight, bias, eps):
     if any(not isinstance(dim, int) or dim <= 0 for dim in normalized_shape):
         raise ValueError("normalized_shape must contain positive integers")
     if len(normalized_shape) > x.ndim:
-        raise ValueError("normalized_shape must not have more dimensions than the input")
+        raise ValueError(
+            "normalized_shape must not have more dimensions than the input"
+        )
     if tuple(x.shape[-len(normalized_shape) :]) != normalized_shape:
         raise ValueError("input trailing dimensions must match normalized_shape")
     if isinstance(eps, bool) or not isinstance(eps, (int, float)):
@@ -371,6 +377,10 @@ def test_triton_layernorm_matches_torch_large_n_without_affine():
     with pytest.raises(TypeError, match="eps must be a finite positive number"):
         triton_layer_norm(x, normalized_shape, weight=weight, bias=bias, eps="1e-5")
     with pytest.raises(ValueError, match="eps must be finite"):
-        triton_layer_norm(x, normalized_shape, weight=weight, bias=bias, eps=float("nan"))
+        triton_layer_norm(
+            x, normalized_shape, weight=weight, bias=bias, eps=float("nan")
+        )
     with pytest.raises(ValueError, match="eps must be finite"):
-        triton_layer_norm(x, normalized_shape, weight=weight, bias=bias, eps=float("inf"))
+        triton_layer_norm(
+            x, normalized_shape, weight=weight, bias=bias, eps=float("inf")
+        )

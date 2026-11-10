@@ -1,7 +1,6 @@
 import torch
 
 import triton
-from triton.backends.compiler import GPUTarget
 from triton.backends.riscv.driver import CPUDriver
 import triton.language as tl
 

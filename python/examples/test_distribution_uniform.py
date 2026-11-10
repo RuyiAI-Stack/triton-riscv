@@ -1,6 +1,5 @@
 import os
 from contextlib import contextmanager
-from tempfile import mkdtemp
 
 import pytest
 import torch
@@ -31,9 +30,6 @@ def _use_cpu_driver():
             triton.runtime.driver._active = None
         else:
             triton.runtime.driver.set_active(previous_driver)
-
-
-
 
 
 def _validate_uniform_destination(x):
@@ -74,7 +70,9 @@ def _uniform_scale_kernel(raw_ptr, out_ptr, n_elements, from_, to, BLOCK: tl.con
 
 
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
-def _uniform_kernel(out_ptr, n_elements, philox_seed, philox_offset, from_, to, BLOCK: tl.constexpr):
+def _uniform_kernel(
+    out_ptr, n_elements, philox_seed, philox_offset, from_, to, BLOCK: tl.constexpr
+):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -129,7 +127,9 @@ def _launch_uniform(out, from_, to, *, seed=None, offset=None):
     if seed is None or offset is None:
         seed, offset = _next_default_philox_seed_offset()
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK"] * UNROLL),)
+    def grid(meta):
+        return (triton.cdiv(n_elements, meta["BLOCK"] * UNROLL),)
+
     _uniform_kernel[grid](out, n_elements, seed, offset, from_, to, BLOCK=BLOCK)
 
 
@@ -145,7 +145,6 @@ def run_uniform_scale_transform(raw_values, from_, to):
     if not to > from_:
         raise ValueError("to must be greater than from_")
 
-    
     out = torch.empty(raw_values.shape, dtype=torch.float32, device="cpu")
     n_elements = raw_values.numel()
 
@@ -163,7 +162,6 @@ def uniform_(x, from_=0.0, to=1.0):
     if not to > from_:
         raise ValueError("to must be greater than from_")
 
-    
     with _use_cpu_driver():
         _launch_uniform(x, from_, to)
     return x

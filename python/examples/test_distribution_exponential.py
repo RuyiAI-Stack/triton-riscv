@@ -1,6 +1,5 @@
 import os
 from contextlib import contextmanager
-from tempfile import mkdtemp
 
 import pytest
 import torch
@@ -11,7 +10,9 @@ from triton.backends.riscv.driver import CPUDriver
 _BLOCK = 256
 _UNROLL = 4
 _DEFAULT_PHILOX_GENERATOR = torch.Generator(device="cpu")
-_DEFAULT_PHILOX_GENERATOR.manual_seed(int.from_bytes(os.urandom(8), "little") % (2**63 - 1))
+_DEFAULT_PHILOX_GENERATOR.manual_seed(
+    int.from_bytes(os.urandom(8), "little") % (2**63 - 1)
+)
 
 
 def _activate_cpu_driver():
@@ -31,16 +32,15 @@ def _use_cpu_driver():
             triton.runtime.driver.set_active(previous_driver)
 
 
-
-
-
 def _validate_exponential_destination(x):
     if not isinstance(x, torch.Tensor):
         raise TypeError("x must be a torch.Tensor")
     if x.device.type != "cpu":
         raise ValueError("exponential_ only supports CPU tensors in this example")
     if x.dtype != torch.float32:
-        raise ValueError("exponential_ only supports torch.float32 tensors in this example")
+        raise ValueError(
+            "exponential_ only supports torch.float32 tensors in this example"
+        )
     if not x.is_contiguous():
         raise ValueError("exponential_ expects a contiguous destination tensor")
 
@@ -95,7 +95,9 @@ def _transform_exponential_f32_fast(u, inv_lambd, eps_minus):
 
 
 @triton.jit
-def _exponential_transform_kernel(u_ptr, out_ptr, n_elements, inv_lambd, eps_minus, BLOCK: tl.constexpr):
+def _exponential_transform_kernel(
+    u_ptr, out_ptr, n_elements, inv_lambd, eps_minus, BLOCK: tl.constexpr
+):
     pid = tl.program_id(0)
     offsets = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
@@ -106,7 +108,15 @@ def _exponential_transform_kernel(u_ptr, out_ptr, n_elements, inv_lambd, eps_min
 
 
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "n_elements"])
-def _exponential_kernel_f32(out_ptr, n_elements, inv_lambd, eps_minus, philox_seed, philox_offset, BLOCK: tl.constexpr):
+def _exponential_kernel_f32(
+    out_ptr,
+    n_elements,
+    inv_lambd,
+    eps_minus,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -118,10 +128,18 @@ def _exponential_kernel_f32(out_ptr, n_elements, inv_lambd, eps_minus, philox_se
     zero = c0 * 0
 
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, zero, zero)
-    y0 = _transform_exponential_f32_fast(_uint_to_uniform_float(r0), inv_lambd, eps_minus)
-    y1 = _transform_exponential_f32_fast(_uint_to_uniform_float(r1), inv_lambd, eps_minus)
-    y2 = _transform_exponential_f32_fast(_uint_to_uniform_float(r2), inv_lambd, eps_minus)
-    y3 = _transform_exponential_f32_fast(_uint_to_uniform_float(r3), inv_lambd, eps_minus)
+    y0 = _transform_exponential_f32_fast(
+        _uint_to_uniform_float(r0), inv_lambd, eps_minus
+    )
+    y1 = _transform_exponential_f32_fast(
+        _uint_to_uniform_float(r1), inv_lambd, eps_minus
+    )
+    y2 = _transform_exponential_f32_fast(
+        _uint_to_uniform_float(r2), inv_lambd, eps_minus
+    )
+    y3 = _transform_exponential_f32_fast(
+        _uint_to_uniform_float(r3), inv_lambd, eps_minus
+    )
 
     off0 = pid.to(tl.uint64) * BLOCK * 4 + tl.arange(0, BLOCK)
     off1 = off0 + BLOCK
@@ -183,7 +201,10 @@ def _launch_exponential(out, lambd, *, seed=None, offset=None):
         seed, offset = _next_default_philox_seed_offset()
 
     eps_minus = -0.5 * torch.finfo(torch.float32).eps
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK"] * _UNROLL),)
+
+    def grid(meta):
+        return (triton.cdiv(n_elements, meta["BLOCK"] * _UNROLL),)
+
     with _use_cpu_driver():
         _exponential_kernel_f32[grid](
             out,
@@ -199,7 +220,7 @@ def _launch_exponential(out, lambd, *, seed=None, offset=None):
 def run_exponential_transform(u, lambd):
     _validate_exponential_transform_input(u)
     _validate_exponential_rate(lambd)
-    
+
     return _launch_exponential_transform(u, lambd)
 
 
@@ -207,7 +228,6 @@ def exponential_(x, lambd=1.0):
     _validate_exponential_destination(x)
     _validate_exponential_rate(lambd)
 
-    
     _launch_exponential(x, lambd)
     return x
 
