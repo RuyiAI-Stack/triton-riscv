@@ -3,8 +3,8 @@ import torch
 import triton
 import triton.language as tl
 
-from triton.backends.triton_shared.driver import CPUDriver
-from triton.backends.triton_shared.compiler import _get_triton_shared_opt_path
+from triton.backends.riscv.driver import CPUDriver
+from triton.backends.riscv.compiler import _get_triton_shared_opt_path
 
 import os
 from pathlib import Path

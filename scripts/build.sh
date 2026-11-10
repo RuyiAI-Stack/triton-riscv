@@ -38,7 +38,7 @@ export CXX="${CXX:-clang++}"
 # source tree; the tool is staged below instead.
 export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-staging${TRITON_APPEND_CMAKE_ARGS:+ ${TRITON_APPEND_CMAKE_ARGS}}"
 
-# Packages backend/ as triton.backends.triton_shared; cmake caches it, so only the build needs it.
+# Packages backend/ as triton.backends.riscv; cmake caches it, so only the build needs it.
 export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
 amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
 amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"

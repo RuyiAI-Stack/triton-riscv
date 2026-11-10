@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 
 def _activate_cpu_driver():

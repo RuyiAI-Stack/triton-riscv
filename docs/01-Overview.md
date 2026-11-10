@@ -17,7 +17,7 @@ We also include an experimental reference CPU backend that leverages all existin
 ```python
 
 import triton
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 triton.runtime.driver.set_active(CPUDriver())
 ```

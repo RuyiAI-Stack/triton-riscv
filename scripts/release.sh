@@ -154,7 +154,7 @@ ${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
 strip --strip-unneeded "${CONTAINER_PLUGIN_DIR}/backend/bin/triton-shared-opt" 2>/dev/null || true
 
 # The wheel carries Triton, the plugin built into libtriton.so, and the backend
-# under triton/backends/triton_shared -- all of it from the tree build.sh just
+# under triton/backends/riscv -- all of it from the tree build.sh just
 # populated, so nothing is rebuilt here.
 rm -rf "${CONTAINER_OUTPUT_DIR}"
 mkdir -p "${CONTAINER_OUTPUT_DIR}"
@@ -171,7 +171,7 @@ import zipfile
 with zipfile.ZipFile(sys.argv[1]) as wheel:
     entries = [name for name in wheel.namelist() if name.endswith("dist-info/entry_points.txt")]
     text = wheel.read(entries[0]).decode() if entries else ""
-if "triton_shared = triton.backends.triton_shared" not in text:
+if "riscv = triton.backends.riscv" not in text:
     sys.exit(f"{sys.argv[1]} does not register the triton_shared backend")
 PY
 if [[ "${TRITON_RISCV_SKIP_REPAIR:-0}" == "1" ]]; then
