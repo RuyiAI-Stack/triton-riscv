@@ -203,9 +203,10 @@ On a machine with ROCm the AMD backend activates on its own (`is_active()` asks 
 `torch.version.hip`), so nothing else changes: these are ordinary Triton kernels, and
 upstream's tutorials are written the same way.
 
-On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
-active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
-`triton.runtime.driver.set_active(HIPDriver())`).
+If torch and ROCm are installed, Triton finds the AMD GPU on its own; the wheel ships
+neither, so both have to be installed.
+
+To force the CPU backend, set `TRITON_DEFAULT_BACKEND=triton_shared`.
 
 The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
 GPU.

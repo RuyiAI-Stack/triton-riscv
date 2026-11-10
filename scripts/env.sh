@@ -20,11 +20,12 @@ export LLVM_SYSPATH="${LLVM_SYSPATH:-${_TRITON_RISCV_DIR}/.cache/llvm}"
 # Build time
 # ---------------------------------------------------------------------------
 
-# build.sh stubs every GPU download location at an empty directory, which is also
-# what skips upstream's AMD codegen fetch during the build. The backend needs the
-# real library at compile time, though, so point it at the one scripts/setup.sh
-# builds -- the same file get_amd_codegen_path() falls back to by default.
-export TRITON_AMD_CODEGEN_PATH="${_TRITON_RISCV_DIR}/triton/third_party/amd/backend/lib/libtriton_amd_codegen.so"
+# Only when build.sh has built it, so a fresh checkout does not shadow the packaged copy.
+amd_codegen="${_TRITON_RISCV_DIR}/triton/third_party/amd/backend/lib/libtriton_amd_codegen.so"
+if [ -f "${amd_codegen}" ]; then
+    export TRITON_AMD_CODEGEN_PATH="${amd_codegen}"
+fi
+unset amd_codegen
 
 # Both toolchains are found on PATH, the same way an installed wheel finds them.
 export PATH="${LLVM_SYSPATH}/bin:${_TRITON_RISCV_DIR}/.cache/buddy/bin:${PATH}"
