@@ -3,7 +3,8 @@
 # Build and install Triton with the triton-shared backend. Run scripts/setup.sh
 # once first -- the Makefile's `all` target and `make setup` do that for you.
 #
-# Environment: see scripts/env.sh. Set PYTHON to build into another interpreter.
+# Environment: scripts/env.sh, plus the GPU dependency stubs sourced first.
+# Set PYTHON to build into another interpreter.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

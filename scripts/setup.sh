@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
-# Bootstrap a triton-riscv checkout: virtualenv, Python build dependencies, the
-# pinned Triton checkout, and the LLVM and buddy toolchains that scripts/build.sh
-# links against. Safe to re-run; everything already in place is reused.
+# Bootstrap a triton-riscv checkout: the pinned Triton checkout and the LLVM and
+# buddy toolchains that scripts/build.sh links against. Safe to re-run; everything
+# already in place is reused.
 #
-# Environment: see scripts/env.sh.
+# Environment: TRITON_DIR and LLVM_SYSPATH override where the checkout and the
+# LLVM toolchain land; PYTHON picks the interpreter the build dependencies are
+# installed into.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

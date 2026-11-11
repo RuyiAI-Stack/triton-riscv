@@ -31,7 +31,7 @@ packages. The script does not run any Git submodule initialization commands;
 toolchain configuration and building are invoked only through Buddy's CMake.
 
 ```sh
-conda activate ruyiai
+source /path/to/your/venv/bin/activate
 cd /path/to/triton-riscv
 scripts/build-riscv-gnu-toolchain.sh
 ```
@@ -64,7 +64,7 @@ this flow regularly.
 The ELF APIs are part of the Triton backend plugin and must be synchronized into the `ruyiai` environment:
 
 ```sh
-conda activate ruyiai
+source /path/to/your/venv/bin/activate
 cd /path/to/triton-riscv
 source scripts/env.sh
 make build
@@ -84,7 +84,7 @@ printf '%s\n' "$TRITON_RISCV_QEMU"
 The repository includes a complete vector-add example:
 
 ```sh
-conda activate ruyiai
+source /path/to/your/venv/bin/activate
 cd /path/to/triton-riscv
 source scripts/env.sh
 python python/examples/rvv_vec_add_elf.py
@@ -158,10 +158,10 @@ Automatic serialization for `fp16`, `bf16`, dynamic input files, and complex mem
 ## 6. Inspect the ELF and RVV Instructions
 
 ```sh
-"$LLVM_BINARY_DIR/llvm-readelf" \
+llvm-readelf \
   -h artifacts/riscv/rvv-vector-add.elf
 
-"$LLVM_BINARY_DIR/llvm-objdump" \
+llvm-objdump \
   -d --mattr=+v artifacts/riscv/rvv-vector-add.elf \
   | rg 'vset|vle|vse|vfadd'
 ```
@@ -192,7 +192,7 @@ Rebuild the backend and then clear stale kernel artifacts:
 
 ```sh
 make build
-rm -rf "$TRITON_CACHE_DIR"
+rm -rf ~/.triton/cache
 ```
 
 ### QEMU Reports `verification failed`

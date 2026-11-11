@@ -13,7 +13,7 @@ Activate the same Python environment used to build and run Triton-RISCV, then
 source the repository environment helper:
 
 ```sh
-conda activate ruyiai   # or: source /path/to/triton-riscv/.venv/bin/activate
+source /path/to/your/venv/bin/activate
 cd /path/to/triton-riscv
 source scripts/env.sh
 ```
@@ -24,7 +24,7 @@ or C++ sources, rebuild and clear stale kernel cache entries before measuring:
 
 ```sh
 make build
-rm -rf "$TRITON_CACHE_DIR"
+rm -rf ~/.triton/cache
 ```
 
 The Buddy column needs Buddy's Python packages. The benchmark helper first uses
@@ -208,8 +208,8 @@ Source the environment helper before running benchmarks:
 source scripts/env.sh
 ```
 
-If your Buddy build is not in the default location, set `BUDDY_DIR` or
-`BUDDY_MLIR_BINARY_DIR` before sourcing the helper.
+If your Buddy build is not in the default location, set `BUDDY_DIR` before running the
+benchmarks.
 
 ### Stale Backend Changes Are Not Reflected
 
@@ -217,7 +217,7 @@ Rebuild the backend and remove cached kernels:
 
 ```sh
 make build
-rm -rf "$TRITON_CACHE_DIR"
+rm -rf ~/.triton/cache
 ```
 
 ### A Benchmark Is Very Slow
