@@ -24,10 +24,8 @@ Python @triton.jit
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 
-# The package index does not carry it yet, so take the wheel from the GitHub
-# release: https://github.com/RuyiAI-Stack/triton-riscv/releases
+# Get the wheel from https://github.com/RuyiAI-Stack/triton-riscv/releases
 pip install /path/to/triton-*.whl
-pip install torch  # optional
 ```
 
 ### From source
@@ -196,8 +194,12 @@ On a machine with ROCm the AMD backend activates on its own (`is_active()` asks 
 `torch.version.hip`), so nothing else changes: these are ordinary Triton kernels, and
 upstream's tutorials are written the same way.
 
-If torch and ROCm are installed, Triton finds the AMD GPU on its own; the wheel ships
-neither, so both have to be installed.
+Install torch and ROCm before running: the AMD backend activates through torch, so make
+sure the torch you install has AMD support.
+
+```sh
+pip install torch   # a build that can use AMD GPUs
+```
 
 To force the CPU backend, set `TRITON_DEFAULT_BACKEND=triton_shared`.
 
