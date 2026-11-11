@@ -44,8 +44,6 @@ jobs:
       - name: Build Triton with the triton-shared backend
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          # The runners' anonymous git traffic gets a 401; env.sh installs a
-          # token-authenticated config, and prompts are useless in CI anyway.
           GIT_TERMINAL_PROMPT: 0
         run: |
           # Triton defaults to 2 * CPU count, which can exhaust memory on the
@@ -58,6 +56,13 @@ jobs:
               echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
             } >> "$GITHUB_ENV"
           fi
+          # Anonymous git from these runners gets a 401, and triton's cmake clones
+          # googletest: authenticate every clone the way actions/checkout does.
+          auth="${RUNNER_TEMP}/git-auth.config"
+          printf '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic %s\n' \
+            "$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')" > "$auth"
+          export GIT_CONFIG_GLOBAL="$auth"
+
           make all
 
       - name: Install test dependencies (riscv64)

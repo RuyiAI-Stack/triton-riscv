@@ -140,6 +140,14 @@ export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
 
+# Authenticate the clones the build makes (triton, and googletest via its cmake).
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    auth="$(mktemp)"
+    printf '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic %s\n' \
+        "$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')" > "${auth}"
+    export GIT_CONFIG_GLOBAL="${auth}"
+fi
+
 # setup.sh fetches the toolchains and the pinned Triton checkout; build.sh builds
 # Triton with the triton-shared plugin, which also produces the triton-shared-opt
 # executable the backend invokes at compile time.
