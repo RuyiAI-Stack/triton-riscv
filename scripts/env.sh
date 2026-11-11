@@ -27,6 +27,16 @@ if [ -f "${amd_codegen}" ]; then
 fi
 unset amd_codegen
 
+# The build clones things (triton, and googletest through its cmake); authenticate
+# git with the token when CI provides one, the way actions/checkout does.
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    _gitauth="$(mktemp)"
+    printf '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic %s\n' \
+        "$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')" > "${_gitauth}"
+    export GIT_CONFIG_GLOBAL="${_gitauth}"
+    unset _gitauth
+fi
+
 # Both toolchains are found on PATH, the same way an installed wheel finds them.
 export PATH="${LLVM_SYSPATH}/bin:${_TRITON_RISCV_DIR}/.cache/buddy/bin:${PATH}"
 # Keep the repository's own triton/ checkout from shadowing the installed one.
