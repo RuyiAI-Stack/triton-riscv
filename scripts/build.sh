@@ -62,3 +62,8 @@ mkdir -p "${ROOT_DIR}/backend/bin"
 ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt \
     "${ROOT_DIR}/backend/bin/triton-shared-opt"
 unset _python_tag
+
+# The LLVM tools the backend shells out to, so the wheel can carry them.
+for tool in opt llc llvm-objdump llvm-readobj; do
+    ln -sfn "${LLVM_SYSPATH}/bin/${tool}" "${ROOT_DIR}/backend/bin/${tool}"
+done
