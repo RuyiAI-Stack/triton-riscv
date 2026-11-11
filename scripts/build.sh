@@ -21,6 +21,20 @@ PYTHON="${PYTHON:-python3}"
 # where Linux defaults to the forkserver start method.
 export PATH="$(dirname "$(command -v "${PYTHON}")"):${PATH}"
 
+amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
+amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
+llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
+if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
+    cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
+        -DLLVM_DIR="${llvm_cmake}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DTRITON_AMD_LLVM_REVISION=local
+    cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
+    cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
+else
+    echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
+fi
+
 # Build against the Python stable ABI (abi3), which is how upstream builds its
 # abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged
 # cp312-abi3, so it covers Python 3.12 and later instead of only the interpreter
@@ -40,20 +54,6 @@ export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-st
 
 # Packages backend/ as triton.backends.triton_shared; cmake caches it, so only the build needs it.
 export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
-amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
-amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
-llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
-if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
-    cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
-        -DLLVM_DIR="${llvm_cmake}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DTRITON_AMD_LLVM_REVISION=local >/dev/null
-    cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
-    cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
-else
-    echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
-fi
-
 "${PYTHON}" -m pip install --no-build-isolation -e "${TRITON_DIR}"
 
 # Stage the freshly built tool where the backend looks for it.
