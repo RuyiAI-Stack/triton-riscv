@@ -30,9 +30,9 @@ jobs:
             target_arch: riscv64
             runner: [ubuntu-24.04-riscv, rva23, xlarge]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
 
