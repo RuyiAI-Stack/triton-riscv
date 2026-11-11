@@ -44,6 +44,11 @@ jobs:
       - name: Build Triton with the triton-shared backend
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Ignore whatever credential helper the self-hosted runner has globally
+          # configured: triton's cmake clones googletest, and a stale token there
+          # turns a public clone into a 401 and a username prompt.
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: 0
         run: |
           # Triton defaults to 2 * CPU count, which can exhaust memory on the
           # RISC-V runner during the C++ build.
