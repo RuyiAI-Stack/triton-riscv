@@ -43,13 +43,10 @@ export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
 amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
 amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
 llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
-amd_cxx="${LLVM_SYSPATH}/bin/clang++"
-[ -x "${amd_cxx}" ] || amd_cxx="${CXX}"
 if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
     cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
         -DLLVM_DIR="${llvm_cmake}" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_COMPILER="${amd_cxx}" \
         -DTRITON_AMD_LLVM_REVISION=local >/dev/null
     cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
     cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
