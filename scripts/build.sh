@@ -63,7 +63,12 @@ ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/tri
     "${ROOT_DIR}/backend/bin/triton-shared-opt"
 unset _python_tag
 
-# The LLVM tools the backend shells out to, so the wheel can carry them.
+# The LLVM and buddy tools the backend shells out to, so the wheel can carry them.
 for tool in opt llc llvm-objdump llvm-readobj; do
     ln -sfn "${LLVM_SYSPATH}/bin/${tool}" "${ROOT_DIR}/backend/bin/${tool}"
+done
+buddy_bin="${BUDDY_MLIR_BINARY_DIR:-${ROOT_DIR}/.cache/buddy/bin}"
+[ -d "${buddy_bin}" ] || buddy_bin="$(dirname "$(command -v buddy-opt 2>/dev/null || echo /nonexistent)")"
+for tool in buddy-opt buddy-llc buddy-translate; do
+    ln -sfn "${buddy_bin}/${tool}" "${ROOT_DIR}/backend/bin/${tool}"
 done

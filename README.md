@@ -24,11 +24,9 @@ Python @triton.jit
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 
-# The package index does not carry them yet, so take the wheels from the GitHub
-# releases of the two projects:
-#   https://github.com/RuyiAI-Stack/triton-riscv/releases  -- triton with the backend
-#   https://github.com/buddy-compiler/buddy-mlir/releases  -- buddy, and the LLVM build
-pip install /path/to/triton-*.whl /path/to/buddy-*.whl
+# The package index does not carry it yet, so take the wheel from the GitHub
+# release: https://github.com/RuyiAI-Stack/triton-riscv/releases
+pip install /path/to/triton-*.whl
 pip install torch  # optional
 ```
 
