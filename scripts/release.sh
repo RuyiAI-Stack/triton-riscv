@@ -146,7 +146,7 @@ source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DI
 rm -rf "${CONTAINER_TRITON_DIR}/build"
 "${CONTAINER_PLUGIN_DIR}/scripts/setup.sh"
 
-${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
+"${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
 
 # Statically linked against MLIR/LLVM with debug info: stripping takes the tool
 # from hundreds of MB down to well under a hundred. It is bundled in the wheel,
