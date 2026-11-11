@@ -16,7 +16,7 @@ def test_asinh_inplace(size):
     out = asinh_(tri)
 
     assert out is tri, "asinh_ should return the same tensor"
-    torch.testing.assert_close(tri, ref)
+    torch.testing.assert_close(tri, ref.t())
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
@@ -39,11 +39,15 @@ def test_asinh_inplace_non_contiguous():
     ref = x_sliced.clone()
     torch.asinh_(ref)
 
-    tri = x_sliced.clone()
+    # .t() keeps the view genuinely non-contiguous (a .clone() of a
+    # strided view re-packs contiguous, which would only exercise
+    # the fast path).
+    tri = x_sliced.t()
+    assert not tri.is_contiguous()
     out = asinh_(tri)
 
     assert out is tri
-    torch.testing.assert_close(tri, ref)
+    torch.testing.assert_close(tri, ref.t())
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float64])
@@ -58,4 +62,4 @@ def test_asinh_inplace_other_float(dtype):
     out = asinh_(tri)
 
     assert out is tri
-    torch.testing.assert_close(tri, ref)
+    torch.testing.assert_close(tri, ref.t())
