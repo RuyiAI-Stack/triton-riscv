@@ -21,6 +21,20 @@ PYTHON="${PYTHON:-python3}"
 # where Linux defaults to the forkserver start method.
 export PATH="$(dirname "$(command -v "${PYTHON}")"):${PATH}"
 
+amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
+amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
+llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
+if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
+    cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
+        -DLLVM_DIR="${llvm_cmake}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DTRITON_AMD_LLVM_REVISION=local
+    cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
+    cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
+else
+    echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
+fi
+
 # Build against the Python stable ABI (abi3), which is how upstream builds its
 # abi3 wheel: nanobind is compiled with the limited API, and the wheel is tagged
 # cp312-abi3, so it covers Python 3.12 and later instead of only the interpreter
@@ -40,23 +54,6 @@ export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-st
 
 # Packages backend/ as triton.backends.triton_shared; cmake caches it, so only the build needs it.
 export TRITON_PLUGIN_DIRS="${ROOT_DIR}"
-amd_codegen_dir="${TRITON_DIR}/third_party/amd/backend/codegen"
-amd_codegen_lib="${TRITON_DIR}/third_party/amd/backend/lib/libtriton_amd_codegen.so"
-llvm_cmake="${LLVM_SYSPATH}/lib/cmake/llvm"
-amd_cxx="${LLVM_SYSPATH}/bin/clang++"
-[ -x "${amd_cxx}" ] || amd_cxx="${CXX}"
-if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
-    cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
-        -DLLVM_DIR="${llvm_cmake}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_COMPILER="${amd_cxx}" \
-        -DTRITON_AMD_LLVM_REVISION=local >/dev/null
-    cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
-    cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
-else
-    echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
-fi
-
 "${PYTHON}" -m pip install --no-build-isolation -e "${TRITON_DIR}"
 
 # Stage the freshly built tool where the backend looks for it.
@@ -65,3 +62,13 @@ mkdir -p "${ROOT_DIR}/backend/bin"
 ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt \
     "${ROOT_DIR}/backend/bin/triton-shared-opt"
 unset _python_tag
+
+# The LLVM and buddy tools the backend shells out to, so the wheel can carry them.
+for tool in opt llc llvm-objdump llvm-readobj; do
+    ln -sfn "${LLVM_SYSPATH}/bin/${tool}" "${ROOT_DIR}/backend/bin/${tool}"
+done
+buddy_bin="${BUDDY_MLIR_BINARY_DIR:-${ROOT_DIR}/.cache/buddy/bin}"
+[ -d "${buddy_bin}" ] || buddy_bin="$(dirname "$(command -v buddy-opt 2>/dev/null || echo /nonexistent)")"
+for tool in buddy-opt buddy-llc buddy-translate; do
+    ln -sfn "${buddy_bin}/${tool}" "${ROOT_DIR}/backend/bin/${tool}"
+done

@@ -140,18 +140,35 @@ export TRITON_PLUGIN_DIRS="${CONTAINER_PLUGIN_DIR}"
 
 source "${CONTAINER_PLUGIN_DIR}/scripts/_gpu-stub-env.sh" "${CONTAINER_PLUGIN_DIR}/.cache/gpu-deps-stub"
 
+# Authenticate the clones the build makes (triton, and googletest via its cmake).
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    auth="$(mktemp)"
+    printf '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic %s\n' \
+        "$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')" > "${auth}"
+    export GIT_CONFIG_GLOBAL="${auth}"
+fi
+
 # setup.sh fetches the toolchains and the pinned Triton checkout; build.sh builds
 # Triton with the triton-shared plugin, which also produces the triton-shared-opt
 # executable the backend invokes at compile time.
 rm -rf "${CONTAINER_TRITON_DIR}/build"
 "${CONTAINER_PLUGIN_DIR}/scripts/setup.sh"
 
-${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
+"${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
 
 # Statically linked against MLIR/LLVM with debug info: stripping takes the tool
 # from hundreds of MB down to well under a hundred. It is bundled in the wheel,
 # so strip through the staged symlink before packaging.
 strip --strip-unneeded "${CONTAINER_PLUGIN_DIR}/backend/bin/triton-shared-opt" 2>/dev/null || true
+
+# The wheel cannot hold symlinks, so materialise the LLVM tools and strip them.
+for tool in opt llc llvm-objdump llvm-readobj buddy-opt buddy-llc buddy-translate; do
+    if [ -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" ]; then
+        cp -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real"
+        strip --strip-unneeded "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real" 2>/dev/null || true
+        mv -f "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real" "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}"
+    fi
+done
 
 # The wheel carries Triton, the plugin built into libtriton.so, and the backend
 # under triton/backends/triton_shared -- all of it from the tree build.sh just
