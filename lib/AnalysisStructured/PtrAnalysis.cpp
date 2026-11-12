@@ -5,6 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Pointer and block-pointer analysis for structured conversions.
+//
+// Inputs: tt.addptr, make_block_ptr, splat, and kernel pointer arguments.
+//
+// Outputs: base, shape, stride, and offset facts for memref descriptors.
+//
+// When used: StructuredToMemref and contract lineage when proving contiguous
+// buffers.
+//
+
 #include "triton-shared/AnalysisStructured/PtrAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -45,6 +56,13 @@ static void ensureMaskDimsCoverRank(triton::MaskState &mstate,
   while (mstate.dims.size() < sizes.size()) {
     mstate.dims.push_back(builder.getIndexAttr(sizes[mstate.dims.size()]));
   }
+}
+
+static void copyContractOrigin(Operation *source, Operation *target) {
+  if (Attribute id = source->getAttr("contract.origin_id"))
+    target->setAttr("contract.origin_id", id);
+  if (Attribute kind = source->getAttr("contract.event_kind"))
+    target->setAttr("contract.event_kind", kind);
 }
 
 // Try to apply unstructured mask on the ptr.
@@ -1675,6 +1693,7 @@ LogicalResult PtrAnalysis::rewriteLoadOp(triton::LoadOp op,
   }
 
   auto loadOp = tts::LoadOp::create(builder, loc, ptr, dims, scalarOther);
+  copyContractOrigin(op, loadOp);
 
   LLVM_DEBUG({
     llvm::dbgs() << "creating tts::load:\n";
@@ -1812,6 +1831,7 @@ LogicalResult PtrAnalysis::rewriteStoreOp(triton::StoreOp op,
   }
 
   auto storeOp = tts::StoreOp::create(builder, loc, ptr, val, dims);
+  copyContractOrigin(op, storeOp);
 
   LLVM_DEBUG({
     llvm::dbgs() << "creating tts::store:\n";

@@ -1,0 +1,20 @@
+The files crt_uart.S, bare_runtime.c, bare_runtime.h, encoding.h, uart.c,
+uart.h and uart_protocol.c are copied from CBalaa/fpga-scheduler, commit
+a2d5c70ee6dc7b3c5b5719d62a0ac5d76b8aa927, runtime/bosc/.
+Source: https://github.com/CBalaa/fpga-scheduler
+License: Apache-2.0 (the repository's LICENSE also applies).
+
+Upstream notice for these components:
+Also includes code adapted from buddy-mlir-for-fpga, licensed under
+Apache License 2.0:
+- examples/BOSCAMEFPGA/common/runtime: crt_uart.S, encoding.h,
+  bare_runtime.c and bare_runtime.h, now under runtime/bosc/.
+- runtime/boscame/uart: uart.c and uart.h, now under runtime/bosc/.
+
+Changes: repository-local standalone builds, scheduler UART completion hooks,
+configurable GNU/LLVM tools, a 5.5296 MHz default clock and explicit fault variants.
+The source license headers are retained. The UART transport is provided under
+the FPGA Scheduler project's Apache-2.0 license.
+
+This copy uses the NH-only UART v1 completion protocol without releasing E6
+or starting DMA.

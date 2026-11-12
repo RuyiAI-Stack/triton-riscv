@@ -50,7 +50,7 @@ export CXX="${CXX:-clang++}"
 
 # Keep the plugin's POST_BUILD copy of triton-shared-opt out of an editable
 # source tree; the tool is staged below instead.
-export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-staging${TRITON_APPEND_CMAKE_ARGS:+ ${TRITON_APPEND_CMAKE_ARGS}}"
+export TRITON_APPEND_CMAKE_ARGS="-DTRITON_WHEEL_DIR=${TRITON_DIR}/build/wheel-staging -DTRITON_BUILD_UT=OFF${TRITON_APPEND_CMAKE_ARGS:+ ${TRITON_APPEND_CMAKE_ARGS}}"
 
 # Packages backend/ as triton.backends.triton_shared; cmake caches it, so only the build needs it.
 export TRITON_PLUGIN_DIRS="${ROOT_DIR}"

@@ -1,19 +1,37 @@
-from triton.backends.compiler import BaseBackend, GPUTarget
-from triton._C.libtriton import ir, passes
-from dataclasses import dataclass, replace
-from typing import Any, Dict, Tuple
-from types import ModuleType
+"""
+Triton-riscv backend compiler: shared conversions, optional BOSCAME AOT contract
+export, then buddy-opt / LLVM for RISC-V.
+
+Inputs: Triton TTIR modules and backend options (including AOT-only / contract
+flags).
+
+Outputs: object, assembly, or verified contract artifacts. No live device is
+required in AOT-only mode.
+
+When used: triton.compile and the FPGA export path once the shared plugin is
+installed.
+"""
+
+import functools
 import hashlib
-import tempfile
 import os
 import platform
 import re
 import shutil
 import subprocess
-import functools
-import triton
+import tempfile
+from dataclasses import dataclass, replace
 from pathlib import Path
+from types import ModuleType
+from typing import Any, Tuple
 
+import triton
+from triton._C.libtriton import ir, passes
+from triton.backends.compiler import BaseBackend, GPUTarget
+
+from .contract import AOT_ONLY, BoscameDelegate
+from .contract import ContractArtifact as ContractArtifact
+from .contract import export_contract as export_contract
 from .paths import (
     _get_buddy_bin_path,
     _get_buddy_opt_path,
@@ -339,7 +357,13 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             # LLVM-MLIR to LLVM-IR
             mlir_translate_path = _get_llvm_bin_path("mlir-translate")
             subprocess.check_call(
-                [mlir_translate_path, llmlir_path, "--mlir-to-llvmir", "-o", llir_path]
+                [
+                    mlir_translate_path,
+                    llmlir_path,
+                    "--mlir-to-llvmir",
+                    "-o",
+                    llir_path,
+                ]
             )
 
         _dump_ir_if_needed([ttshared_path, llmlir_path, llir_path])
@@ -635,7 +659,13 @@ def _vectorir_to_llir(vectorir: str):
         # LLVM-MLIR to LLVM-IR
         mlir_translate_path = _get_llvm_bin_path("mlir-translate")
         subprocess.check_call(
-            [mlir_translate_path, llmlir_path, "--mlir-to-llvmir", "-o", llir_path]
+            [
+                mlir_translate_path,
+                llmlir_path,
+                "--mlir-to-llvmir",
+                "-o",
+                llir_path,
+            ]
         )
         _dump_ir_if_needed([llmlir_path, llir_path])
         return Path(llir_path).read_text()
@@ -694,7 +724,8 @@ def _llir_to_bin(llir: str, metadata, options=None):
             top_level_triton_path = os.path.dirname(triton.__file__)
             sanitizer_attributes_pass_path = str(
                 next(
-                    Path(top_level_triton_path).rglob("libSanitizerAttributes.so"), None
+                    Path(top_level_triton_path).rglob("libSanitizerAttributes.so"),
+                    None,
                 )
             )
 
@@ -717,7 +748,13 @@ def _llir_to_bin(llir: str, metadata, options=None):
             # compile to object file
             clang_path = _get_llvm_bin_path("clang++")
 
-            subprocess_args = [clang_path, "-c", instrumented_src_path, "-o", dst_path]
+            subprocess_args = [
+                clang_path,
+                "-c",
+                instrumented_src_path,
+                "-o",
+                dst_path,
+            ]
 
             if sanitizer_type == "asan":
                 subprocess_args.extend(
@@ -811,10 +848,10 @@ class CPUOptions:
     # The RISC-V backend supports fp8_e4m3fn storage/conversion through
     # Triton's fp8e4nv IR type. Keep the list explicit so unsupported fp8
     # variants still fail at frontend type legalization.
-    supported_fp8_dtypes: Tuple[str] = ("fp8e4nv",)
+    supported_fp8_dtypes: tuple[str] = ("fp8e4nv",)
     allow_fp8e4nv: bool = True
     max_num_imprecise_acc_default: int = 0
-    allowed_dot_input_precisions: Tuple[str] = ("ieee",)
+    allowed_dot_input_precisions: tuple[str] = ("ieee",)
     sanitize_overflow: bool = True
     instrumentation_mode: str = ""
     fpsan_homomorphic_casts: bool = False
@@ -836,12 +873,20 @@ class CPUBackend(BaseBackend):
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend == "cpu"
+        return target.backend in {"cpu", "boscame"}
 
     def __init__(self, target: GPUTarget) -> None:
         super().__init__(target)
+        self._aot = BoscameDelegate(target) if target.backend == "boscame" else None
+
+    def export_contract(self, source, **kwargs):
+        if self._aot is None:
+            raise ValueError("export_contract requires the boscame target")
+        return self._aot.export(self, source, **kwargs)
 
     def parse_options(self, opts) -> Any:
+        if self._aot is not None:
+            raise ValueError(AOT_ONLY)
         args = {"arch": self.target.arch}
         args.update(
             {k: opts[k] for k in CPUOptions.__dataclass_fields__.keys() if k in opts}
@@ -898,6 +943,8 @@ class CPUBackend(BaseBackend):
         return mod
 
     def add_stages(self, stages, options, language):
+        if self._aot is not None:
+            raise ValueError(AOT_ONLY)
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
             _ttir_to_ttsharedir(src)
@@ -907,11 +954,11 @@ class CPUBackend(BaseBackend):
         )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata, options)
 
-    @functools.lru_cache()
+    @functools.lru_cache  # noqa: B019 -- target is immutable for this backend instance.
     def hash(self):
         return self.target
 
-    def get_module_map(self) -> Dict[str, ModuleType]:
+    def get_module_map(self) -> dict[str, ModuleType]:
         # `triton.language.extra.libdevice` only declares the libdevice surface;
         # a backend has to supply a concrete implementation. The CUDA one emits
         # __nv_* extern_elementwise calls, which triton-shared lowers to MLIR

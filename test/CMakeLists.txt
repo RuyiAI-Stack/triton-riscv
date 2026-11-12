@@ -28,4 +28,19 @@ add_lit_testsuite(check-triton-shared-lit-tests "Running the triton-shared regre
 
 set_target_properties(check-triton-shared-lit-tests PROPERTIES FOLDER "Tests")
 
+# Optional example/simulator integration. Neither core build nor AOT export
+# requires Buddy; explicitly select its checkout and installed build tools here.
+set(BUDDY_ROOT "" CACHE PATH "External Buddy checkout for BOSCAME example tests")
+set(BUDDY_MLIR_BINARY_DIR "" CACHE PATH "External Buddy binary directory")
+if(BUDDY_ROOT AND BUDDY_MLIR_BINARY_DIR)
+  add_lit_testsuite(check-triton-contract-integration
+    "Running optional BOSCAME example integration tests"
+    ${CMAKE_CURRENT_SOURCE_DIR}/Integration/BOSCAMEFPGA
+    ARGS "-Dbuddy_root=${BUDDY_ROOT}"
+         "-Dbuddy_bin=${BUDDY_MLIR_BINARY_DIR}"
+         "-Dllvm_bin=${LLVM_TOOLS_BINARY_DIR}"
+         "-Dintegration_build_dir=${CMAKE_CURRENT_BINARY_DIR}/boscame-integration"
+    DEPENDS triton-shared-opt)
+endif()
+
 add_lit_testsuites(TRITON-SHARED-LIT-TESTS ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS ${TRITON_SHARED_TEST_DEPENDS})

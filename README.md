@@ -230,3 +230,19 @@ Preload the correct Fortran library by adding the following to your virtualenvâ€
 ```sh
 export LD_PRELOAD=/usr/lib64/libgfortran.so.5:$LD_PRELOAD
 ```
+
+## BOSCAME AOT Contract export
+
+The optional `boscame` target exports verified standard buffer MLIR and a
+manifest without a device driver or Buddy build dependency. See
+[the AOT API](docs/BoscameAOT.md) and the FPGA example index
+[examples/BOSCAMEFPGA/README.md](examples/BOSCAMEFPGA/README.md).
+CPUBackend remains the only concrete backend plugin; CPU/RISC-V/IME defaults
+are unchanged.
+
+The first line of `buddy-hash.txt` pins the Buddy source commit for BOSCAME /
+FPGA workflows. Build its LLVM/MLIR and Buddy tools from that checkout when you
+need the BOSCAME backend. The second line names the upstream prebuilt toolchain
+release used by `make setup` / CPU CI; those packages do not contain this
+branch's BOSCAME backend. AOT Contract export itself needs only LLVM/MLIR and
+Triton.

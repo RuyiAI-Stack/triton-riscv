@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "mapping": {
+    "matmul_i8_196x768x768": "gemm_i8_196x768x768",
+    "matmul_i8_197x3072x768": "gemm_i8_197x3072x768",
+    "matmul_i8_197x768x3072": "gemm_i8_197x768x3072",
+    "matmul_i8_197x768x768": "gemm_i8_197x768x768",
+    "matmul_i8_1x1000x768": "gemm_i8_1x1000x768",
+    "matmul_i8_overwrite_196x768x768": "matmul_i8_196x768x768",
+    "matmul_i8_overwrite_197x197x64": "matmul_i8_197x197x64",
+    "matmul_i8_overwrite_197x3072x768": "matmul_i8_197x3072x768",
+    "matmul_i8_overwrite_197x64x197": "matmul_i8_197x64x197",
+    "matmul_i8_overwrite_197x768x3072": "matmul_i8_197x768x3072",
+    "matmul_i8_overwrite_197x768x768": "matmul_i8_197x768x768",
+    "matmul_i8_overwrite_1x1000x768": "matmul_i8_1x1000x768"
+  },
+  "old_families": {
+    "matmul_i8": "gemm_i8",
+    "matmul_i8_overwrite": "matmul_i8"
+  },
+  "semantics_unchanged": true,
+  "scope": "only this ViT operator inventory; historical evidence keeps original names and hashes",
+  "layout": "A[M,K], physical B[N,K], C[M,N]; A @ B.T",
+  "semantics": {
+    "gemm_i8": "C = old C + A @ B.T (i32 wrap)",
+    "matmul_i8": "C = A @ B.T (overwrite; no old C dependence)"
+  },
+  "historical_source_snapshot": "build/operator-naming-20261029/source-before.tar.gz",
+  "historical_source_snapshot_sha256": "e800dee044730b40699214e45a67cf350615436da4cfdd5b5ca903086b9798c9",
+  "aliases_created": false
+}

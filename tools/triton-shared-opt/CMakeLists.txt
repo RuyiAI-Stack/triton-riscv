@@ -2,7 +2,16 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 get_property(triton_libs GLOBAL PROPERTY TRITON_LIBS)
 
-add_llvm_executable(triton-shared-opt triton-shared-opt.cpp PARTIAL_SOURCES_INTENDED)
+add_custom_target(TritonContractBuildIdentity
+  COMMAND ${Python3_EXECUTABLE}
+    ${TRITON_SHARED_SOURCE_DIR}/scripts/contract-build-identity.py
+    ${TRITON_SHARED_SOURCE_DIR} ${CMAKE_SOURCE_DIR} ${LLVM_SYSPATH}
+    ${CMAKE_CURRENT_BINARY_DIR}/ContractBuildIdentity.h
+  BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/ContractBuildIdentity.h
+  VERBATIM)
+add_llvm_executable(triton-shared-opt triton-shared-opt.cpp ContractExport.cpp PARTIAL_SOURCES_INTENDED)
+target_include_directories(triton-shared-opt PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+add_dependencies(triton-shared-opt TritonContractBuildIdentity)
 
 # TODO: what's this?
 llvm_update_compile_flags(triton-shared-opt)

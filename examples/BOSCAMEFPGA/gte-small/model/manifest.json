@@ -1,0 +1,9 @@
+{
+  "repository": "thenlper/gte-small",
+  "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "source": "https://hf-mirror.com/thenlper/gte-small",
+  "retrieved": "2026-11-03",
+  "architecture": "BertModel",
+  "sentence_pooling": "attention-mask-weighted mean over all valid tokens, followed by L2 normalization",
+  "required_text_prefix": null
+}

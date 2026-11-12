@@ -1,0 +1,50 @@
+//
+// Host / bare-metal harness for FPGA case 'gap_9x9x1392' (model
+// 'efficientnet_b3.ra2_in1k').
+//
+// Inputs: workspace buffers filled with synthetic operands, then the generated
+// _mlir_ciface_* kernel entry.
+//
+// Outputs: UART or stdout check line from print_check(), plus max error versus
+// a CPU oracle.
+//
+// When used: linked with support.c after AOT compile; run on NH/E6 or as
+// HOST_TEST.
+//
+#include "support.h"
+static void compare(float actual, float expected, float atol, float rtol,
+                    int *errors, float *maximum) {
+  if (actual == expected)
+    return;
+  if (!__builtin_isfinite(actual) || !__builtin_isfinite(expected)) {
+    ++*errors;
+    *maximum = __builtin_inff();
+    return;
+  }
+  if (!check_close(actual, expected, atol, rtol))
+    ++*errors;
+  float d = actual - expected;
+  if (d < 0)
+    d = -d;
+  if (d > *maximum)
+    *maximum = d;
+}
+extern void _mlir_ciface_kernel_gap_9x9x1392(MemRef4 *, MemRef2 *);
+int launch(void) {
+  int errors = 0;
+  float maximum = 0;
+  size_t off = 0;
+  float *x = (float *)workspace(off);
+  off = vit_align64(off + (size_t)112752 * 4u);
+  for (int i = 0; i < 112752; ++i)
+    x[i] = 0;
+  MemRef4 X = make_4(x, 1, 1392, 9, 9);
+  float *o = (float *)workspace(off);
+  off = vit_align64(off + (size_t)1392 * 4u);
+  for (int i = 0; i < 1392; ++i)
+    o[i] = 0;
+  MemRef2 O = make_2(o, 1, 1392);
+  _mlir_ciface_kernel_gap_9x9x1392(&X, &O);
+  nr_puts("numerical acceptance is simcheck\n");
+  return 0;
+}

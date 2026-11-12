@@ -1,0 +1,9 @@
+{
+  "repository": "intfloat/e5-small-v2",
+  "revision": "ffb93f3bd4047442299a41ebb6fa998a38507c52",
+  "source": "https://hf-mirror.com/intfloat/e5-small-v2",
+  "retrieved": "2026-11-03",
+  "architecture": "BertModel",
+  "sentence_pooling": "attention-mask-weighted mean over all valid tokens, followed by L2 normalization",
+  "required_text_prefix": ["query: ", "passage: "]
+}
