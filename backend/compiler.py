@@ -429,15 +429,40 @@ def _remove_invalid_stack_frees(llir: str) -> str:
     )
 
 
+def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
+    """Run the LLVM O3 middle end for an explicit RISC-V target."""
+    features = getattr(options, "target_features", None) or DEFAULT_LLC_FEATURES
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ll")
+        dst_path = os.path.join(tmpdir, "kernel-opt.ll")
+        Path(src_path).write_text(llir)
+        subprocess.check_call(
+            [
+                _get_llvm_bin_path("opt"),
+                "-O3",
+                f"-mtriple={target_triple}",
+                f"-mattr={features}",
+                "-S",
+                src_path,
+                "-o",
+                dst_path,
+            ]
+        )
+        _dump_ir_if_needed([dst_path])
+        return Path(dst_path).read_text()
+
+
 def _optimize_llir(llir: str, options=None):
     # llc's -O3 controls code-generation optimizations but does not run the
     # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
     # loops emitted for elementwise Triton tiles remain scalar unless opt sees
-    # the host vector width.  Run the native O3 pipeline for host x86 builds;
-    # leave cross-compiled IR untouched so its explicit target contract is
-    # preserved by the RISC-V toolchain below.
+    # the target vector width.  Run the native O3 pipeline for host x86 builds
+    # and the O3 pipeline of the explicit RISC-V target for RISC-V objects
+    # built with a target triple, with the same features as llc below.
     host_machine = platform.machine()
     target_triple = getattr(options, "target_triple", None)
+    if target_triple and "riscv" in target_triple and not _use_ime_pipeline():
+        return _optimize_riscv_llir(llir, target_triple, options)
     if host_machine == "riscv64" or target_triple:
         # opt's LCSSA rewrite can detach ownership guards from pointer PHIs
         # emitted by MLIR buffer deallocation and double-free a carried buffer.
@@ -761,6 +786,8 @@ def _llir_to_bin(llir: str, metadata, options=None):
                     llc_features=options.target_features,
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
+                # Match the O3 middle end above with O3 code generation.
+                llc_args.insert(2, "-O3")
             elif platform.machine() == "riscv64":
                 # Buffer deallocation can emit free for stack-backed memrefs.
                 llir = _remove_invalid_stack_frees(llir)
