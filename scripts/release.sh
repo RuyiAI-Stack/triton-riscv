@@ -154,13 +154,13 @@ rm -rf "${CONTAINER_TRITON_DIR}/build"
 # Statically linked against MLIR/LLVM with debug info: stripping takes the tool
 # from hundreds of MB down to well under a hundred. It is bundled in the wheel,
 # so strip through the staged symlink before packaging.
-strip --strip-unneeded "${CONTAINER_PLUGIN_DIR}/backend/bin/triton-shared-opt" 2>/dev/null || true
+strip --strip-all "${CONTAINER_PLUGIN_DIR}/backend/bin/triton-shared-opt" 2>/dev/null || true
 
 # The wheel cannot hold symlinks, so materialise the LLVM tools and strip them.
 for tool in opt llc llvm-objdump llvm-readobj buddy-opt buddy-llc buddy-translate; do
     if [ -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" ]; then
         cp -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real"
-        strip --strip-unneeded "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real" 2>/dev/null || true
+        strip --strip-all "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real" 2>/dev/null || true
         mv -f "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real" "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}"
     fi
 done
