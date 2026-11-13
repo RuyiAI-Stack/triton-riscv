@@ -895,10 +895,6 @@ class CPUDriver(DriverBase):
         # still making ``pip install triton-riscv`` usable on CPU-only hosts.
         if os.environ.get("TRITON_DEFAULT_BACKEND") == "triton_shared":
             return True
-        if platform.machine() == "riscv64":
-            return True
-        if os.environ.get("TRITON_RISCV_CPU_ACTIVE", "") == "1":
-            return True
         try:
             import torch
         except ImportError:

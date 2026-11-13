@@ -5,6 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// Lower Triton loads/stores to unstructured gather/scatter when the access is
+// not a dense memref.
+//
+// Inputs: tt.load/store with pointer tensors, optional masks, and
+// pointer-producing ops (addptr, splat).
+//
+// Outputs: tts.gather/scatter on kernel-arg bases plus offset tensors; pointer
+// producers are removed.
+//
+// When used: shared pipeline fallback before UnstructuredToMemref; keep the
+// original Overview below.
+//
+
 ////////////////////////////////////////////////////////////////////////////////
 // Overview
 ////////////////////////////////////////////////////////////////////////////////
@@ -785,6 +798,9 @@ public:
                 auto gather = tts::GatherOp::create(b, loc, load.getType(), ptr,
                                                     offsetInfo.offset,
                                                     load.getMask(), other);
+                for (NamedAttribute attr : load->getAttrs())
+                  if (attr.getName().strref().starts_with("contract."))
+                    gather->setAttr(attr.getName(), attr.getValue());
 
                 Value result = gather.getResult();
                 if (tensorOther) {
@@ -798,8 +814,12 @@ public:
               .Case<triton::StoreOp>([&](triton::StoreOp store) {
                 auto offsetInfo = offsetMap.at(store.getPtr());
                 Value ptr = materializeBasePtr(offsetInfo, loc, b);
-                tts::ScatterOp::create(b, loc, ptr, offsetInfo.offset,
-                                       store.getValue(), store.getMask());
+                auto scatter =
+                    tts::ScatterOp::create(b, loc, ptr, offsetInfo.offset,
+                                           store.getValue(), store.getMask());
+                for (NamedAttribute attr : store->getAttrs())
+                  if (attr.getName().strref().starts_with("contract."))
+                    scatter->setAttr(attr.getName(), attr.getValue());
                 store->erase();
                 return success();
               })

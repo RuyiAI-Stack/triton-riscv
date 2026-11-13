@@ -24,17 +24,8 @@ Python @triton.jit
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 
-# The package index does not carry them yet, so take the wheels from the GitHub
-# releases of the two projects:
-#   https://github.com/RuyiAI-Stack/triton-riscv/releases  -- triton with the backend
-#   https://github.com/buddy-compiler/buddy-mlir/releases  -- buddy, and the LLVM build
-pip install /path/to/triton-*.whl /path/to/buddy-*.whl
-pip install torch  # optional
-
-# The LLVM build is the tarball in the buddy-mlir release.
-mkdir -p /path/to/llvm
-tar xf /path/to/llvm-*.tar.gz -C /path/to/llvm
-export PATH=/path/to/llvm/bin:$PATH
+# Get the wheel from https://github.com/RuyiAI-Stack/triton-riscv/releases
+pip install /path/to/triton-*.whl
 ```
 
 ### From source
@@ -203,9 +194,14 @@ On a machine with ROCm the AMD backend activates on its own (`is_active()` asks 
 `torch.version.hip`), so nothing else changes: these are ordinary Triton kernels, and
 upstream's tutorials are written the same way.
 
-On a `riscv64` host one thing does need saying out loud: the CPU backend reports itself as
-active there too, so choose the GPU explicitly with `TRITON_DEFAULT_BACKEND=amd` (or
-`triton.runtime.driver.set_active(HIPDriver())`).
+Install torch and ROCm before running: the AMD backend activates through torch, so make
+sure the torch you install has AMD support.
+
+```sh
+pip install torch   # a build that can use AMD GPUs
+```
+
+To force the CPU backend, set `TRITON_DEFAULT_BACKEND=triton_shared`.
 
 The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
 GPU.
@@ -234,3 +230,19 @@ Preload the correct Fortran library by adding the following to your virtualenvâ€
 ```sh
 export LD_PRELOAD=/usr/lib64/libgfortran.so.5:$LD_PRELOAD
 ```
+
+## BOSCAME AOT Contract export
+
+The optional `boscame` target exports verified standard buffer MLIR and a
+manifest without a device driver or Buddy build dependency. See
+[the AOT API](docs/BoscameAOT.md) and the FPGA example index
+[examples/BOSCAMEFPGA/README.md](examples/BOSCAMEFPGA/README.md).
+CPUBackend remains the only concrete backend plugin; CPU/RISC-V/IME defaults
+are unchanged.
+
+The first line of `buddy-hash.txt` pins the Buddy source commit for BOSCAME /
+FPGA workflows. Build its LLVM/MLIR and Buddy tools from that checkout when you
+need the BOSCAME backend. The second line names the upstream prebuilt toolchain
+release used by `make setup` / CPU CI; those packages do not contain this
+branch's BOSCAME backend. AOT Contract export itself needs only LLVM/MLIR and
+Triton.

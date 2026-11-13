@@ -5,12 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Unstructured gather/scatter-style ops to MemRef lowering.
+//
+// Inputs: tts.gather / tts.scatter produced when structured lowering cannot
+// prove a dense access.
+//
+// Outputs: memref forms that still carry contract buffer annotations where
+// possible.
+//
+// When used: the fallback path of the shared pipeline after
+// TritonToUnstructured.
+//
+
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
 #include "triton-shared/Conversion/UnstructuredToMemref/UnstructuredToMemref.h"
 #include "triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.h"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -47,6 +59,85 @@ using namespace triton;
 namespace {
 
 constexpr StringLiteral kAtomicCASHelperPrefix = "__triton_shared_atomic_cas_";
+
+/// A one-lane scalar boundary is a rectangular copy, even when earlier
+/// canonicalization represented its address with a singleton gather/scatter.
+/// General indexed accesses and masked scalars remain unsupported here.
+static void normalizeContractSingletonAccesses(ModuleOp module) {
+  SmallVector<Operation *> accesses;
+  module.walk([&](Operation *op) {
+    if (isa<tts::GatherOp, tts::ScatterOp>(op))
+      accesses.push_back(op);
+  });
+  for (Operation *access : accesses) {
+    auto load = dyn_cast<tts::GatherOp>(access);
+    auto store = dyn_cast<tts::ScatterOp>(access);
+    Value value = load ? load.getResult() : store.getValue();
+    auto tensorType = dyn_cast<RankedTensorType>(value.getType());
+    Value mask = load ? load.getMask() : store.getMask();
+    Value offset = load ? load.getOffset() : store.getOffset();
+    auto offsetType = dyn_cast<RankedTensorType>(offset.getType());
+    if (!tensorType || tensorType.getRank() != 1 ||
+        tensorType.getDimSize(0) != 1 || mask || !offsetType ||
+        offsetType.getRank() != 1 || offsetType.getDimSize(0) != 1)
+      continue;
+    OpBuilder builder(access);
+    Location loc = access->getLoc();
+    Value zero = arith::ConstantIndexOp::create(builder, loc, 0);
+    Value scalarOffset =
+        tensor::ExtractOp::create(builder, loc, offset, ValueRange{zero});
+    Value index = arith::IndexCastOp::create(
+        builder, loc, builder.getIndexType(), scalarOffset);
+    Type elementType = tensorType.getElementType();
+    Value pointer = load ? load.getPtr() : store.getPtr();
+    Value base =
+        UnrealizedConversionCastOp::create(
+            builder, loc, UnrankedMemRefType::get(elementType, 0), pointer)
+            .getResult(0);
+    auto layout =
+        StridedLayoutAttr::get(builder.getContext(), ShapedType::kDynamic, {1});
+    Value boundary = memref::ReinterpretCastOp::create(
+        builder, loc, MemRefType::get({1}, elementType, layout), base,
+        getAsOpFoldResult(index),
+        ArrayRef<OpFoldResult>{builder.getIndexAttr(1)},
+        ArrayRef<OpFoldResult>{builder.getIndexAttr(1)});
+    auto bufferType = MemRefType::get({1}, elementType);
+    Value snapshot;
+    if (load) {
+      auto allocation = memref::AllocOp::create(builder, loc, bufferType,
+                                                builder.getI64IntegerAttr(64));
+      allocation->setAttr(
+          "contract.buffer",
+          builder.getDictionaryAttr(
+              {builder.getNamedAttr("role", builder.getStringAttr("tile")),
+               builder.getNamedAttr("kind", builder.getStringAttr("temporary")),
+               builder.getNamedAttr("logical_shape",
+                                    builder.getDenseI64ArrayAttr({1}))}));
+      snapshot = allocation;
+    } else {
+      snapshot = bufferization::ToBufferOp::create(builder, loc, bufferType,
+                                                   value, /*read_only=*/true);
+    }
+    auto copy = memref::CopyOp::create(builder, loc, load ? boundary : snapshot,
+                                       load ? snapshot : boundary);
+    NamedAttrList facts;
+    facts.set("kind", builder.getStringAttr(load ? "load" : "store"));
+    facts.set("boundary", builder.getStringAttr("external_ddr"));
+    facts.set("logical_shape", builder.getDenseI64ArrayAttr({1}));
+    facts.set("mask", builder.getDictionaryAttr({builder.getNamedAttr(
+                          "kind", builder.getStringAttr("none"))}));
+    if (Attribute origin = access->getAttr("contract.origin_id"))
+      facts.set("origin_id", origin);
+    copy->setAttr("contract.access", facts.getDictionary(builder.getContext()));
+    if (load) {
+      Value tensor = bufferization::ToTensorOp::create(
+          builder, loc, tensorType, snapshot, /*restrict=*/true,
+          /*writable=*/true);
+      load.getResult().replaceAllUsesWith(tensor);
+    }
+    access->erase();
+  }
+}
 
 static Type getMemRefElementTypeForPointer(triton::PointerType ptrType) {
   Type pointeeType = ptrType.getPointeeType();
@@ -813,16 +904,32 @@ class UnstructuredToMemrefPass
     : public ::impl::UnstructuredToMemrefBase<UnstructuredToMemrefPass> {
 
 public:
+  TritonLoweringConfig config;
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
                 linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
                 tensor::TensorDialect, bufferization::BufferizationDialect,
-                memref::MemRefDialect, ttx::TritonTilingExtDialect>();
+                memref::MemRefDialect>();
   }
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
+    if (config.emitContract) {
+      normalizeContractSingletonAccesses(moduleOp);
+      WalkResult unsupported = moduleOp.walk([&](Operation *op) {
+        if (!isa<tts::GatherOp, tts::ScatterOp, tts::AtomicRMWOp,
+                 tts::AtomicCASOp, triton::LoadOp, triton::StoreOp>(op))
+          return WalkResult::advance();
+        op->emitError("neutral contract unstructured/scalar memory access is "
+                      "unsupported in contract v1");
+        return WalkResult::interrupt();
+      });
+      if (unsupported.wasInterrupted()) {
+        signalPassFailure();
+        return;
+      }
+    }
 
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
@@ -831,8 +938,7 @@ public:
         func::FuncDialect, arith::ArithDialect, math::MathDialect,
         linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
         cf::ControlFlowDialect, tensor::TensorDialect,
-        bufferization::BufferizationDialect, memref::MemRefDialect,
-        ttx::TritonTilingExtDialect>();
+        bufferization::BufferizationDialect, memref::MemRefDialect>();
 
     target.addIllegalOp<tts::GatherOp, tts::ScatterOp, tts::AtomicRMWOp,
                         tts::AtomicCASOp>();
@@ -911,8 +1017,10 @@ public:
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-triton::createUnstructuredToMemrefPass() {
-  return std::make_unique<UnstructuredToMemrefPass>();
+triton::createUnstructuredToMemrefPass(TritonLoweringConfig config) {
+  auto pass = std::make_unique<UnstructuredToMemrefPass>();
+  pass->config = std::move(config);
+  return pass;
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>

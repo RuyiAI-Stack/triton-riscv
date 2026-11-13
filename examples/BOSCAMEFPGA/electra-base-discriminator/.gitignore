@@ -1,0 +1,6 @@
+# Keep checkpoints, compiled images and downloaded FPGA evidence local.
+/build/
+/assets/
+__pycache__/
+*.py[cod]
+.pytest_cache/

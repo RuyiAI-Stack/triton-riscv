@@ -1,0 +1,25 @@
+//
+// FileCheck lit test input 'conditional-address.ttir' (conditional address
+// lowering and contract facts).
+//
+// Inputs: textual IR plus triton-shared-opt (or buddy-opt) and CHECK
+// lines.
+//
+// Outputs: pass/fail in lit; IR dumps only on failure.
+//
+// When used: BOSCAME FPGA integration suite to lock conditional address
+// lowering and contract facts.
+//
+module {
+  tt.func public @conditional_address(%left: !tt.ptr<f32>,
+                                      %right: !tt.ptr<f32>,
+                                      %condition: i1, %other: f32) {
+    %pointer = scf.if %condition -> (!tt.ptr<f32>) {
+      scf.yield %left : !tt.ptr<f32>
+    } else {
+      scf.yield %right : !tt.ptr<f32>
+    }
+    %value = tt.load %pointer, %condition, %other : !tt.ptr<f32>
+    tt.return
+  }
+}

@@ -158,8 +158,8 @@ Automatic serialization for `fp16`, `bf16`, dynamic input files, and complex mem
 ## 6. Inspect the ELF and RVV Instructions
 
 ```sh
-llvm-readelf \
-  -h artifacts/riscv/rvv-vector-add.elf
+llvm-readobj --file-headers \
+  artifacts/riscv/rvv-vector-add.elf
 
 llvm-objdump \
   -d --mattr=+v artifacts/riscv/rvv-vector-add.elf \

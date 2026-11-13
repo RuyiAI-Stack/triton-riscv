@@ -1,8 +1,21 @@
+//
+// Convert Triton arithmetic and tensor ops into Linalg.
+//
+// Inputs: tt.elementwise, reductions, broadcasts, and related arith on tensor
+// types.
+//
+// Outputs: linalg.generic / named ops used by the experimental and BOSCAME
+// pipelines.
+//
+// When used: early in TritonToLinalgExperimental before contract tile
+// specialization.
+//
 #ifndef TRITON_CONVERSION_TRITONARITHTOLINALG_TRITONARITHTOLINALG_H
 #define TRITON_CONVERSION_TRITONARITHTOLINALG_TRITONARITHTOLINALG_H
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "triton-shared/Conversion/TritonLoweringConfig.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -15,18 +28,18 @@ namespace triton {
 void populateTritonArithToLinalgCanonicalizationPatterns(
     RewritePatternSet &patterns);
 
-void populateTritonArithToLinalgConversionPatterns(bool pidsToFuncArgs,
-                                                   bool addptrToLinalg,
-                                                   bool assertToCf,
-                                                   bool transposeReduceToRank0,
-                                                   RewritePatternSet &patterns);
+void populateTritonArithToLinalgConversionPatterns(
+    bool pidsToFuncArgs, bool addptrToLinalg, bool assertToCf,
+    bool transposeReduceToRank0, RewritePatternSet &patterns,
+    TritonLoweringConfig config = {});
 
 // Expand the triton pointer ops operating on pointers to linalg
 void populateTritonTensorPtrConversionPatterns(RewritePatternSet &patterns);
 
 std::unique_ptr<OperationPass<ModuleOp>>
 createTritonArithToLinalgPass(bool tensorPtrToLinalg = false,
-                              bool transposeReduceToRank0 = true);
+                              bool transposeReduceToRank0 = true,
+                              TritonLoweringConfig config = {});
 
 } // namespace triton
 } // namespace mlir

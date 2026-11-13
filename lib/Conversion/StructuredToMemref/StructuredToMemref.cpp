@@ -5,6 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// Structured Triton dialect to MemRef lowering.
+//
+// Inputs: pointer/mask analysis results on blocked loads and stores.
+//
+// Outputs: memref.load/store (and related ops) that BOSCAME / buddy passes can
+// consume.
+//
+// When used: after TritonArithToLinalg when the access is proven contiguous.
+//
+
 #include "triton/Dialect/Triton/IR/Types.h"
 
 #include "triton-shared/Analysis/OpFoldResultUtils.h"
@@ -37,6 +48,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <algorithm>
 #include <cassert>
@@ -46,6 +58,7 @@
 #define DEBUG_TYPE "structured-to-memref"
 
 using namespace mlir;
+using mlir::triton::TritonLoweringConfig;
 
 static const std::string WRAP_SIDE_BY_SIDE = "wrap_side_by_side";
 static const std::string WRAP_STACKED = "wrap_stacked";
@@ -1345,9 +1358,9 @@ private:
 
     auto resultType = getResultMemrefType(
         op, /* offset */ ShapedType::kDynamic,
-        /* staticStrides */
+        // staticStrides
         SmallVector<int64_t>(resultShape.size(), ShapedType::kDynamic),
-        /* result shape */
+        // result shape
         SmallVector<int64_t>{
 
             // Row stays the same, but mlir doesn't allow this anymore. Put
@@ -1476,9 +1489,9 @@ private:
 
     auto resultType = getResultMemrefType(
         op, /* offset */ ShapedType::kDynamic,
-        /* staticStrides */
+        // staticStrides
         SmallVector<int64_t>(resultShape.size(), ShapedType::kDynamic),
-        /* result shape */
+        // result shape
         SmallVector<int64_t>{
             // Row is dynamic, in most cases, this should
             // be the same as the original row. The last
@@ -1668,9 +1681,259 @@ struct MakeGatherScatterTensorPtrConverter
   }
 };
 
+// Follow the view-like operations that can be introduced between a Triton
+// pointer and the eventual memref.copy destination.  This lets provenance
+// distinguish a function argument (external DDR) from a compiler-owned
+// temporary even after ensureRankedMemRef has inserted a memref.cast.
+static Value getMemRefRoot(Value value) {
+  while (Operation *def = value.getDefiningOp()) {
+    if (auto cast = dyn_cast<memref::CastOp>(def)) {
+      value = cast.getSource();
+      continue;
+    }
+    if (auto cast = dyn_cast<memref::ReinterpretCastOp>(def)) {
+      value = cast.getSource();
+      continue;
+    }
+    if (auto subview = dyn_cast<memref::SubViewOp>(def)) {
+      value = subview.getSource();
+      continue;
+    }
+    if (auto view = dyn_cast<memref::ViewOp>(def)) {
+      value = view.getSource();
+      continue;
+    }
+    if (auto cast = dyn_cast<memref::MemorySpaceCastOp>(def)) {
+      value = cast.getSource();
+      continue;
+    }
+    if (auto unrealized = dyn_cast<UnrealizedConversionCastOp>(def)) {
+      if (unrealized.getNumOperands() != 1)
+        break;
+      value = unrealized.getOperand(0);
+      continue;
+    }
+    // The pointer bridge can survive until this pass for scalar/unstructured
+    // forms.  It is a one-operand view whose source still identifies the DDR
+    // function argument or compiler-owned allocation.
+    if (def->getName().getStringRef() == "tptr.to_memref" &&
+        def->getNumOperands() == 1) {
+      value = def->getOperand(0);
+      continue;
+    }
+    if (def->getName().getStringRef() == "tptr.from_memref" &&
+        def->getNumOperands() == 1) {
+      value = def->getOperand(0);
+      continue;
+    }
+    // Pointer arithmetic preserves the allocation identity in operand zero;
+    // follow it so an address derived from a compiler temporary is not
+    // misclassified as an externally supplied DDR pointer.
+    StringRef name = def->getName().getStringRef();
+    if ((name == "tptr.ptradd" || name == "ptr.ptradd" ||
+         name == "tt.addptr") &&
+        def->getNumOperands() >= 1) {
+      value = def->getOperand(0);
+      continue;
+    }
+    break;
+  }
+  return value;
+}
+
+static StringRef classifyStoreDestination(Value value) {
+  Value root = getMemRefRoot(value);
+  if (isa<BlockArgument>(root))
+    return "external_ddr";
+  if (Operation *def = root.getDefiningOp()) {
+    if (isa<memref::AllocOp, memref::AllocaOp, bufferization::ToBufferOp>(def))
+      return "internal_temp";
+  }
+  // A pointer whose root cannot be proven to be an allocation is conservatively
+  // treated as an externally supplied address, matching Triton function
+  // pointer semantics and preserving direct-DDR lowering.
+  return "external_ddr";
+}
+
+// Keep the memory event on an ordinary copy. Its operands retain the real DDR
+// root, descriptor offset/strides and dynamic mask bounds through
+// bufferization.  The store destination is recorded independently of the
+// source tensor's eventual staging location so the backend can select a
+// direct-DDR path without guessing from a memref type after bufferization.
+static DictionaryAttr memoryProvenance(OpBuilder &builder, StringRef kind,
+                                       RankedTensorType logicalType,
+                                       ArrayRef<OpFoldResult> mask,
+                                       Value destination = {}, Value other = {},
+                                       Operation *sourceEvent = nullptr) {
+  NamedAttrList attrs;
+  attrs.set("kind", builder.getStringAttr(kind));
+  if (sourceEvent) {
+    if (Attribute id = sourceEvent->getAttr("contract.origin_id"))
+      attrs.set("origin_id", id);
+  }
+  attrs.set("boundary",
+            builder.getStringAttr(kind == "store" && destination
+                                      ? classifyStoreDestination(destination)
+                                      : "external_ddr"));
+  attrs.set("logical_shape",
+            builder.getDenseI64ArrayAttr(logicalType.getShape()));
+  NamedAttrList maskAttrs;
+  maskAttrs.set("kind",
+                builder.getStringAttr(mask.empty() ? "none" : "rectangular"));
+  if (!mask.empty()) {
+    SmallVector<int64_t> validShape(logicalType.getShape());
+    for (auto [i, extent] : llvm::enumerate(mask))
+      validShape[i] =
+          getConstantIntValue(extent).value_or(ShapedType::kDynamic);
+    maskAttrs.set("valid_shape", builder.getDenseI64ArrayAttr(validShape));
+  }
+  attrs.set("mask", maskAttrs.getDictionary(builder.getContext()));
+  if (other)
+    if (auto constant = other.getDefiningOp<arith::ConstantOp>())
+      attrs.set("other", constant.getValue());
+  return attrs.getDictionary(builder.getContext());
+}
+
+static IntegerAttr getSnapshotAlignment(Operation *op, Builder &builder) {
+  auto module = op->getParentOfType<ModuleOp>();
+  auto abi = module->getAttrOfType<DictionaryAttr>("contract.abi");
+  if (abi)
+    if (auto alignment = abi.getAs<IntegerAttr>("args_aligned_bytes"))
+      return builder.getI64IntegerAttr(alignment.getInt());
+  return {};
+}
+
 struct LoadConverter : public OpConversionPattern<tts::LoadOp> {
+  bool emitContract;
+
 private:
   bool enableTensorFirstVectorCpu;
+
+  LogicalResult
+  rewriteContractLogicalLoad(tts::LoadOp op, Value ptr,
+                             ConversionPatternRewriter &rewriter) const {
+    auto tensorType = cast<RankedTensorType>(op.getType());
+    if (op.hasMask()) {
+      auto other = op.getOther()
+                       ? op.getOther().getDefiningOp<arith::ConstantOp>()
+                       : arith::ConstantOp();
+      if (!other || other.getType() != tensorType.getElementType())
+        return op.emitError("neutral contract masked load requires a scalar "
+                            "constant other in contract v1");
+    }
+    if (!tensorType.hasStaticShape() || getWraparoundCast(ptr))
+      return op.emitError(
+          "neutral contract load requires a static rectangular DDR view; "
+          "split/wrapping pointers are unsupported");
+    auto ranked =
+        ensureRankedMemRef(ptr, tensorType.getRank(),
+                           tensorType.getElementType(), op.getLoc(), rewriter);
+    if (failed(ranked))
+      return op.emitError("neutral contract load requires a ranked DDR view");
+    ptr = *ranked;
+    SmallVector<OpFoldResult> mask =
+        op.hasMask() ? op.getMixedMaskDims() : SmallVector<OpFoldResult>{};
+    SmallVector<int64_t> strides;
+    int64_t offset;
+    if (failed(cast<MemRefType>(ptr.getType())
+                   .getStridesAndOffset(strides, offset)) ||
+        llvm::any_of(strides, [](int64_t stride) {
+          return ShapedType::isDynamic(stride) || stride <= 0;
+        }))
+      strides.clear();
+
+    // Preserve the physical contiguous axis, not the DDR pitch. A snapshot
+    // owns exactly one logical tile, including padding for a masked load.
+    // Source and destination subviews below retain their independent layouts.
+    // Prove separation using the actual copied rectangle. In particular a
+    // short K may have a dense DDR pitch smaller than the padded tile width;
+    // excluded lanes belong only to the private snapshot, never to DDR.
+    auto accessedExtent = [&](unsigned axis) {
+      int64_t logical = tensorType.getDimSize(axis);
+      if (!mask.empty())
+        if (auto valid = getConstantIntValue(mask[axis]);
+            valid && *valid >= 0 && *valid <= logical)
+          return *valid;
+      return logical;
+    };
+    bool rowMajor = false;
+    if (tensorType.getRank() == 1 && strides.size() == 1 && strides[0] == 1)
+      rowMajor = true;
+    else if (tensorType.getRank() == 2 && strides.size() == 2) {
+      if (strides[1] == 1 && strides[0] >= accessedExtent(1))
+        rowMajor = true;
+      else if (strides[0] != 1 || strides[1] < accessedExtent(0))
+        return op.emitError(
+            "neutral contract load requires a non-overlapping rectangular "
+            "layout with a static unit-stride axis");
+    } else {
+      return op.emitError(
+          "neutral contract load snapshot requires a rank-one or rank-two "
+          "rectangular layout with a static unit-stride axis");
+    }
+    int64_t elements = 1;
+    for (int64_t dim : tensorType.getShape()) {
+      if (dim <= 0 || llvm::MulOverflow(elements, dim, elements))
+        return op.emitError("neutral contract load snapshot size overflows");
+    }
+    Value snapshot;
+    memref::AllocOp alloc;
+    if (rowMajor) {
+      alloc = memref::AllocOp::create(
+          rewriter, op.getLoc(),
+          MemRefType::get(tensorType.getShape(), tensorType.getElementType()),
+          getSnapshotAlignment(op, rewriter));
+      snapshot = alloc;
+    } else {
+      // LLVM allocations need identity layouts. Represent column-major B as
+      // a logical [K,N] view over compact physical [N,K] backing storage.
+      SmallVector<int64_t> compactStrides{1, tensorType.getDimSize(0)};
+      auto bufferType = MemRefType::get(
+          tensorType.getShape(), tensorType.getElementType(),
+          StridedLayoutAttr::get(rewriter.getContext(), 0, compactStrides));
+      alloc = memref::AllocOp::create(
+          rewriter, op.getLoc(),
+          MemRefType::get({elements}, tensorType.getElementType()),
+          getSnapshotAlignment(op, rewriter));
+      snapshot = memref::ReinterpretCastOp::create(
+          rewriter, op.getLoc(), bufferType, alloc, 0, tensorType.getShape(),
+          compactStrides);
+    }
+    alloc->setAttr(
+        "contract.buffer",
+        rewriter.getDictionaryAttr(
+            {rewriter.getNamedAttr("role", rewriter.getStringAttr("tile")),
+             rewriter.getNamedAttr("kind", rewriter.getStringAttr("temporary")),
+             rewriter.getNamedAttr(
+                 "logical_shape",
+                 rewriter.getDenseI64ArrayAttr(tensorType.getShape()))}));
+    if (op.hasMask() && op.getOther()) {
+      auto fill = linalg::FillOp::create(rewriter, op.getLoc(),
+                                         ValueRange{op.getOther()},
+                                         ValueRange{snapshot});
+      fill->setAttr("contract.fill",
+                    rewriter.getDictionaryAttr({rewriter.getNamedAttr(
+                        "padding", rewriter.getBoolAttr(true))}));
+    }
+    Value source = ptr;
+    Value destination = snapshot;
+    if (op.hasMask()) {
+      source =
+          getSubview(tensorType.getRank(), mask, ptr, op.getLoc(), rewriter);
+      destination = getSubview(tensorType.getRank(), mask, snapshot,
+                               op.getLoc(), rewriter);
+    }
+    auto copy =
+        memref::CopyOp::create(rewriter, op.getLoc(), source, destination);
+    copy->setAttr("contract.access",
+                  memoryProvenance(rewriter, "load", tensorType, mask,
+                                   /*destination=*/{}, op.getOther(), op));
+    Value tensor = bufferization::ToTensorOp::create(
+        rewriter, op.getLoc(), tensorType, snapshot, true /*restrict*/,
+        true /*writable*/);
+    rewriter.replaceOp(op, tensor);
+    return success();
+  }
 
   bool isTensorFirstFastPathCandidate(tts::LoadOp op, Value ptr) const {
     if (!enableTensorFirstVectorCpu) {
@@ -1897,19 +2160,19 @@ private:
     Value block2Row = memref::DimOp::create(rewriter, loc, block2, 0);
     Value block2Col = memref::DimOp::create(rewriter, loc, block2, 1);
 
-    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, /* offsets */
+    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, // offsets
                                                ValueRange{zero, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block1Row, block1Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     auto block2Dst = memref::SubViewOp::create(rewriter, loc, dst,
-                                               /* offsets */
+                                               // offsets
                                                ValueRange{zero, block1Col},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block2Row, block2Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     memref::CopyOp::create(rewriter, loc, block1, block1Dst);
@@ -1930,19 +2193,19 @@ private:
     Value block2Row = memref::DimOp::create(rewriter, loc, block2, 0);
     Value block2Col = memref::DimOp::create(rewriter, loc, block2, 1);
 
-    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, /* offsets */
+    auto block1Dst = memref::SubViewOp::create(rewriter, loc, dst, // offsets
                                                ValueRange{zero, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block1Row, block1Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     auto block2Dst = memref::SubViewOp::create(rewriter, loc, dst,
-                                               /* offsets */
+                                               // offsets
                                                ValueRange{block1Row, zero},
-                                               /* sizes */
+                                               // sizes
                                                ValueRange{block2Row, block2Col},
-                                               /* strides */
+                                               // strides
                                                ValueRange{one, one});
 
     memref::CopyOp::create(rewriter, loc, block1, block1Dst);
@@ -2428,8 +2691,10 @@ private:
 
 public:
   LoadConverter(const TypeConverter &typeConverter,
-                bool enableTensorFirstVectorCpu, MLIRContext *context)
+                bool enableTensorFirstVectorCpu, TritonLoweringConfig config,
+                MLIRContext *context)
       : OpConversionPattern<tts::LoadOp>(typeConverter, context),
+        emitContract(config.emitContract),
         enableTensorFirstVectorCpu(enableTensorFirstVectorCpu) {}
 
   LogicalResult
@@ -2438,6 +2703,9 @@ public:
     auto originalPtr = op.getPtr();
     if (auto gatherScatterPtr =
             originalPtr.getDefiningOp<tts::MakeGatherScatterTensorPtrOp>()) {
+      if (emitContract)
+        return op.emitError("neutral contract gather/scatter load is "
+                            "unsupported in contract v1");
       FailureOr<Value> memRefPtr = materializeGatherScatterBaseMemRef(
           gatherScatterPtr, op.getLoc(), rewriter);
       if (failed(memRefPtr)) {
@@ -2466,7 +2734,9 @@ public:
     }
 
     LogicalResult result = failure();
-    if (isTensorFirstFastPathCandidate(op, ptr)) {
+    if (emitContract) {
+      result = rewriteContractLogicalLoad(op, ptr, rewriter);
+    } else if (isTensorFirstFastPathCandidate(op, ptr)) {
       result = op.hasMask() ? rewriteTensorFirstMaskedLoad(op, ptr, rewriter)
                             : rewriteTensorFirstUnmaskedLoad(op, ptr, rewriter);
     } else if (op.hasMask()) {
@@ -2483,6 +2753,8 @@ public:
 };
 
 struct StoreConverter : public OpConversionPattern<tts::StoreOp> {
+  bool emitContract;
+
 private:
   bool enableTensorFirstVectorCpu;
 
@@ -2767,8 +3039,10 @@ private:
 
 public:
   StoreConverter(const TypeConverter &typeConverter,
-                 bool enableTensorFirstVectorCpu, MLIRContext *context)
+                 bool enableTensorFirstVectorCpu, TritonLoweringConfig config,
+                 MLIRContext *context)
       : OpConversionPattern<tts::StoreOp>(typeConverter, context),
+        emitContract(config.emitContract),
         enableTensorFirstVectorCpu(enableTensorFirstVectorCpu) {}
 
   LogicalResult
@@ -2779,6 +3053,9 @@ public:
     auto originalPtr = op.getPtr();
     if (auto gatherScatterPtr =
             originalPtr.getDefiningOp<tts::MakeGatherScatterTensorPtrOp>()) {
+      if (emitContract)
+        return op.emitError("neutral contract gather/scatter store is "
+                            "unsupported in contract v1");
       FailureOr<Value> memRefPtr = materializeGatherScatterBaseMemRef(
           gatherScatterPtr, op.getLoc(), rewriter);
       if (failed(memRefPtr)) {
@@ -2805,6 +3082,51 @@ public:
             op, "expected pointer operand to lower from tts.make_tptr");
       }
       ptr = *materialized;
+    }
+
+    if (emitContract) {
+      auto tensorType = cast<RankedTensorType>(adaptor.getValue().getType());
+      if (!tensorType.hasStaticShape() || getWraparoundCast(ptr))
+        return op.emitError(
+            "neutral contract store requires a static rectangular DDR "
+            "view; split/wrapping pointers are unsupported");
+      auto ranked =
+          ensureRankedMemRef(ptr, tensorType.getRank(),
+                             tensorType.getElementType(), loc, rewriter);
+      if (failed(ranked))
+        return op.emitError(
+            "neutral contract store requires a ranked DDR view");
+      ptr = *ranked;
+      // The bridge exposes the ordinary logical producer. Bufferization
+      // resolves it before the independent planner chooses a physical route.
+      auto bufferType =
+          MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+      bufferization::BufferizationOptions options;
+      bufferization::BufferizationState state;
+      if (auto inferred =
+              bufferization::getBufferType(adaptor.getValue(), options, state);
+          succeeded(inferred))
+        if (auto existingType = dyn_cast<MemRefType>(*inferred))
+          if (existingType.getMemorySpace())
+            bufferType = existingType;
+      Value source = bufferization::ToBufferOp::create(
+          rewriter, loc, bufferType, adaptor.getValue(), /*read_only=*/true);
+      Value destination = ptr;
+      SmallVector<OpFoldResult> mask =
+          op.hasMask() ? op.getMixedMaskDims() : SmallVector<OpFoldResult>{};
+      if (op.hasMask()) {
+        source = getSubview(tensorType.getRank(), mask, source, loc, rewriter);
+        destination =
+            getSubview(tensorType.getRank(), mask, ptr, loc, rewriter);
+      }
+      auto copy = memref::CopyOp::create(rewriter, loc, source, destination);
+      copy->setAttr("contract.access",
+                    memoryProvenance(rewriter, "store", tensorType, mask, ptr,
+                                     /*other=*/{}, op));
+      rewriter.eraseOp(op);
+      if (makeTPtr && makeTPtr->use_empty())
+        rewriter.eraseOp(makeTPtr);
+      return success();
     }
 
     if (isTensorFirstFastPathCandidate(op, ptr)) {
@@ -2917,9 +3239,9 @@ void mlir::triton::populateStructuredToMemrefPreConversionPatterns(
 
 void mlir::triton::populateStructuredToMemrefConversionPatterns(
     RewritePatternSet &patterns, TypeConverter &typeConverter,
-    bool enableTensorFirstVectorCpu) {
+    bool enableTensorFirstVectorCpu, TritonLoweringConfig config) {
   patterns.add<MakeTensorPtrConverter, MakeGatherScatterTensorPtrConverter>(
       typeConverter, patterns.getContext());
   patterns.add<LoadConverter, StoreConverter>(
-      typeConverter, enableTensorFirstVectorCpu, patterns.getContext());
+      typeConverter, enableTensorFirstVectorCpu, config, patterns.getContext());
 }

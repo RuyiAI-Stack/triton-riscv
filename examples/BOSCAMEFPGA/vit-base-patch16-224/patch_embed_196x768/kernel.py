@@ -1,0 +1,88 @@
+"""
+Standalone Triton kernel for FPGA case 'patch_embed_196x768' (model
+'vit-base-patch16-224').
+
+Inputs: pointer arguments and KERNEL_CONFIG constexprs (BLOCK, COUNT, and tensor
+shapes) for AOT compile.
+
+Outputs: an @triton.jit entry plus KERNEL_CONFIG metadata consumed by contract
+export and buddy-opt.
+
+When used: Make / export.py in
+examples/BOSCAMEFPGA/vit-base-patch16-224/patch_embed_196x768 before linking
+launch.c.
+"""
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def patch_embed(
+    X,
+    Weight,
+    Bias,
+    Out,
+    HEIGHT: tl.constexpr,
+    WIDTH: tl.constexpr,
+    CHANNELS: tl.constexpr,
+    PATCH: tl.constexpr,
+    HIDDEN: tl.constexpr,
+    GRID: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Materialize the convolution patches as a row-major im2col matrix.
+
+    The projection is a ``[196, 768] @ [768, 768]^T`` operation.  The old
+    kernel performed that reduction while loading each output channel, which
+    made the weight and result accesses strided by the opposite matrix
+    dimension.  This stage only walks the input image and writes one
+    contiguous ``[patch, channel*PATCH*PATCH + dy*PATCH + dx]`` row.  The
+    graph-facing C adapter quantizes activations and weights, calls signed i8
+    matmul, dequantizes, adds bias and converts the result to NCHW.
+
+    ``Weight`` and ``Bias`` remain in the signature for ABI compatibility with
+    the graph replacement.  They are intentionally unused here.
+    """
+    patch = tl.program_id(0)
+    row = patch // GRID
+    col = patch % GRID
+    for channel in range(CHANNELS):
+        for dy in range(PATCH):
+            for dx in range(PATCH):
+                input_index = (
+                    channel * HEIGHT * WIDTH
+                    + (row * PATCH + dy) * WIDTH
+                    + col * PATCH
+                    + dx
+                )
+                column = channel * PATCH * PATCH + dy * PATCH + dx
+                # Every row is contiguous in the destination even though the
+                # source is traversed through the NCHW image layout.
+                tl.store(Out + patch * HIDDEN + column, tl.load(X + input_index))
+
+
+# Fixed specialization; cases.py reads this literal without importing Triton.
+KERNEL_CONFIG = {
+    "family": "patch_embed",
+    "kernel": "patch_embed",
+    "arguments": [
+        {"name": "X", "rank": 4, "dtype": "f32"},
+        {"name": "Weight", "rank": 4, "dtype": "f32"},
+        {"name": "Bias", "rank": 1, "dtype": "f32"},
+        {"name": "Out", "rank": 4, "dtype": "f32"},
+    ],
+    "shape": [1, 768, 14, 14],
+    "constexprs": {
+        "HEIGHT": 224,
+        "WIDTH": 224,
+        "CHANNELS": 3,
+        "PATCH": 16,
+        "HIDDEN": 768,
+        "GRID": 14,
+        "BLOCK": 1024,
+    },
+    "grid": [196, 1, 1],
+    "roles": [],
+    "metadata": {"dtype": "f32", "model": "google/vit-base-patch16-224"},
+}

@@ -6,6 +6,7 @@
 
 add_triton_library(TritonToLinalgExperimental
   TritonToLinalgExperimentalPass.cpp
+  ContractTileSpecialization.cpp
   ReconcilePtrCastsPass.cpp
   TritonToPtrPass.cpp
   CollapseShape.cpp
@@ -21,8 +22,26 @@ add_triton_library(TritonToLinalgExperimental
   MLIRMathDialect
   MLIRPass
   MLIRTensorDialect
+  MLIRTensorInferTypeOpInterfaceImpl
   MLIRTransforms
   MLIRSupport
+  MLIRAffineDialect
+  MLIRArithTransforms
+  MLIRBufferizationDialect
+  MLIRBufferizationTransforms
+  MLIRControlFlowDialect
+  MLIRFuncDialect
+  MLIRLinalgDialect
+  MLIRLinalgTransforms
+  MLIRMemRefDialect
+  MLIRPtrDialect
+  MLIRReconcileUnrealizedCasts
+  MLIRSCFDialect
+  MLIRSCFTransforms
+  MLIRTensorTransforms
+  MLIRTransformUtils
+  MLIRVectorDialect
+  MLIRVectorTransforms
   TPtrIR
   TritonIR
   TritonTransforms

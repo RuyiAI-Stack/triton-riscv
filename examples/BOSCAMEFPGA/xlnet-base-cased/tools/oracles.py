@@ -1,0 +1,628 @@
+"""CPU reference oracles for BOSCAME FPGA model 'xlnet-base-cased'.
+
+Inputs: numpy tensors with the same shapes/dtypes as the Triton kernels under
+test.
+
+Outputs: expected outputs for simcheck and host-check to compare against device
+results.
+
+When used: imported by simcheck.py / nonlinear_simcheck.py in this model tree.
+"""
+
+import math
+
+import numpy as np
+
+DTYPES = {"f32": np.dtype("<f4"), "i32": np.dtype("<i4"), "i8": np.dtype("i1")}
+NONLINEAR_TOLERANCE = 2e-5
+
+
+def gelu_boundary_inputs():
+    """Finite boundaries and IEEE values, independent of target coefficients."""
+    invsqrt2 = np.float32(0.7071067811865475)
+    joins = np.arange(0.5, 4.5, 0.5, dtype=np.float32) / invsqrt2
+    points = np.concatenate(
+        (
+            np.linspace(-12, 12, 2049, dtype=np.float32),
+            joins,
+            -joins,
+            np.array(
+                [
+                    -np.inf,
+                    np.inf,
+                    np.nan,
+                    -0.0,
+                    0.0,
+                    -np.finfo(np.float32).max,
+                    np.finfo(np.float32).max,
+                    -np.finfo(np.float32).tiny,
+                    np.finfo(np.float32).tiny,
+                    -np.nextafter(np.float32(0), np.float32(1)),
+                    np.nextafter(np.float32(0), np.float32(1)),
+                ],
+                dtype=np.float32,
+            ),
+        )
+    )
+    with np.errstate(over="ignore", invalid="ignore"):
+        return np.concatenate(
+            (
+                points,
+                np.nextafter(points, -np.inf),
+                np.nextafter(points, np.inf),
+            )
+        )
+
+
+def _nonlinear_stress(case, arrays):
+    if case["family"] == "gelu":
+        arrays["X"][...] = np.resize(gelu_boundary_inputs(), arrays["X"].shape)
+    elif case["family"] == "softmax":
+        length = case["constexprs"]["LENGTH"]
+        rows = arrays["X"].reshape(-1, length)
+        limits = np.finfo(np.float32)
+        boundary = np.array(
+            [
+                -103.97208404541016,
+                -103.2789306640625,
+                -87.3365478515625,
+                -64 * math.log(2),
+                -math.log(2),
+                -0.5 * math.log(2),
+                0,
+            ],
+            dtype=np.float32,
+        )
+        for index, row in enumerate(rows):
+            kind = index % 16
+            if kind < 2:
+                row.fill(-0.0 if kind else 0.0)
+            elif kind == 2:
+                row[:] = np.linspace(-200, 0, length, dtype=np.float32)
+            elif kind in (3, 4):
+                row[:] = np.linspace(-100, 0, length, dtype=np.float32)
+                row += np.float32(1000 if kind == 3 else -1000)
+            elif kind == 5:
+                row.fill(-120)
+                row[-1] = 0
+            elif kind == 6:
+                row[:] = np.resize(np.array([-np.inf, 0], np.float32), length)
+            elif kind in (7, 8):
+                row.fill(0)
+                row[index % length] = np.nan if kind == 7 else np.inf
+            elif kind in (9, 10):
+                row.fill(np.inf if kind == 9 else -np.inf)
+            elif kind == 11:
+                row[:] = np.resize(
+                    np.array([-limits.max, limits.max], np.float32), length
+                )
+            elif kind == 12:
+                row[:] = np.resize(
+                    np.array([-limits.tiny, 0, limits.tiny], np.float32), length
+                )
+            elif kind in (13, 14):
+                row[:] = np.resize(
+                    np.nextafter(boundary, -np.inf if kind == 13 else np.inf),
+                    length,
+                )
+                row[-1] = 0
+            else:
+                row[:] = np.resize(np.array([-0.0, 0.0, -np.inf], np.float32), length)
+
+
+def output_names(case):
+    """Writable entry arguments; a matmul's C is also an input."""
+    family = case["family"]
+    if family in (
+        "linear",
+        "gemm_i8",
+        "matmul_i8",
+    ) or family.startswith("attention_"):
+        return ("C",)
+    if family in ("per_token_quantization", "quantize_transpose"):
+        return ("Q", "Scale")
+    return ("Out",)
+
+
+def make_inputs(case, shapes, stress=False):
+    """Deterministic inputs, including zero rows and signed integer extremes."""
+    rng = np.random.default_rng(107 if stress else 71)
+    outputs = output_names(case)
+    arrays = {}
+    for argument, shape in zip(case["arguments"], shapes):
+        name, dtype = argument["name"], DTYPES[argument["dtype"]]
+        if dtype == DTYPES["i8"]:
+            if stress:
+                choices = np.array([-128, -127, -1, 0, 1, 126, 127], dtype=dtype)
+                value = rng.choice(choices, size=shape)
+            else:
+                value = rng.integers(-15, 16, size=shape, dtype=dtype)
+        elif dtype == DTYPES["i32"]:
+            if stress:
+                choices = np.array(
+                    [-2147483648, -2147483600, -1, 1, 2147483600, 2147483647],
+                    dtype=dtype,
+                )
+                value = rng.choice(choices, size=shape)
+            else:
+                value = rng.integers(-100, 101, size=shape, dtype=dtype)
+        elif name in ("Row", "Column", "Scale"):
+            value = rng.uniform(0.002, 0.02, size=shape).astype(dtype)
+        elif name == "Weight":
+            value = rng.uniform(-1, 2, size=shape).astype(dtype)
+        elif name == "Bias":
+            value = rng.uniform(-0.5, 0.5, size=shape).astype(dtype)
+        else:
+            value = rng.normal(0.2, 1.1, size=shape).astype(dtype)
+        if name in outputs and name != "C":
+            # A visible sentinel proves every required element was written.
+            value = np.full(shape, 0x55 if dtype.kind == "i" else np.nan, dtype=dtype)
+        arrays[name] = np.ascontiguousarray(value, dtype=dtype)
+    if case["family"] in ("per_token_quantization", "quantize_transpose"):
+        rows = arrays["X"].T if case["family"] == "quantize_transpose" else arrays["X"]
+        rows[0] = 0.0
+        if rows.shape[0] > 1:
+            width = rows.shape[-1]
+            ties = np.resize(
+                np.array(
+                    [-127, -2.5, -1.5, -0.5, 0, 0.5, 1.5, 2.5, 127],
+                    dtype=np.float32,
+                ),
+                width,
+            )
+            rows[1] = ties
+            if stress:
+                quantization_stress(rows)
+    if stress:
+        _nonlinear_stress(case, arrays)
+    return arrays
+
+
+def quantization_stress(rows):
+    """Zero, signed extrema, half ties and neighbors on both scale axes."""
+    ties = np.array(
+        [-127, -126.5, -2.5, -1.5, -0.5, -0.0, 0.0, 0.5, 1.5, 2.5, 126.5, 127],
+        np.float32,
+    )
+    patterns = [
+        np.zeros_like(ties),
+        ties,
+        np.nextafter(ties, np.float32(-np.inf)),
+        np.nextafter(ties, np.float32(np.inf)),
+        np.array([-127, 127, -1, 0, 1], np.float32),
+    ]
+    for index, row in enumerate(rows):
+        row[:] = np.resize(patterns[index % len(patterns)], row.size)
+        # Powers of two preserve exact half ties while varying each scale.
+        row *= np.float32(2.0 ** ((index % 17) - 8))
+    if len(rows) > 5:
+        rows[-1] = np.resize(
+            np.array(
+                [-np.finfo(np.float32).max, 0, np.finfo(np.float32).max], np.float32
+            ),
+            rows.shape[-1],
+        )
+        rows[-2] = np.resize(
+            np.array(
+                [-np.finfo(np.float32).tiny, 0, np.finfo(np.float32).tiny], np.float32
+            ),
+            rows.shape[-1],
+        )
+
+
+def quantize_rows(value):
+    """Independent scalar f32 quantizer; Python integers implement saturation."""
+    quantized = np.empty(value.shape, dtype=np.int8)
+    scales = np.empty(value.shape[0], dtype=np.float32)
+    for row, values in enumerate(value):
+        maximum = np.float32(max(abs(float(x)) for x in values))
+        scale = np.float32(1) if maximum == 0 else np.float32(maximum / np.float32(127))
+        scales[row] = scale
+        for column, x in enumerate(values):
+            ratio = np.float32(x / scale)
+            base = int(ratio)
+            remainder = float(ratio) - base
+            adjustment = 1 if remainder >= 0.5 else -1 if remainder <= -0.5 else 0
+            quantized[row, column] = min(127, max(-127, base + adjustment))
+    return quantized, scales
+
+
+def quantized_attention_reference(case, arrays):
+    """Runtime per-head row/column quantization, INT64 oracle, ordered f32 restore."""
+    result = np.empty(arrays["C"].shape, np.float32)
+    factor = np.float32(0.125 if case["family"] == "attention_qk" else 1)
+    for head, (a, b) in enumerate(zip(arrays["A"], arrays["B"])):
+        aq, rs = quantize_rows(a)
+        bq, cs = quantize_rows(b.T)
+        acc = (aq.astype(np.int64) @ bq.astype(np.int64).T).astype(np.int32)
+        with np.errstate(over="ignore", invalid="ignore"):
+            first = np.multiply(acc.astype(np.float32), rs[:, None], dtype=np.float32)
+            second = np.multiply(first, cs[None, :], dtype=np.float32)
+            result[head] = np.multiply(second, factor, dtype=np.float32)
+    return {"C": result}
+
+
+def attention_fp32_reference(case, arrays):
+    """Retain the former ordered FP32 arithmetic solely as a host baseline."""
+    product = (
+        _matmul_blocked_sequential(arrays["A"], arrays["B"], 64)
+        if case["family"] == "attention_pv"
+        else _matmul_sequential(arrays["A"], arrays["B"])
+    )
+    return np.multiply(
+        product,
+        np.float32(0.125 if case["family"] == "attention_qk" else 1),
+        dtype=np.float32,
+    )
+
+
+def nonlinear_reference64(case, arrays):
+    """Independent double-precision mathematical reference, not target recipes.
+
+    GELU uses erfc to retain its small negative tail. Nonfinite behavior follows
+    the original erf expression, including GELU(-Inf)=NaN. Softmax uses a stable
+    shift and math.fsum, without the emitted FP32 reduction's rounding.
+    """
+    x = arrays["X"]
+    if case["family"] == "gelu":
+
+        def gelu(value):
+            value = float(value)
+            if value == -math.inf:
+                return math.nan
+            return 0.5 * value * math.erfc(-value / math.sqrt(2))
+
+        return {
+            "Out": np.fromiter((gelu(v) for v in x.flat), np.float64, x.size).reshape(
+                x.shape
+            )
+        }
+    if case["family"] != "softmax":
+        raise ValueError("double nonlinear reference requires GELU or Softmax")
+    length = case["constexprs"]["LENGTH"]
+    result = np.empty(x.shape, np.float64)
+    for row, out in zip(x.reshape(-1, length), result.reshape(-1, length)):
+        values = [float(v) for v in row]
+        maximum = max(values)
+        if any(math.isnan(v) or v == math.inf for v in values) or maximum == -math.inf:
+            out.fill(np.nan)
+            continue
+        exponential = [math.exp(v - maximum) for v in values]
+        total = math.fsum(exponential)
+        out[:] = [v / total for v in exponential]
+    return {"Out": result}
+
+
+def nonlinear_reference_mp(case, arrays, dps=80):
+    """Arbitrary-precision sampling oracle; requires mpmath only when invoked."""
+    import mpmath as mp
+
+    x = arrays["X"]
+    result = np.empty(x.shape, np.float64)
+    with mp.workdps(dps):
+        if case["family"] == "gelu":
+            for index, raw in enumerate(x.flat):
+                value = float(raw)
+                if not math.isfinite(value):
+                    answer = math.inf if value == math.inf else math.nan
+                elif value == 0:
+                    answer = value
+                elif value < -40:
+                    # erfc(t) < exp(-t*t)/(t*sqrt(pi)); this entire tail
+                    # rounds to zero even in the returned binary64 format.
+                    answer = -0.0
+                else:
+                    number = mp.mpf(value)
+                    answer = float(number * mp.erfc(-number / mp.sqrt(2)) / 2)
+                result.flat[index] = answer
+        elif case["family"] == "softmax":
+            length = case["constexprs"]["LENGTH"]
+            for row, out in zip(x.reshape(-1, length), result.reshape(-1, length)):
+                values = [float(v) for v in row]
+                maximum = max(values)
+                if (
+                    any(math.isnan(v) or v == math.inf for v in values)
+                    or maximum == -math.inf
+                ):
+                    out.fill(np.nan)
+                    continue
+                terms = [mp.exp(mp.mpf(v) - maximum) for v in values]
+                total = mp.fsum(terms)
+                out[:] = [float(v / total) for v in terms]
+        else:
+            raise ValueError("high-precision oracle requires GELU or Softmax")
+    return {"Out": result}
+
+
+def _matmul_sequential(a, b):
+    """One f32 multiply and one f32 add per K, with no reassociation/FMA."""
+    result = np.zeros(a.shape[:-1] + (b.shape[-1],), dtype=np.float32)
+    for k in range(a.shape[-1]):
+        product = np.multiply(a[..., :, k, None], b[..., k, None, :], dtype=np.float32)
+        np.add(result, product, out=result)
+    return result
+
+
+def _matmul_blocked_sequential(a, b, block):
+    """Original floating dot expansion: zero product, then add per K block.
+
+    Retain the entire declared block, including positive-zero padding in the
+    last one. Each multiply and addition rounds independently to f32; neither
+    the block reductions nor the additions between blocks are reassociated.
+    """
+    if block <= 0:
+        raise ValueError("matmul reduction block must be positive")
+    result = np.zeros(a.shape[:-1] + (b.shape[-1],), dtype=np.float32)
+    for start in range(0, a.shape[-1], block):
+        valid = min(block, a.shape[-1] - start)
+        left = np.zeros(a.shape[:-1] + (block,), dtype=np.float32)
+        right = np.zeros(b.shape[:-2] + (block, b.shape[-1]), dtype=np.float32)
+        left[..., :valid] = a[..., start : start + valid]
+        right[..., :valid, :] = b[..., start : start + valid, :]
+        product = _matmul_sequential(left, right)
+        np.add(result, product, out=result)
+    return result
+
+
+def reference(case, arrays):
+    """Return references only for the writable arguments of this case."""
+    family = case["family"]
+    if family in ("gemm_i8", "matmul_i8"):
+        a, b, c = (arrays[name] for name in ("A", "B", "C"))
+        return {
+            "C": (
+                (c.astype(np.int64) if family == "gemm_i8" else 0)
+                + a.astype(np.int64) @ b.astype(np.int64).T
+            ).astype("<i4")
+        }
+    if family == "linear":
+        product = _matmul_sequential(arrays["A"], arrays["B"].T)
+        return {"C": np.add(product, arrays["C"], dtype=np.float32)}
+    if family == "add":
+        return {"Out": np.add(arrays["X"], arrays["Y"], dtype=np.float32)}
+    if family == "bias_add":
+        return {"Out": np.add(arrays["X"], arrays["Bias"], dtype=np.float32)}
+    if family == "layernorm":
+        _rows, width = case["shape"]
+        block = case["constexprs"]["BLOCK"]
+        padded = np.pad(arrays["X"], ((0, 0), (0, block - width)))
+        mean = np.divide(
+            np.cumsum(padded, axis=1, dtype=np.float32)[:, -1],
+            np.float32(width),
+            dtype=np.float32,
+        )
+        centered = np.subtract(padded, mean[:, None], dtype=np.float32)
+        centered[:, width:] = np.float32(0)
+        squared = np.multiply(centered, centered, dtype=np.float32)
+        variance = np.divide(
+            np.cumsum(squared, axis=1, dtype=np.float32)[:, -1],
+            np.float32(width),
+            dtype=np.float32,
+        )
+        shifted = np.add(
+            variance, np.float32(case["constexprs"]["EPS"]), dtype=np.float32
+        )
+        inverse = np.divide(
+            np.float32(1), np.sqrt(shifted, dtype=np.float32), dtype=np.float32
+        )
+        normalized = np.multiply(
+            centered[:, :width], inverse[:, None], dtype=np.float32
+        )
+        scaled = np.multiply(normalized, arrays["Weight"], dtype=np.float32)
+        return {"Out": np.add(scaled, arrays["Bias"], dtype=np.float32)}
+    if family == "quantize_transpose":
+        q, scale = quantize_rows(arrays["X"].T)
+        return {"Q": q, "Scale": scale}
+    if family == "head_layout":
+        result = arrays["Out"].copy()
+        result[:, :38809] = arrays["X"][:, :38809]
+        return {"Out": result}
+    if family == "per_token_quantization":
+        x = arrays["X"]
+        maximum = np.max(np.abs(x), axis=-1)
+        scale = np.where(
+            maximum == 0,
+            np.float32(1),
+            np.divide(maximum, np.float32(127), dtype=np.float32),
+        ).astype(np.float32)
+        value = np.divide(x, scale[:, None], dtype=np.float32)
+        saturated = np.clip(value, np.float32(-127), np.float32(127))
+        base = saturated.astype(np.int32)
+        fraction = np.subtract(saturated, base.astype(np.float32), dtype=np.float32)
+        adjustment = np.where(
+            np.abs(fraction) >= np.float32(0.5),
+            np.where(saturated >= 0, 1, -1),
+            0,
+        )
+        q = (base + adjustment).astype(np.int8)
+        return {"Q": q, "Scale": scale}
+    if family == "dequantization":
+        first = np.multiply(
+            arrays["X"].astype(np.float32),
+            arrays["Row"][:, None],
+            dtype=np.float32,
+        )
+        second = np.multiply(first, arrays["Column"][None, :], dtype=np.float32)
+        return {
+            "Out": np.multiply(
+                second, np.float32(case.get("output_factor", 1)), dtype=np.float32
+            )
+        }
+    if family == "gelu":
+        x = arrays["X"]
+        erf_input = np.multiply(x, np.float32(0.7071067811865475), dtype=np.float32)
+        erf = np.fromiter(
+            (math.erf(float(v)) for v in erf_input.flat),
+            dtype=np.float32,
+            count=x.size,
+        ).reshape(x.shape)
+        factor = np.add(np.float32(1), erf, dtype=np.float32)
+        half_x = np.multiply(np.float32(0.5), x, dtype=np.float32)
+        return {"Out": np.multiply(half_x, factor, dtype=np.float32)}
+    if family == "softmax":
+        length, block = (
+            case["constexprs"]["LENGTH"],
+            case["constexprs"]["BLOCK"],
+        )
+        x = arrays["X"].reshape(-1, length)
+        padded = np.pad(x, ((0, 0), (0, block - length)), constant_values=-np.inf)
+        centered = np.subtract(
+            padded, np.max(padded, axis=1)[:, None], dtype=np.float32
+        )
+        exponential = np.exp(centered, dtype=np.float32)
+        total = np.cumsum(exponential, axis=1, dtype=np.float32)[:, -1]
+        result = np.divide(exponential[:, :length], total[:, None], dtype=np.float32)
+        return {"Out": result.reshape(arrays["Out"].shape)}
+    raise ValueError("no complete independent oracle for " + family)
+
+
+def compare(case, actual, expected):
+    """Exact arithmetic cases compare bits; nonlinear f32 keeps tolerances."""
+    max_abs = 0.0
+    tolerant = case["family"] in ("layernorm", "gelu", "softmax")
+    for name, want in expected.items():
+        got = actual[name]
+        if got.shape != want.shape or got.dtype != want.dtype:
+            raise AssertionError(f"{name}: output shape/dtype differs")
+        finite = np.isfinite(got) & np.isfinite(want)
+        delta = np.abs(got[finite].astype(np.float64) - want[finite].astype(np.float64))
+        max_abs = max(max_abs, float(np.max(delta, initial=0)))
+        if tolerant:
+            np.testing.assert_allclose(
+                got,
+                want,
+                rtol=NONLINEAR_TOLERANCE,
+                atol=NONLINEAR_TOLERANCE,
+                err_msg=name,
+            )
+            if case["family"] in ("gelu", "softmax"):
+                zeros = (want == 0) & (got == 0)
+                np.testing.assert_array_equal(
+                    np.signbit(got[zeros]),
+                    np.signbit(want[zeros]),
+                    err_msg=name + ": signed zero differs",
+                )
+        else:
+            np.testing.assert_array_equal(
+                got.view(np.uint8),
+                want.view(np.uint8),
+                err_msg=f"{name}: bitwise comparison",
+            )
+    return max_abs
+
+
+def nonlinear_error_metrics(actual, expected):
+    """Apply the existing 2e-5 tolerance also to an independent real reference."""
+    got, want = np.asarray(actual, np.float64), np.asarray(expected, np.float64)
+    np.testing.assert_allclose(
+        got,
+        want,
+        rtol=NONLINEAR_TOLERANCE,
+        atol=NONLINEAR_TOLERANCE,
+        err_msg="independent mathematical reference",
+    )
+    finite = np.isfinite(got) & np.isfinite(want)
+    absolute = np.abs(got[finite] - want[finite])
+    budget = NONLINEAR_TOLERANCE * (1 + np.abs(want[finite]))
+    return {
+        "reference": "independent binary64 math.erfc/exp and math.fsum; sampled against 80-digit mpmath separately",
+        "rtol": NONLINEAR_TOLERANCE,
+        "atol": NONLINEAR_TOLERANCE,
+        "max_abs": float(np.max(absolute, initial=0)),
+        "max_tolerance_fraction": float(np.max(absolute / budget, initial=0)),
+        "finite_outputs": int(np.count_nonzero(finite)),
+        "nan_outputs": int(np.count_nonzero(np.isnan(got))),
+        "positive_infinity_outputs": int(np.count_nonzero(np.isposinf(got))),
+        "negative_infinity_outputs": int(np.count_nonzero(np.isneginf(got))),
+    }
+
+
+_base_output_names = output_names
+_base_make_inputs = make_inputs
+_base_reference = reference
+_base_compare = compare
+CUSTOM = {
+    "embedding",
+    "split_heads",
+    "merge_heads",
+    "head_bias_add",
+    "relative_shift",
+    "segment_gather",
+    "attention_score",
+}
+
+
+def output_names(case):
+    return ("Out",) if case["family"] in CUSTOM else _base_output_names(case)
+
+
+def make_inputs(case, shapes, stress=False):
+    arrays = _base_make_inputs(case, shapes, stress)
+    family = case["family"]
+    if family == "embedding":
+        arrays["Ids"][:] = (np.arange(128) * 251) % 32000
+    if family == "segment_gather":
+        ids = np.where(np.arange(128) < 64, 0, 1)
+        ids[-1] = 2
+        arrays["Segments"][0] = ids[:, None] == ids[None, :]
+        arrays["Segments"][1] = ids[:, None] != ids[None, :]
+    if family == "attention_score":
+        arrays["Mask"][:] = (np.arange(128)[None, :] >= 117) & ~np.eye(128, dtype=bool)
+    return arrays
+
+
+def reference(case, arrays):
+    f = case["family"]
+    if f == "embedding":
+        ids = arrays["Ids"]
+        out = np.zeros((128, 768), np.float32)
+        valid = (ids >= 0) & (ids < 32000)
+        out[valid] = arrays["Table"][ids[valid]]
+        return {"Out": out}
+    if f == "split_heads":
+        n = case["constexprs"]["LENGTH"]
+        return {"Out": arrays["X"].reshape(n, 12, 64).transpose(1, 0, 2).copy()}
+    if f == "merge_heads":
+        return {"Out": arrays["X"].transpose(1, 0, 2).reshape(128, 768).copy()}
+    if f == "head_bias_add":
+        return {
+            "Out": np.add(arrays["X"], arrays["Bias"][:, None, :], dtype=np.float32)
+        }
+    if f == "relative_shift":
+        # The reshape/drop/reshape definition is independent of the kernel index formula.
+        x = arrays["X"].reshape(12, 256, 128)[:, 1:, :]
+        return {"Out": x.reshape(12, 128, 255)[:, :, :128].copy()}
+    if f == "segment_gather":
+        different = arrays["Segments"][1].astype(bool)
+        return {
+            "Out": np.take_along_axis(
+                arrays["X"],
+                np.broadcast_to(different, (12, 128, 128)).astype(np.int64),
+                axis=2,
+            )
+        }
+    if f == "attention_score":
+        x = np.add(
+            np.add(arrays["Content"], arrays["Position"], dtype=np.float32),
+            arrays["Segment"],
+            dtype=np.float32,
+        )
+        x = np.multiply(x, np.float32(0.125), dtype=np.float32)
+        blocked = arrays["Mask"] != 0
+        return {
+            "Out": np.subtract(
+                x, np.where(blocked, np.float32(1e30), np.float32(0)), dtype=np.float32
+            )
+        }
+    return _base_reference(case, arrays)
+
+
+def compare(case, actual, expected):
+    if case["family"] not in CUSTOM:
+        return _base_compare(case, actual, expected)
+    for name, want in expected.items():
+        np.testing.assert_allclose(actual[name], want, atol=2e-6, rtol=2e-6)
+    return max(
+        float(np.max(np.abs(actual[name].astype(np.float64) - want.astype(np.float64))))
+        for name, want in expected.items()
+    )

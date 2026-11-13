@@ -18,3 +18,7 @@ dist/
 *.whl
 __pycache__/
 wheelhouse/
+
+# Local agent skills, credentials, and connection state.
+/.agent/
+/ModelZoo/

@@ -30,9 +30,9 @@ jobs:
             target_arch: riscv64
             runner: [ubuntu-24.04-riscv, rva23, xlarge]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
 
@@ -44,6 +44,7 @@ jobs:
       - name: Build Triton with the triton-shared backend
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: 0
         run: |
           # Triton defaults to 2 * CPU count, which can exhaust memory on the
           # RISC-V runner during the C++ build.
@@ -55,6 +56,10 @@ jobs:
               echo "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}"
             } >> "$GITHUB_ENV"
           fi
+          # Anonymous git from these runners gets a 401, and triton's cmake clones
+          # googletest: authenticate every clone the way actions/checkout does.
+          source scripts/_git-auth.sh
+
           make all
 
       - name: Install test dependencies (riscv64)
