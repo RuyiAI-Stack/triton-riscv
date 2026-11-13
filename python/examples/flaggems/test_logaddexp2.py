@@ -55,6 +55,13 @@ def test_logaddexp2_out():
     torch.testing.assert_close(out, ref, rtol=1e-4, atol=1e-4)
 
 
+def test_logaddexp2_out_small_raises():
+    x = torch.randn(8)
+    y = torch.randn(8)
+    with pytest.raises(ValueError):
+        logaddexp2_out(x, y, out=torch.empty(2))
+
+
 @pytest.mark.parametrize(
     "shape_a, shape_b",
     [
