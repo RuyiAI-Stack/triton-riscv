@@ -893,7 +893,7 @@ class CPUDriver(DriverBase):
         # active driver when no GPU backend is present. That keeps
         # `triton.runtime.driver` selection unambiguous on GPU machines while
         # still making ``pip install triton-riscv`` usable on CPU-only hosts.
-        if os.environ.get("TRITON_DEFAULT_BACKEND") == "triton_shared":
+        if os.environ.get("TRITON_DEFAULT_BACKEND") == "riscv":
             return True
         try:
             import torch

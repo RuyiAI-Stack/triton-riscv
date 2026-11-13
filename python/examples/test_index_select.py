@@ -1,10 +1,9 @@
-import pytest
 import torch
 
 import triton
 import triton.language as tl
 
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 
 @triton.jit
@@ -136,7 +135,7 @@ def index_select_row_with_double_mod(
     o_stride_m = output_tensor.stride(0)
     o_stride_n = output_tensor.stride(1)
 
-    a = index_select_row_with_double_mod_kernel[1,](
+    index_select_row_with_double_mod_kernel[1,](
         input_tensor,
         output_tensor,
         indices,
@@ -269,7 +268,7 @@ def test_index_select_row_with_double_mod2(device):
     )
     # Adjust indices with modulo
     adjusted_indices = indices + (
-        (torch.arange(0, len(indices), device=device) % mod_offset + mod_offset_2)
+        torch.arange(0, len(indices), device=device) % mod_offset + mod_offset_2
     )
     output_ref = torch.index_select(input_tensor, dim, adjusted_indices)
 

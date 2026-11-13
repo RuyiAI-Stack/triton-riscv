@@ -3,8 +3,8 @@ import torch
 import triton
 import triton.language as tl
 
-from triton.backends.triton_shared.driver import CPUDriver
-from triton.backends.triton_shared.compiler import _get_triton_shared_opt_path
+from triton.backends.riscv.driver import CPUDriver
+from triton.backends.riscv.compiler import _get_triton_shared_opt_path
 
 import os
 from pathlib import Path
@@ -73,9 +73,9 @@ def test_unstructured_mask_2d(device):
         input, output, mask_m.to(torch.int8), mask_n.to(torch.int8), m, n, M, N
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 2
-    ), "Expected exactly two calls to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 2, (
+        "Expected exactly two calls to tts.make_gather_scatter_tptr"
+    )
 
     v = torch.full_like(input, -2)
     v[mask_m, :] = input[mask_m, :]
@@ -179,9 +179,9 @@ def test_unstructured_mask_3d(device):
         N,
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 2
-    ), "Expected exactly two calls to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 2, (
+        "Expected exactly two calls to tts.make_gather_scatter_tptr"
+    )
 
     v = torch.full_like(input, -2)
     v[:, mask_m, :] = input[:, mask_m, :]
@@ -228,7 +228,7 @@ def test_unstructured_mask_2d_non_continuous_load(device):
         triton.runtime.driver.set_active(CPUDriver())
     m = 6
     n = 16
-    M = triton.next_power_of_2(m)
+    triton.next_power_of_2(m)
     N = triton.next_power_of_2(n)
     input = torch.arange(2, 2 + (m * n), device=device, dtype=torch.float32).reshape(
         m, n
@@ -240,16 +240,16 @@ def test_unstructured_mask_2d_non_continuous_load(device):
     stride_m = input.stride(0)
     stride_n = input.stride(1)
     I_M = triton.next_power_of_2(len(index_m))
-    I_N = triton.next_power_of_2(len(index_n))
+    triton.next_power_of_2(len(index_n))
 
     output = torch.full((len(index_m), n), -1, device=device, dtype=torch.float32)
     res = unstructured_mask_2d_non_continuous_load_kernel[1,](
         input, output, index_m, len(index_m), I_M, N, m, n, stride_m, stride_n
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 1
-    ), "Expected exactly one call to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 1, (
+        "Expected exactly one call to tts.make_gather_scatter_tptr"
+    )
 
     expected_output = torch.full(
         (len(index_m), n), -2, device=device, dtype=torch.float32
@@ -294,7 +294,7 @@ def test_unstructured_mask_2d_non_continuous_store(device):
     m = 6
     n = 16
     M = triton.next_power_of_2(m)
-    N = triton.next_power_of_2(n)
+    triton.next_power_of_2(n)
     input = torch.arange(2, 2 + (m * n), device=device, dtype=torch.float32).reshape(
         m, n
     )
@@ -313,9 +313,9 @@ def test_unstructured_mask_2d_non_continuous_store(device):
         input, output, index_n, len(index_n), I_N, M, m, n, stride_m, stride_n
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 1
-    ), "Expected exactly one call to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 1, (
+        "Expected exactly one call to tts.make_gather_scatter_tptr"
+    )
 
     expected_output = torch.full((m, n), -1, device=device, dtype=torch.float32)
     mask_n = index_n < n
@@ -392,7 +392,7 @@ def test_unstructured_mask_3d_non_continuous_load(device):
     m = 6
     n = 16
     B = triton.next_power_of_2(b)
-    M = triton.next_power_of_2(m)
+    triton.next_power_of_2(m)
     N = triton.next_power_of_2(n)
     input = torch.arange(
         2, 2 + (b * m * n), device=device, dtype=torch.float32
@@ -406,7 +406,7 @@ def test_unstructured_mask_3d_non_continuous_load(device):
     stride_n = input.stride(2)
 
     I_M = triton.next_power_of_2(len(index_m))
-    I_N = triton.next_power_of_2(len(index_n))
+    triton.next_power_of_2(len(index_n))
 
     output = torch.full((b, len(index_m), n), -1, device=device, dtype=torch.float32)
 
@@ -433,9 +433,9 @@ def test_unstructured_mask_3d_non_continuous_load(device):
         o_stride_n,
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 1
-    ), "Expected exactly one call to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 1, (
+        "Expected exactly one call to tts.make_gather_scatter_tptr"
+    )
 
     expected_output = torch.full(
         (b, len(index_m), n), -2, device=device, dtype=torch.float32
@@ -511,7 +511,7 @@ def test_unstructured_mask_3d_non_continuous_store(device):
     n = 16
     B = triton.next_power_of_2(b)
     M = triton.next_power_of_2(m)
-    N = triton.next_power_of_2(n)
+    triton.next_power_of_2(n)
     input = torch.arange(
         2, 2 + (b * m * n), device=device, dtype=torch.float32
     ).reshape(b, m, n)
@@ -543,9 +543,9 @@ def test_unstructured_mask_3d_non_continuous_store(device):
         stride_n,
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 1
-    ), "Expected exactly one call to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 1, (
+        "Expected exactly one call to tts.make_gather_scatter_tptr"
+    )
 
     expected_output = torch.full((b, m, n), -1, device=device, dtype=torch.float32)
     mask_n = index_n < n
@@ -640,9 +640,9 @@ def test_unstructured_mask_and_structured_mask(device):
         input, output, m, n, stride_pid, stride_m, stride_n, M, N
     )
     tts_code = run_triton_to_structured(res.asm["ttir"])
-    assert (
-        tts_code.count("tts.make_gather_scatter_tptr") == 2
-    ), "Expected exactly two calls to tts.make_gather_scatter_tptr"
+    assert tts_code.count("tts.make_gather_scatter_tptr") == 2, (
+        "Expected exactly two calls to tts.make_gather_scatter_tptr"
+    )
 
     expected_output = unstructured_mask_and_structured_mask_torch(
         input, n_pids, m, n, M, N

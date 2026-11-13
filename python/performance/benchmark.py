@@ -6,7 +6,7 @@ import numpy as np
 from functools import wraps
 from pathlib import Path
 import triton
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 _PRINTED_TABLE_HEADER = False
