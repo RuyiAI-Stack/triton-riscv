@@ -777,7 +777,9 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 toolchain.llc_command(buddy_llc_path, src_path, dst_path)
             )
         else:
-            llc_path = _get_llvm_bin_path("llc")
+            # llc and buddy-llc are the same binary: buddy-mlir ships a copy of the
+            # llc from its own LLVM fork, which carries the SpacemiT IME extension.
+            llc_path = _get_buddy_llc_path()
             llc_args = [
                 llc_path,
                 src_path,
