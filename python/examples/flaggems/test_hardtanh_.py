@@ -1,12 +1,22 @@
+import platform
+
 import pytest
 import torch
 
 from .hardtanh_ import hardtanh_
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason="backend: bfloat16 tl.maximum/minimum miscompile (RuyiAI-Stack/triton-riscv#118)",
-)
+# The defect is an x86-host launcher ABI issue (the __truncsfbf2
+# call-site register category); the riscv64 backend lowers bf16
+# correctly, so the pin only applies where the defect reproduces.
+if platform.machine() in ("x86_64", "AMD64"):
+    BF16_XFAIL = pytest.mark.xfail(
+        strict=True,
+        reason="backend: bf16 maximum promotes through the broken fp32-to-bf16 trunc (RuyiAI-Stack/triton-riscv#114)",
+    )
+else:
+
+    def BF16_XFAIL(func):  # riscv64: the bare test must pass
+        return func
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
