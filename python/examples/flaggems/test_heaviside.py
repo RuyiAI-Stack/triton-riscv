@@ -63,7 +63,7 @@ def test_heaviside_broadcast(shape_a, shape_b):
 
 
 def test_heaviside_bf16():
-    # tl.where miscompiles on bf16 (issue #119); the wrapper falls back to
+    # bf16 promotes through the broken fp32->bf16 trunc (issue #114); the wrapper falls back to
     # torch.heaviside, so bf16 must match torch exactly.
     torch.manual_seed(0)
     x = torch.randn(128, device="cpu", dtype=torch.bfloat16)
