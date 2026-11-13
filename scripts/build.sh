@@ -64,7 +64,7 @@ ln -sfn ${TRITON_DIR}/build/cmake.linux-*-cpython-${_python_tag}/third_party/tri
 unset _python_tag
 
 # The LLVM and buddy tools the backend shells out to, so the wheel can carry them.
-for tool in opt llc llvm-objdump llvm-readobj; do
+for tool in opt llvm-objdump llvm-readobj; do
     ln -sfn "${LLVM_SYSPATH}/bin/${tool}" "${ROOT_DIR}/backend/bin/${tool}"
 done
 buddy_bin="${BUDDY_MLIR_BINARY_DIR:-${ROOT_DIR}/.cache/buddy/bin}"
