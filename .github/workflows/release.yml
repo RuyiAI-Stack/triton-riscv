@@ -1,6 +1,14 @@
 name: Release Wheels
 
 on:
+  # A pull request builds the wheel to prove it still works, and publishes nothing;
+  # the three bugs that broke the nightly were all only visible at release time.
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "backend/**"
+      - "*-hash.txt"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
       bump:
@@ -94,7 +102,7 @@ jobs:
       # sees a release without assets.
       - name: Create or update draft release
         id: create_release
-        if: ${{ steps.vars.outputs.should_release == 'true' }}
+        if: ${{ github.event_name != 'pull_request' && steps.vars.outputs.should_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.tag_name }}
@@ -174,6 +182,7 @@ jobs:
           ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
 
       - name: Upload release assets
+        if: ${{ github.event_name != 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.prepare_release.outputs.tag_name }}
@@ -195,6 +204,7 @@ jobs:
       # Skipped until the secrets exist, and non-fatal for now so a broken index
       # cannot block a release: the GitHub release stays the primary channel.
       - name: Publish the wheels to the package index
+        if: ${{ github.event_name != 'pull_request' }}
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -213,7 +223,7 @@ jobs:
 
   publish_release:
     needs: [prepare_release, wheel]
-    if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
+    if: ${{ github.event_name != 'pull_request' && needs.prepare_release.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Publish the release
