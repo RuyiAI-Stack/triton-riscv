@@ -56,7 +56,7 @@ def heaviside_(x: torch.Tensor, values):
     if x.dtype == torch.bfloat16 or (
         isinstance(values, torch.Tensor) and values.dtype == torch.bfloat16
     ):
-        # tl.where miscompiles on bf16 (issue #119); the torch op keeps
+        # bf16 promotes through the broken fp32->bf16 trunc (issue #114); the torch op keeps
         # the in-place identity contract.
         if not isinstance(values, torch.Tensor):
             values = torch.tensor(values, dtype=x.dtype)
