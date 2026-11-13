@@ -35,13 +35,16 @@ def addcmul(inp, tensor1, tensor2, *, value=1.0):
     out = torch.empty_like(c_inp)
 
     n_elements = c_inp.numel()
+    if n_elements == 0:
+        return out
+
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     addcmul_kernel[grid](
         c_inp, c_t1, c_t2, out, n_elements, value, BLOCK_SIZE=BLOCK_SIZE
     )
-    return out.view_as(inp)
+    return out
 
 
 def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
@@ -50,14 +53,22 @@ def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
     c_t1 = b_t1.contiguous()
     c_t2 = b_t2.contiguous()
 
+    if tuple(out.shape) != tuple(c_inp.shape):
+        out.resize_(c_inp.shape)
+
+    result = out
     if not out.is_contiguous():
-        out = out.contiguous()
+        result = torch.empty(c_inp.shape, dtype=out.dtype, device=out.device)
 
     n_elements = c_inp.numel()
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    if n_elements != 0:
+        BLOCK_SIZE = 1024
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
-    addcmul_kernel[grid](
-        c_inp, c_t1, c_t2, out, n_elements, value, BLOCK_SIZE=BLOCK_SIZE
-    )
+        addcmul_kernel[grid](
+            c_inp, c_t1, c_t2, result, n_elements, value, BLOCK_SIZE=BLOCK_SIZE
+        )
+
+    if result is not out:
+        out.copy_(result)
     return out
