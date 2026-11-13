@@ -156,6 +156,10 @@ rm -rf "${CONTAINER_TRITON_DIR}/build"
 # so strip through the staged symlink before packaging.
 strip --strip-all "${CONTAINER_PLUGIN_DIR}/backend/bin/triton-shared-opt" 2>/dev/null || true
 
+# Triton builds with -O2 -g, so libtriton.so lands at ~455 MB. CMake's Release
+# type would drop the debug info but never strips, so strip here either way.
+strip --strip-all "${CONTAINER_TRITON_DIR}/python/triton/_C/libtriton.so" 2>/dev/null || true
+
 # The wheel cannot hold symlinks, so materialise the LLVM tools and strip them.
 for tool in opt buddy-llc llvm-objdump llvm-readobj buddy-opt buddy-translate; do
     if [ -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" ]; then
