@@ -222,4 +222,4 @@ def test_attention_flash_kernel_emits_riscv_object(
     assert re.search(r"\b(?:vfmul\.vv|fmul\.s)\b", asm)
     assert re.search(r"\b(?:vfredmax\.vs|fmax\.s)\b", asm)
     assert re.search(r"\b(?:vfredosum\.vs|fadd\.s)\b", asm)
-    assert re.search(r"\bfdiv\.s\b", asm)
+    assert re.search(r"\b(?:vfdiv\.v[vf]|fdiv\.s)\b", asm)
