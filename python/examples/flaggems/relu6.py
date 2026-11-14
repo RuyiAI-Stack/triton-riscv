@@ -17,6 +17,8 @@ def relu6_kernel(
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.maximum(x, 0)
     y = tl.minimum(y, 6)
+    # PyTorch's clamp propagates NaN while tl.maximum/tl.minimum drop it.
+    y = tl.where(x != x, x, y)
     tl.store(out_ptr + offsets, y, mask=mask)
 
 
