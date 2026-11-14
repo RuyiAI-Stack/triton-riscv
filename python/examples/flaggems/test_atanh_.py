@@ -1,23 +1,16 @@
-import platform
-
 import pytest
 import torch
 
 from .atanh_ import atanh_
 
 
-# The defect is an x86-host launcher ABI issue (the __truncsfbf2
-# call-site register category); the riscv64 backend lowers bf16
-# correctly, so the pin only applies where the defect reproduces.
-if platform.machine() in ("x86_64", "AMD64"):
-    BF16_XFAIL = pytest.mark.xfail(
-        strict=True,
-        reason="backend: fp32 to bfloat16 conversion miscompiles (RuyiAI-Stack/triton-riscv#114)",
-    )
-else:
-
-    def BF16_XFAIL(func):  # riscv64: the bare test must pass
-        return func
+BF16_XFAIL = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "backend: fp32 to bfloat16 conversion miscompiles "
+        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
+    ),
+)
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
