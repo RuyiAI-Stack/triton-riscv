@@ -1,4 +1,6 @@
+import platform
 import subprocess
+from pathlib import Path
 
 import pytest
 import torch
@@ -112,6 +114,24 @@ def dump_relocations(obj_bytes, tmp_path, name):
     )
 
 
+def _host_lowers_bf16_natively():
+    # x86-64 hosts with avx512bf16 (e.g. GitHub's Sapphire Rapids runners)
+    # lower bf16 conversions to native instructions in llc, so the launcher
+    # helper never appears in the object. Everywhere else the conversion
+    # must go through the libcall for the launcher ABI to be exercised.
+    if platform.machine() not in ("x86_64", "AMD64"):
+        return False
+    try:
+        cpuinfo = Path("/proc/cpuinfo").read_text()
+    except OSError:
+        return False
+    return "avx512_bf16" in cpuinfo
+
+
+@pytest.mark.skipif(
+    _host_lowers_bf16_natively(),
+    reason="host lowers bf16 natively (avx512bf16); the launcher libcall is not used",
+)
 def test_host_target_fp32_to_bf16_uses_libcall(device, tmp_path):
     # The numeric tests above only exercise the launcher helper if llc
     # actually emits the libcall for the host target. On riscv64 the bare
