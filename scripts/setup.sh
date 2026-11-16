@@ -20,6 +20,16 @@ BUDDY_RELEASE_VERSION="${BUDDY_RELEASE_TAG#release/v}"
 BUDDY_RELEASE_VERSION="${BUDDY_RELEASE_VERSION#nightly/v}"
 BUDDY_RELEASE_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${BUDDY_RELEASE_TAG}"
 
+# The LLVM tarball is pinned separately: Triton only builds against an LLVM whose
+# API matches its own source, while the tools are separate processes that
+# exchange textual IR, so they can follow the newest buddy release.
+if [ -f "${ROOT_DIR}/llvm-hash.txt" ]; then
+    LLVM_RELEASE_TAG="$(<"${ROOT_DIR}/llvm-hash.txt")"
+else
+    LLVM_RELEASE_TAG="${BUDDY_RELEASE_TAG}"
+fi
+LLVM_RELEASE_URL="https://github.com/buddy-compiler/buddy-mlir/releases/download/${LLVM_RELEASE_TAG}"
+
 case "$(uname -m)" in
     x86_64|amd64)
         BUDDY_PLATFORM="manylinux_2_28_x86_64"
@@ -55,7 +65,7 @@ download_release() {
 # Triton links the NVPTX/AMDGPU codegen libraries and lld unconditionally, and
 # the buddy-mlir release provides them.
 download_release llvm \
-    "${BUDDY_RELEASE_URL}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
+    "${LLVM_RELEASE_URL}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
     "${LLVM_SYSPATH}"
 download_release buddy \
     "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
