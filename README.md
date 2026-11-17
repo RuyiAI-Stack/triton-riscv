@@ -89,7 +89,7 @@ python gemm.py          # ok: True
 #### RVV
 
 The vector extension is on by default -- `+v` is in the backend's `llc` feature string
-(`+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb`; `TRITON_RISCV_LLC_FEATURES` overrides it) -- so
+(`+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb,+zvfbfmin`; `TRITON_RISCV_LLC_FEATURES` overrides it) -- so
 the GEMM above already comes out vectorized. To see it, ask for the RISC-V target explicitly
 and count the instructions in the object:
 

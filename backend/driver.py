@@ -233,19 +233,36 @@ def _generate_launcher(constants, signature, kernel_name):
 #include "ExecutionEngine/CRunnerUtils.h"
 #include "ExecutionEngine/CRunnerUtils.cpp"
 
-// RISC-V llc without +zfbfmin lowers f32<->bf16 to compiler-rt/libgcc
-// libcalls (__truncsfbf2 / __extendbfsf2). Ubuntu RISC-V libgcc often does
-// not export them, so define the helpers in the launcher .so.
-extern "C" uint16_t __truncsfbf2(float value) {{
+// llc lowers scalar f32<->bf16 conversions to compiler-rt/libgcc libcalls
+// (__truncsfbf2 / __extendbfsf2) on every target without native bf16
+// support (x86-64 without avx512bf16, riscv64 without zfbfmin/zvfbfmin).
+// Ubuntu libgcc often does not export them, so define the helpers in the
+// launcher .so.
+//
+// The call sites llc emits pass the argument and read the result as bfloat
+// in the floating-point registers (xmm0 on x86-64, fa0 on riscv64), taking
+// the value from the low 16 bits. An integer prototype mismatches that
+// register class: the helper writes eax/a0 while the caller reads xmm0/fa0
+// and gets whatever the last FP operation left behind
+// (RuyiAI-Stack/triton-riscv#114). Use float prototypes so the helpers
+// traffic in the same register class, carrying the bf16 bits in the low 16
+// bits of the float. __bf16 itself is not an option here: the launcher is
+// built with g++, and g++ 13 (Ubuntu 24.04) has no __bf16 type on riscv64.
+extern "C" float __truncsfbf2(float value) {{
   uint32_t bits;
   memcpy(&bits, &value, sizeof(bits));
   uint32_t lsb = (bits >> 16) & 1u;
   bits += 0x7fffu + lsb;
-  return (uint16_t)(bits >> 16);
+  uint32_t carried = bits >> 16;
+  float out;
+  memcpy(&out, &carried, sizeof(out));
+  return out;
 }}
 
-extern "C" float __extendbfsf2(uint16_t value) {{
-  uint32_t bits = ((uint32_t)value) << 16;
+extern "C" float __extendbfsf2(float value) {{
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  bits = (bits & 0xffffu) << 16;
   float out;
   memcpy(&out, &bits, sizeof(out));
   return out;

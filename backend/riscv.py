@@ -13,7 +13,7 @@ from typing import Iterable, Sequence
 DEFAULT_TRIPLE = "riscv64-unknown-linux-gnu"
 DEFAULT_MARCH = "rv64gcv_zfh_zvfh_zba_zbb"
 DEFAULT_MABI = "lp64d"
-DEFAULT_LLC_FEATURES = "+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb"
+DEFAULT_LLC_FEATURES = "+m,+a,+f,+d,+c,+v,+zfh,+zvfh,+zba,+zbb,+zvfbfmin"
 
 
 def _find_tool(
