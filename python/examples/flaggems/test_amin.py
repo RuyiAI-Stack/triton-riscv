@@ -70,16 +70,6 @@ def test_amin_fp16(dtype):
     torch.testing.assert_close(tri, ref, rtol=1e-3, atol=1e-3)
 
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
-
-@BF16_XFAIL
 def test_amin_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128, dtype=torch.float32) * 5.0).to(torch.bfloat16)

@@ -3,14 +3,6 @@ import torch
 
 from .blackman_window import blackman_window
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [17, 128, 1023])
 @pytest.mark.parametrize("periodic", [True, False])
@@ -32,7 +24,6 @@ def test_blackman_window_fp64_fallback():
     torch.testing.assert_close(tri, ref)
 
 
-@BF16_XFAIL
 def test_blackman_window_bf16():
     ref = torch.blackman_window(128, dtype=torch.bfloat16)
     tri = blackman_window(128, dtype=torch.bfloat16)

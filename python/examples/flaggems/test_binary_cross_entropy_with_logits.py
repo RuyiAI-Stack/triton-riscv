@@ -3,14 +3,6 @@ import torch
 
 from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
@@ -38,7 +30,6 @@ def test_bce_with_logits_extremes():
     torch.testing.assert_close(tri, ref, rtol=1e-5, atol=1e-5)
 
 
-@BF16_XFAIL
 def test_bce_with_logits_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128) * 3.0).to(torch.bfloat16)

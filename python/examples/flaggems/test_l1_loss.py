@@ -3,14 +3,6 @@ import torch
 
 from .l1_loss import l1_loss
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
@@ -48,7 +40,6 @@ def test_l1_loss_fp64_fallback():
     torch.testing.assert_close(tri, ref)
 
 
-@BF16_XFAIL
 def test_l1_loss_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128) * 3.0).to(torch.bfloat16)

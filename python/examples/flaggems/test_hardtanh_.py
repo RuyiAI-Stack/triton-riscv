@@ -3,14 +3,6 @@ import torch
 
 from .hardtanh_ import hardtanh_
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 def test_hardtanh_inplace(size):
@@ -56,7 +48,6 @@ def test_hardtanh_inplace_custom_bounds():
     torch.testing.assert_close(tri, ref)
 
 
-@BF16_XFAIL
 def test_hardtanh_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128, device="cpu", dtype=torch.float32) * 3.0).to(torch.bfloat16)
