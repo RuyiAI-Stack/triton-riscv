@@ -4,15 +4,6 @@ import torch
 from .rad2deg import rad2deg
 
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
-
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 def test_rad2deg(size):
     torch.manual_seed(0)
@@ -38,7 +29,6 @@ def test_rad2deg_other_float(dtype):
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-3, atol=1e-3)
 
 
-@BF16_XFAIL
 def test_rad2deg_bf16():
     torch.manual_seed(0)
     x = (torch.rand(128) * 6.283185307179586 - 3.141592653589793).to(torch.bfloat16)

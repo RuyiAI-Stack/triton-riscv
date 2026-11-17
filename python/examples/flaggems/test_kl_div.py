@@ -3,14 +3,6 @@ import torch
 
 from .kl_div import kl_div
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 def _make_probs(size):
     torch.manual_seed(0)
@@ -67,7 +59,6 @@ def test_kl_div_fp64_fallback():
     torch.testing.assert_close(tri, ref)
 
 
-@BF16_XFAIL
 def test_kl_div_bf16():
     torch.manual_seed(0)
     log_p = torch.log_softmax(torch.randn(128), dim=0).to(torch.bfloat16)

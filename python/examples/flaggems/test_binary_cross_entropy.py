@@ -3,14 +3,6 @@ import torch
 
 from .binary_cross_entropy import binary_cross_entropy
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
@@ -46,7 +38,6 @@ def test_bce_fp64_fallback():
     torch.testing.assert_close(tri, ref)
 
 
-@BF16_XFAIL
 def test_bce_bf16():
     torch.manual_seed(0)
     x = torch.sigmoid(torch.randn(128)).to(torch.bfloat16)

@@ -3,14 +3,6 @@ import torch
 
 from .log_sigmoid_forward import log_sigmoid_forward
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 def test_log_sigmoid_forward(size):
@@ -47,7 +39,6 @@ def test_log_sigmoid_forward_fp64_fallback():
     torch.testing.assert_close(tri_buffer, ref_buffer)
 
 
-@BF16_XFAIL
 def test_log_sigmoid_forward_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128, device="cpu", dtype=torch.float32) * 8.0).to(torch.bfloat16)

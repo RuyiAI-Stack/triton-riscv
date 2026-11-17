@@ -3,14 +3,6 @@ import torch
 
 from .mish_ import mish_
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 def test_mish_inplace(size):
@@ -42,7 +34,6 @@ def test_mish_inplace_non_contiguous():
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4)
 
 
-@BF16_XFAIL
 def test_mish_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128, device="cpu", dtype=torch.float32) * 3.0).to(torch.bfloat16)

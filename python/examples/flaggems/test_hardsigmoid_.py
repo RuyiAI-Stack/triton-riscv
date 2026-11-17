@@ -3,14 +3,6 @@ import torch
 
 from .hardsigmoid_ import hardsigmoid_
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 def test_hardsigmoid_inplace(size):
@@ -84,7 +76,6 @@ def test_hardsigmoid_inplace_fp64_fallback():
     torch.testing.assert_close(tri, ref)
 
 
-@BF16_XFAIL
 def test_hardsigmoid_bf16():
     torch.manual_seed(0)
     x = (torch.randn(128, device="cpu", dtype=torch.float32) * 8.0).to(torch.bfloat16)

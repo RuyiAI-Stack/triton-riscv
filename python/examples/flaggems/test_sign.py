@@ -27,16 +27,6 @@ def test_sign_int32(size):
     torch.testing.assert_close(tri_out, ref_out)
 
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
-
-@BF16_XFAIL
 def test_sign_bf16():
     torch.manual_seed(0)
     x = torch.randn(128, device="cpu", dtype=torch.bfloat16)

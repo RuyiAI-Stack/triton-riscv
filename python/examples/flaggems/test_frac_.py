@@ -4,15 +4,6 @@ import torch
 from .frac_ import frac_
 
 
-BF16_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "backend: fp32 to bfloat16 conversion miscompiles "
-        "(launcher __truncsfbf2 ABI; RuyiAI-Stack/triton-riscv#114)"
-    ),
-)
-
-
 @pytest.mark.parametrize("size", [512, 1023, 1024])
 def test_frac_inplace(size):
     torch.manual_seed(0)
@@ -64,7 +55,6 @@ def test_frac_inplace_other_float(dtype):
     torch.testing.assert_close(tri, ref.t())
 
 
-@BF16_XFAIL
 def test_frac__bf16():
     torch.manual_seed(0)
     x = (torch.randn(128) * 5.0).to(torch.bfloat16)
