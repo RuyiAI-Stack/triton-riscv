@@ -9,7 +9,8 @@ lower a libdevice intrinsic, the equivalent closed form is used instead:
 * ``sinh``/``cosh``/``tanh`` -- ``exp`` forms
 * ``expm1``  -- 4-term Taylor inside |x| < 0.25, ``exp(x) - 1`` outside
 * ``log2``   -- ``log(x) / ln 2``
-* ``erfc``   -- ``1 - erf(x)``
+* ``erfc``   -- ``1 - erf(x)`` below 2.85, 12-term asymptotic series above
+  (plain ``1 - erf`` returns 0 for ``x >= 3.5`` in fp32)
 * ``lgamma`` -- Lanczos (g = 7, n = 9) with the reflection formula below 0.5
 """
 
@@ -135,7 +136,16 @@ def _unary_kernel(x_ptr, y_ptr, n, OP: tl.constexpr, BLOCK: tl.constexpr):
     elif OP == 24:
         y = _ld.erf(x)
     elif OP == 25:
-        y = 1.0 - _ld.erf(x)
+        # plain 1 - erf(x) returns exactly 0 once erf rounds to 1 (fp32,
+        # x >= ~3.5), so above the measured crossover 2.85 a 12-term
+        # asymptotic series is used; the negative side has no cancellation.
+        t = x * 0.0 + 1.0
+        s = t
+        for n in range(1, 12):
+            t = t * (-(2.0 * n - 1.0) / (2.0 * x * x))
+            s = s + t
+        asym = tl.exp(-x * x) / (x * 1.7724538509055159) * s
+        y = tl.where(x > 2.85, asym, 1.0 - _ld.erf(x))
     elif OP == 26:
         y = _ld.acos(x)
     elif OP == 27:

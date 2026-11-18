@@ -230,6 +230,52 @@ def test_addcdiv_scalarlist():
         torch.testing.assert_close(o, a + v * b / c, rtol=1e-5, atol=1e-6)
 
 
+def test_ternary_inplace_variants():
+    w = registered_wrappers()
+    xs = make(SHAPES, seed=33)
+    t1 = make(SHAPES, seed=34)
+    t2 = make(SHAPES, seed=35)
+    orig = [t.clone() for t in xs]
+
+    holders = [t.clone() for t in xs]
+    assert w["_foreach_lerp_.Scalar"](holders, t1, 0.25) is None
+    for h, o, b in zip(holders, orig, t1):
+        torch.testing.assert_close(h, o + 0.25 * (b - o), rtol=1e-5, atol=1e-6)
+
+    holders = [t.clone() for t in xs]
+    assert w["_foreach_addcmul_.Scalar"](holders, t1, t2, value=0.5) is None
+    for h, o, b, c in zip(holders, orig, t1, t2):
+        torch.testing.assert_close(h, o + 0.5 * b * c, rtol=1e-5, atol=1e-6)
+
+    holders = [t.clone() for t in xs]
+    assert w["_foreach_addcdiv_.ScalarList"](holders, t1, t2, [0.5, 2.0, 1.5]) is None
+    for h, o, b, c, v in zip(holders, orig, t1, t2, [0.5, 2.0, 1.5]):
+        torch.testing.assert_close(h, o + v * b / c, rtol=1e-5, atol=1e-6)
+
+
+def test_ternary_inplace_non_contiguous():
+    w = registered_wrappers()
+    base = torch.randn(16, 8)
+    view = base.t()
+    orig = base.t().clone()
+    b1 = torch.randn(8, 16)
+    wt = torch.randn(8, 16)
+
+    assert w["_foreach_lerp_.List"]([view], [b1], [wt]) is None
+    torch.testing.assert_close(view, orig + wt * (b1 - orig), rtol=1e-5, atol=1e-6)
+
+    orig = base.t().clone()
+    b2 = torch.rand(8, 16) + 0.5
+    assert w["_foreach_addcdiv_.Scalar"]([view], [b1], [b2], value=1.5) is None
+    torch.testing.assert_close(view, orig + 1.5 * b1 / b2, rtol=1e-5, atol=1e-6)
+
+
+def test_pow_negative_base_integer_exponent():
+    x = torch.tensor([-2.0, -3.0, 2.0, 0.5])
+    out = registered_wrappers()["_foreach_pow.Scalar"]([x.clone()], 3.0)
+    torch.testing.assert_close(out[0], torch.pow(x, 3.0), rtol=1e-6, atol=1e-7)
+
+
 @pytest.mark.parametrize(
     "call,ref",
     [

@@ -38,6 +38,18 @@ def test_foreach_max_non_contiguous():
     torch.testing.assert_close(got[0], ref[0], rtol=1e-6, atol=1e-7)
 
 
+def test_foreach_max_integer_list():
+    xs = [
+        torch.tensor([3, -7, 2], dtype=torch.int64),
+        torch.tensor([-5, -1, -9, 0], dtype=torch.int64),
+    ]
+    ref = torch._foreach_max([x.clone() for x in xs])
+    got = _foreach_max(xs)
+    assert got[0].dtype == torch.int64
+    for g, r in zip(got, ref):
+        torch.testing.assert_close(g, r, rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("ord", [0, 1, 2, 3, float("inf"), float("-inf")])
 def test_foreach_norm_orders(ord):
     xs = make_list([(128,), (1023,)], seed=1)

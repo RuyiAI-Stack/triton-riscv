@@ -47,7 +47,8 @@ def make_inputs(op, seed=0):
 @pytest.mark.parametrize("op", _UNARY_OPS)
 def test_foreach_unary_matches_torch(op):
     mod = importlib.import_module("flaggems._foreach_unary")
-    xs = make_inputs(op, seed=hash(op) % 2**31)
+    # index-based seed: stable across processes (hash() is salted per process)
+    xs = make_inputs(op, seed=_UNARY_OPS.index(op) + 1)
     rtol, atol = _TOL.get(op, (1e-5, 1e-6))
     outs = getattr(mod, f"_foreach_{op}")([t.clone() for t in xs])
     for o, x in zip(outs, xs):
@@ -72,6 +73,25 @@ def test_lgamma_reflection_band():
     x = torch.tensor([0.05, 0.1, 0.2, 0.3, 0.45, 0.49, 1.0, 1.5])
     out = mod._foreach_lgamma([x.clone()])
     torch.testing.assert_close(out[0], torch.lgamma(x), rtol=1e-3, atol=1e-4)
+
+
+# per-point rtol measured against fp64: <=1.1e-5 for |x|<=2 (1-erf branch),
+# <=6.4e-4 approaching the 2.85 seam, <=1.3e-4 above it (asymptotic branch)
+_ERFC_POINTS = [
+    (0.0, 1e-4), (0.5, 1e-4), (1.0, 1e-4), (1.5, 1e-4), (2.0, 1e-4),
+    (2.5, 2e-3), (2.8, 2e-3), (2.85, 2e-3),
+    (3.0, 1e-3), (3.5, 1e-3), (4.0, 1e-3), (5.0, 1e-3), (6.0, 1e-3), (8.0, 1e-3),
+    (-1.0, 1e-4), (-3.0, 1e-4), (-5.0, 1e-4),
+]
+
+
+def test_erfc_precision_boundary():
+    mod = importlib.import_module("flaggems._foreach_unary")
+    xs = torch.tensor([p for p, _ in _ERFC_POINTS])
+    out = mod._foreach_erfc([xs.clone()])[0]
+    ref = torch.erfc(xs.double())
+    for (point, rtol), o, r in zip(_ERFC_POINTS, out.tolist(), ref.tolist()):
+        assert abs(o - r) / r <= rtol, (point, abs(o - r) / r, rtol)
 
 
 def test_non_contiguous_inputs():
