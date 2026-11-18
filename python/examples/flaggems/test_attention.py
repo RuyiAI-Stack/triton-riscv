@@ -8,6 +8,7 @@ from .attention import (
     flash_attn_varlen_func,
     flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
 
@@ -185,17 +186,24 @@ def test_scaled_dot_product_attention_backward(batch, nheads, seqlen, headdim):
     ref_dk = k.grad.clone()
     ref_dv = v.grad.clone()
 
-    # Triton backward via ScaleDotProductAttention autograd Function
-    q2 = q.detach().clone().requires_grad_(True)
-    k2 = k.detach().clone().requires_grad_(True)
-    v2 = v.detach().clone().requires_grad_(True)
+    # Directly validate the exported backward entrypoint.
+    q2 = q.detach().clone()
+    k2 = k.detach().clone()
+    v2 = v.detach().clone()
+    tri, softmax_lse = scaled_dot_product_attention_forward(q2, k2, v2, is_causal=False)
+    tri_dq, tri_dk, tri_dv = scaled_dot_product_attention_backward(
+        grad.contiguous(),
+        q2,
+        k2,
+        v2,
+        tri.contiguous(),
+        softmax_lse,
+        is_causal=False,
+    )
 
-    tri = ScaleDotProductAttention.apply(q2, k2, v2, None, 0.0, False, None, False)
-    tri.backward(grad)
-
-    torch.testing.assert_close(q2.grad, ref_dq, rtol=1e-3, atol=1e-3)
-    torch.testing.assert_close(k2.grad, ref_dk, rtol=1e-3, atol=1e-3)
-    torch.testing.assert_close(v2.grad, ref_dv, rtol=1e-3, atol=1e-3)
+    torch.testing.assert_close(tri_dq, ref_dq, rtol=1e-3, atol=1e-3)
+    torch.testing.assert_close(tri_dk, ref_dk, rtol=1e-3, atol=1e-3)
+    torch.testing.assert_close(tri_dv, ref_dv, rtol=1e-3, atol=1e-3)
 
 
 def test_scaled_dot_product_attention_backward_cross_attention_longer_kv():
