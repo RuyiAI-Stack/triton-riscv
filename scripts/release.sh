@@ -152,7 +152,7 @@ rm -rf "${CONTAINER_TRITON_DIR}/build"
 "${CONTAINER_PLUGIN_DIR}/scripts/build.sh"
 
 # The wheel cannot hold symlinks, so materialise the LLVM tools before packaging.
-for tool in opt buddy-llc llvm-objdump llvm-readobj buddy-opt buddy-translate; do
+for tool in opt mlir-translate buddy-llc llvm-objdump llvm-readobj buddy-opt buddy-translate; do
     if [ -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" ]; then
         cp -L "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}" "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real"
         strip --strip-all "${CONTAINER_PLUGIN_DIR}/backend/bin/${tool}.real" 2>/dev/null || true
