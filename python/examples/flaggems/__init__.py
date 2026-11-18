@@ -1,3 +1,7 @@
+from .__ilshift__ import __ilshift__
+from .__irshift__ import __irshift__
+from .__rshift__ import __rshift__, __rshift___out
+from .__xor__ import xor, xor_, xor_scalar, xor_scalar_, xor_scalar_tensor
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -23,6 +27,8 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .arcsinh import arcsinh, arcsinh_out
 from .arcsinh_ import arcsinh_
+from .arctan2 import arctan2, arctan2_, arctan2_out
+from .arctan_ import arctan_
 from .arctanh_ import arctanh_
 from .argmax import argmax
 from .argmin import argmin
@@ -75,6 +81,7 @@ from .clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from .clamp_max import clamp_max, clamp_max_, clamp_max_out
 from .clip import clip, clip_
 from .col2im import col2im
 from .concatenate import concatenate
@@ -116,6 +123,7 @@ from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
+from .erfinv_ import erfinv, erfinv_, erfinv_out
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
 from .expm1 import expm1, expm1_, expm1_out
@@ -177,11 +185,14 @@ from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
+from .isposinf import isposinf, isposinf_out
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .less_equal import less_equal, less_equal_scalar
+from .less_equal_ import less_equal_, less_equal_scalar_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from .linspace import linspace
 from .log import log
@@ -341,6 +352,7 @@ from .topk import topk
 from .trace import trace
 from .tril import tril, tril_, tril_out
 from .triu import triu, triu_
+from .trunc_ import trunc, trunc_, trunc_out
 from .unfold_backward import unfold_backward
 from .uniform import uniform_
 from .unique import _unique2
@@ -376,6 +388,10 @@ from .zeros_like import zeros_like
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "__ilshift__",
+    "__irshift__",
+    "__rshift__",
+    "__rshift___out",
     "_assert_async",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
@@ -421,6 +437,10 @@ __all__ = [
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
+    "arctan2",
+    "arctan2_",
+    "arctan2_out",
+    "arctan_",
     "arctanh_",
     "argmax",
     "argmin",
@@ -466,6 +486,9 @@ __all__ = [
     "celu_",
     "clamp",
     "clamp_",
+    "clamp_max",
+    "clamp_max_",
+    "clamp_max_out",
     "clamp_min",
     "clamp_min_",
     "clamp_tensor",
@@ -517,6 +540,9 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
+    "erfinv",
+    "erfinv_",
+    "erfinv_out",
     "exp",
     "exp2",
     "exp2_",
@@ -599,6 +625,8 @@ __all__ = [
     "isnan",
     "isneginf",
     "isneginf_out",
+    "isposinf",
+    "isposinf_out",
     "kron",
     "layer_norm",
     "layer_norm_backward",
@@ -611,14 +639,18 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "less_equal",
+    "less_equal_",
+    "less_equal_scalar",
+    "less_equal_scalar_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linspace",
     "log",
-    "log1p_",
     "log10",
     "log10_",
     "log10_out",
+    "log1p_",
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
@@ -817,6 +849,9 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "trunc",
+    "trunc_",
+    "trunc_out",
     "unfold_backward",
     "uniform_",
     "unique_consecutive",
@@ -839,6 +874,11 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xor",
+    "xor_",
+    "xor_scalar",
+    "xor_scalar_",
+    "xor_scalar_tensor",
     "zero",
     "zero_",
     "zero_out",
