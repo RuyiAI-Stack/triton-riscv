@@ -2,8 +2,8 @@ import pytest
 import triton
 
 # The backend is installed by Triton's plugin support as
-# triton.backends.triton_shared.
-from triton.backends.triton_shared.driver import CPUDriver
+# triton.backends.riscv.
+from triton.backends.riscv.driver import CPUDriver
 
 triton.runtime.driver.set_active(CPUDriver())
 

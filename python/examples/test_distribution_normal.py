@@ -1,12 +1,10 @@
-import os
 from contextlib import contextmanager
-from tempfile import mkdtemp
 
 import pytest
 import torch
 import triton
 import triton.language as tl
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 BLOCK = 256
 UNROLL = 4
@@ -14,9 +12,6 @@ DEFAULT_PHILOX_SEED = 0x1234ABCD
 DEFAULT_PHILOX_OFFSET = 0
 _DEFAULT_PHILOX_GENERATOR = torch.Generator(device="cpu")
 _DEFAULT_PHILOX_GENERATOR.manual_seed(DEFAULT_PHILOX_SEED ^ DEFAULT_PHILOX_OFFSET)
-
-
-
 
 
 def _activate_cpu_driver():
@@ -117,7 +112,9 @@ def _pair_uniform_to_normal_fast(u1, u2):
 
 
 @triton.jit
-def _box_muller_kernel(u1_ptr, u2_ptr, out0_ptr, out1_ptr, n_elements, BLOCK: tl.constexpr):
+def _box_muller_kernel(
+    u1_ptr, u2_ptr, out0_ptr, out1_ptr, n_elements, BLOCK: tl.constexpr
+):
     pid = tl.program_id(0)
     offsets = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
@@ -215,7 +212,9 @@ def _launch_randn(out, *, seed=None, offset=None):
     if seed is None or offset is None:
         seed, offset = _next_default_philox_seed_offset()
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK"] * UNROLL),)
+    def grid(meta):
+        return (triton.cdiv(n_elements, meta["BLOCK"] * UNROLL),)
+
     _randn_kernel[grid](out, n_elements, seed, offset, BLOCK=BLOCK)
 
 
@@ -223,7 +222,6 @@ def normal_(x, mean=0.0, std=1.0):
     _validate_normal_destination(x)
     if std < 0:
         raise ValueError("std must be non-negative")
-
 
     if x.numel() == 0:
         return x
@@ -252,13 +250,17 @@ def test_box_muller_transform_matches_torch_formula():
 def test_box_muller_transform_rejects_invalid_domain_inputs():
     valid = torch.tensor([0.25, 0.5], dtype=torch.float32, device="cpu")
 
-    with pytest.raises(ValueError, match=r"u1 must contain only finite values in \(0, 1\]"):
+    with pytest.raises(
+        ValueError, match=r"u1 must contain only finite values in \(0, 1\]"
+    ):
         run_box_muller_transform(
             torch.tensor([0.0, 0.5], dtype=torch.float32, device="cpu"),
             valid,
         )
 
-    with pytest.raises(ValueError, match=r"u1 must contain only finite values in \(0, 1\]"):
+    with pytest.raises(
+        ValueError, match=r"u1 must contain only finite values in \(0, 1\]"
+    ):
         run_box_muller_transform(
             torch.tensor([1.25, 0.5], dtype=torch.float32, device="cpu"),
             valid,

@@ -2,7 +2,7 @@ import time
 import numpy as np
 from functools import wraps
 import triton
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 
 def select_cpu_backend():

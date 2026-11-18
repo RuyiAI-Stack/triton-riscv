@@ -6,8 +6,8 @@ import pytest
 import torch
 import triton
 import triton.language as tl
-from triton.backends.triton_shared.driver import CPUDriver
-from triton.backends.triton_shared.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
+from triton.backends.riscv.driver import CPUDriver
+from triton.backends.riscv.riscv import DEFAULT_LLC_FEATURES, DEFAULT_TRIPLE
 from test_utils import (
     get_llvm_bin_path,
     requires_rvv_execution,

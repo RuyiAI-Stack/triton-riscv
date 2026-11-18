@@ -1,10 +1,9 @@
-import pytest
 import torch
 
 import triton
 import triton.language as tl
 
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 
 @triton.jit
@@ -149,7 +148,7 @@ def test_gather_column(device):
     if device == "cpu":
         triton.runtime.driver.set_active(CPUDriver())
 
-    r = gather_column[1,](input3D, output)
+    gather_column[1,](input3D, output)
     torch.testing.assert_close(output, input)
 
 
@@ -183,7 +182,7 @@ def test_gather_column_ld_mask(device):
     if device == "cpu":
         triton.runtime.driver.set_active(CPUDriver())
 
-    r = gather_column_ld_mask[1,](input3D, output)
+    gather_column_ld_mask[1,](input3D, output)
 
     ref = input3D
     ref[1:, :, :] = 0
@@ -222,7 +221,7 @@ def test_gather_column_st_mask(device):
 
     if device == "cpu":
         triton.runtime.driver.set_active(CPUDriver())
-    r = gather_column_st_mask[1,](input3D, output)
+    gather_column_st_mask[1,](input3D, output)
     ref = input3D
     ref[1:, :, :] = -1
     ref = ref.reshape(
@@ -277,7 +276,7 @@ def test_gather_block(device):
     if device == "cpu":
         triton.runtime.driver.set_active(CPUDriver())
 
-    r = gather_block[1,](input4D, output)
+    gather_block[1,](input4D, output)
     torch.testing.assert_close(output, input)
 
 
@@ -327,7 +326,7 @@ def test_gather_block_ld_mask(device):
     if device == "cpu":
         triton.runtime.driver.set_active(CPUDriver())
 
-    r = gather_block_ld_mask[1,](input4D, output)
+    gather_block_ld_mask[1,](input4D, output)
 
     ref = input4D
     ref[:, :, :, 8:] = 0
@@ -384,7 +383,7 @@ def test_gather_block_st_mask(device):
     if device == "cpu":
         triton.runtime.driver.set_active(CPUDriver())
 
-    r = gather_block_st_mask[1,](input4D, output)
+    gather_block_st_mask[1,](input4D, output)
 
     ref = input4D
     ref[:, :, :, 8:] = -1

@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 
 import benchmark
-from triton.backends.triton_shared.driver import CPUDriver, prepare_cpu_kernel
+from triton.backends.riscv.driver import CPUDriver, prepare_cpu_kernel
 
 
 triton.runtime.driver.set_active(CPUDriver())

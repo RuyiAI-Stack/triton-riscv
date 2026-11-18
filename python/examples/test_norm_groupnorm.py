@@ -1,14 +1,10 @@
-import os
-from pathlib import Path
-from tempfile import mkdtemp
 from contextlib import contextmanager
 
-import pytest
 import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 
 def _activate_cpu_driver():
@@ -27,8 +23,6 @@ def _use_cpu_driver():
             triton.runtime.driver._active = None
         else:
             triton.runtime.driver.set_active(previous_driver)
-
-
 
 
 @triton.jit
@@ -86,7 +80,9 @@ def _validate_group_norm_inputs(x, num_groups, weight, bias):
     if x.device.type != "cpu":
         raise ValueError("group_norm only supports CPU inputs in this example")
     if x.dtype != torch.float32:
-        raise ValueError("group_norm only supports torch.float32 inputs in this example")
+        raise ValueError(
+            "group_norm only supports torch.float32 inputs in this example"
+        )
     if x.ndim != 4:
         raise ValueError("group_norm expects a 4D tensor shaped as (N, C, H, W)")
     if not isinstance(num_groups, int) or num_groups <= 0:

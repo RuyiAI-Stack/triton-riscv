@@ -1,15 +1,12 @@
-import os
 from contextlib import contextmanager
 from math import isfinite
-from pathlib import Path
-from tempfile import mkdtemp
 
 import pytest
 import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-from triton.backends.triton_shared.driver import CPUDriver
+from triton.backends.riscv.driver import CPUDriver
 
 
 def _activate_cpu_driver():
@@ -28,9 +25,6 @@ def _use_cpu_driver():
             triton.runtime.driver._active = None
         else:
             triton.runtime.driver.set_active(previous_driver)
-
-
-
 
 
 def make_3d_for_bn(x):
@@ -84,9 +78,9 @@ def batch_norm_forward_kernel(
                     + input_batch_stride * batch_offset[:, None]
                     + input_spatial_stride * spatial_offset[None, :]
                 )
-                curr_input = tl.load(
-                    curr_input_pointer, mask=mask, other=0.0
-                ).to(tl.float32)
+                curr_input = tl.load(curr_input_pointer, mask=mask, other=0.0).to(
+                    tl.float32
+                )
 
                 sum_acc += curr_input
                 sq_sum_acc += curr_input * curr_input
@@ -170,9 +164,13 @@ def _validate_batch_norm_inputs(
     if x.device.type != "cpu":
         raise ValueError("batch_norm only supports CPU inputs in this example")
     if x.dtype != torch.float32:
-        raise ValueError("batch_norm only supports torch.float32 inputs in this example")
+        raise ValueError(
+            "batch_norm only supports torch.float32 inputs in this example"
+        )
     if x.ndim not in (2, 3, 4):
-        raise ValueError("batch_norm expects an input shaped like (N, C), (N, C, L), or (N, C, H, W)")
+        raise ValueError(
+            "batch_norm expects an input shaped like (N, C), (N, C, L), or (N, C, H, W)"
+        )
     if any(dim <= 0 for dim in x.shape):
         raise ValueError("batch_norm requires all input dimensions to be non-zero")
     if x.shape[0] <= 0 or x.shape[1] <= 0:
@@ -218,9 +216,7 @@ def _validate_batch_norm_inputs(
         input_3d = make_3d_for_bn(x)
         batch_dim, _, spatial_dim = input_3d.shape
         if batch_dim * spatial_dim <= 1:
-            raise ValueError(
-                "Expected more than 1 value per channel when training"
-            )
+            raise ValueError("Expected more than 1 value per channel when training")
         if not running_mean.is_contiguous():
             raise ValueError(
                 "running_mean must be contiguous for caller-visible in-place updates"
@@ -244,7 +240,6 @@ def triton_batch_norm(
     _validate_batch_norm_inputs(
         x, running_mean, running_var, weight, bias, training, momentum, eps
     )
-    
 
     input_3d = make_3d_for_bn(x.contiguous())
     weight = None if weight is None else weight.contiguous().reshape(-1)
@@ -352,7 +347,9 @@ def test_triton_batch_norm_matches_torch_training():
     singleton_x, singleton_weight, singleton_bias, singleton_mean, singleton_var = (
         make_batch_norm_inputs((1, 3), with_affine=True)
     )
-    with pytest.raises(ValueError, match="Expected more than 1 value per channel when training"):
+    with pytest.raises(
+        ValueError, match="Expected more than 1 value per channel when training"
+    ):
         triton_batch_norm(
             singleton_x,
             singleton_mean,

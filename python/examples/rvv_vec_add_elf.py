@@ -2,7 +2,7 @@
 
 import triton
 import triton.language as tl
-from triton.backends.triton_shared.riscv import standalone_kernel_cli
+from triton.backends.riscv.riscv import standalone_kernel_cli
 
 
 @triton.jit
