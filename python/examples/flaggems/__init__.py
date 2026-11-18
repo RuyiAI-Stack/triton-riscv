@@ -794,6 +794,17 @@ from .sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from .sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from .to_sparse_semi_structured import to_sparse_semi_structured
 
+from .and_tensor import and_tensor
+from .arccosh_ import arccosh_
+from .cosine_similarity import cosine_similarity
+from .float_power_ import float_power_tensor_tensor, float_power_tensor_scalar, float_power_scalar_tensor, float_power_tensor_tensor_out, float_power_tensor_scalar_out, float_power_scalar_tensor_out
+from .fmod_ import fmod, fmod_
+from .ldexp import ldexp, ldexp_out
+from .ldexp_ import ldexp_
+from .not_equal import not_equal, not_equal_scalar
+from .or_tensor import or_tensor
+from .xlogy import xlogy, xlogy_out, xlogy_tensor_scalar, xlogy_tensor_scalar_out, xlogy_scalar_tensor, xlogy_scalar_tensor_out
+
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -871,6 +882,7 @@ __all__ = [
     "allclose",
     "amax",
     "aminmax",
+    "and_tensor",
     "angle",
     "any",
     "any_dim",
@@ -878,6 +890,7 @@ __all__ = [
     "arange",
     "arange_start",
     "arccosh",
+    "arccosh_",
     "arccosh_out",
     "arcsinh",
     "arcsinh_",
@@ -968,6 +981,7 @@ __all__ = [
     "cosh",
     "cosh_",
     "cosh_out",
+    "cosine_similarity",
     "count_nonzero",
     "cov",
     "cudnn_batch_norm_backward",
@@ -1026,11 +1040,19 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_scalar_tensor",
+    "float_power_scalar_tensor_out",
+    "float_power_tensor_scalar",
+    "float_power_tensor_scalar_out",
+    "float_power_tensor_tensor",
+    "float_power_tensor_tensor_out",
     "floor_",
     "floor_divide",
     "floor_divide_",
     "fmin",
     "fmin_out",
+    "fmod",
+    "fmod_",
     "fmod_scalar",
     "fmod_scalar_",
     "fmod_tensor",
@@ -1097,6 +1119,9 @@ __all__ = [
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "ldexp",
+    "ldexp_",
+    "ldexp_out",
     "le",
     "le_scalar",
     "leaky_relu",
@@ -1199,10 +1224,13 @@ __all__ = [
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
+    "not_equal",
+    "not_equal_scalar",
     "numpy_T",
     "one_hot",
     "ones",
     "ones_like",
+    "or_tensor",
     "pad",
     "pdist",
     "per_token_group_quant_fp8",
@@ -1377,6 +1405,12 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xlogy",
+    "xlogy_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_out",
     "xor",
     "xor_",
     "xor_scalar",
