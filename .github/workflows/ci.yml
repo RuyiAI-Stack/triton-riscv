@@ -91,6 +91,10 @@ jobs:
             --ignore=../python/examples/flaggems \
             -v -n 16
 
+      - name: Run the tutorials
+        run: |
+          make test-tutorials
+
       - name: Run flaggems example test suite
         if: matrix.arch == 'riscv64'
         run: |

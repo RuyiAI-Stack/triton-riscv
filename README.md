@@ -206,6 +206,22 @@ To force the CPU backend, set `TRITON_DEFAULT_BACKEND=triton_shared`.
 The wheel does not ship the ROCm runtime: it needs a working ROCm installation and an AMD
 GPU.
 
+## Tutorials
+
+[`python/tutorials/`](python/tutorials) holds the notebooks, one per RISC-V feature:
+
+- `02-rvv-vectorization` compiles one kernel twice -- once with the RISC-V vector extension and
+  once without -- and disassembles both, so you can see the `vle32.v` / `vfadd.vv` / `vse32.v` the
+  backend emits;
+- `03-ime-matmul` lowers `tl.dot` to the integrated matrix extension's `vmadot` and `vfmadot` when
+  `TRITON_RISCV_USE_IME=1`.
+
+Both compile RISC-V code on any host and are executed by CI. To run them locally:
+
+```sh
+make test-tutorials
+```
+
 ## Generate and run RVV ELF files with QEMU
 
 The backend can compile a Python Triton kernel directly to a self-contained RISC-V Linux ELF, automatically generate its runner, execute it with QEMU, and verify outputs. No user-written C runner is required.
