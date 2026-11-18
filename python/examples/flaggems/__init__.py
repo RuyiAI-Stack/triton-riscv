@@ -2,10 +2,14 @@ from .__ilshift__ import __ilshift__
 from .__irshift__ import __irshift__
 from .__rshift__ import __rshift__, __rshift___out
 from .__xor__ import xor, xor_, xor_scalar, xor_scalar_, xor_scalar_tensor
+from ._conj import _conj
+from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from ._is_all_true import _is_all_true
+from ._list_to_tensor import _list_to_tensor
+from ._masked_scale import _masked_scale
 from ._safe_softmax import _safe_softmax
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from .abs import abs, abs_
@@ -25,6 +29,7 @@ from .aminmax import aminmax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .arccosh import arccosh, arccosh_out
 from .arcsinh import arcsinh, arcsinh_out
 from .arcsinh_ import arcsinh_
 from .arctan2 import arctan2, arctan2_, arctan2_out
@@ -51,6 +56,7 @@ from .avg_pool3d import avg_pool3d, avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
 from .bernoulli_ import bernoulli_
+from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -73,6 +79,7 @@ from .bmm import bmm, bmm_out
 from .cat import cat, cat_out
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .chalf import chalf
 from .clamp import (
     clamp,
     clamp_,
@@ -144,8 +151,10 @@ from .floor_ import floor_
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fp8_matmul import fp8_matmul
+from .frexp import frexp
 from .full import full
 from .full_like import full_like
+from .functional_assert_async import _functional_assert_async
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
@@ -186,6 +195,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf, isposinf_out
+from .isreal import isreal
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
@@ -193,6 +203,7 @@ from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
 from .less_equal_ import less_equal_, less_equal_scalar_
+from .lift_fresh import lift_fresh
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from .linspace import linspace
 from .log import log
@@ -215,6 +226,7 @@ from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
+from .mT import mT
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -256,6 +268,7 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .numpy_T import numpy_T
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
@@ -282,6 +295,7 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .range import range
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
@@ -393,10 +407,15 @@ __all__ = [
     "__rshift__",
     "__rshift___out",
     "_assert_async",
+    "_conj",
     "_conv_depthwise2d",
+    "_functional_assert_async",
+    "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
+    "_list_to_tensor",
+    "_masked_scale",
     "_safe_softmax",
     "_unique2",
     "_upsample_bicubic2d_aa",
@@ -434,6 +453,8 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arccosh",
+    "arccosh_out",
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
@@ -460,6 +481,7 @@ __all__ = [
     "batch_norm",
     "batch_norm_backward",
     "bernoulli_",
+    "binary_cross_entropy_backward",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -484,6 +506,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chalf",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -576,6 +599,7 @@ __all__ = [
     "fmod_tensor",
     "fmod_tensor_",
     "fp8_matmul",
+    "frexp",
     "full",
     "full_like",
     "gather",
@@ -627,6 +651,7 @@ __all__ = [
     "isneginf_out",
     "isposinf",
     "isposinf_out",
+    "isreal",
     "kron",
     "layer_norm",
     "layer_norm_backward",
@@ -643,6 +668,7 @@ __all__ = [
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
+    "lift_fresh",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linspace",
@@ -671,6 +697,7 @@ __all__ = [
     "logsumexp",
     "lt",
     "lt_scalar",
+    "mT",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
@@ -715,6 +742,7 @@ __all__ = [
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
+    "numpy_T",
     "one_hot",
     "ones",
     "ones_like",
@@ -738,6 +766,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "range",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
