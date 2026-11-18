@@ -181,6 +181,17 @@ jobs:
           fi
           ./scripts/release.sh "${{ steps.vars.outputs.py_tag }}" "${{ matrix.target_arch }}"
 
+      # Also on pull requests, where nothing is published: this is how a change
+      # to the packaging gets tested on real hardware before it lands.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: triton-wheel-${{ matrix.target_arch }}-${{ steps.vars.outputs.py_tag }}
+          path: ${{ steps.vars.outputs.wheel_dir }}/*.whl
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
       - name: Upload release assets
         if: ${{ github.event_name != 'pull_request' }}
         env:
