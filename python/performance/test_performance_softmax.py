@@ -22,23 +22,26 @@ def softmax_cpu_kernel(
     # conventional whole-row formulation creates several full-row stack
     # buffers on CPU. This three-pass form computes exp only once, stages the
     # numerator in the final output, and lets LLVM vectorize every inner loop.
-    for row in tl.range(0, N_ROWS):
-        input_base = row * INPUT_ROW_STRIDE
-        output_base = row * OUTPUT_ROW_STRIDE
+    # Each grid program handles one row so the CPU launcher can parallelize rows.
+    row = tl.program_id(0)
+    input_base = row * INPUT_ROW_STRIDE
+    output_base = row * OUTPUT_ROW_STRIDE
 
-        maximum = -float("inf")
-        for col in tl.range(0, N_COLS):
-            maximum = tl.maximum(maximum, tl.load(input_ptr + input_base + col))
+    maximum = -float("inf")
+    for col in tl.range(0, N_COLS):
+        maximum = tl.maximum(maximum, tl.load(input_ptr + input_base + col))
 
-        denominator = 0.0
-        for col in tl.range(0, N_COLS):
-            numerator = tl.exp(tl.load(input_ptr + input_base + col) - maximum)
-            denominator += numerator
-            tl.store(output_ptr + output_base + col, numerator)
+    denominator = 0.0
+    for col in tl.range(0, N_COLS):
+        numerator = tl.exp(tl.load(input_ptr + input_base + col) - maximum)
+        denominator += numerator
+        tl.store(output_ptr + output_base + col, numerator)
 
-        for col in tl.range(0, N_COLS):
-            output = tl.load(output_ptr + output_base + col)
-            tl.store(output_ptr + output_base + col, output / denominator)
+    # Compute the reciprocal once per row, then normalize with multiplies.
+    inv_denominator = 1.0 / denominator
+    for col in tl.range(0, N_COLS):
+        output = tl.load(output_ptr + output_base + col)
+        tl.store(output_ptr + output_base + col, output * inv_denominator)
 
 
 def softmax(x):
@@ -49,7 +52,7 @@ def softmax(x):
     if runner is None:
         runner = prepare_cpu_kernel(
             softmax_cpu_kernel,
-            (1,),
+            (n_rows,),
             y,
             x,
             INPUT_ROW_STRIDE=x.stride(0),
@@ -74,6 +77,7 @@ def bench_softmax(size):
         },
         rtol=1e-3,
         atol=1e-3,
+        repeats=50,
     )
 
 
