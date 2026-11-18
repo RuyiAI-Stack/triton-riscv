@@ -420,6 +420,16 @@ from .trace_backward import trace_backward
 from .unsafe_index import unsafe_index
 from .unsafe_index_put import unsafe_index_put, unsafe_index_put_impl
 
+from ._compute_linear_combination import _compute_linear_combination, _compute_linear_combination_out
+from ._fused_moving_avg_obs_fq_helper import _fused_moving_avg_obs_fq_helper
+from ._masked_softmax import _masked_softmax
+from ._masked_softmax_backward import _masked_softmax_backward
+from ._pdist_backward import _pdist_backward
+from ._pdist_forward import _pdist_forward
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
+from ._wrapped_linear_prepack import _wrapped_linear_prepack
+from .pairwise_distance import pairwise_distance
+
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -430,21 +440,30 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_amp_update_scale_",
     "_assert_async",
+    "_compute_linear_combination",
+    "_compute_linear_combination_out",
     "_conj",
     "_conv_depthwise2d",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
     "_is_all_true",
     "_list_to_tensor",
     "_masked_scale",
+    "_masked_softmax",
+    "_masked_softmax_backward",
+    "_pdist_backward",
+    "_pdist_forward",
     "_safe_softmax",
+    "_transform_bias_rescale_qkv",
     "_unique2",
     "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_wrapped_linear_prepack",
     "abs",
     "abs_",
     "absolute",
@@ -791,6 +810,7 @@ __all__ = [
     "ones_like",
     "or_tensor",
     "pad",
+    "pairwise_distance",
     "per_token_group_quant_fp8",
     "pixel_shuffle",
     "pixel_unshuffle",
