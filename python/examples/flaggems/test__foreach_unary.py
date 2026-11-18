@@ -94,6 +94,15 @@ def test_erfc_precision_boundary():
         assert abs(o - r) / r <= rtol, (point, abs(o - r) / r, rtol)
 
 
+def test_erfc_non_finite_inputs():
+    mod = importlib.import_module("flaggems._foreach_unary")
+    x = torch.tensor([float("inf"), float("-inf"), float("nan")])
+    out = mod._foreach_erfc([x.clone()])[0]
+    assert out[0].item() == 0.0
+    assert out[1].item() == 2.0
+    assert torch.isnan(out[2])
+
+
 def test_non_contiguous_inputs():
     mod = importlib.import_module("flaggems._foreach_unary")
     view = torch.randn(16, 8).t()
