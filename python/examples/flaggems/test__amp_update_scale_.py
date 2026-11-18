@@ -8,7 +8,6 @@ from .test__amp_foreach_non_finite_check_and_unscale_ import (
     AMP_BACKOFF,
     AMP_GROWTH,
     AMP_GROWTH_INTERVAL,
-    amp_scale_state,
     torch_update_scale_ref,
 )
 
@@ -203,11 +202,21 @@ def test_update_scale_dtype_gates():
         )
     with pytest.raises(RuntimeError, match="current_scale must be a float tensor."):
         _amp_update_scale_(
-            torch.tensor(4, dtype=torch.int64), good_tracker, torch.tensor(0), 2.0, 0.5, 2
+            torch.tensor(4, dtype=torch.int64),
+            good_tracker,
+            torch.tensor(0),
+            2.0,
+            0.5,
+            2,
         )
     with pytest.raises(RuntimeError, match="current_scale must be a float tensor."):
         _amp_update_scale_(
-            torch.tensor(4.0, dtype=torch.float64), good_tracker, good_found, 2.0, 0.5, 2
+            torch.tensor(4.0, dtype=torch.float64),
+            good_tracker,
+            good_found,
+            2.0,
+            0.5,
+            2,
         )
     with pytest.raises(RuntimeError, match="found_inf must be a float tensor."):
         _amp_update_scale_(

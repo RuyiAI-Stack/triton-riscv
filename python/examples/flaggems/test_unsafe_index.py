@@ -253,9 +253,7 @@ def test_unsafe_index_matches_aten_reference():
 
     aten_out = torch.ops.aten._unsafe_index(x, list(indices))
 
-    torch.testing.assert_close(
-        unsafe_index(x, indices), aten_out, rtol=0, atol=0
-    )
+    torch.testing.assert_close(unsafe_index(x, indices), aten_out, rtol=0, atol=0)
     torch.testing.assert_close(aten_out, _ref(x, indices), rtol=0, atol=0)
 
 

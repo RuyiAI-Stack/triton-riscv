@@ -56,7 +56,7 @@ def test_ldexp_special_values():
         2.0**126,
         2.0**127,
         torch.finfo(torch.float32).max,
-        -2.0**126,
+        -(2.0**126),
         2.0**-126,
         2.0**-149,
         -(2.0**-149),
@@ -66,7 +66,29 @@ def test_ldexp_special_values():
         float("-inf"),
         float("nan"),
     ]
-    exps = [0, 1, -1, 5, -5, 24, -24, 25, -25, 26, -26, 127, -127, 128, -128, 149, -149, 150, -150, 300, -300]
+    exps = [
+        0,
+        1,
+        -1,
+        5,
+        -5,
+        24,
+        -24,
+        25,
+        -25,
+        26,
+        -26,
+        127,
+        -127,
+        128,
+        -128,
+        149,
+        -149,
+        150,
+        -150,
+        300,
+        -300,
+    ]
     x = torch.tensor(values * len(exps), dtype=torch.float32)
     e = torch.tensor(exps * len(values), dtype=torch.int32)
     _assert_ldexp_bitexact(x, e)

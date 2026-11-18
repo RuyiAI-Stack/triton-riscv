@@ -42,9 +42,7 @@ def test_or_tensor_bool_matches_logical_or():
     # For bool operands bitwise OR == logical OR (the B8 bool contract).
     torch.manual_seed(0)
     x, y = _input_pair((1024,), torch.bool)
-    torch.testing.assert_close(
-        or_tensor(x, y), torch.logical_or(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(or_tensor(x, y), torch.logical_or(x, y), rtol=0, atol=0)
     assert or_tensor(x, y).dtype == torch.bool
 
 
@@ -73,7 +71,7 @@ def test_or_tensor_scalar_bool():
 def test_or_tensor_scalar_int64_extremes():
     # A full 64-bit mask scalar exercises the wide end of the scalar path.
     torch.manual_seed(0)
-    x = torch.randint(-2**63, 2**63 - 1, (1024,), dtype=torch.int64)
+    x = torch.randint(-(2**63), 2**63 - 1, (1024,), dtype=torch.int64)
     mask = 0xF0F0F0F0F0F0F0F0
     torch.testing.assert_close(
         or_tensor(x, mask), torch.bitwise_or(x, mask), rtol=0, atol=0
@@ -83,16 +81,14 @@ def test_or_tensor_scalar_int64_extremes():
 def test_or_tensor_extremes():
     torch.manual_seed(0)
     x = torch.tensor(
-        [0, -1, 2**63 - 1, -2**63, 0, -1],
+        [0, -1, 2**63 - 1, -(2**63), 0, -1],
         dtype=torch.int64,
     )
     y = torch.tensor(
         [-1, -1, 2**63 - 1, 2**63 - 1, 0, 0],
         dtype=torch.int64,
     )
-    torch.testing.assert_close(
-        or_tensor(x, y), torch.bitwise_or(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(or_tensor(x, y), torch.bitwise_or(x, y), rtol=0, atol=0)
 
 
 def test_or_tensor_mixed_dtype_tensors():
@@ -110,12 +106,8 @@ def test_or_tensor_empty(shape):
     torch.manual_seed(0)
     x = torch.randint(-100, 100, shape, dtype=torch.int32)
     y = torch.randint(-100, 100, shape, dtype=torch.int32)
-    torch.testing.assert_close(
-        or_tensor(x, y), torch.bitwise_or(x, y), rtol=0, atol=0
-    )
-    torch.testing.assert_close(
-        or_tensor(x, 1), torch.bitwise_or(x, 1), rtol=0, atol=0
-    )
+    torch.testing.assert_close(or_tensor(x, y), torch.bitwise_or(x, y), rtol=0, atol=0)
+    torch.testing.assert_close(or_tensor(x, 1), torch.bitwise_or(x, 1), rtol=0, atol=0)
 
 
 def test_or_tensor_non_contiguous():
@@ -123,9 +115,7 @@ def test_or_tensor_non_contiguous():
     x = torch.randint(-100, 100, (64, 32), dtype=torch.int32).t()
     y = torch.randint(-100, 100, (64, 32), dtype=torch.int32).t()
     assert not x.is_contiguous()
-    torch.testing.assert_close(
-        or_tensor(x, y), torch.bitwise_or(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(or_tensor(x, y), torch.bitwise_or(x, y), rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(
@@ -149,6 +139,7 @@ def test_or_tensor_broadcast(shape_a, shape_b):
 def test_or_tensor_triton_path(monkeypatch):
     # Smoke: the tensor|tensor path must launch the Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.or_tensor")
 
     launches = []
@@ -169,6 +160,7 @@ def test_or_tensor_triton_path(monkeypatch):
 def test_or_tensor_scalar_triton_path(monkeypatch):
     # Smoke: the tensor|scalar overload must launch the scalar Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.or_tensor")
 
     launches = []
@@ -181,7 +173,5 @@ def test_or_tensor_scalar_triton_path(monkeypatch):
     monkeypatch.setattr(mod.or_tensor_kernel_ts, "run", spy_run)
     x = torch.randint(-100, 100, (1024,), dtype=torch.int32)
     out = mod.or_tensor(x, 0x55)
-    assert (
-        len(launches) == 1
-    ), "or_tensor(A, scalar) must go through the Triton kernel"
+    assert len(launches) == 1, "or_tensor(A, scalar) must go through the Triton kernel"
     torch.testing.assert_close(out, torch.bitwise_or(x, 0x55), rtol=0, atol=0)

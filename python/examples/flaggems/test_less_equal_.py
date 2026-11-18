@@ -145,6 +145,7 @@ def test_less_equal__triton_path(monkeypatch):
     # Smoke: the bool-self <= int32-tensor main path must launch the Triton
     # kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.less_equal_")
 
     launches = []
@@ -170,6 +171,7 @@ def test_less_equal_scalar__triton_path(monkeypatch):
     # Smoke: the in-place tensor<=scalar overload must launch the scalar
     # Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.less_equal_")
 
     launches = []
@@ -185,8 +187,8 @@ def test_less_equal_scalar__triton_path(monkeypatch):
     ref.less_equal_(1)
 
     out = mod.less_equal_scalar_(a, 1)
-    assert (
-        len(launches) == 1
-    ), "less_equal_scalar_(A, B) must go through the Triton kernel"
+    assert len(launches) == 1, (
+        "less_equal_scalar_(A, B) must go through the Triton kernel"
+    )
     assert out is a
     torch.testing.assert_close(a, ref, rtol=0, atol=0)

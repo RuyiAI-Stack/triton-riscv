@@ -50,12 +50,8 @@ def _pdist_forward_p2_kernel(
         m_offsets = m + tl.arange(0, BLOCK_M)
         m_mask = m_offsets < M
 
-        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
-        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
+        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
+        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
 
         diff = xi - xj
         sum_sq += tl.sum(diff * diff)
@@ -88,12 +84,8 @@ def _pdist_forward_p1_kernel(
         m_offsets = m + tl.arange(0, BLOCK_M)
         m_mask = m_offsets < M
 
-        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
-        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
+        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
+        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
 
         diff = xi - xj
         sum_abs += tl.sum(tl.abs(diff))
@@ -130,12 +122,8 @@ def _pdist_forward_p0_kernel(
         m_offsets = m + tl.arange(0, BLOCK_M)
         m_mask = m_offsets < M
 
-        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
-        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
+        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
+        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
 
         diff = xi - xj
         count += tl.sum((diff != 0.0).to(acc_dtype))
@@ -167,12 +155,8 @@ def _pdist_forward_inf_kernel(
         m_offsets = m + tl.arange(0, BLOCK_M)
         m_mask = m_offsets < M
 
-        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
-        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
+        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
+        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
 
         diff = tl.abs(xi - xj)
         max_abs = tl.maximum(max_abs, tl.max(diff))
@@ -205,12 +189,8 @@ def _pdist_forward_general_kernel(
         m_offsets = m + tl.arange(0, BLOCK_M)
         m_mask = m_offsets < M
 
-        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
-        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-            acc_dtype
-        )
+        xi = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
+        xj = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(acc_dtype)
 
         diff = tl.abs(xi - xj)
         powered = tl.where(diff > 0.0, tl.exp(p_val * tl.log(diff)), 0.0)

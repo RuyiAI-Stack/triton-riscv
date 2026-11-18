@@ -39,7 +39,14 @@ def _range_size(start, end, step):
 
 
 def range(
-    start, end, step: float | int = 1, *, dtype=None, layout=None, device=None, pin_memory=None
+    start,
+    end,
+    step: float | int = 1,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=None,
 ):
     if dtype == torch.bfloat16:
         # Mirror the explicit upstream/CUDA rejection.
@@ -47,9 +54,7 @@ def range(
     if step == 0:
         raise RuntimeError("step must be nonzero")
     if (step > 0 and end < start) or (step < 0 and end > start):
-        raise RuntimeError(
-            "upper bound and lower bound inconsistent with step sign"
-        )
+        raise RuntimeError("upper bound and lower bound inconsistent with step sign")
 
     if dtype is None:
         # torch.range defaults to the default float dtype even for integer

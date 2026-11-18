@@ -30,9 +30,7 @@ def _masked_scale(input, mask, scale):
     # out = where(mask != 0, input * scale, 0.0); floating-point input only,
     # output dtype == input dtype, mask broadcast to input's shape.
     if not input.is_floating_point():
-        raise ValueError(
-            f"Only floating-point dtype is supported, got {input.dtype}"
-        )
+        raise ValueError(f"Only floating-point dtype is supported, got {input.dtype}")
     if torch.is_tensor(scale):
         scale = scale.item()
 

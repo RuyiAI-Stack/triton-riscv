@@ -76,16 +76,16 @@ def test_tensor_found_in_kwargs():
     torch.testing.assert_close(out, dep_token, rtol=0, atol=0)
 
 
-@pytest.mark.parametrize("min_val, max_val", [(1, 10), (None, None), (None, 5), (-5, None)])
+@pytest.mark.parametrize(
+    "min_val, max_val", [(1, 10), (None, None), (None, 5), (-5, None)]
+)
 def test_aten_parity_in_range(min_val, max_val):
     # aten's CPU kernel returns dep_token.clone() for in-range sizes; the
     # port's copy must match it bit-for-bit (integers and floats).
     torch.manual_seed(0)
     dep_token = torch.randn(256, dtype=torch.float32)
 
-    ref = torch.ops.aten._functional_sym_constrain_range(
-        5, min_val, max_val, dep_token
-    )
+    ref = torch.ops.aten._functional_sym_constrain_range(5, min_val, max_val, dep_token)
     out = _functional_sym_constrain_range(5, min_val, max_val, dep_token)
 
     assert out.dtype == ref.dtype and out.shape == ref.shape

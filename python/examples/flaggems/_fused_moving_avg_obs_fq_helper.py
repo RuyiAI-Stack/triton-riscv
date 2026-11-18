@@ -197,7 +197,18 @@ def _finalize_pt(
 
 
 @triton.jit
-def _fq_elem(x_ptr, out_ptr, mask_ptr, scale_ptr, zp_ptr, N, CHUNK, qmin, qmax, BLOCK: tl.constexpr):
+def _fq_elem(
+    x_ptr,
+    out_ptr,
+    mask_ptr,
+    scale_ptr,
+    zp_ptr,
+    N,
+    CHUNK,
+    qmin,
+    qmax,
+    BLOCK: tl.constexpr,
+):
     pid = tl.program_id(0)
     start = pid * CHUNK
     lidx = tl.arange(0, BLOCK)
@@ -314,7 +325,9 @@ def _fused_moving_avg_obs_fq_helper(
         if obs:
             pmin = torch.empty(G, dtype=torch.float32, device=dev)
             pmax = torch.empty(G, dtype=torch.float32, device=dev)
-            _reduce_partials[(G,)](xf, pmin, pmax, N, chunk, BLOCK=_RED_BLOCK, num_warps=1)
+            _reduce_partials[(G,)](
+                xf, pmin, pmax, N, chunk, BLOCK=_RED_BLOCK, num_warps=1
+            )
         else:
             G = 0
             pmin = pmax = scale
@@ -343,12 +356,27 @@ def _fused_moving_avg_obs_fq_helper(
         echunk = (N + n_prog - 1) // n_prog
         if fq:
             _fq_elem[(n_prog,)](
-                xf, out, mask_u8, scale, zero_point, N, echunk, qmin, qmax,
-                BLOCK=_LARGE_BLOCK, num_warps=1,
+                xf,
+                out,
+                mask_u8,
+                scale,
+                zero_point,
+                N,
+                echunk,
+                qmin,
+                qmax,
+                BLOCK=_LARGE_BLOCK,
+                num_warps=1,
             )
         else:
             _copy_elem[(n_prog,)](
-                xf, out, mask_u8, N, echunk, BLOCK=_LARGE_BLOCK, num_warps=1,
+                xf,
+                out,
+                mask_u8,
+                N,
+                echunk,
+                BLOCK=_LARGE_BLOCK,
+                num_warps=1,
             )
         return out.view(shape), mask.view(shape)
 

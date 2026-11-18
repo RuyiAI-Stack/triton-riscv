@@ -86,9 +86,7 @@ def test_int_repr_reads_layout(qdtype, layout):
 def test_int_repr_reads_channels_last(qdtype):
     # channels_last is a 4-D memory format; the storage stays dense so the
     # copy is one flat span while the result keeps the input's strides.
-    inp = quantized_input((4, 6, 8, 10), qdtype).to(
-        memory_format=torch.channels_last
-    )
+    inp = quantized_input((4, 6, 8, 10), qdtype).to(memory_format=torch.channels_last)
     assert not inp.is_contiguous()
 
     ref = torch_int_repr(inp)
@@ -117,9 +115,7 @@ def test_int_repr_out(shape, qdtype):
     out_dtype = _Q_TO_INT[qdtype]
     before = torch_int_repr(inp)
 
-    ref = torch_int_repr.out(
-        inp, out=torch.empty(shape, dtype=out_dtype)
-    )
+    ref = torch_int_repr.out(inp, out=torch.empty(shape, dtype=out_dtype))
     buf = sentinel_buffer(shape, out_dtype)
     res = int_repr(inp, out=buf)
 
@@ -166,9 +162,7 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
     assert torch.equal(torch_int_repr(inp), before)
 
 
-@pytest.mark.parametrize(
-    "shape", [(), (0,), (0, 3), (2, 0, 19, 7)]
-)
+@pytest.mark.parametrize("shape", [(), (0,), (0, 3), (2, 0, 19, 7)])
 @pytest.mark.parametrize("qdtype", QUANTIZED_DTYPES)
 def test_int_repr_degenerate_shape(shape, qdtype):
     inp = quantized_input(shape, qdtype)
@@ -201,8 +195,7 @@ def test_int_repr_per_channel_quantization(qdtype, shape, axis):
     scales = [2.0**-10, 2.0**-6, 0.5, 1.0, 4.0, 64.0]
     scales = [scales[i % len(scales)] for i in range(channels)]
     zero_points = [
-        int(info.min + (span * i) // max(channels - 1, 1))
-        for i in range(channels)
+        int(info.min + (span * i) // max(channels - 1, 1)) for i in range(channels)
     ]
     payload = torch.randn(shape, dtype=torch.float32)
     inp = torch.quantize_per_channel(

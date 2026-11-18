@@ -181,8 +181,7 @@ def int_repr(self, out=None):
     logger.debug("GEMS INT_REPR")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
-            "int_repr(): argument 'self' must be a Tensor, not "
-            f"{type(self).__name__}"
+            f"int_repr(): argument 'self' must be a Tensor, not {type(self).__name__}"
         )
     if not self.is_quantized:
         raise RuntimeError(
@@ -192,9 +191,7 @@ def int_repr(self, out=None):
     if out_dtype is None:
         raise RuntimeError(f"int_repr(): unsupported quantized dtype {self.dtype}")
     if self.ndim > _MAX_RANK:
-        raise RuntimeError(
-            f"int_repr(): input ranks above {_MAX_RANK} are unsupported"
-        )
+        raise RuntimeError(f"int_repr(): input ranks above {_MAX_RANK} are unsupported")
 
     shape = self.shape
     numel = self.numel()

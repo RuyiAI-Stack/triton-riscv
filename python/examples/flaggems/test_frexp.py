@@ -55,9 +55,7 @@ def test_frexp_special_values():
 def test_frexp_denormals_and_power_of_two_edges():
     min_subnormal = struct.unpack("f", struct.pack("I", 1))[0]  # 2**-149
     one_ulp_below_1_over_16 = struct.unpack("f", struct.pack("I", 0x3D7FFFFF))[0]
-    just_above_one = torch.nextafter(
-        torch.tensor(1.0), torch.tensor(2.0)
-    ).item()
+    just_above_one = torch.nextafter(torch.tensor(1.0), torch.tensor(2.0)).item()
     x = torch.tensor(
         [
             min_subnormal,  # smallest fp32 subnormal
@@ -105,9 +103,9 @@ def test_frexp_half_dtypes(dtype):
     _assert_frexp_close(specials)
 
     # Subnormals of the storage dtype normalize exactly as well.
-    subnormals = torch.tensor(
-        [2.0**-24, 2.0**-16, 6.0e-8], dtype=torch.float32
-    ).to(dtype)
+    subnormals = torch.tensor([2.0**-24, 2.0**-16, 6.0e-8], dtype=torch.float32).to(
+        dtype
+    )
     _assert_frexp_close(subnormals)
 
 

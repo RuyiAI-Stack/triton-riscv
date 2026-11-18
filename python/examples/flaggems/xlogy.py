@@ -164,9 +164,7 @@ def _xlogy_internal(A, B, out=None):
         return out
 
     else:
-        raise TypeError(
-            "xlogy() expects at least one Tensor argument"
-        )
+        raise TypeError("xlogy() expects at least one Tensor argument")
 
 
 def xlogy(self, other):

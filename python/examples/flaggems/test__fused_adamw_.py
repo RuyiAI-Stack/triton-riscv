@@ -54,10 +54,15 @@ def test_fused_adamw_matches_aten(n):
     port = clone_state(st)
 
     _fused_adamw(
-        [port[0]], [port[1]], [port[2]], [port[3]],
+        [port[0]],
+        [port[1]],
+        [port[2]],
+        [port[3]],
         [port[4]] if port[4] is not None else [],
         [T(1)],
-        lr=0.01, beta1=0.9, beta2=0.999,
+        lr=0.01,
+        beta1=0.9,
+        beta2=0.999,
     )
     rp, rg, rma, rmsq = ref_step([ref], [1], lr=0.01, beta1=0.9, beta2=0.999)
 
@@ -82,7 +87,9 @@ def test_fused_adamw_amsgrad():
     st = make_state(512, seed=2, amsgrad=True)
     ref = clone_state(st)
     port = clone_state(st)
-    _fused_adamw([port[0]], [port[1]], [port[2]], [port[3]], [port[4]], [T(1)], amsgrad=True)
+    _fused_adamw(
+        [port[0]], [port[1]], [port[2]], [port[3]], [port[4]], [T(1)], amsgrad=True
+    )
     rp, _, rma, rmsq = ref_step([ref], [1], amsgrad=True)
     torch.testing.assert_close(port[0], rp[0], rtol=1e-6, atol=1e-7)
     torch.testing.assert_close(port[4], ref[4], rtol=1e-6, atol=1e-7)
@@ -94,7 +101,15 @@ def test_fused_adamw_weight_decay(weight_decay):
     st = make_state(256, seed=3)
     ref = clone_state(st)
     port = clone_state(st)
-    _fused_adamw([port[0]], [port[1]], [port[2]], [port[3]], [], [T(1)], weight_decay=weight_decay)
+    _fused_adamw(
+        [port[0]],
+        [port[1]],
+        [port[2]],
+        [port[3]],
+        [],
+        [T(1)],
+        weight_decay=weight_decay,
+    )
     rp, _, _, _ = ref_step([ref], [1], weight_decay=weight_decay)
     torch.testing.assert_close(port[0], rp[0], rtol=1e-6, atol=1e-7)
 
@@ -113,11 +128,23 @@ def test_fused_adamw_grad_scale():
     ref = clone_state(st)
     port = clone_state(st)
     scale = 0.5
-    _fused_adamw([port[0]], [port[1]], [port[2]], [port[3]], [], [T(1)], grad_scale=scale)
+    _fused_adamw(
+        [port[0]], [port[1]], [port[2]], [port[3]], [], [T(1)], grad_scale=scale
+    )
     torch.ops.aten._fused_adamw_(
-        [ref[0]], [ref[1] * scale], [ref[2]], [ref[3]], [], [T(1)],
-        lr=0.001, beta1=0.9, beta2=0.999, weight_decay=0.0, eps=1e-8,
-        amsgrad=False, maximize=False,
+        [ref[0]],
+        [ref[1] * scale],
+        [ref[2]],
+        [ref[3]],
+        [],
+        [T(1)],
+        lr=0.001,
+        beta1=0.9,
+        beta2=0.999,
+        weight_decay=0.0,
+        eps=1e-8,
+        amsgrad=False,
+        maximize=False,
     )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
 
@@ -127,7 +154,12 @@ def test_fused_adamw_found_inf_skips():
     port = clone_state(st)
     before = [t.clone() if t is not None else None for t in port]
     _fused_adamw(
-        [port[0]], [port[1]], [port[2]], [port[3]], [], [T(1)],
+        [port[0]],
+        [port[1]],
+        [port[2]],
+        [port[3]],
+        [],
+        [T(1)],
         found_inf=T(1.0),
     )
     for a, b in zip(port, before):
@@ -139,8 +171,13 @@ def test_fused_adamw_multiple_groups():
     refs = [clone_state(s) for s in states]
     ports = [clone_state(s) for s in states]
     _fused_adamw(
-        [p[0] for p in ports], [p[1] for p in ports], [p[2] for p in ports],
-        [p[3] for p in ports], [], [T(1)] * 3, lr=0.02,
+        [p[0] for p in ports],
+        [p[1] for p in ports],
+        [p[2] for p in ports],
+        [p[3] for p in ports],
+        [],
+        [T(1)] * 3,
+        lr=0.02,
     )
     rp, _, rma, rmsq = ref_step(refs, [1, 1, 1], lr=0.02)
     for i in range(3):
@@ -154,7 +191,12 @@ def test_fused_adamw_inplace_returns_none():
     port = clone_state(st)
     ref = clone_state(st)
     ret = _fused_adamw_(
-        [port[0]], [port[1]], [port[2]], [port[3]], [], [T(1)],
+        [port[0]],
+        [port[1]],
+        [port[2]],
+        [port[3]],
+        [],
+        [T(1)],
     )
     assert ret is None
     ref_step([ref], [1])
@@ -164,7 +206,9 @@ def test_fused_adamw_inplace_returns_none():
 def test_fused_adamw_rejects_non_float32():
     param = torch.randn(8, dtype=torch.float64)
     with pytest.raises(AssertionError):
-        _fused_adamw([param], [torch.randn(8)], [torch.zeros(8)], [torch.zeros(8)], [], [T(1)])
+        _fused_adamw(
+            [param], [torch.randn(8)], [torch.zeros(8)], [torch.zeros(8)], [], [T(1)]
+        )
 
 
 def test_fused_adamw_triton_path(monkeypatch):

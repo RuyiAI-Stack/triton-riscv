@@ -103,9 +103,7 @@ def test_unsafe_index_put_2d_broadcast_indices():
 
     out = unsafe_index_put(x, [idx0, idx1], vals)
 
-    torch.testing.assert_close(
-        out, _ref_put(x, [idx0, idx1], vals), rtol=0, atol=0
-    )
+    torch.testing.assert_close(out, _ref_put(x, [idx0, idx1], vals), rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(
@@ -133,9 +131,7 @@ def test_unsafe_index_put_none_patterns(shape, indices_spec):
 
     out = unsafe_index_put(x, indices, vals)
 
-    torch.testing.assert_close(
-        out, _ref_put(x, indices, vals), rtol=0, atol=0
-    )
+    torch.testing.assert_close(out, _ref_put(x, indices, vals), rtol=0, atol=0)
 
 
 def test_unsafe_index_put_values_broadcast():

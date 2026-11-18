@@ -20,16 +20,6 @@ AMP_BACKOFF = 0.5
 AMP_GROWTH_INTERVAL = 2000
 
 
-@pytest.fixture
-def amp_scale_state():
-    """Fresh (scale, growth_tracker, found_inf) triple in the layout the
-    two AMP ops exchange; reused by the _amp_update_scale_ suite."""
-    scale = torch.tensor(65536.0)
-    growth_tracker = torch.zeros((), dtype=torch.int32)
-    found_inf = torch.zeros(())
-    return scale, growth_tracker, found_inf
-
-
 def torch_unscale_ref(grads, found_inf, inv_scale):
     """Direct aten call on cloned inputs; returns the reference grads."""
     grad_clones = [g.clone() for g in grads]
@@ -118,9 +108,7 @@ def test_unscale_fp16_overflow_pin():
     assert g[0].item() == float("inf")
 
 
-@pytest.mark.parametrize(
-    "inv", [0.0, -1.0, 1e30], ids=["zero", "negative", "huge"]
-)
+@pytest.mark.parametrize("inv", [0.0, -1.0, 1e30], ids=["zero", "negative", "huge"])
 def test_unscale_inv_scale_boundary(inv):
     # Degenerate scales: every value (finite or not) is multiplied, so
     # inf*0 -> nan and the huge scale saturates fp16 to inf.  found_inf
@@ -270,9 +258,7 @@ def test_unscale_rejects_non_list():
 
 def test_unscale_triton_path(monkeypatch):
     # Smoke: the fp32 main path must launch the Triton kernel.
-    mod = importlib.import_module(
-        "flaggems._amp_foreach_non_finite_check_and_unscale_"
-    )
+    mod = importlib.import_module("flaggems._amp_foreach_non_finite_check_and_unscale_")
 
     launches = []
     real_run = mod._amp_foreach_non_finite_check_and_unscale_kernel.run
@@ -286,8 +272,6 @@ def test_unscale_triton_path(monkeypatch):
     )
     g = torch.randn(1024)
     out_found = torch.zeros(())
-    mod._amp_foreach_non_finite_check_and_unscale_(
-        [g], out_found, torch.tensor(2.0)
-    )
+    mod._amp_foreach_non_finite_check_and_unscale_([g], out_found, torch.tensor(2.0))
     assert len(launches) == 1, "unscale must go through the Triton kernel"
     assert launches[0] == (1,)

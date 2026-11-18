@@ -41,8 +41,7 @@ def less_equal_kernel__ts(
 def less_equal_(A, B):
     if A.dtype != torch.bool:
         raise RuntimeError(
-            "less_equal_ result type Bool can't be cast to the desired "
-            "output type"
+            "less_equal_ result type Bool can't be cast to the desired output type"
         )
     # Compute into a contiguous buffer, then copy back so the original
     # (possibly non-contiguous) tensor is updated in place.

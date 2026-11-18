@@ -61,7 +61,11 @@ def _fused_adagrad_(
     found_inf=None,
 ):
     n_params = len(params)
-    for name, seq in (("grads", grads), ("state_sums", state_sums), ("state_steps", state_steps)):
+    for name, seq in (
+        ("grads", grads),
+        ("state_sums", state_sums),
+        ("state_steps", state_steps),
+    ):
         if len(seq) != n_params:
             raise RuntimeError(
                 f"_fused_adagrad_: expected {name} to have the same length as params ({n_params}), got {len(seq)}"

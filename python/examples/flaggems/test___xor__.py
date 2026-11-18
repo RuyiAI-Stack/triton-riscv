@@ -160,9 +160,7 @@ def test_xor_negative_values():
     torch.manual_seed(0)
     x = torch.randint(-128, 128, (1024,), dtype=torch.int32)
     y = torch.randint(-128, 128, (1024,), dtype=torch.int32)
-    torch.testing.assert_close(
-        xor(x, y), torch.bitwise_xor(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(xor(x, y), torch.bitwise_xor(x, y), rtol=0, atol=0)
 
 
 def test_xor_mixed_int_promotes():

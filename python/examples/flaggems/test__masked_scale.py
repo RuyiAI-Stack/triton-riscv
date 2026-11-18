@@ -120,9 +120,9 @@ def test_masked_scale_boundary_values():
     assert tri[0].item() == 2.0
     for i in range(1, 5):
         assert tri[i].item() == 0.0, f"masked-out element {i} must be 0.0"
-        assert (
-            math.copysign(1.0, tri[i].item()) == 1.0
-        ), f"masked-out element {i} must be +0.0, got {tri[i].item()!r}"
+        assert math.copysign(1.0, tri[i].item()) == 1.0, (
+            f"masked-out element {i} must be +0.0, got {tri[i].item()!r}"
+        )
     assert tri[5].item() == 4.0
     assert torch.isnan(tri[6]), "masked-in NaN must propagate"
     torch.testing.assert_close(tri[:1], _ref(x, mask, 2.0)[:1], rtol=0, atol=0)

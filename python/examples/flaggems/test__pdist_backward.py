@@ -92,9 +92,7 @@ def test__pdist_backward_p0_returns_zeros(monkeypatch):
 def test__pdist_backward_inf_tied_maxima():
     # Two coordinates tie at the max |diff| (2.0): each gets the full g with
     # its sign, no splitting (probed against autograd).
-    x = torch.tensor(
-        [[1.0, -1.0, 0.5], [-1.0, 1.0, 0.3], [1.0, -1.0, 0.5]]
-    )
+    x = torch.tensor([[1.0, -1.0, 0.5], [-1.0, 1.0, 0.3], [1.0, -1.0, 0.5]])
     g = torch.tensor([0.7, -1.2, 3.0])
     pd = torch.pdist(x, float("inf"))
 
@@ -106,9 +104,7 @@ def test__pdist_backward_inf_tied_maxima():
 def test__pdist_backward_p2_identical_rows():
     # dist == 0 contributes exactly 0 (probed: no NaN, remaining pairs give
     # the +/- 1/sqrt(3) pattern).
-    x = torch.tensor(
-        [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-    )
+    x = torch.tensor([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     g = torch.ones(3)
     pd = torch.pdist(x, 2.0)
 

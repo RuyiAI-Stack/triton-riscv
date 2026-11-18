@@ -154,7 +154,9 @@ def test_remainder_float_zero_divisor_is_nan():
 
     tri = remainder(x, y)
 
-    torch.testing.assert_close(tri, torch.remainder(x, y), rtol=0, atol=0, equal_nan=True)
+    torch.testing.assert_close(
+        tri, torch.remainder(x, y), rtol=0, atol=0, equal_nan=True
+    )
 
 
 def test_remainder_empty():
@@ -167,9 +169,7 @@ def test_remainder_empty():
     torch.testing.assert_close(tri, torch.remainder(x, y), rtol=0, atol=0)
 
 
-@pytest.mark.parametrize(
-    "shape_x, shape_y", [((16, 256), (256,)), ((4, 1), (4, 128))]
-)
+@pytest.mark.parametrize("shape_x, shape_y", [((16, 256), (256,)), ((4, 1), (4, 128))])
 def test_remainder_broadcast(shape_x, shape_y):
     torch.manual_seed(0)
     x = torch.randn(shape_x, dtype=torch.float32) * 10.0

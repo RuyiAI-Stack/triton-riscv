@@ -217,7 +217,7 @@ def choose_qparams_optimized(input, numel, n_bins, ratio, bit_width):
 
     # The aten reference is float32-only; reject other dtypes explicitly.
     assert input.dtype == torch.float32, (
-        "choose_qparams_optimized only supports float32 input, " f"got {input.dtype}"
+        f"choose_qparams_optimized only supports float32 input, got {input.dtype}"
     )
     return run(input, numel, n_bins, ratio, bit_width)
 

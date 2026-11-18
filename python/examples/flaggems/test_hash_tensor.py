@@ -104,9 +104,12 @@ def test_hash_tensor_scalar(value, dtype, bits_fn):
     if bits_fn is not None:
         assert res.item() == bits_fn(value)
     else:
-        assert res.item() == struct.unpack(
-            "<Q", struct.pack("<d", float(torch.tensor(value, dtype=torch.float32)))
-        )[0]
+        assert (
+            res.item()
+            == struct.unpack(
+                "<Q", struct.pack("<d", float(torch.tensor(value, dtype=torch.float32)))
+            )[0]
+        )
 
 
 def test_hash_tensor_known_bit_patterns():

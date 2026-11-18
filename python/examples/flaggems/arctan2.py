@@ -164,8 +164,7 @@ def arctan2_(input, other):
         raise TypeError("arctan2_: expected a Tensor as the first argument")
     if not input.dtype.is_floating_point:
         raise RuntimeError(
-            "result type Float can't be cast to the desired output type "
-            f"{input.dtype}"
+            f"result type Float can't be cast to the desired output type {input.dtype}"
         )
     res = _arctan2_internal(input, other)
     input.copy_(res)

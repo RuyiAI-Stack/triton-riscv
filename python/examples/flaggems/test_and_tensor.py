@@ -73,7 +73,7 @@ def test_and_tensor_scalar_bool():
 def test_and_tensor_scalar_int64_extremes():
     # A full 64-bit mask scalar exercises the wide end of the scalar path.
     torch.manual_seed(0)
-    x = torch.randint(-2**63, 2**63 - 1, (1024,), dtype=torch.int64)
+    x = torch.randint(-(2**63), 2**63 - 1, (1024,), dtype=torch.int64)
     mask = 0xF0F0F0F0F0F0F0F0
     torch.testing.assert_close(
         and_tensor(x, mask), torch.bitwise_and(x, mask), rtol=0, atol=0
@@ -83,7 +83,7 @@ def test_and_tensor_scalar_int64_extremes():
 def test_and_tensor_extremes():
     torch.manual_seed(0)
     x = torch.tensor(
-        [0, -1, 2**63 - 1, -2**63, 0, -1],
+        [0, -1, 2**63 - 1, -(2**63), 0, -1],
         dtype=torch.int64,
     )
     y = torch.tensor(
@@ -149,6 +149,7 @@ def test_and_tensor_broadcast(shape_a, shape_b):
 def test_and_tensor_triton_path(monkeypatch):
     # Smoke: the tensor&tensor path must launch the Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.and_tensor")
 
     launches = []
@@ -169,6 +170,7 @@ def test_and_tensor_triton_path(monkeypatch):
 def test_and_tensor_scalar_triton_path(monkeypatch):
     # Smoke: the tensor&scalar overload must launch the scalar Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.and_tensor")
 
     launches = []
@@ -181,7 +183,5 @@ def test_and_tensor_scalar_triton_path(monkeypatch):
     monkeypatch.setattr(mod.and_tensor_kernel_ts, "run", spy_run)
     x = torch.randint(-100, 100, (1024,), dtype=torch.int32)
     out = mod.and_tensor(x, 0x55)
-    assert (
-        len(launches) == 1
-    ), "and_tensor(A, scalar) must go through the Triton kernel"
+    assert len(launches) == 1, "and_tensor(A, scalar) must go through the Triton kernel"
     torch.testing.assert_close(out, torch.bitwise_and(x, 0x55), rtol=0, atol=0)

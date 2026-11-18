@@ -91,7 +91,9 @@ def _unary_kernel(x_ptr, y_ptr, n, OP: tl.constexpr, BLOCK: tl.constexpr):
         fl = tl.floor(x)
         f = x - fl
         odd = (fl - 2.0 * tl.floor(fl * 0.5)) != 0.0
-        y = tl.where(f > 0.5, fl + 1.0, tl.where(f < 0.5, fl, tl.where(odd, fl + 1.0, fl)))
+        y = tl.where(
+            f > 0.5, fl + 1.0, tl.where(f < 0.5, fl, tl.where(odd, fl + 1.0, fl))
+        )
     elif OP == 6:
         y = x - _ld.trunc(x)
     elif OP == 7:
@@ -155,7 +157,11 @@ def _unary_kernel(x_ptr, y_ptr, n, OP: tl.constexpr, BLOCK: tl.constexpr):
         y = _ld.atan(x)
     else:
         pi = 3.141592653589793
-        y = tl.where(x < 0.5, tl.log(pi / tl.abs(tl.sin(pi * x))) - _lgamma_pos(1.0 - x), _lgamma_pos(x))
+        y = tl.where(
+            x < 0.5,
+            tl.log(pi / tl.abs(tl.sin(pi * x))) - _lgamma_pos(1.0 - x),
+            _lgamma_pos(x),
+        )
     tl.store(y_ptr + idx, y.to(y_ptr.dtype.element_ty), mask=m)
 
 

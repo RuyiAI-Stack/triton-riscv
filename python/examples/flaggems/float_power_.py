@@ -197,8 +197,7 @@ def _prepare_out(out, shape, device):
         )
     if out.device != device:
         raise RuntimeError(
-            f"Expected out tensor to have device {device}, but got "
-            f"{out.device} instead"
+            f"Expected out tensor to have device {device}, but got {out.device} instead"
         )
     if out.shape != shape:
         out.resize_(shape)

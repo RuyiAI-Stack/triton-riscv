@@ -159,9 +159,7 @@ def test_fmod_empty():
     torch.testing.assert_close(tri, torch.fmod(x, y), rtol=0, atol=0)
 
 
-@pytest.mark.parametrize(
-    "shape_x, shape_y", [((16, 256), (256,)), ((4, 1), (4, 128))]
-)
+@pytest.mark.parametrize("shape_x, shape_y", [((16, 256), (256,)), ((4, 1), (4, 128))])
 def test_fmod_broadcast(shape_x, shape_y):
     torch.manual_seed(0)
     x = torch.randn(shape_x, dtype=torch.float32) * 10.0
@@ -297,7 +295,9 @@ def test_fmod__inplace_float_zero_divisor():
     x_f = x.float()
     tri = fmod_(x_f, y.float())
     assert tri is x_f
-    torch.testing.assert_close(x_f, torch.fmod(x.float(), y.float()), rtol=0, atol=0, equal_nan=True)
+    torch.testing.assert_close(
+        x_f, torch.fmod(x.float(), y.float()), rtol=0, atol=0, equal_nan=True
+    )
 
 
 def test_fmod_triton_path(monkeypatch):

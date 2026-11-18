@@ -82,9 +82,7 @@ def _compute_linear_combination_kernel(
         r1 = offs_p // T1D
         r2 = r1 // T2D
         r3 = r2 // T3D
-        in_off_p = (
-            (offs_p % T1D) * T1S + (r1 % T2D) * T2S + (r2 % T3D) * T3S + r3 * T4S
-        )
+        in_off_p = (offs_p % T1D) * T1S + (r1 % T2D) * T2S + (r2 % T3D) * T3S + r3 * T4S
 
     coeff_base = Coeff + offs_m * COEFF_SM
     in_base = In + in_off_p

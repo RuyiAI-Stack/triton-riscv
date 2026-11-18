@@ -108,9 +108,7 @@ def test_erfinv_inplace_fp64_aten_fallback(monkeypatch):
     monkeypatch.setattr(torch.ops.aten, "erfinv_", spy)
 
     torch.manual_seed(0)
-    x = torch.randn(128, device="cpu", dtype=torch.float64).clamp(
-        -0.999999, 0.999999
-    )
+    x = torch.randn(128, device="cpu", dtype=torch.float64).clamp(-0.999999, 0.999999)
 
     ref = torch.erfinv(x)
 
