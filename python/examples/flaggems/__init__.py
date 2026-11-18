@@ -410,6 +410,16 @@ from .not_equal import not_equal, not_equal_scalar
 from .or_tensor import or_tensor
 from .xlogy import xlogy, xlogy_out, xlogy_tensor_scalar, xlogy_tensor_scalar_out, xlogy_scalar_tensor, xlogy_scalar_tensor_out
 
+from ._amp_foreach_non_finite_check_and_unscale_ import _amp_foreach_non_finite_check_and_unscale_
+from ._amp_update_scale_ import _amp_update_scale_
+from ._unsafe_masked_index import _unsafe_masked_index
+from .choose_qparams_optimized import choose_qparams_optimized
+from .hash_tensor import hash_tensor
+from .int_repr import int_repr
+from .trace_backward import trace_backward
+from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put, unsafe_index_put_impl
+
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -417,6 +427,8 @@ __all__ = [
     "__irshift__",
     "__rshift__",
     "__rshift___out",
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_amp_update_scale_",
     "_assert_async",
     "_conj",
     "_conv_depthwise2d",
@@ -429,6 +441,7 @@ __all__ = [
     "_masked_scale",
     "_safe_softmax",
     "_unique2",
+    "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
@@ -520,6 +533,7 @@ __all__ = [
     "celu",
     "celu_",
     "chalf",
+    "choose_qparams_optimized",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -651,6 +665,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
+    "hash_tensor",
     "histc",
     "hstack",
     "hypot",
@@ -664,6 +679,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "int_repr",
     "isclose",
     "isfinite",
     "isin",
@@ -898,6 +914,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "trace_backward",
     "tril",
     "tril_",
     "tril_out",
@@ -912,6 +929,9 @@ __all__ = [
     "unfold_backward",
     "uniform_",
     "unique_consecutive",
+    "unsafe_index",
+    "unsafe_index_put",
+    "unsafe_index_put_impl",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_nearest1d",
