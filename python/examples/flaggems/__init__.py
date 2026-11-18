@@ -12,11 +12,16 @@ from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._compute_linear_combination import (
+    _compute_linear_combination,
+    _compute_linear_combination_out,
+)
 from ._conj import _conj
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_moving_avg_obs_fq_helper import _fused_moving_avg_obs_fq_helper
 from ._fused_rms_norm import (
     _fused_rms_norm,
     _fused_rms_norm_backward,
@@ -35,17 +40,23 @@ from ._is_any_true import _is_any_true
 from ._list_to_tensor import _list_to_tensor
 from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from ._masked_scale import _masked_scale
+from ._masked_softmax import _masked_softmax
+from ._masked_softmax_backward import _masked_softmax_backward
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_sum_backward import _nested_sum_backward
+from ._pdist_backward import _pdist_backward
+from ._pdist_forward import _pdist_forward
 from ._philox_normal_ import _philox_normal_
 from ._safe_softmax import _safe_softmax
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._unsafe_masked_index import _unsafe_masked_index
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from ._weight_norm import _weight_norm
 from ._weight_norm_differentiable_backward import weight_norm_differentiable_backward
+from ._wrapped_linear_prepack import _wrapped_linear_prepack
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
@@ -339,6 +350,7 @@ from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .pairwise_distance import pairwise_distance
 from .pdist import pdist
 from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
@@ -835,11 +847,14 @@ __all__ = [
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
+    "_compute_linear_combination",
+    "_compute_linear_combination_out",
     "_conj",
     "_conv_depthwise2d",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_moving_avg_obs_fq_helper",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
@@ -854,15 +869,20 @@ __all__ = [
     "_logcumsumexp",
     "_logcumsumexp_out",
     "_masked_scale",
+    "_masked_softmax",
+    "_masked_softmax_backward",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_sum_backward",
+    "_pdist_backward",
+    "_pdist_forward",
     "_philox_normal_",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_transform_bias_rescale_qkv",
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
@@ -870,6 +890,7 @@ __all__ = [
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
     "_weight_norm",
+    "_wrapped_linear_prepack",
     "abs",
     "abs_",
     "absolute",
@@ -1249,6 +1270,7 @@ __all__ = [
     "ones_like",
     "or_tensor",
     "pad",
+    "pairwise_distance",
     "pdist",
     "per_token_group_quant_fp8",
     "pixel_shuffle",
