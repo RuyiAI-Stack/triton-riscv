@@ -2672,6 +2672,46 @@ class StorePtrToLinalgConverter : public OpConversionPattern<triton::StoreOp> {
   }
 };
 
+class GatherOpConverter : public OpConversionPattern<triton::GatherOp> {
+  using OpConversionPattern<triton::GatherOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(triton::GatherOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType = cast<RankedTensorType>(op.getType());
+    Value source = adaptor.getSrc();
+    Value indices = adaptor.getIndices();
+    SmallVector<Value> dynamicSizes;
+    for (int64_t dim = 0; dim < resultType.getRank(); ++dim)
+      if (resultType.isDynamicDim(dim))
+        dynamicSizes.push_back(
+            rewriter.create<tensor::DimOp>(op.getLoc(), indices, dim));
+    auto empty = rewriter.create<tensor::EmptyOp>(
+        op.getLoc(), resultType.getShape(), resultType.getElementType(),
+        dynamicSizes);
+    auto identity = rewriter.getMultiDimIdentityMap(resultType.getRank());
+    auto result = rewriter.create<linalg::GenericOp>(
+        op.getLoc(), TypeRange{resultType}, ValueRange{indices},
+        ValueRange{empty}, SmallVector<AffineMap>{identity, identity},
+        getNParallelLoopsAttrs(resultType.getRank()),
+        [&](OpBuilder &builder, Location loc, ValueRange args) {
+          SmallVector<Value> coordinates;
+          for (int64_t dim = 0; dim < resultType.getRank(); ++dim) {
+            if (dim == op.getAxis())
+              coordinates.push_back(builder.create<arith::IndexCastUIOp>(
+                  loc, builder.getIndexType(), args.front()));
+            else
+              coordinates.push_back(builder.create<linalg::IndexOp>(loc, dim));
+          }
+          auto value =
+              builder.create<tensor::ExtractOp>(loc, source, coordinates);
+          builder.create<linalg::YieldOp>(loc, value.getResult());
+        });
+    rewriter.replaceOp(op, result.getResults());
+    return success();
+  }
+};
+
 class ReshapeConverter : public OpConversionPattern<triton::ReshapeOp> {
   using OpConversionPattern<triton::ReshapeOp>::OpConversionPattern;
 
