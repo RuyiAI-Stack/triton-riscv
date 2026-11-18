@@ -3,6 +3,10 @@ from .__irshift__ import __irshift__
 from .__rshift__ import __rshift__, __rshift___out
 from .__xor__ import xor, xor_, xor_scalar, xor_scalar_, xor_scalar_tensor
 from ._aminmax import _aminmax, _aminmax_out
+from ._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
+from ._amp_update_scale_ import _amp_update_scale_
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
@@ -37,6 +41,7 @@ from ._nested_sum_backward import _nested_sum_backward
 from ._philox_normal_ import _philox_normal_
 from ._safe_softmax import _safe_softmax
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._unsafe_masked_index import _unsafe_masked_index
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from ._weight_norm import _weight_norm
@@ -116,6 +121,7 @@ from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .chalf import chalf
+from .choose_qparams_optimized import choose_qparams_optimized
 from .clamp import (
     clamp,
     clamp_,
@@ -218,6 +224,7 @@ from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hardswish_ import hardswish_
+from .hash_tensor import hash_tensor
 from .histc import histc
 from .histogram import histogram, histogram_bin_ct, histogram_bins_tensor
 from .histogramdd import histogramdd
@@ -233,6 +240,7 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .int_repr import int_repr
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -436,6 +444,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .trace_backward import trace_backward
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
@@ -445,6 +454,8 @@ from .unfold_backward import unfold_backward
 from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
+from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put, unsafe_index_put_impl
 from .upsample_bicubic2d import upsample_bicubic2d
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -814,6 +825,8 @@ __all__ = [
     "__rshift___out",
     "_aminmax",
     "_aminmax_out",
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_amp_update_scale_",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
@@ -851,6 +864,7 @@ __all__ = [
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
     "_unique2",
+    "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
@@ -951,6 +965,7 @@ __all__ = [
     "celu",
     "celu_",
     "chalf",
+    "choose_qparams_optimized",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -1089,6 +1104,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
+    "hash_tensor",
     "histc",
     "histogram",
     "histogram_bin_ct",
@@ -1106,6 +1122,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "int_repr",
     "isclose",
     "isfinite",
     "isin",
@@ -1368,6 +1385,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "trace_backward",
     "trapezoid_x",
     "trapz",
     "tril",
@@ -1384,6 +1402,9 @@ __all__ = [
     "unfold_backward",
     "uniform_",
     "unique_consecutive",
+    "unsafe_index",
+    "unsafe_index_put",
+    "unsafe_index_put_impl",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_nearest1d",
