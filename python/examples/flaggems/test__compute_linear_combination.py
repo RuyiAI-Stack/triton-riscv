@@ -115,11 +115,14 @@ def test_compute_linear_combination_non_contiguous_coefficients():
     torch.testing.assert_close(res, ref, rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.parametrize("dtype, rtol, atol", [
-    (torch.float32, 1e-5, 1e-5),
-    (torch.float16, 1e-2, 1e-2),
-    (torch.int64, 0, 0),
-])
+@pytest.mark.parametrize(
+    "dtype, rtol, atol",
+    [
+        (torch.float32, 1e-5, 1e-5),
+        (torch.float16, 1e-2, 1e-2),
+        (torch.int64, 0, 0),
+    ],
+)
 def test_compute_linear_combination_dtypes(dtype, rtol, atol):
     torch.manual_seed(4)
     if dtype == torch.int64:

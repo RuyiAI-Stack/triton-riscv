@@ -14,11 +14,35 @@ torch_fq = torch.ops.aten._fused_moving_avg_obs_fq_helper
 T = torch.tensor
 
 
-def ref_call(x, observer_on, fake_quant_on, rmin, rmax, scale, zp, avg,
-             qmin, qmax, ch_axis, per_row=False, sym=False):
+def ref_call(
+    x,
+    observer_on,
+    fake_quant_on,
+    rmin,
+    rmax,
+    scale,
+    zp,
+    avg,
+    qmin,
+    qmax,
+    ch_axis,
+    per_row=False,
+    sym=False,
+):
     return torch_fq(
-        x, T(observer_on), T(fake_quant_on), rmin, rmax, scale, zp,
-        avg, qmin, qmax, ch_axis, per_row, sym,
+        x,
+        T(observer_on),
+        T(fake_quant_on),
+        rmin,
+        rmax,
+        scale,
+        zp,
+        avg,
+        qmin,
+        qmax,
+        ch_axis,
+        per_row,
+        sym,
     )
 
 
@@ -55,9 +79,7 @@ def test_fq_per_tensor_obs_and_fq(shape, qmin, qmax):
     out, mask = _fused_moving_avg_obs_fq_helper(
         x, 1, 1, rmin, rmax, sc, zp, 0.01, qmin, qmax, 0
     )
-    out_r, mask_r = ref_call(
-        x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, qmin, qmax, 0
-    )
+    out_r, mask_r = ref_call(x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, qmin, qmax, 0)
 
     assert out.dtype == torch.float32
     assert mask.dtype == torch.bool
@@ -79,12 +101,34 @@ def test_fq_per_row(shape, qmin, qmax, symmetric):
     rmin_r, rmax_r, sc_r, zp_r = fresh_state(C)
 
     out, mask = _fused_moving_avg_obs_fq_helper(
-        x, 1, 1, rmin, rmax, sc, zp, 0.01, qmin, qmax, 0,
-        per_row_fake_quant=True, symmetric_quant=symmetric,
+        x,
+        1,
+        1,
+        rmin,
+        rmax,
+        sc,
+        zp,
+        0.01,
+        qmin,
+        qmax,
+        0,
+        per_row_fake_quant=True,
+        symmetric_quant=symmetric,
     )
     out_r, mask_r = ref_call(
-        x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, qmin, qmax, 0,
-        True, symmetric,
+        x,
+        1,
+        1,
+        rmin_r,
+        rmax_r,
+        sc_r,
+        zp_r,
+        0.01,
+        qmin,
+        qmax,
+        0,
+        True,
+        symmetric,
     )
 
     torch.testing.assert_close(out, out_r, rtol=1e-6, atol=1e-6)
@@ -147,9 +191,7 @@ def test_fq_mask_marks_clamped_values():
     out, mask = _fused_moving_avg_obs_fq_helper(
         x, 0, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0
     )
-    out_r, mask_r = ref_call(
-        x, 0, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0
-    )
+    out_r, mask_r = ref_call(x, 0, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0)
 
     assert not bool(mask.all())
     assert torch.equal(mask, mask_r)
@@ -184,9 +226,7 @@ def test_fq_scale_floor():
     rmin_r.fill_(-1e-6)
     rmax_r.fill_(1e-6)
 
-    _fused_moving_avg_obs_fq_helper(
-        x, 0, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0
-    )
+    _fused_moving_avg_obs_fq_helper(x, 0, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0)
     ref_call(x, 0, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0)
 
     assert sc.item() == pytest.approx(6.1e-5, rel=1e-3)
@@ -231,9 +271,7 @@ def test_fq_averaging_const_extremes(averaging_const):
     _fused_moving_avg_obs_fq_helper(
         x, 1, 1, rmin, rmax, sc, zp, averaging_const, 0, 255, 0, True
     )
-    ref_call(
-        x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, averaging_const, 0, 255, 0, True
-    )
+    ref_call(x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, averaging_const, 0, 255, 0, True)
 
     assert_state_close((rmin, rmax, sc, zp), (rmin_r, rmax_r, sc_r, zp_r))
     cmin = x.reshape(4, -1).min(dim=1).values
@@ -255,9 +293,7 @@ def test_fq_multi_step_state_evolution():
         out, mask = _fused_moving_avg_obs_fq_helper(
             x, 1, 1, rmin, rmax, sc, zp, 0.1, 0, 255, 0
         )
-        out_r, mask_r = ref_call(
-            x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.1, 0, 255, 0
-        )
+        out_r, mask_r = ref_call(x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.1, 0, 255, 0)
         torch.testing.assert_close(out, out_r, rtol=1e-6, atol=1e-6)
         assert torch.equal(mask, mask_r)
         assert_state_close((rmin, rmax, sc, zp), (rmin_r, rmax_r, sc_r, zp_r))
@@ -314,9 +350,7 @@ def test_fq_large_per_tensor_multi_block():
     out, mask = _fused_moving_avg_obs_fq_helper(
         x, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0
     )
-    out_r, mask_r = ref_call(
-        x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0
-    )
+    out_r, mask_r = ref_call(x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0)
 
     torch.testing.assert_close(out, out_r, rtol=1e-6, atol=1e-6)
     assert torch.equal(mask, mask_r)
@@ -333,9 +367,7 @@ def test_fq_large_per_tensor_copy_pass():
     out, mask = _fused_moving_avg_obs_fq_helper(
         x, 1, 0, rmin, rmax, sc, zp, 0.01, 0, 255, 0
     )
-    out_r, mask_r = ref_call(
-        x, 1, 0, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0
-    )
+    out_r, mask_r = ref_call(x, 1, 0, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0)
 
     assert torch.equal(out, x)
     assert bool(mask.all())
@@ -351,9 +383,7 @@ def test_fq_non_contiguous_input():
     out, mask = _fused_moving_avg_obs_fq_helper(
         x, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0
     )
-    out_r, mask_r = ref_call(
-        x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0
-    )
+    out_r, mask_r = ref_call(x, 1, 1, rmin_r, rmax_r, sc_r, zp_r, 0.01, 0, 255, 0)
 
     torch.testing.assert_close(out, out_r, rtol=1e-6, atol=1e-6)
     assert torch.equal(mask, mask_r)
@@ -384,9 +414,7 @@ def test_fq_rejects_non_float32(dtype):
     rmin, rmax, sc, zp = fresh_state(1)
 
     with pytest.raises(RuntimeError, match="expected scalar type Float"):
-        _fused_moving_avg_obs_fq_helper(
-            x, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0
-        )
+        _fused_moving_avg_obs_fq_helper(x, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0)
     with pytest.raises(RuntimeError, match="expected scalar type Float"):
         ref_call(x, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0)
 
@@ -438,9 +466,7 @@ def test_fq_triton_paths(monkeypatch):
 
     x_big = make_x((4097,), seed=18)
     rmin, rmax, sc, zp = fresh_state(1)
-    _fused_moving_avg_obs_fq_helper(
-        x_big, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0
-    )
+    _fused_moving_avg_obs_fq_helper(x_big, 1, 1, rmin, rmax, sc, zp, 0.01, 0, 255, 0)
     assert counts["fused"] == 1  # unchanged: the large path bypasses it
     assert counts["partials"] == 1
     assert counts["finalize"] == 1
@@ -449,8 +475,6 @@ def test_fq_triton_paths(monkeypatch):
 
     x_big2 = make_x((4097,), seed=19)
     rmin, rmax, sc, zp = fresh_state(1)
-    _fused_moving_avg_obs_fq_helper(
-        x_big2, 1, 0, rmin, rmax, sc, zp, 0.01, 0, 255, 0
-    )
+    _fused_moving_avg_obs_fq_helper(x_big2, 1, 0, rmin, rmax, sc, zp, 0.01, 0, 255, 0)
     assert counts["copy"] == 1
     assert counts["elem"] == 1

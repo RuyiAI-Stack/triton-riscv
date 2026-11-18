@@ -4,10 +4,36 @@ import pytest
 import torch
 
 _UNARY_OPS = [
-    "abs", "neg", "ceil", "floor", "trunc", "round", "frac", "sign",
-    "reciprocal", "sqrt", "rsqrt", "exp", "expm1", "log", "log10", "log1p",
-    "log2", "sin", "cos", "tan", "sinh", "cosh", "tanh", "sigmoid", "erf",
-    "erfc", "acos", "asin", "atan", "lgamma",
+    "abs",
+    "neg",
+    "ceil",
+    "floor",
+    "trunc",
+    "round",
+    "frac",
+    "sign",
+    "reciprocal",
+    "sqrt",
+    "rsqrt",
+    "exp",
+    "expm1",
+    "log",
+    "log10",
+    "log1p",
+    "log2",
+    "sin",
+    "cos",
+    "tan",
+    "sinh",
+    "cosh",
+    "tanh",
+    "sigmoid",
+    "erf",
+    "erfc",
+    "acos",
+    "asin",
+    "atan",
+    "lgamma",
 ]
 
 _DOMAINS = {
@@ -78,10 +104,23 @@ def test_lgamma_reflection_band():
 # per-point rtol measured against fp64: <=1.1e-5 for |x|<=2 (1-erf branch),
 # <=6.4e-4 approaching the 2.85 seam, <=1.3e-4 above it (asymptotic branch)
 _ERFC_POINTS = [
-    (0.0, 1e-4), (0.5, 1e-4), (1.0, 1e-4), (1.5, 1e-4), (2.0, 1e-4),
-    (2.5, 2e-3), (2.8, 2e-3), (2.85, 2e-3),
-    (3.0, 1e-3), (3.5, 1e-3), (4.0, 1e-3), (5.0, 1e-3), (6.0, 1e-3), (8.0, 1e-3),
-    (-1.0, 1e-4), (-3.0, 1e-4), (-5.0, 1e-4),
+    (0.0, 1e-4),
+    (0.5, 1e-4),
+    (1.0, 1e-4),
+    (1.5, 1e-4),
+    (2.0, 1e-4),
+    (2.5, 2e-3),
+    (2.8, 2e-3),
+    (2.85, 2e-3),
+    (3.0, 1e-3),
+    (3.5, 1e-3),
+    (4.0, 1e-3),
+    (5.0, 1e-3),
+    (6.0, 1e-3),
+    (8.0, 1e-3),
+    (-1.0, 1e-4),
+    (-3.0, 1e-4),
+    (-5.0, 1e-4),
 ]
 
 

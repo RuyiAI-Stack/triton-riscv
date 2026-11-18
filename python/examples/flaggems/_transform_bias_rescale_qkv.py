@@ -183,7 +183,9 @@ def _transform_bias_rescale_qkv(qkv, qkv_bias, num_heads):
 
     # Launch kernel
     total_elements = batch * num_heads * seq_len * head_dim
-    grid = lambda meta: (triton.cdiv(total_elements, meta["BLOCK_SIZE"]),)
+
+    def grid(meta):
+        return (triton.cdiv(total_elements, meta["BLOCK_SIZE"]),)
 
     _transform_bias_rescale_qkv_kernel[grid](
         qkv,

@@ -122,9 +122,7 @@ def hash_tensor(x, dim, keepdim=False, mode=0):
     if mode != 0:
         raise RuntimeError(f"Unknown hash_tensor mode: {mode}")
 
-    assert x.dtype in _DTYPE_CODES, (
-        f"hash_tensor: unsupported dtype {x.dtype}"
-    )
+    assert x.dtype in _DTYPE_CODES, f"hash_tensor: unsupported dtype {x.dtype}"
     dtype_code = _DTYPE_CODES[x.dtype]
     device = x.device
 

@@ -196,7 +196,8 @@ def test_masked_softmax_backward_matches_aten():
     torch.testing.assert_close(
         _masked_softmax_backward(grad_output, output, mask, -1),
         aten_grad,
-        rtol=1e-4, atol=1e-4,
+        rtol=1e-4,
+        atol=1e-4,
     )
 
 
@@ -259,7 +260,10 @@ def test_masked_softmax_backward_non_contiguous():
 
     assert grad_input.shape == output.shape
     torch.testing.assert_close(
-        grad_input, _grad_ref(x.contiguous(), m.contiguous(), -1, g.contiguous()), rtol=1e-4, atol=1e-4
+        grad_input,
+        _grad_ref(x.contiguous(), m.contiguous(), -1, g.contiguous()),
+        rtol=1e-4,
+        atol=1e-4,
     )
 
 

@@ -40,9 +40,7 @@ def _binary_cross_entropy_backward_kernel(
     if GRAD_OUTPUT_SCALAR:
         g = tl.load(grad_output_ptr).to(tl.float32)
     else:
-        g = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0).to(
-            tl.float32
-        )
+        g = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
     if reduction == 1:  # mean
         g = g * (1.0 / reduction_elements)

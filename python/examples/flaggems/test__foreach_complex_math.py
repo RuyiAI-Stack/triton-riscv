@@ -111,11 +111,26 @@ def ref_complex(name, z):
 
 
 CASES = [
-    (0, "neg"), (1, "exp"), (2, "expm1"), (3, "log"), (4, "sqrt"),
-    (5, "reciprocal"), (6, "rsqrt"), (7, "sin"), (8, "cos"), (9, "sinh"),
-    (10, "cosh"), (11, "tan"), (12, "tanh"), (13, "sigmoid"),
-    (14, "asin"), (15, "acos"), (16, "atan"), (17, "log1p"),
-    (18, "log2"), (19, "log10"),
+    (0, "neg"),
+    (1, "exp"),
+    (2, "expm1"),
+    (3, "log"),
+    (4, "sqrt"),
+    (5, "reciprocal"),
+    (6, "rsqrt"),
+    (7, "sin"),
+    (8, "cos"),
+    (9, "sinh"),
+    (10, "cosh"),
+    (11, "tan"),
+    (12, "tanh"),
+    (13, "sigmoid"),
+    (14, "asin"),
+    (15, "acos"),
+    (16, "atan"),
+    (17, "log1p"),
+    (18, "log2"),
+    (19, "log10"),
 ]
 
 
@@ -171,9 +186,14 @@ def test_complex_mul_div_helpers():
         # .real/.imag of a complex tensor are stride-2 views; the raw-pointer
         # kernels read contiguous memory, so materialize the components first.
         kernel[(1,)](
-            a.real.contiguous(), a.imag.contiguous(),
-            b.real.contiguous(), b.imag.contiguous(),
-            o_r, o_i, 256, BLOCK=256,
+            a.real.contiguous(),
+            a.imag.contiguous(),
+            b.real.contiguous(),
+            b.imag.contiguous(),
+            o_r,
+            o_i,
+            256,
+            BLOCK=256,
         )
         torch.testing.assert_close(o_r, ref.real, rtol=1e-4, atol=1e-4)
         torch.testing.assert_close(o_i, ref.imag, rtol=1e-4, atol=1e-4)

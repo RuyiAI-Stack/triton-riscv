@@ -48,7 +48,7 @@ def test_clamp_max_scalar_nan_bound():
 def test_clamp_max_scalar_int(dtype):
     # Integer clamp is bit-exact through the Triton integer minimum.
     if dtype == torch.int64:
-        x = torch.tensor([-5, 0, 3, 1024, -(2 ** 40), 2 ** 40], dtype=dtype)
+        x = torch.tensor([-5, 0, 3, 1024, -(2**40), 2**40], dtype=dtype)
     else:
         x = torch.tensor([-5, 0, 3, 1024, -65000, 65000], dtype=dtype)
 
@@ -76,7 +76,9 @@ def test_clamp_max_tensor():
 def test_clamp_max_tensor_broadcast():
     torch.manual_seed(0)
     x = torch.randn(16, 256, dtype=torch.float32, device="cpu") * 2.0
-    maxi = torch.rand(16, 1, dtype=torch.float32, device="cpu") * 2.0 - 1.0  # broadcasts along rows
+    maxi = (
+        torch.rand(16, 1, dtype=torch.float32, device="cpu") * 2.0 - 1.0
+    )  # broadcasts along rows
 
     ref = torch.clamp_max(x, max=maxi)
 

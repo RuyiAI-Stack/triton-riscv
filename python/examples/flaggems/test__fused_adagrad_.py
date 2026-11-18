@@ -83,8 +83,15 @@ def test_fused_adagrad_grad_scale():
     port = (p.clone(), g.clone(), s.clone())
     _fused_adagrad_([port[0]], [port[1]], [port[2]], [T(1)], grad_scale=T(0.5))
     torch.ops.aten._fused_adagrad_(
-        [ref[0]], [ref[1] / 0.5], [ref[2]], [T(1)],
-        lr=1e-2, lr_decay=0.0, weight_decay=0.0, eps=1e-10, maximize=False,
+        [ref[0]],
+        [ref[1] / 0.5],
+        [ref[2]],
+        [T(1)],
+        lr=1e-2,
+        lr_decay=0.0,
+        weight_decay=0.0,
+        eps=1e-10,
+        maximize=False,
     )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
 
@@ -98,8 +105,15 @@ def test_fused_adagrad_found_inf_exact_compare(found_inf_val):
     fi = T(found_inf_val)
     _fused_adagrad_([port[0]], [port[1]], [port[2]], [T(1)], found_inf=fi)
     torch.ops.aten._fused_adagrad_(
-        [ref[0]], [ref[1]], [ref[2]], [T(1)],
-        lr=1e-2, lr_decay=0.0, weight_decay=0.0, eps=1e-10, maximize=False,
+        [ref[0]],
+        [ref[1]],
+        [ref[2]],
+        [T(1)],
+        lr=1e-2,
+        lr_decay=0.0,
+        weight_decay=0.0,
+        eps=1e-10,
+        maximize=False,
         found_inf=fi.clone(),
     )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
@@ -111,10 +125,19 @@ def test_fused_adagrad_multiple_groups():
     refs = [tuple(t.clone() for t in grp) for grp in groups]
     ports = [tuple(t.clone() for t in grp) for grp in groups]
     _fused_adagrad_(
-        [grp[0] for grp in ports], [grp[1] for grp in ports],
-        [grp[2] for grp in ports], [T(3), T(3)], lr=0.05,
+        [grp[0] for grp in ports],
+        [grp[1] for grp in ports],
+        [grp[2] for grp in ports],
+        [T(3), T(3)],
+        lr=0.05,
     )
-    ref_step([r[0] for r in refs], [r[1] for r in refs], [r[2] for r in refs], [3, 3], lr=0.05)
+    ref_step(
+        [r[0] for r in refs],
+        [r[1] for r in refs],
+        [r[2] for r in refs],
+        [3, 3],
+        lr=0.05,
+    )
     for i in range(2):
         torch.testing.assert_close(ports[i][0], refs[i][0], rtol=1e-6, atol=1e-7)
         torch.testing.assert_close(ports[i][2], refs[i][2], rtol=1e-6, atol=1e-7)

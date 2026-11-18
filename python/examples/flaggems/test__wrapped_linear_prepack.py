@@ -40,12 +40,8 @@ def check_pack_layout(packed, weight, scale, zero_point, bias):
     assert metadata.shape == (4,)
     assert packed_bias.shape == (N,)
 
-    torch.testing.assert_close(
-        metadata[0], torch.tensor(scale), rtol=0, atol=0
-    )
-    torch.testing.assert_close(
-        metadata[1], torch.tensor(zero_point), rtol=0, atol=0
-    )
+    torch.testing.assert_close(metadata[0], torch.tensor(scale), rtol=0, atol=0)
+    torch.testing.assert_close(metadata[1], torch.tensor(zero_point), rtol=0, atol=0)
     torch.testing.assert_close(metadata[2], torch.tensor(260821.0), rtol=0, atol=0)
     torch.testing.assert_close(metadata[3], torch.tensor(1.0), rtol=0, atol=0)
     torch.testing.assert_close(packed_bias, bias, rtol=0, atol=0)
@@ -252,9 +248,7 @@ def test_wrapped_linear_prepack_empty_triton_path(monkeypatch):
         launches.append(kwargs.get("grid"))
         return real_run(*args, **kwargs)
 
-    monkeypatch.setattr(
-        mod._wrapped_linear_prepack_empty_kernel, "run", spy_run
-    )
+    monkeypatch.setattr(mod._wrapped_linear_prepack_empty_kernel, "run", spy_run)
     weight = torch.randn(4, 0)
     scale = torch.tensor(0.1)
     zp = torch.tensor(0.0)

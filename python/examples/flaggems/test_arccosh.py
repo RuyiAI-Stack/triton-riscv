@@ -62,9 +62,7 @@ def test_arccosh_bf16():
 
 def test_arccosh_domain_boundary():
     # In-domain edges: exactly 1.0 (-> 0.0), large values, +inf (-> +inf).
-    x = torch.tensor(
-        [1.0, 2.0, 1e30, 3.0e38, float("inf")], dtype=torch.float32
-    )
+    x = torch.tensor([1.0, 2.0, 1e30, 3.0e38, float("inf")], dtype=torch.float32)
 
     ref_out = torch.arccosh(x)
     tri_out = arccosh(x)
@@ -116,9 +114,7 @@ def test_arccosh_non_contiguous():
     x = (torch.rand(64, 32, device="cpu", dtype=torch.float32) * 9.0 + 1.0).t()
     assert not x.is_contiguous()
 
-    torch.testing.assert_close(
-        arccosh(x), torch.arccosh(x), rtol=1e-4, atol=1e-4
-    )
+    torch.testing.assert_close(arccosh(x), torch.arccosh(x), rtol=1e-4, atol=1e-4)
 
 
 def test_arccosh_integer_promotes():

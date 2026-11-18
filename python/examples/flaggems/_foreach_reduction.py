@@ -18,7 +18,9 @@ def _max_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr):
 
 
 @triton.jit
-def _norm_kernel(x_ptr, out_ptr, n, ORD: tl.constexpr, KIND: tl.constexpr, BLOCK: tl.constexpr):
+def _norm_kernel(
+    x_ptr, out_ptr, n, ORD: tl.constexpr, KIND: tl.constexpr, BLOCK: tl.constexpr
+):
     acc_s = tl.zeros((1,), tl.float32)
     acc_max = tl.full((BLOCK,), float("-inf"), tl.float32)
     acc_min = tl.full((BLOCK,), float("inf"), tl.float32)
@@ -28,13 +30,17 @@ def _norm_kernel(x_ptr, out_ptr, n, ORD: tl.constexpr, KIND: tl.constexpr, BLOCK
         v = tl.load(x_ptr + idx, mask=m, other=0.0).to(tl.float32)
         a = tl.abs(v)
         if KIND == 0:
-            acc_s = acc_s + tl.sum(tl.where(m & (v != 0.0), 1.0, 0.0) + tl.zeros((BLOCK,), tl.float32))
+            acc_s = acc_s + tl.sum(
+                tl.where(m & (v != 0.0), 1.0, 0.0) + tl.zeros((BLOCK,), tl.float32)
+            )
         elif KIND == 1:
             acc_max = tl.maximum(acc_max, tl.where(m, a, float("-inf")))
         elif KIND == 2:
             acc_min = tl.minimum(acc_min, tl.where(m, a, float("inf")))
         else:
-            acc_s = acc_s + tl.sum(tl.where(m, _ld.pow(a, ORD), 0.0) + tl.zeros((BLOCK,), tl.float32))
+            acc_s = acc_s + tl.sum(
+                tl.where(m, _ld.pow(a, ORD), 0.0) + tl.zeros((BLOCK,), tl.float32)
+            )
     if KIND == 1:
         tl.store(out_ptr, tl.max(acc_max, axis=0))
     elif KIND == 2:
@@ -80,7 +86,9 @@ def _foreach_max(self):
         raise RuntimeError(
             "max(): Expected reduction dim to be specified for input.numel() == 0."
         )
-    out_dtype = torch.float32 if tensors and tensors[0].dtype.is_floating_point else torch.int64
+    out_dtype = (
+        torch.float32 if tensors and tensors[0].dtype.is_floating_point else torch.int64
+    )
     return _run_list(tensors, _max_kernel, out_dtype)
 
 

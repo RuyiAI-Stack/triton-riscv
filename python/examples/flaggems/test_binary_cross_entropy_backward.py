@@ -129,9 +129,7 @@ def test_bce_backward_int_reduction_enum():
     t = torch.rand(512)
     g = torch.randn(512)
 
-    by_enum = [
-        binary_cross_entropy_backward(g, p, t, None, k) for k in (0, 1, 2)
-    ]
+    by_enum = [binary_cross_entropy_backward(g, p, t, None, k) for k in (0, 1, 2)]
     for reduction, enum_result in zip(("none", "mean", "sum"), by_enum):
         torch.testing.assert_close(
             enum_result,
@@ -152,9 +150,7 @@ def test_bce_backward_fp64_aten_fallback(monkeypatch):
         calls.append(1)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(
-        torch.ops.aten, "binary_cross_entropy_backward", spy
-    )
+    monkeypatch.setattr(torch.ops.aten, "binary_cross_entropy_backward", spy)
 
     torch.manual_seed(0)
     p = _safe_prob(128, dtype=torch.float64)

@@ -32,7 +32,22 @@ def test_float_power_special_contract():
         dtype=torch.float64,
     )
     exp = torch.tensor(
-        [0.0, -1.0, -2.5, 2.5, float("inf"), 3.0, 0.5, 0.0, 3.7, 3.0, 2.0, 0.5, -3.0, 0.0],
+        [
+            0.0,
+            -1.0,
+            -2.5,
+            2.5,
+            float("inf"),
+            3.0,
+            0.5,
+            0.0,
+            3.7,
+            3.0,
+            2.0,
+            0.5,
+            -3.0,
+            0.0,
+        ],
         dtype=torch.float64,
     )
     tri, ref = _inplace(base, exp)
@@ -151,16 +166,15 @@ def test_float_power_inplace_broadcast_grow_raises():
 
 
 @pytest.mark.parametrize(
-    "self_dtype", [torch.float32, torch.float16, torch.bfloat16, torch.int32, torch.int64]
+    "self_dtype",
+    [torch.float32, torch.float16, torch.bfloat16, torch.int32, torch.int64],
 )
 def test_float_power_non_double_base_raises(self_dtype):
     # in-place float_power requires a float64 base (ints are promoted, so an
     # int self can never receive the Double result)
     base = torch.ones(8, dtype=self_dtype)
     exp = torch.ones(8, dtype=torch.float64)
-    with pytest.raises(
-        RuntimeError, match="the base given to float_power_ has dtype"
-    ):
+    with pytest.raises(RuntimeError, match="the base given to float_power_ has dtype"):
         float_power_tensor_tensor_(base, exp)
 
 
@@ -192,9 +206,7 @@ def test_float_power_out_variants():
     assert torch.equal(out, ref)
 
     wrong = torch.empty(3, dtype=torch.float32)
-    with pytest.raises(
-        RuntimeError, match="the output given to float_power has dtype"
-    ):
+    with pytest.raises(RuntimeError, match="the output given to float_power has dtype"):
         float_power_tensor_tensor_out(base, exp, out=wrong)
 
     out_s = torch.empty(3, dtype=torch.float64)
@@ -229,12 +241,17 @@ def test_float_power_non_inplace_entries():
     base = torch.randn(512, dtype=torch.float64).abs() * 4 + 0.25
     exp = torch.randn(512, dtype=torch.float64) * 3
     ref = torch.float_power(base, exp)
-    torch.testing.assert_close(float_power_tensor_tensor(base, exp), ref, rtol=1e-4, atol=1e-4)
-    torch.testing.assert_close(float_power_tensor_scalar(base, 2.0), base**2, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(
+        float_power_tensor_tensor(base, exp), ref, rtol=1e-4, atol=1e-4
+    )
+    torch.testing.assert_close(
+        float_power_tensor_scalar(base, 2.0), base**2, rtol=1e-4, atol=1e-4
+    )
 
     ints = torch.arange(-5, 5, dtype=torch.int64)
     assert torch.equal(
-        float_power_tensor_tensor(ints, torch.full_like(ints, 3)), torch.float_power(ints, torch.tensor(3))
+        float_power_tensor_tensor(ints, torch.full_like(ints, 3)),
+        torch.float_power(ints, torch.tensor(3)),
     )
 
 

@@ -83,7 +83,7 @@ def test_trunc_inplace_int_aten_fallback(dtype, monkeypatch):
     monkeypatch.setattr(torch.ops.aten, "trunc_", spy)
 
     if dtype == torch.int64:
-        x = torch.tensor([-7, -1, 0, 3, 1024, -(2 ** 40)], dtype=dtype)
+        x = torch.tensor([-7, -1, 0, 3, 1024, -(2**40)], dtype=dtype)
     else:
         x = torch.tensor([-7, -1, 0, 3, 1024, -65000], dtype=dtype)
     ref = torch.trunc(x)
@@ -113,7 +113,7 @@ def test_trunc_out_of_place(size):
 
 def test_trunc_out_variant():
     torch.manual_seed(0)
-    x = (torch.randn(256, device="cpu", dtype=torch.float32) * 5.0)
+    x = torch.randn(256, device="cpu", dtype=torch.float32) * 5.0
 
     ref = torch.trunc(x)
 

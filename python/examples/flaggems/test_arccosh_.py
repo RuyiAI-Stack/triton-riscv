@@ -69,9 +69,7 @@ def test_arccosh__bf16():
 
 def test_arccosh_inplace_boundary():
     # In-domain edges: exactly 1.0 (-> 0.0), plain values, +inf (-> +inf).
-    x = torch.tensor(
-        [1.0, 2.0, 1e30, 3.0e38, float("inf")], dtype=torch.float32
-    )
+    x = torch.tensor([1.0, 2.0, 1e30, 3.0e38, float("inf")], dtype=torch.float32)
 
     ref = x.clone()
     torch.arccosh_(ref)

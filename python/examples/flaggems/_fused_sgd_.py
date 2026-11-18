@@ -36,7 +36,9 @@ def _fused_sgd_kernel(
         if is_first_step:
             buf = grad_load
         else:
-            buf_load = tl.load(momentum_buffer + offsets, mask=mask, other=0.0).to(ACC_DTYPE)
+            buf_load = tl.load(momentum_buffer + offsets, mask=mask, other=0.0).to(
+                ACC_DTYPE
+            )
             buf = momentum * buf_load + (1 - dampening) * grad_load
         tl.store(momentum_buffer + offsets, buf.to(out_dtype), mask=mask)
         if nesterov:

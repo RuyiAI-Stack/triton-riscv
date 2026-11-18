@@ -72,7 +72,10 @@ def test_list_overload_matches_formula(name):
         torch.testing.assert_close(o, _LIST_FORMULAS[name](x, y), rtol=1e-5, atol=1e-6)
 
 
-@pytest.mark.parametrize("name", ["add", "sub", "mul", "div", "clamp_max", "clamp_min", "maximum", "minimum", "pow"])
+@pytest.mark.parametrize(
+    "name",
+    ["add", "sub", "mul", "div", "clamp_max", "clamp_min", "maximum", "minimum", "pow"],
+)
 def test_scalar_overload_matches_formula(name):
     kind = "pos" if name in ("div", "pow") else "randn"
     xs = make(SHAPES, seed=3, kind=kind)
@@ -94,7 +97,9 @@ def test_scalar_overload_matches_formula(name):
         torch.testing.assert_close(o, ref_fn(x), rtol=1e-5, atol=1e-6)
 
 
-@pytest.mark.parametrize("name", ["add", "sub", "mul", "div", "clamp_max", "minimum", "pow"])
+@pytest.mark.parametrize(
+    "name", ["add", "sub", "mul", "div", "clamp_max", "minimum", "pow"]
+)
 def test_scalarlist_overload_matches_formula(name):
     kind = "pos" if name in ("div", "pow") else "randn"
     xs = make(SHAPES, seed=4, kind=kind)
@@ -171,7 +176,9 @@ def test_lerp_tensor_weight():
     xs = make(SHAPES, seed=13)
     ys = make(SHAPES, seed=14)
     ws = make(SHAPES, seed=15)
-    outs = _foreach_lerp_List([t.clone() for t in xs], [t.clone() for t in ys], [t.clone() for t in ws])
+    outs = _foreach_lerp_List(
+        [t.clone() for t in xs], [t.clone() for t in ys], [t.clone() for t in ws]
+    )
     ref = torch._foreach_lerp(xs, ys, ws)
     for o, r in zip(outs, ref):
         torch.testing.assert_close(o, r, rtol=1e-5, atol=1e-6)
@@ -283,23 +290,36 @@ def test_pow_negative_base_integer_exponent():
             lambda xs, ys: _foreach_add_List(xs, ys, alpha=2.0),
             lambda xs, ys: torch._foreach_add(xs, ys, alpha=2.0),
         ),
-        (lambda xs, ys: _foreach_mul_List(xs, ys), lambda xs, ys: torch._foreach_mul(xs, ys)),
+        (
+            lambda xs, ys: _foreach_mul_List(xs, ys),
+            lambda xs, ys: torch._foreach_mul(xs, ys),
+        ),
         (
             lambda xs, ys: _foreach_div_List(xs, ys),
             lambda xs, ys: torch._foreach_div(xs, ys),
         ),
-        (lambda xs, ys: _foreach_sub_List(xs, ys), lambda xs, ys: torch._foreach_sub(xs, ys)),
+        (
+            lambda xs, ys: _foreach_sub_List(xs, ys),
+            lambda xs, ys: torch._foreach_sub(xs, ys),
+        ),
         (
             lambda xs, ys: _foreach_maximum_List(xs, ys),
             lambda xs, ys: torch._foreach_maximum(xs, ys),
         ),
         (
             lambda xs, ys: _foreach_minimum_ScalarList(xs, [0.5, 2.0, -1.0]),
-            lambda xs, ys: [torch.minimum(x, torch.full_like(x, s)) for x, s in zip(xs, [0.5, 2.0, -1.0])],
+            lambda xs, ys: [
+                torch.minimum(x, torch.full_like(x, s))
+                for x, s in zip(xs, [0.5, 2.0, -1.0])
+            ],
         ),
         (
-            lambda xs, ys: _foreach_pow_ScalarList([x.abs() + 0.1 for x in xs], [2.0, 3.0, 0.5]),
-            lambda xs, ys: torch._foreach_pow([x.abs() + 0.1 for x in xs], [2.0, 3.0, 0.5]),
+            lambda xs, ys: _foreach_pow_ScalarList(
+                [x.abs() + 0.1 for x in xs], [2.0, 3.0, 0.5]
+            ),
+            lambda xs, ys: torch._foreach_pow(
+                [x.abs() + 0.1 for x in xs], [2.0, 3.0, 0.5]
+            ),
         ),
         (
             lambda xs, ys: _foreach_clamp_max_Scalar(xs, 1.0),

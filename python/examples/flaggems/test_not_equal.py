@@ -42,9 +42,7 @@ def test_not_equal_bool():
     torch.manual_seed(0)
     x = torch.rand(1024) < 0.5
     y = torch.rand(1024) < 0.5
-    torch.testing.assert_close(
-        not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0)
 
 
 def test_not_equal_nan():
@@ -71,13 +69,12 @@ def test_not_equal_extremes():
         [float("inf"), float("-inf"), 3.4e38, -3.4e38, -0.0, 0.0],
         dtype=torch.float32,
     )
-    torch.testing.assert_close(
-        not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(
-    "dtype", [torch.int8, torch.int16, torch.int32, torch.int64, torch.float16, torch.float32]
+    "dtype",
+    [torch.int8, torch.int16, torch.int32, torch.int64, torch.float16, torch.float32],
 )
 def test_not_equal_scalar(dtype):
     torch.manual_seed(0)
@@ -110,9 +107,7 @@ def test_not_equal_mixed_dtype_tensors():
     torch.manual_seed(0)
     x = torch.randint(-100, 100, (512,), dtype=torch.int32)
     y = torch.randn(512, dtype=torch.float32)
-    torch.testing.assert_close(
-        not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0)
 
 
 def test_not_equal_near_boundary():
@@ -139,9 +134,7 @@ def test_not_equal_empty(shape):
     torch.manual_seed(0)
     x = torch.randint(-100, 100, shape, dtype=torch.int32)
     y = torch.randint(-100, 100, shape, dtype=torch.int32)
-    torch.testing.assert_close(
-        not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0)
     torch.testing.assert_close(
         not_equal_scalar(x, 1), torch.not_equal(x, 1), rtol=0, atol=0
     )
@@ -152,9 +145,7 @@ def test_not_equal_non_contiguous():
     x = torch.randn(64, 32).t()
     y = torch.randn(64, 32).t()
     assert not x.is_contiguous()
-    torch.testing.assert_close(
-        not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0
-    )
+    torch.testing.assert_close(not_equal(x, y), torch.not_equal(x, y), rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(
@@ -178,6 +169,7 @@ def test_not_equal_broadcast(shape_a, shape_b):
 def test_not_equal_triton_path(monkeypatch):
     # Smoke: the int32 tensor!=tensor main path must launch the Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.not_equal")
 
     launches = []
@@ -198,6 +190,7 @@ def test_not_equal_triton_path(monkeypatch):
 def test_not_equal_scalar_triton_path(monkeypatch):
     # Smoke: the tensor!=scalar overload must launch the scalar Triton kernel.
     import importlib
+
     mod = importlib.import_module("flaggems.not_equal")
 
     launches = []
@@ -210,7 +203,7 @@ def test_not_equal_scalar_triton_path(monkeypatch):
     monkeypatch.setattr(mod.not_equal_kernel_ts, "run", spy_run)
     x = torch.randint(-100, 100, (1024,), dtype=torch.int32)
     out = mod.not_equal_scalar(x, 1)
-    assert (
-        len(launches) == 1
-    ), "not_equal_scalar(A, B) must go through the Triton kernel"
+    assert len(launches) == 1, (
+        "not_equal_scalar(A, B) must go through the Triton kernel"
+    )
     torch.testing.assert_close(out, torch.not_equal(x, 1), rtol=0, atol=0)

@@ -69,9 +69,7 @@ def test_xlogy_scalar_tensor(size):
     torch.testing.assert_close(tri, ref, rtol=1e-4, atol=1e-4, equal_nan=True)
 
 
-@pytest.mark.parametrize(
-    "shape_x, shape_y", [((16, 256), (256,)), ((4, 1), (4, 128))]
-)
+@pytest.mark.parametrize("shape_x, shape_y", [((16, 256), (256,)), ((4, 1), (4, 128))])
 def test_xlogy_broadcast(shape_x, shape_y):
     torch.manual_seed(0)
     x = torch.randn(shape_x, dtype=torch.float32) * 10.0
@@ -95,11 +93,43 @@ def test_xlogy_special_values():
     inf, ninf = float("inf"), float("-inf")
     nan = float("nan")
     x = torch.tensor(
-        [pos0, pos0, neg0, pos0, pos0, pos0, 3.0, 3.0, inf, inf, ninf, 2.0, 1.0, nan, 2.0],
+        [
+            pos0,
+            pos0,
+            neg0,
+            pos0,
+            pos0,
+            pos0,
+            3.0,
+            3.0,
+            inf,
+            inf,
+            ninf,
+            2.0,
+            1.0,
+            nan,
+            2.0,
+        ],
         dtype=torch.float32,
     )
     y = torch.tensor(
-        [nan, ninf, 5.0, pos0, 1.0, inf, pos0, ninf, 0.5, inf, inf, nan, 1.0, 1.0, -1.0],
+        [
+            nan,
+            ninf,
+            5.0,
+            pos0,
+            1.0,
+            inf,
+            pos0,
+            ninf,
+            0.5,
+            inf,
+            inf,
+            nan,
+            1.0,
+            1.0,
+            -1.0,
+        ],
         dtype=torch.float32,
     )
 
@@ -130,9 +160,7 @@ def test_xlogy_y_equals_one():
 
 def test_xlogy_fp16_specials():
     x = torch.tensor([0.0, 2.0, -1.0], dtype=torch.float16)
-    y = torch.tensor(
-        [float("nan"), 0.0, 2.0], dtype=torch.float16
-    )
+    y = torch.tensor([float("nan"), 0.0, 2.0], dtype=torch.float16)
 
     ref = torch.xlogy(x, y)
     tri = xlogy(x, y)
@@ -259,4 +287,6 @@ def test_xlogy_triton_path(monkeypatch):
     y = torch.randn(1024, dtype=torch.float32) * 5.0
     out = mod.xlogy(x, y)
     assert len(launches) == 1, "xlogy(x, y) must go through the Triton kernel"
-    torch.testing.assert_close(out, torch.xlogy(x, y), rtol=1e-4, atol=1e-4, equal_nan=True)
+    torch.testing.assert_close(
+        out, torch.xlogy(x, y), rtol=1e-4, atol=1e-4, equal_nan=True
+    )

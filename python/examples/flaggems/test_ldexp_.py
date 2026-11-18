@@ -92,7 +92,9 @@ def test_ldexp_inplace_non_contiguous():
     assert torch.equal(base.t(), ref_view)
 
 
-@pytest.mark.parametrize("shape_a, shape_e", [((16, 256), (16, 1)), ((16, 256), (16, 256))])
+@pytest.mark.parametrize(
+    "shape_a, shape_e", [((16, 256), (16, 1)), ((16, 256), (16, 256))]
+)
 def test_ldexp_inplace_broadcast(shape_a, shape_e):
     torch.manual_seed(0)
     x = torch.randn(shape_a, dtype=torch.float32)

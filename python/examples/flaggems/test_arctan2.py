@@ -133,12 +133,44 @@ def test_arctan2_zero_and_inf_boundaries():
     inf, ninf = float("inf"), float("-inf")
     nan = float("nan")
     x = torch.tensor(
-        [pos0, pos0, neg0, neg0, pos0, neg0, inf, inf, ninf, inf, ninf, 1.0, -1.0, nan, 1.0],
+        [
+            pos0,
+            pos0,
+            neg0,
+            neg0,
+            pos0,
+            neg0,
+            inf,
+            inf,
+            ninf,
+            inf,
+            ninf,
+            1.0,
+            -1.0,
+            nan,
+            1.0,
+        ],
         dtype=torch.float32,
         device="cpu",
     )
     y = torch.tensor(
-        [pos0, neg0, pos0, neg0, inf, inf, pos0, neg0, pos0, ninf, ninf, inf, inf, 1.0, nan],
+        [
+            pos0,
+            neg0,
+            pos0,
+            neg0,
+            inf,
+            inf,
+            pos0,
+            neg0,
+            pos0,
+            ninf,
+            ninf,
+            inf,
+            inf,
+            1.0,
+            nan,
+        ],
         dtype=torch.float32,
         device="cpu",
     )

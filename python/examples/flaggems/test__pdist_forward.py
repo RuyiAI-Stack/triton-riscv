@@ -85,11 +85,7 @@ def test__pdist_forward_pair_ordering():
     x = torch.arange(N * M, dtype=torch.float32).reshape(N, M)
     ref = torch.pdist(x, 1.0)
     manual = torch.tensor(
-        [
-            (x[i] - x[j]).abs().sum()
-            for i in range(N)
-            for j in range(i + 1, N)
-        ]
+        [(x[i] - x[j]).abs().sum() for i in range(N) for j in range(i + 1, N)]
     )
     torch.testing.assert_close(ref, manual, rtol=0, atol=0)
     out = _pdist_forward(x, 1.0)

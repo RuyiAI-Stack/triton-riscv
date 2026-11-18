@@ -50,12 +50,22 @@ def test_fused_sgd_momentum_matrix(momentum, nesterov, is_first_step):
     ref = (p.clone(), g.clone(), b.clone())
     port = (p.clone(), g.clone(), b.clone())
     _fused_sgd_(
-        [port[0]], [port[1]], [port[2]], momentum=momentum, lr=0.01,
-        nesterov=nesterov, is_first_step=is_first_step,
+        [port[0]],
+        [port[1]],
+        [port[2]],
+        momentum=momentum,
+        lr=0.01,
+        nesterov=nesterov,
+        is_first_step=is_first_step,
     )
     ref_step(
-        [ref[0]], [ref[1]], [ref[2]], momentum=momentum, lr=0.01,
-        nesterov=nesterov, is_first_step=is_first_step,
+        [ref[0]],
+        [ref[1]],
+        [ref[2]],
+        momentum=momentum,
+        lr=0.01,
+        nesterov=nesterov,
+        is_first_step=is_first_step,
     )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
     torch.testing.assert_close(port[2], ref[2], rtol=1e-6, atol=1e-7)
@@ -66,8 +76,17 @@ def test_fused_sgd_weight_decay(weight_decay):
     p, g, b = make(256, seed=2)
     ref = (p.clone(), g.clone(), b.clone())
     port = (p.clone(), g.clone(), b.clone())
-    _fused_sgd_([port[0]], [port[1]], [port[2]], momentum=0.9, lr=0.01, weight_decay=weight_decay)
-    ref_step([ref[0]], [ref[1]], [ref[2]], momentum=0.9, lr=0.01, weight_decay=weight_decay)
+    _fused_sgd_(
+        [port[0]],
+        [port[1]],
+        [port[2]],
+        momentum=0.9,
+        lr=0.01,
+        weight_decay=weight_decay,
+    )
+    ref_step(
+        [ref[0]], [ref[1]], [ref[2]], momentum=0.9, lr=0.01, weight_decay=weight_decay
+    )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
 
 
@@ -98,8 +117,16 @@ def test_fused_sgd_found_inf_exact(found_inf_val):
     fi = T(found_inf_val)
     _fused_sgd_([port[0]], [port[1]], [port[2]], momentum=0.9, lr=0.01, found_inf=fi)
     torch.ops.aten._fused_sgd_(
-        [ref[0]], [ref[1]], [ref[2]], weight_decay=0.0, momentum=0.9, lr=0.01,
-        dampening=0.0, nesterov=False, maximize=False, is_first_step=False,
+        [ref[0]],
+        [ref[1]],
+        [ref[2]],
+        weight_decay=0.0,
+        momentum=0.9,
+        lr=0.01,
+        dampening=0.0,
+        nesterov=False,
+        maximize=False,
+        is_first_step=False,
         found_inf=fi.clone(),
     )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
@@ -109,10 +136,20 @@ def test_fused_sgd_grad_scale_writes_back_grad():
     p, g, b = make(128, seed=6)
     ref = (p.clone(), g.clone(), b.clone())
     port = (p.clone(), g.clone(), b.clone())
-    _fused_sgd_([port[0]], [port[1]], [port[2]], momentum=0.9, lr=0.01, grad_scale=T(0.5))
+    _fused_sgd_(
+        [port[0]], [port[1]], [port[2]], momentum=0.9, lr=0.01, grad_scale=T(0.5)
+    )
     torch.ops.aten._fused_sgd_(
-        [ref[0]], [ref[1]], [ref[2]], weight_decay=0.0, momentum=0.9, lr=0.01,
-        dampening=0.0, nesterov=False, maximize=False, is_first_step=False,
+        [ref[0]],
+        [ref[1]],
+        [ref[2]],
+        weight_decay=0.0,
+        momentum=0.9,
+        lr=0.01,
+        dampening=0.0,
+        nesterov=False,
+        maximize=False,
+        is_first_step=False,
         grad_scale=T(0.5),
     )
     torch.testing.assert_close(port[0], ref[0], rtol=1e-6, atol=1e-7)
@@ -124,12 +161,18 @@ def test_fused_sgd_multiple_groups():
     refs = [tuple(t.clone() for t in grp) for grp in groups]
     ports = [tuple(t.clone() for t in grp) for grp in groups]
     _fused_sgd_(
-        [grp[0] for grp in ports], [grp[1] for grp in ports],
-        [grp[2] for grp in ports], momentum=0.9, lr=0.01,
+        [grp[0] for grp in ports],
+        [grp[1] for grp in ports],
+        [grp[2] for grp in ports],
+        momentum=0.9,
+        lr=0.01,
     )
     ref_step(
-        [r[0] for r in refs], [r[1] for r in refs], [r[2] for r in refs],
-        momentum=0.9, lr=0.01,
+        [r[0] for r in refs],
+        [r[1] for r in refs],
+        [r[2] for r in refs],
+        momentum=0.9,
+        lr=0.01,
     )
     for i in range(2):
         torch.testing.assert_close(ports[i][0], refs[i][0], rtol=1e-6, atol=1e-7)

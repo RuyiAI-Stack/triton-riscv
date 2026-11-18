@@ -3,7 +3,12 @@ import importlib
 import pytest
 import torch
 
-from ._foreach_reduction import _foreach_max, _foreach_norm, _foreach_zero, _foreach_zero_
+from ._foreach_reduction import (
+    _foreach_max,
+    _foreach_norm,
+    _foreach_zero,
+    _foreach_zero_,
+)
 
 
 def make_list(shapes, seed=0, dtype=torch.float32):
@@ -102,7 +107,11 @@ def test_foreach_zero_non_contiguous():
 def test_foreach_reduction_triton_path(monkeypatch):
     mod = importlib.import_module("flaggems._foreach_reduction")
     calls = {"max": 0, "norm": 0, "zero": 0}
-    for name, kernel in (("max", mod._max_kernel), ("norm", mod._norm_kernel), ("zero", mod._zero_kernel)):
+    for name, kernel in (
+        ("max", mod._max_kernel),
+        ("norm", mod._norm_kernel),
+        ("zero", mod._zero_kernel),
+    ):
         real_run = kernel.run
 
         def spy_run(*args, _n=name, _r=real_run, **kwargs):

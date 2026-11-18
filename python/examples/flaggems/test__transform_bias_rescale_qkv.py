@@ -51,7 +51,6 @@ def test_transform_bias_rescale_qkv_query_scaling_semantics(
     # Only the query section is rescaled, by 1/sqrt(head_dim); k and v only
     # take their bias. Sections pack [Q | K | V] along the last dim.
     qkv, bias = make_inputs(batch, seq_len, num_heads, head_dim)
-    hidden = num_heads * head_dim
     scale = head_dim**-0.5
 
     q, k, v = _transform_bias_rescale_qkv(qkv, bias, num_heads)

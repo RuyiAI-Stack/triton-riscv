@@ -105,8 +105,16 @@ def _scalar_kernel(x_ptr, o_ptr, y, alpha, n, OP: tl.constexpr, BLOCK: tl.conste
 
 @triton.jit
 def _ternary_kernel(
-    a_ptr, b_ptr, c_ptr, w_ptr, o_ptr, val, n,
-    OP: tl.constexpr, HAS_W: tl.constexpr, BLOCK: tl.constexpr,
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    w_ptr,
+    o_ptr,
+    val,
+    n,
+    OP: tl.constexpr,
+    HAS_W: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
     idx = pid * BLOCK + tl.arange(0, BLOCK)
@@ -155,7 +163,13 @@ def _run_pair(x, y, op, alpha, inplace):
     n = xc.numel()
     if n:
         _pair_kernel[(triton.cdiv(n, _BLOCK),)](
-            xc.view(-1), yc.view(-1), dstc.view(-1), float(alpha), n, OP=op, BLOCK=_BLOCK
+            xc.view(-1),
+            yc.view(-1),
+            dstc.view(-1),
+            float(alpha),
+            n,
+            OP=op,
+            BLOCK=_BLOCK,
         )
     if dstc is not dst:
         dst.copy_(dstc)
@@ -218,7 +232,11 @@ def _apply_ternary(self, tensors1, tensors2, weights, op, inplace):
         if inplace and not a.is_contiguous():
             sub = [a.contiguous()]
             sub_b = [b.contiguous() if isinstance(b, torch.Tensor) else b]
-            sub_w = [weights[i] if isinstance(weights, list) else weights] if weights is not None else None
+            sub_w = (
+                [weights[i] if isinstance(weights, list) else weights]
+                if weights is not None
+                else None
+            )
             sub_c = [tensors2[i].contiguous()] if tensors2 is not None else None
             res = _apply_ternary(sub, sub_b, sub_c, sub_w, op, inplace=False)
             a.copy_(res[0])
@@ -234,25 +252,57 @@ def _apply_ternary(self, tensors1, tensors2, weights, op, inplace):
             if isinstance(w, torch.Tensor):
                 wc = _contig(w.expand(a.shape)) if w.shape != a.shape else _contig(w)
                 _ternary_kernel[(triton.cdiv(a.numel(), _BLOCK),)](
-                    ac.view(-1), bc.view(-1), cc.view(-1), wc.view(-1), dstc.view(-1),
-                    1.0, a.numel(), OP=op, HAS_W=True, BLOCK=_BLOCK,
+                    ac.view(-1),
+                    bc.view(-1),
+                    cc.view(-1),
+                    wc.view(-1),
+                    dstc.view(-1),
+                    1.0,
+                    a.numel(),
+                    OP=op,
+                    HAS_W=True,
+                    BLOCK=_BLOCK,
                 )
             else:
                 _ternary_kernel[(triton.cdiv(a.numel(), _BLOCK),)](
-                    ac.view(-1), bc.view(-1), cc.view(-1), ac.view(-1), dstc.view(-1),
-                    float(w), a.numel(), OP=op, HAS_W=False, BLOCK=_BLOCK,
+                    ac.view(-1),
+                    bc.view(-1),
+                    cc.view(-1),
+                    ac.view(-1),
+                    dstc.view(-1),
+                    float(w),
+                    a.numel(),
+                    OP=op,
+                    HAS_W=False,
+                    BLOCK=_BLOCK,
                 )
         else:
             if isinstance(w, torch.Tensor):
                 wc = _contig(w.expand(a.shape)) if w.shape != a.shape else _contig(w)
                 _ternary_kernel[(triton.cdiv(a.numel(), _BLOCK),)](
-                    ac.view(-1), bc.view(-1), ac.view(-1), wc.view(-1), dstc.view(-1),
-                    1.0, a.numel(), OP=_LERP, HAS_W=True, BLOCK=_BLOCK,
+                    ac.view(-1),
+                    bc.view(-1),
+                    ac.view(-1),
+                    wc.view(-1),
+                    dstc.view(-1),
+                    1.0,
+                    a.numel(),
+                    OP=_LERP,
+                    HAS_W=True,
+                    BLOCK=_BLOCK,
                 )
             else:
                 _ternary_kernel[(triton.cdiv(a.numel(), _BLOCK),)](
-                    ac.view(-1), bc.view(-1), ac.view(-1), ac.view(-1), dstc.view(-1),
-                    float(w), a.numel(), OP=_LERP, HAS_W=False, BLOCK=_BLOCK,
+                    ac.view(-1),
+                    bc.view(-1),
+                    ac.view(-1),
+                    ac.view(-1),
+                    dstc.view(-1),
+                    float(w),
+                    a.numel(),
+                    OP=_LERP,
+                    HAS_W=False,
+                    BLOCK=_BLOCK,
                 )
         if dstc is not dst:
             dst.copy_(dstc)
@@ -312,14 +362,18 @@ def _make_tensor(name, inplace, with_alpha):
 
 def _make_lerp(ov, inplace):
     if ov == "List":
+
         def fn(self, tensors1, weight):
             return _apply_ternary(self, tensors1, None, weight, _LERP, inplace)
     elif ov == "ScalarList":
+
         def fn(self, tensors1, scalars):
             return _apply_ternary(self, tensors1, None, list(scalars), _LERP, inplace)
     else:
+
         def fn(self, tensors1, weight):
             return _apply_ternary(self, tensors1, None, weight, _LERP, inplace)
+
     return fn
 
 

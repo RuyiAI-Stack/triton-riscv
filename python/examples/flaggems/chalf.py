@@ -49,9 +49,7 @@ def chalf(input, memory_format=None):
         n_elements = in_real.numel()
 
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        chalf_complex_kernel[grid](
-            in_real, out_real, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+        chalf_complex_kernel[grid](in_real, out_real, n_elements, BLOCK_SIZE=BLOCK_SIZE)
         return output
 
     # Real (or integer) input -> complex32 with zero imaginary part.

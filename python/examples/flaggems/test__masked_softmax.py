@@ -69,16 +69,15 @@ def _broadcast_mask(x, mask, dim, mask_type):
         new_shape = [1] * (ndim - mask.ndim) + list(mask.shape)
     else:  # mask_type == 1
         new_shape = (
-            [mask.shape[0]]
-            + [1] * (dim - 1)
-            + [mask.shape[1]]
-            + [1] * (ndim - dim - 1)
+            [mask.shape[0]] + [1] * (dim - 1) + [mask.shape[1]] + [1] * (ndim - dim - 1)
         )
     return mask.reshape(new_shape)
 
 
 def _ref(x, mask, dim, mask_type):
-    return F.softmax(x.masked_fill(_broadcast_mask(x, mask, dim, mask_type), float("-inf")), dim)
+    return F.softmax(
+        x.masked_fill(_broadcast_mask(x, mask, dim, mask_type), float("-inf")), dim
+    )
 
 
 @pytest.mark.parametrize("size", [512, 1023, 1024])
@@ -118,7 +117,9 @@ def test_masked_softmax_dim(dim):
     torch.testing.assert_close(out, _ref(x, mask, dim, 2), rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize("shape,mask_shape", [((4, 8, 32, 32), (32, 32)), ((2, 3, 16, 16), (16, 16))])
+@pytest.mark.parametrize(
+    "shape,mask_shape", [((4, 8, 32, 32), (32, 32)), ((2, 3, 16, 16), (16, 16))]
+)
 def test_masked_softmax_type0_source_mask(shape, mask_shape):
     # mask_type 0: (B,H,L,L) attention scores with an (L,L) source mask.
     torch.manual_seed(0)
@@ -130,7 +131,9 @@ def test_masked_softmax_type0_source_mask(shape, mask_shape):
     torch.testing.assert_close(out, _ref(x, mask, 3, 0), rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize("shape,mask_shape", [((4, 8, 32, 32), (4, 32)), ((2, 3, 16, 16), (2, 16))])
+@pytest.mark.parametrize(
+    "shape,mask_shape", [((4, 8, 32, 32), (4, 32)), ((2, 3, 16, 16), (2, 16))]
+)
 def test_masked_softmax_type1_padding_mask(shape, mask_shape):
     # mask_type 1: (B,H,L,L) attention scores with a (B,L) padding mask.
     torch.manual_seed(0)
@@ -288,7 +291,9 @@ def test_masked_softmax_non_contiguous():
     out = _masked_softmax(x, mask, -1, 2)
 
     assert out.shape == x.shape
-    torch.testing.assert_close(out, _ref(x.contiguous(), mask.contiguous(), -1, 2), rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(
+        out, _ref(x.contiguous(), mask.contiguous(), -1, 2), rtol=1e-4, atol=1e-4
+    )
 
 
 def test_masked_softmax_non_contiguous_mask_only():
@@ -299,7 +304,9 @@ def test_masked_softmax_non_contiguous_mask_only():
 
     out = _masked_softmax(x, mask, -1, 2)
 
-    torch.testing.assert_close(out, _ref(x, mask.contiguous(), -1, 2), rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(
+        out, _ref(x, mask.contiguous(), -1, 2), rtol=1e-4, atol=1e-4
+    )
 
 
 def test_masked_softmax_matches_aten():
@@ -313,7 +320,11 @@ def test_masked_softmax_matches_aten():
     for dim in (0, 1, 2):
         aten_out = torch.ops.aten._masked_softmax(x, mask, dim, 2)
         torch.testing.assert_close(
-            _masked_softmax(x, mask, dim, 2), aten_out, equal_nan=True, rtol=1e-4, atol=1e-4
+            _masked_softmax(x, mask, dim, 2),
+            aten_out,
+            equal_nan=True,
+            rtol=1e-4,
+            atol=1e-4,
         )
 
     x4 = torch.randn(2, 3, 16, 16, dtype=torch.float32)

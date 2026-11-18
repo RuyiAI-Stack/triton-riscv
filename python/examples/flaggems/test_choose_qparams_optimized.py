@@ -87,7 +87,9 @@ def test_choose_qparams_optimized_bit_widths(bit_width):
     x = torch.randn(512, dtype=torch.float32)
 
     ref_max, ref_min = torch_cqo(x, 512, 2**bit_width - 1, 0.16, bit_width)
-    res_max, res_min = choose_qparams_optimized(x, 512, 2**bit_width - 1, 0.16, bit_width)
+    res_max, res_min = choose_qparams_optimized(
+        x, 512, 2**bit_width - 1, 0.16, bit_width
+    )
 
     torch.testing.assert_close(res_max, ref_max, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(res_min, ref_min, rtol=1e-5, atol=1e-5)
@@ -169,12 +171,8 @@ def test_choose_qparams_optimized_triton_path(monkeypatch):
     monkeypatch.setattr(
         mod._minmax_kernel, "run", spy("minmax", mod._minmax_kernel.run)
     )
-    monkeypatch.setattr(
-        mod._qerror_kernel, "run", spy("qerr", mod._qerror_kernel.run)
-    )
-    monkeypatch.setattr(
-        mod._store2_kernel, "run", spy("store", mod._store2_kernel.run)
-    )
+    monkeypatch.setattr(mod._qerror_kernel, "run", spy("qerr", mod._qerror_kernel.run))
+    monkeypatch.setattr(mod._store2_kernel, "run", spy("store", mod._store2_kernel.run))
 
     torch.manual_seed(0)
     x = torch.randn(256, dtype=torch.float32)

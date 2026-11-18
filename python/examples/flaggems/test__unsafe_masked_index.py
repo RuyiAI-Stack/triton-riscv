@@ -33,7 +33,9 @@ from ._unsafe_masked_index import _unsafe_masked_index
 # FileFinder cache for python/examples nondeterministically forgets the
 # package (probed: 'flaggens' absent from FileFinder._path_cache while
 # present on disk), which breaks re-imports by name at test runtime.
-_UNSAFE_MASKED_INDEX_MOD = sys.modules[__name__.rsplit(".", 1)[0] + "._unsafe_masked_index"]
+_UNSAFE_MASKED_INDEX_MOD = sys.modules[
+    __name__.rsplit(".", 1)[0] + "._unsafe_masked_index"
+]
 
 
 def _spy_module():
@@ -220,9 +222,7 @@ def test_unsafe_masked_index_non_contiguous():
     out = _unsafe_masked_index(self_t, mask_t, [idx_t], 0.5)
 
     assert out.shape == mask_t.shape
-    torch.testing.assert_close(
-        out, _ref(self_t, mask_t, [idx_t], 0.5), rtol=0, atol=0
-    )
+    torch.testing.assert_close(out, _ref(self_t, mask_t, [idx_t], 0.5), rtol=0, atol=0)
 
 
 def test_unsafe_masked_index_matches_aten_reference():
