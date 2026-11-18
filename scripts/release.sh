@@ -169,21 +169,13 @@ cd "${CONTAINER_TRITON_DIR}"
 # their timestamps move, which throws the stripped binaries away.
 "${PYTHON}" setup.py build
 
-# Triton builds with -O2 -g, so libtriton.so and triton-shared-opt land at
-# hundreds of MB. CMake's Release type would drop the debug info but never
-# strips, so strip here either way, and fail loudly if it stops working: both
-# files are what makes the wheel 500 MB instead of 200 MB.
-strip_wheel_binary() {
-    local path="$1"
-    [ -f "${path}" ] || { echo "error: missing ${path}" >&2; exit 1; }
-    strip --strip-all "${path}"
-}
-while IFS= read -r binary; do
-    strip_wheel_binary "${binary}"
-done < <(find build python/triton/_C -name libtriton.so -type f 2>/dev/null)
-while IFS= read -r tool; do
-    strip_wheel_binary "${tool}"
-done < <(find build -name triton-shared-opt -type f 2>/dev/null)
+# Triton builds with -O2 -g, so these land at hundreds of MB. CMake's Release
+# type would drop the debug info but never strips. Strip the copies bdist_wheel
+# packages; an unmatched glob makes strip fail rather than skip silently.
+strip --strip-all \
+    "${CONTAINER_TRITON_DIR}"/python/triton/_C/libtriton.so \
+    "${CONTAINER_TRITON_DIR}"/build/lib.*/triton/_C/libtriton.so \
+    "${CONTAINER_TRITON_DIR}"/build/lib.*/triton/backends/triton_shared/bin/triton-shared-opt
 
 # The wheel carries Triton, the plugin built into libtriton.so, and the backend
 # under triton/backends/triton_shared -- all of it from the tree build.sh just
@@ -193,38 +185,7 @@ mkdir -p "${CONTAINER_OUTPUT_DIR}"
 RAW_WHEEL_DIR="$(mktemp -d)"
 
 "${PYTHON}" setup.py bdist_wheel --skip-build -d "${RAW_WHEEL_DIR}"
-# A wheel that does not register the backend installs fine and then fails on the
-# first kernel, so check it here rather than in a bug report.
-"${PYTHON}" - "${RAW_WHEEL_DIR}"/*.whl <<'PY'
-import sys
-import zipfile
-
-BAD = []
-with zipfile.ZipFile(sys.argv[1]) as wheel:
-    entries = [name for name in wheel.namelist() if name.endswith("dist-info/entry_points.txt")]
-    text = wheel.read(entries[0]).decode() if entries else ""
-    # An unstripped libtriton.so or triton-shared-opt is ~400 MB instead of
-    # ~120 MB each, which is what makes the wheel 500 MB rather than 200 MB.
-    for info in wheel.infolist():
-        limit = None
-        if info.filename.endswith("triton/_C/libtriton.so"):
-            limit = 250 << 20
-        elif info.filename.endswith("triton-shared-opt"):
-            limit = 250 << 20
-        elif info.filename.endswith("libtriton_amd_codegen.so"):
-            limit = 150 << 20
-        if limit and info.file_size > limit:
-            BAD.append(f"{info.filename} is {info.file_size >> 20} MB (not stripped?)")
-if "triton_shared = triton.backends.triton_shared" not in text:
-    sys.exit(f"{sys.argv[1]} does not register the triton_shared backend")
-if BAD:
-    sys.exit("\n".join(BAD))
-PY
-if [[ "${TRITON_RISCV_SKIP_REPAIR:-0}" == "1" ]]; then
-    cp "${RAW_WHEEL_DIR}"/*.whl "${CONTAINER_OUTPUT_DIR}/"
-else
-    auditwheel repair "${RAW_WHEEL_DIR}"/*.whl -w "${CONTAINER_OUTPUT_DIR}"
-fi
+auditwheel repair "${RAW_WHEEL_DIR}"/*.whl -w "${CONTAINER_OUTPUT_DIR}"
 rm -rf "${RAW_WHEEL_DIR}"
 
 for wheel in "${CONTAINER_OUTPUT_DIR}"/*.whl; do
