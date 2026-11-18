@@ -139,7 +139,8 @@ def _unary_kernel(x_ptr, y_ptr, n, OP: tl.constexpr, BLOCK: tl.constexpr):
         # plain 1 - erf(x) returns exactly 0 once erf rounds to 1 (fp32,
         # x >= ~3.5), so above the measured crossover 2.85 a 12-term
         # asymptotic series is used; the negative side has no cancellation.
-        t = x * 0.0 + 1.0
+        # the seed must not read x's value: x * 0.0 is nan at +inf.
+        t = tl.zeros((BLOCK,), tl.float32) + 1.0
         s = t
         for n in range(1, 12):
             t = t * (-(2.0 * n - 1.0) / (2.0 * x * x))
