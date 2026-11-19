@@ -195,7 +195,12 @@ def test_fq_mask_marks_clamped_values():
 
     assert not bool(mask.all())
     assert torch.equal(mask, mask_r)
-    torch.testing.assert_close(out, out_r, rtol=1e-6, atol=1e-6)
+    # One affine step (2/255 for this range) is the quantizer's native
+    # granularity: the riscv64 CI torch flips values on half-step
+    # boundaries by one step (measured: 11/33 elements, max diff exactly
+    # 2/255, masks identical); x86_64 agrees to 1e-6. 3/255 allows one
+    # step plus fp slack and nothing more.
+    torch.testing.assert_close(out, out_r, rtol=0, atol=3 / 255)
 
 
 def test_fq_degenerate_range():

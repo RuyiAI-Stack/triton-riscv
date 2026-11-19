@@ -145,7 +145,11 @@ def test_wrapped_linear_prepack_rejects_non_float32_weight():
 
     with pytest.raises(RuntimeError, match="Quantize only works on Float"):
         _wrapped_linear_prepack(weight, scale, zp, bias)
-    with pytest.raises(RuntimeError, match="Quantize only works on Float"):
+    # FBGEMM-less builds (the riscv64 CI torch) reject at dispatch with a
+    # build message before aten's dtype/shape guards can run.
+    with pytest.raises(
+        RuntimeError, match="Quantize only works on Float|not built with FBGEMM"
+    ):
         torch_wlp(weight, scale, zp, bias)
 
 
@@ -158,7 +162,8 @@ def test_wrapped_linear_prepack_rejects_vector_weight():
 
     with pytest.raises(RuntimeError, match="only packs matrices"):
         _wrapped_linear_prepack(weight, scale, zp, bias)
-    with pytest.raises(RuntimeError, match="only packs matrices"):
+    # Same FBGEMM-less dispatch rejection as the dtype test above.
+    with pytest.raises(RuntimeError, match="only packs matrices|not built with FBGEMM"):
         torch_wlp(weight, scale, zp, bias)
 
 
