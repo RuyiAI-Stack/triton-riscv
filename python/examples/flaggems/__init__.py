@@ -1,12 +1,19 @@
+from ._add_relu import _add_relu
+from ._add_relu_ import _add_relu_
+from ._addmm_activation import _addmm_activation
 from ._aminmax import _aminmax, _aminmax_out
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._ctc_loss import _ctc_loss
+from ._ctc_loss_backward import _ctc_loss_backward
+from ._fill_mem_eff_dropout_mask_ import _fill_mem_eff_dropout_mask_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_dropout import _fused_dropout
 from ._fused_rms_norm import (
     _fused_rms_norm,
     _fused_rms_norm_backward,
@@ -27,6 +34,8 @@ from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functi
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_sum_backward import _nested_sum_backward
 from ._philox_normal_ import _philox_normal_
+from ._prelu_kernel import _prelu_kernel
+from ._prelu_kernel_backward import _prelu_kernel_backward
 from ._safe_softmax import _safe_softmax
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
@@ -45,6 +54,8 @@ from .addmv import addmv, addmv_out
 from .addr import addr
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
+from .alpha_dropout import alpha_dropout
+from .alpha_dropout_ import alpha_dropout_
 from .amax import amax
 from .aminmax import aminmax
 from .angle import angle
@@ -129,6 +140,8 @@ from .cosh import cosh, cosh_, cosh_out
 from .count_nonzero import count_nonzero
 from .cov import cov
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward
+from .cudnn_convolution_add_relu import cudnn_convolution_add_relu
+from .cudnn_convolution_relu import cudnn_convolution_relu
 from .cummax import cummax
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
@@ -153,6 +166,7 @@ from .div import (
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
+from .dropout_ import dropout_
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
@@ -164,6 +178,8 @@ from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .feature_alpha_dropout import feature_alpha_dropout
+from .feature_alpha_dropout_ import feature_alpha_dropout_
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -188,6 +204,8 @@ from .gemma_rms_norm import gemma_rms_norm
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
+from .glu_backward_jvp import glu_backward_jvp
+from .glu_jvp import glu_jvp
 from .greater import (
     greater,
     greater_out,
@@ -199,8 +217,12 @@ from .group_gemm import group_mm
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
+from .hardshrink_backward import hardshrink_backward
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
+from .hardsigmoid_backward import hardsigmoid_backward
 from .hardswish_ import hardswish_
+from .hardswish_backward import hardswish_backward
+from .hardtanh_backward import hardtanh_backward
 from .histc import histc
 from .histogram import histogram, histogram_bin_ct, histogram_bins_tensor
 from .histogramdd import histogramdd
@@ -216,6 +238,9 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .infinitely_differentiable_gelu_backward import (
+    infinitely_differentiable_gelu_backward,
+)
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -234,6 +259,7 @@ from .log import log
 from .log1p_ import log1p_
 from .log10 import log10, log10_, log10_out
 from .log_sigmoid import log_sigmoid
+from .log_sigmoid_backward import log_sigmoid_backward
 from .log_softmax import (
     log_softmax,
     log_softmax_backward,
@@ -248,6 +274,7 @@ from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor
 from .logit import logit, logit_out
 from .logit_ import logit_
+from .logit_backward import logit_backward
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
@@ -268,10 +295,16 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
+from .mish_backward import mish_backward
 from .mm import mm, mm_out
 from .mode import mode
 from .mse_loss import mse_loss
+from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .multi_margin_loss import multi_margin_loss
+from .multilabel_margin_loss import multilabel_margin_loss
+from .multilabel_margin_loss_backward import multilabel_margin_loss_backward
+from .multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from .multinomial import multinomial
 from .mv import mv
 from .nan_to_num import nan_to_num
@@ -287,6 +320,7 @@ from .native_norm import native_norm
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .new_full import new_full
+from .nll_loss2d import nll_loss2d
 from .nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from .nllloss import (
     nll_loss2d_backward,
@@ -314,6 +348,7 @@ from .per_token_group_quant_fp8 import (
 )
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
+from .poisson_nll_loss import poisson_nll_loss
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -352,7 +387,11 @@ from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .roll import roll
 from .round import round, round_, round_out
+from .rrelu import rrelu
+from .rrelu_ import rrelu_
+from .rrelu_with_noise import rrelu_with_noise
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
+from .rrelu_with_noise_functional import rrelu_with_noise_functional
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_scalar, rsub_tensor
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -383,6 +422,7 @@ from .smooth_l1_loss import (
     smooth_l1_loss_out,
 )
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
+from .soft_margin_loss_backward import soft_margin_loss_backward
 from .softmax import (
     softmax,
     softmax_backward,
@@ -391,6 +431,7 @@ from .softmax import (
 )
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
+from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from .special_i0e import special_i0e, special_i0e_out
@@ -414,6 +455,7 @@ from .trace import trace
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
+from .triplet_margin_loss import triplet_margin_loss
 from .triu import triu, triu_
 from .unfold_backward import unfold_backward
 from .uniform import uniform_
@@ -771,6 +813,9 @@ from .to_sparse_semi_structured import to_sparse_semi_structured
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "_add_relu",
+    "_add_relu_",
+    "_addmm_activation",
     "_aminmax",
     "_aminmax_out",
     "_assert_async",
@@ -782,7 +827,11 @@ __all__ = [
     "_cdist_backward",
     "_cdist_forward",
     "_conv_depthwise2d",
+    "_ctc_loss",
+    "_ctc_loss_backward",
+    "_fill_mem_eff_dropout_mask_",
     "_functional_sym_constrain_range_for_size",
+    "_fused_dropout",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
@@ -799,6 +848,8 @@ __all__ = [
     "_native_batch_norm_legit_no_training",
     "_nested_sum_backward",
     "_philox_normal_",
+    "_prelu_kernel",
+    "_prelu_kernel_backward",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
@@ -834,6 +885,8 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "alpha_dropout",
+    "alpha_dropout_",
     "amax",
     "aminmax",
     "angle",
@@ -925,6 +978,8 @@ __all__ = [
     "count_nonzero",
     "cov",
     "cudnn_batch_norm_backward",
+    "cudnn_convolution_add_relu",
+    "cudnn_convolution_relu",
     "cummax",
     "cummin",
     "cumprod",
@@ -942,6 +997,7 @@ __all__ = [
     "div_mode_",
     "dot",
     "dropout",
+    "dropout_",
     "dropout_backward",
     "elu",
     "elu_",
@@ -965,6 +1021,8 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "feature_alpha_dropout",
+    "feature_alpha_dropout_",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -1003,6 +1061,8 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "glu_backward_jvp",
+    "glu_jvp",
     "greater",
     "greater_out",
     "greater_scalar",
@@ -1014,9 +1074,13 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hadamard_transform",
+    "hardshrink_backward",
     "hardsigmoid",
+    "hardsigmoid_backward",
     "hardsigmoid_out",
     "hardswish_",
+    "hardswish_backward",
+    "hardtanh_backward",
     "histc",
     "histogram",
     "histogram_bin_ct",
@@ -1034,6 +1098,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "infinitely_differentiable_gelu_backward",
     "isclose",
     "isfinite",
     "isin",
@@ -1063,6 +1128,7 @@ __all__ = [
     "log10_",
     "log10_out",
     "log_sigmoid",
+    "log_sigmoid_backward",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_backward_out",
@@ -1079,6 +1145,7 @@ __all__ = [
     "logical_xor",
     "logit",
     "logit_",
+    "logit_backward",
     "logit_out",
     "logspace",
     "logsumexp",
@@ -1102,12 +1169,18 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish_backward",
     "mm",
     "mm_out",
     "mode",
     "mse_loss",
+    "mse_loss_backward",
     "mul",
     "mul_",
+    "multi_margin_loss",
+    "multilabel_margin_loss",
+    "multilabel_margin_loss_backward",
+    "multilabel_margin_loss_forward",
     "multinomial",
     "mv",
     "nan_to_num",
@@ -1126,6 +1199,7 @@ __all__ = [
     "neg",
     "neg_",
     "new_full",
+    "nll_loss2d",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
@@ -1149,6 +1223,7 @@ __all__ = [
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
+    "poisson_nll_loss",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -1196,7 +1271,11 @@ __all__ = [
     "round",
     "round_",
     "round_out",
+    "rrelu",
+    "rrelu_",
+    "rrelu_with_noise",
     "rrelu_with_noise_backward",
+    "rrelu_with_noise_functional",
     "rsqrt",
     "rsqrt_",
     "rsub_scalar",
@@ -1234,6 +1313,7 @@ __all__ = [
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
     "soft_margin_loss",
+    "soft_margin_loss_backward",
     "soft_margin_loss_out",
     "softmax",
     "softmax_backward",
@@ -1241,6 +1321,7 @@ __all__ = [
     "softmax_out",
     "softplus",
     "softshrink",
+    "softshrink_backward",
     "softshrink_out",
     "sort",
     "sort_stable",
@@ -1284,6 +1365,7 @@ __all__ = [
     "tril",
     "tril_",
     "tril_out",
+    "triplet_margin_loss",
     "triu",
     "triu_",
     "true_divide",
