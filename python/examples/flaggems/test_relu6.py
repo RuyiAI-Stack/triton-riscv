@@ -21,3 +21,8 @@ def test_relu6_2d(shape):
     ref_out = F.relu6(x)
     tri_out = relu6(x)
     torch.testing.assert_close(tri_out, ref_out, rtol=1e-4, atol=1e-4)
+
+
+def test_relu6_nan():
+    x = torch.tensor([float("nan"), float("inf"), float("-inf"), 3.0])
+    torch.testing.assert_close(relu6(x), torch.nn.functional.relu6(x), equal_nan=True)
