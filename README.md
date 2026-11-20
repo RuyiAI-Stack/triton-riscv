@@ -30,11 +30,48 @@ pip install /path/to/triton-*.whl
 
 ### From source
 
+1. Clone the repository and create a virtualenv.
+
 ```sh
 git clone https://github.com/RuyiAI-Stack/triton-riscv.git
 cd triton-riscv
 python3 -m venv .venv && . .venv/bin/activate
-make setup    # downloads the pinned LLVM and buddy builds, clones Triton, installs the build deps
+```
+
+2. [Optional] Build buddy-mlir and LLVM from source.
+
+`make setup` reuses a toolchain that is already unpacked under `.cache/`, so a local build is
+picked up with no extra configuration. Skip this step to have the script download the prebuilt
+releases instead.
+
+```sh
+pip install nanobind lit
+
+# LLVM: the fork with the RISC-V matrix extensions, e.g. RuyiAI-Stack/llvm-project.
+# Keep LLVM_ENABLE_DUMP=ON: Triton's default build type keeps assertions on and calls
+# MLIR's dump() helpers, which LLVM only compiles when its dumps are enabled.
+cmake -G Ninja -S llvm-project/llvm -B llvm-build \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/.cache/llvm \
+    -DLLVM_ENABLE_PROJECTS="mlir;lld;clang" -DLLVM_TARGETS_TO_BUILD="host;NVPTX;AMDGPU;RISCV" \
+    -DLLVM_ENABLE_DUMP=ON -DLLVM_INSTALL_UTILS=ON -DLLVM_INCLUDE_TESTS=ON \
+    -DLLVM_DISTRIBUTION_COMPONENTS="llvm-headers;llvm-libraries;cmake-exports;mlir-headers;mlir-libraries;mlir-cmake-exports;lld-headers;lld-libraries;lld-cmake-exports;clang;clang-resource-headers;FileCheck;not;split-file;llc;opt;llvm-config;llvm-objdump;llvm-readobj;mlir-tblgen;mlir-translate"
+cmake --build llvm-build --target install-distribution -j
+
+# buddy-mlir, against the LLVM just built
+cmake -G Ninja -S buddy-mlir -B buddy-build \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/.cache/buddy \
+    -DLLVM_DIR=$PWD/.cache/llvm/lib/cmake/llvm -DMLIR_DIR=$PWD/.cache/llvm/lib/cmake/mlir \
+    -DLLVM_MAIN_SRC_DIR=$PWD/llvm-project/llvm \
+    -DPython3_EXECUTABLE=$PWD/.venv/bin/python \
+    -Dnanobind_DIR=$(.venv/bin/python -c 'import nanobind; print(nanobind.cmake_dir())') \
+    -DLLVM_EXTERNAL_LIT=$PWD/.venv/bin/lit -DBUDDY_ENABLE_TESTS=OFF
+cmake --build buddy-build --target install -j
+```
+
+3. Build and test.
+
+```sh
+make setup    # installs the build deps, clones Triton, applies patches/, fetches what step 2 skipped
 make build    # builds Triton and installs the backend
 make test     # the plugin's lit tests and the example suite
 ```

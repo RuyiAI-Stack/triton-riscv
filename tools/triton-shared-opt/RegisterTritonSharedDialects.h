@@ -39,6 +39,10 @@
 #include "triton-shared/Transform/AddLLVMDebugInfo/Passes.h"
 #include "triton-shared/Transform/ExpandFloat8Conversions/Passes.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/InitAllPasses.h"
 
 inline void registerTritonSharedDialects(mlir::DialectRegistry &registry) {
