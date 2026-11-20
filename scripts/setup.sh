@@ -78,6 +78,7 @@ if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; t
     git "${GIT_AUTH_ARGS[@]}" -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
 fi
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
+"${ROOT_DIR}/scripts/apply_patches.sh"
 
 PYTHON="${PYTHON:-python3}"
 echo "Installing build dependencies into ${PYTHON}..."

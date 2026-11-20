@@ -11,6 +11,7 @@
 
 #include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
