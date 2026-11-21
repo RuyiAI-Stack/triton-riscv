@@ -71,6 +71,8 @@ from .asinh_ import asinh_
 from .assert_async import _assert_async
 from .atan import atan, atan_
 from .atan2 import atan2, atan2_out
+from .atleast_1d import atleast_1d
+from .atleast_3d import atleast_3d
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -108,12 +110,14 @@ from .bitwise_or import (
     bitwise_or_tensor_,
 )
 from .bitwise_right_shift import bitwise_right_shift
+from .block_diag import block_diag
 from .bmm import bmm, bmm_out
 from .cartesian_prod import run as cartesian_prod
 from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .channel_shuffle import channel_shuffle
 from .clamp import (
     clamp,
     clamp_,
@@ -125,6 +129,7 @@ from .clamp import (
 from .clip import clip, clip_
 from .clone import clone
 from .col2im import col2im
+from .column_stack import column_stack, column_stack_out
 from .combinations import combinations
 from .concatenate import concatenate
 from .conj_physical import conj_physical
@@ -148,6 +153,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumulative_trapezoid import cumulative_trapezoid
 from .diag import diag
 from .diag_embed import diag_embed
+from .diagflat import diagflat
 from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .diff import diff
@@ -167,10 +173,12 @@ from .div import (
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
+from .dstack import dstack
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
 from .empty import empty
+from .empty_permuted import empty_permuted
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
@@ -188,7 +196,11 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .fill_diagonal_ import fill_diagonal_
+from .flatten_dense_tensors import flatten_dense_tensors
 from .flip import flip
+from .fliplr import fliplr
+from .flipud import flipud
 from .floor_ import floor_
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
@@ -232,6 +244,7 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .is_same_size import is_same_size
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -301,11 +314,14 @@ from .nanquantile import (
     nanquantile_scalar_out,
 )
 from .narrow_copy import narrow_copy
+from .native_channel_shuffle import native_channel_shuffle
 from .native_group_norm import native_group_norm
 from .native_norm import native_norm
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .new_full import new_full
+from .new_ones import new_ones
+from .new_zeros import new_zeros, new_zeros_out
 from .nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from .nllloss import (
     nll_loss2d_backward,
@@ -326,6 +342,7 @@ from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .pad_sequence import pad_sequence
 from .pdist import pdist
 from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
@@ -351,6 +368,7 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
@@ -366,15 +384,21 @@ from .repeat_interleave import (
 )
 from .replication_pad1d import replication_pad1d, replication_pad1d_out
 from .replication_pad3d import replication_pad3d
+from .reshape_as import reshape_as
+from .resize import resize, resize_
+from .resize_as import resize_as, resize_as_
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .roll import roll
+from .rot90 import rot90
 from .round import round, round_, round_out
+from .row_stack import row_stack, row_stack_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_scalar, rsub_tensor
+from .scalar_tensor import scalar_tensor
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
@@ -905,6 +929,8 @@ __all__ = [
     "atan2",
     "atan2_out",
     "atan_",
+    "atleast_1d",
+    "atleast_3d",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
@@ -934,6 +960,7 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bitwise_right_shift",
+    "block_diag",
     "bmm",
     "bmm_out",
     "cartesian_prod",
@@ -945,6 +972,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "channel_shuffle",
     "chunk_cat",
     "clamp",
     "clamp_",
@@ -956,6 +984,8 @@ __all__ = [
     "clip_",
     "clone",
     "col2im",
+    "column_stack",
+    "column_stack_out",
     "combinations",
     "concatenate",
     "conj_physical",
@@ -986,6 +1016,7 @@ __all__ = [
     "cumulative_trapezoid",
     "diag",
     "diag_embed",
+    "diagflat",
     "diagonal_backward",
     "diagonal_copy",
     "diff",
@@ -996,6 +1027,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dstack",
     "elu",
     "elu_",
     "elu_backward",
@@ -1003,6 +1035,7 @@ __all__ = [
     "embedding_backward",
     "embedding_dense_backward",
     "empty",
+    "empty_permuted",
     "eq",
     "eq_scalar",
     "equal",
@@ -1021,6 +1054,7 @@ __all__ = [
     "eye_m",
     "feature_dropout",
     "feature_dropout_",
+    "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
@@ -1030,7 +1064,10 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
+    "flatten_dense_tensors",
     "flip",
+    "fliplr",
+    "flipud",
     "floor_",
     "floor_divide",
     "floor_divide_",
@@ -1088,6 +1125,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "is_same_size",
     "isclose",
     "isfinite",
     "isin",
@@ -1175,6 +1213,7 @@ __all__ = [
     "nanquantile_scalar",
     "nanquantile_scalar_out",
     "narrow_copy",
+    "native_channel_shuffle",
     "native_group_norm",
     "native_norm",
     "ne",
@@ -1182,6 +1221,9 @@ __all__ = [
     "neg",
     "neg_",
     "new_full",
+    "new_ones",
+    "new_zeros",
+    "new_zeros_out",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
@@ -1200,6 +1242,7 @@ __all__ = [
     "ones",
     "ones_like",
     "pad",
+    "pad_sequence",
     "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
@@ -1223,6 +1266,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "ravel",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
@@ -1243,6 +1287,11 @@ __all__ = [
     "replication_pad1d",
     "replication_pad1d_out",
     "replication_pad3d",
+    "reshape_as",
+    "resize",
+    "resize_",
+    "resize_as",
+    "resize_as_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -1250,14 +1299,18 @@ __all__ = [
     "rms_norm_forward",
     "rms_norm_w8a16_fp8",
     "roll",
+    "rot90",
     "round",
     "round_",
     "round_out",
+    "row_stack",
+    "row_stack_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
