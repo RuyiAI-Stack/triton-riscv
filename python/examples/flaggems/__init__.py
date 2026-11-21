@@ -21,6 +21,9 @@ from ._list_to_tensor import _list_to_tensor
 from ._masked_scale import _masked_scale
 from ._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
+from ._pad_circular import _pad_circular
+from ._pad_enum import _pad_enum
+from ._pad_packed_sequence import _pad_packed_sequence
 from ._prelu_kernel import _prelu_kernel
 from ._prelu_kernel_backward import _prelu_kernel_backward
 from ._reshape_alias_copy import _reshape_alias_copy
@@ -101,6 +104,12 @@ from .bitwise_or import (
 from .bitwise_right_shift import bitwise_right_shift
 from .block_diag import block_diag
 from .bmm import bmm, bmm_out
+from .cast_Byte import cast_Byte
+from .cast_Char import cast_Char
+from .cast_Double import cast_Double
+from .cast_Float import cast_Float
+from .cast_Long import cast_Long
+from .cast_Short import cast_Short
 from .cat import cat, cat_out
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
@@ -371,7 +380,11 @@ from .range import range
 from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from .reflection_pad2d_backward import reflection_pad2d_backward
+from .reflection_pad3d import reflection_pad3d, reflection_pad3d_out
+from .reflection_pad3d_backward import reflection_pad3d_backward
 from .relu import relu, relu_
 from .relu6 import relu6
 from .repeat import repeat
@@ -381,7 +394,13 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad1d import replication_pad1d, replication_pad1d_out
+from .replication_pad1d_backward import replication_pad1d_backward
+from .replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
 from .replication_pad3d import replication_pad3d
+from .replication_pad3d_backward import replication_pad3d_backward
 from .reshape_as import reshape_as
 from .resize import resize, resize_
 from .resize_as import resize_as, resize_as_
@@ -435,6 +454,7 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
+from .spdiags import spdiags
 from .special_airy_ai import special_airy_ai, special_airy_ai_out
 from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
@@ -831,6 +851,9 @@ __all__ = [
     "_neg_view_copy",
     "_neg_view_copy_out",
     "_new_zeros_with_same_feature_meta",
+    "_pad_circular",
+    "_pad_enum",
+    "_pad_packed_sequence",
     "_pdist_backward",
     "_pdist_forward",
     "_prelu_kernel",
@@ -959,6 +982,12 @@ __all__ = [
     "c_sqrt",
     "c_tan",
     "c_tanh",
+    "cast_Byte",
+    "cast_Char",
+    "cast_Double",
+    "cast_Float",
+    "cast_Long",
+    "cast_Short",
     "cat",
     "cat_out",
     "ceil",
@@ -1295,9 +1324,14 @@ __all__ = [
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
+    "reflection_pad1d_backward",
     "reflection_pad1d_out",
     "reflection_pad2d",
+    "reflection_pad2d_backward",
     "reflection_pad2d_out",
+    "reflection_pad3d",
+    "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "registered_wrappers",
     "relu",
     "relu6",
@@ -1309,8 +1343,12 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
     "replication_pad3d",
+    "replication_pad3d_backward",
     "reshape_as",
     "resize",
     "resize_",
@@ -1384,6 +1422,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "spdiags",
     "special_airy_ai",
     "special_airy_ai_out",
     "special_bessel_j0",
