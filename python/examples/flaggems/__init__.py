@@ -4,6 +4,8 @@ from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._chunk_cat import chunk_cat
+from ._conj_copy import _conj_copy, _conj_copy_out
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -25,10 +27,18 @@ from ._is_any_true import _is_any_true
 from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from ._nested_sum_backward import _nested_sum_backward
+from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
 from ._philox_normal_ import _philox_normal_
+from ._reshape_alias_copy import _reshape_alias_copy
+from ._reshape_copy import _reshape_copy
+from ._reshape_from_tensor import _reshape_from_tensor
+from ._resize_output import _resize_output, _resize_output_
+from ._rowwise_prune import _rowwise_prune
 from ._safe_softmax import _safe_softmax
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._stack import _stack
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from ._weight_norm import _weight_norm
@@ -142,6 +152,7 @@ from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .diff import diff
 from .digamma_ import digamma_
+from .dim_arange import _dim_arange
 from .dist import dist
 from .div import (
     div_mode,
@@ -159,6 +170,7 @@ from .dropout import dropout, dropout_backward
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
+from .empty import empty
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
@@ -183,6 +195,7 @@ from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fp8_matmul import fp8_matmul
 from .full import full
 from .full_like import full_like
+from .fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
@@ -254,6 +267,7 @@ from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
+from .make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -798,11 +812,16 @@ __all__ = [
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
+    "_conj_copy",
+    "_conj_copy_out",
     "_conv_depthwise2d",
+    "_dim_arange",
     "_functional_sym_constrain_range_for_size",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
+    "_fw_primal_copy",
+    "_fw_primal_copy_out",
     "_histogramdd_from_bin_cts",
     "_histogramdd_from_bin_cts_out",
     "_histogramdd_from_bin_tensors",
@@ -812,15 +831,27 @@ __all__ = [
     "_is_any_true",
     "_logcumsumexp",
     "_logcumsumexp_out",
+    "_make_dual_copy",
+    "_make_dual_copy_out",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
+    "_neg_view_copy",
+    "_neg_view_copy_out",
     "_nested_sum_backward",
+    "_new_zeros_with_same_feature_meta",
     "_philox_normal_",
+    "_reshape_alias_copy",
+    "_reshape_copy",
+    "_reshape_from_tensor",
+    "_resize_output",
+    "_resize_output_",
+    "_rowwise_prune",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_stack",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
@@ -914,6 +945,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chunk_cat",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -970,6 +1002,7 @@ __all__ = [
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
+    "empty",
     "eq",
     "eq_scalar",
     "equal",
