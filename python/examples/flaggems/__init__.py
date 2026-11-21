@@ -5,7 +5,9 @@ from .__xor__ import xor, xor_, xor_scalar, xor_scalar_, xor_scalar_tensor
 from ._add_relu import _add_relu
 from ._add_relu_ import _add_relu_
 from ._addmm_activation import _addmm_activation
+from ._chunk_cat import chunk_cat
 from ._conj import _conj
+from ._conj_copy import _conj_copy, _conj_copy_out
 from ._ctc_loss import _ctc_loss
 from ._ctc_loss_backward import _ctc_loss_backward
 from ._fill_mem_eff_dropout_mask_ import _fill_mem_eff_dropout_mask_
@@ -17,9 +19,17 @@ from ._fused_dropout import _fused_dropout
 from ._is_all_true import _is_all_true
 from ._list_to_tensor import _list_to_tensor
 from ._masked_scale import _masked_scale
+from ._neg_view_copy import _neg_view_copy, _neg_view_copy_out
+from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
 from ._prelu_kernel import _prelu_kernel
 from ._prelu_kernel_backward import _prelu_kernel_backward
+from ._reshape_alias_copy import _reshape_alias_copy
+from ._reshape_copy import _reshape_copy
+from ._reshape_from_tensor import _reshape_from_tensor
+from ._resize_output import _resize_output, _resize_output_
+from ._rowwise_prune import _rowwise_prune
 from ._safe_softmax import _safe_softmax
+from ._stack import _stack
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from .abs import abs, abs_
 from .absolute import absolute
@@ -128,6 +138,7 @@ from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .diff import diff
 from .digamma_ import digamma_
+from .dim_arange import _dim_arange
 from .div import (
     div_mode,
     div_mode_,
@@ -145,6 +156,7 @@ from .dropout_ import dropout_
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
+from .empty import empty
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .erfinv_ import erfinv, erfinv_, erfinv_out
@@ -174,6 +186,7 @@ from .frexp import frexp
 from .full import full
 from .full_like import full_like
 from .functional_assert_async import _functional_assert_async
+from .fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
@@ -257,6 +270,7 @@ from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
 from .mT import mT
+from .make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -695,9 +709,12 @@ __all__ = [
     "_compute_linear_combination",
     "_compute_linear_combination_out",
     "_conj",
+    "_conj_copy",
+    "_conj_copy_out",
     "_conv_depthwise2d",
     "_ctc_loss",
     "_ctc_loss_backward",
+    "_dim_arange",
     "_fill_mem_eff_dropout_mask_",
     "_foreach_abs",
     "_foreach_abs_",
@@ -777,17 +794,31 @@ __all__ = [
     "_fused_dropout",
     "_fused_moving_avg_obs_fq_helper",
     "_fused_sgd_",
+    "_fw_primal_copy",
+    "_fw_primal_copy_out",
     "_index_put_impl_",
     "_is_all_true",
     "_list_to_tensor",
+    "_make_dual_copy",
+    "_make_dual_copy_out",
     "_masked_scale",
     "_masked_softmax",
     "_masked_softmax_backward",
+    "_neg_view_copy",
+    "_neg_view_copy_out",
+    "_new_zeros_with_same_feature_meta",
     "_pdist_backward",
     "_pdist_forward",
     "_prelu_kernel",
     "_prelu_kernel_backward",
+    "_reshape_alias_copy",
+    "_reshape_copy",
+    "_reshape_from_tensor",
+    "_resize_output",
+    "_resize_output_",
+    "_rowwise_prune",
     "_safe_softmax",
+    "_stack",
     "_transform_bias_rescale_qkv",
     "_unique2",
     "_unsafe_masked_index",
@@ -910,6 +941,7 @@ __all__ = [
     "celu_",
     "chalf",
     "choose_qparams_optimized",
+    "chunk_cat",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -967,6 +999,7 @@ __all__ = [
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
+    "empty",
     "eq",
     "eq_scalar",
     "equal",
