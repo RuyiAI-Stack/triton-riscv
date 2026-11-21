@@ -30,6 +30,9 @@ from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_tr
 from ._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from ._nested_sum_backward import _nested_sum_backward
 from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
+from ._pad_circular import _pad_circular
+from ._pad_enum import _pad_enum
+from ._pad_packed_sequence import _pad_packed_sequence
 from ._philox_normal_ import _philox_normal_
 from ._reshape_alias_copy import _reshape_alias_copy
 from ._reshape_copy import _reshape_copy
@@ -113,6 +116,12 @@ from .bitwise_right_shift import bitwise_right_shift
 from .block_diag import block_diag
 from .bmm import bmm, bmm_out
 from .cartesian_prod import run as cartesian_prod
+from .cast_Byte import cast_Byte
+from .cast_Char import cast_Char
+from .cast_Double import cast_Double
+from .cast_Float import cast_Float
+from .cast_Long import cast_Long
+from .cast_Short import cast_Short
 from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
@@ -371,7 +380,11 @@ from .randperm import randperm
 from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from .reflection_pad2d_backward import reflection_pad2d_backward
+from .reflection_pad3d import reflection_pad3d, reflection_pad3d_out
+from .reflection_pad3d_backward import reflection_pad3d_backward
 from .relu import relu, relu_
 from .relu6 import relu6
 from .renorm import renorm
@@ -383,7 +396,13 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad1d import replication_pad1d, replication_pad1d_out
+from .replication_pad1d_backward import replication_pad1d_backward
+from .replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
 from .replication_pad3d import replication_pad3d
+from .replication_pad3d_backward import replication_pad3d_backward
 from .reshape_as import reshape_as
 from .resize import resize, resize_
 from .resize_as import resize_as, resize_as_
@@ -439,6 +458,7 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
+from .spdiags import spdiags
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
 from .split_copy import split_copy
@@ -863,6 +883,9 @@ __all__ = [
     "_neg_view_copy_out",
     "_nested_sum_backward",
     "_new_zeros_with_same_feature_meta",
+    "_pad_circular",
+    "_pad_enum",
+    "_pad_packed_sequence",
     "_philox_normal_",
     "_reshape_alias_copy",
     "_reshape_copy",
@@ -964,6 +987,12 @@ __all__ = [
     "bmm",
     "bmm_out",
     "cartesian_prod",
+    "cast_Byte",
+    "cast_Char",
+    "cast_Double",
+    "cast_Float",
+    "cast_Long",
+    "cast_Short",
     "cat",
     "cat_out",
     "cdist",
@@ -1270,9 +1299,14 @@ __all__ = [
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
+    "reflection_pad1d_backward",
     "reflection_pad1d_out",
     "reflection_pad2d",
+    "reflection_pad2d_backward",
     "reflection_pad2d_out",
+    "reflection_pad3d",
+    "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "relu",
     "relu6",
     "relu_",
@@ -1285,8 +1319,12 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
     "replication_pad3d",
+    "replication_pad3d_backward",
     "reshape_as",
     "resize",
     "resize_",
@@ -1359,6 +1397,7 @@ __all__ = [
     "sort_stable",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
+    "spdiags",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
