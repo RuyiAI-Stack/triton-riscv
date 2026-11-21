@@ -48,6 +48,7 @@ from .arctan_ import arctan_
 from .arctanh_ import arctanh_
 from .argmax import argmax
 from .argmin import argmin
+from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .asinh import asinh, asinh_out
 from .asinh_ import asinh_
 from .assert_async import _assert_async
@@ -101,6 +102,7 @@ from .clamp import (
 )
 from .clamp_max import clamp_max, clamp_max_, clamp_max_out
 from .clip import clip, clip_
+from .clone import clone
 from .col2im import col2im
 from .concatenate import concatenate
 from .conj_physical import conj_physical
@@ -123,6 +125,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diagonal_copy import diagonal_copy
 from .diff import diff
 from .digamma_ import digamma_
 from .div import (
@@ -258,6 +261,7 @@ from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -283,6 +287,7 @@ from .multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from .multinomial import multinomial
 from .mv import mv
 from .nan_to_num import nan_to_num
+from .narrow_copy import narrow_copy
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .new_full import new_full
@@ -311,6 +316,7 @@ from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from .permute_copy import permute_copy
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .poisson_nll_loss import poisson_nll_loss
@@ -361,6 +367,7 @@ from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .scatter_reduce_ import scatter_reduce_
 from .select_backward import select_backward
+from .select_copy import select_copy
 from .select_scatter import select_scatter
 from .selu import selu
 from .selu_ import selu_
@@ -371,6 +378,7 @@ from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinh_ import sinh_
 from .slice_backward import slice_backward
+from .slice_copy import slice_copy, slice_copy_out
 from .slice_scatter import slice_scatter
 from .smooth_l1_loss import (
     smooth_l1_loss,
@@ -459,8 +467,11 @@ from .special_zeta import (
     special_zeta_scalar_tensor,
     special_zeta_scalar_tensor_out,
 )
+from .split_copy import split_copy
+from .split_with_sizes_copy import split_with_sizes_copy
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
+from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -473,11 +484,14 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .transpose_copy import transpose_copy
 from .tril import tril, tril_, tril_out
 from .triplet_margin_loss import triplet_margin_loss
 from .triu import triu, triu_
 from .trunc_ import trunc, trunc_, trunc_out
+from .unbind_copy import unbind_copy
 from .unfold_backward import unfold_backward
+from .unfold_copy import unfold_copy
 from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
@@ -492,6 +506,9 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy
+from .view_as_real_copy import view_as_real_copy
+from .view_copy import view_copy
 from .vstack import vstack
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .weightnorm import (
@@ -826,6 +843,8 @@ __all__ = [
     "arctanh_",
     "argmax",
     "argmin",
+    "as_strided_copy",
+    "as_strided_copy_out",
     "asinh",
     "asinh_",
     "asinh_out",
@@ -902,6 +921,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
     "concatenate",
     "conj_physical",
@@ -932,6 +952,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diagonal_copy",
     "diff",
     "digamma_",
     "div_mode",
@@ -1116,6 +1137,7 @@ __all__ = [
     "masked_scatter",
     "masked_scatter_",
     "masked_select",
+    "masked_select_backward",
     "max",
     "max_dim",
     "max_pool2d_backward",
@@ -1142,6 +1164,7 @@ __all__ = [
     "multinomial",
     "mv",
     "nan_to_num",
+    "narrow_copy",
     "ne",
     "ne_scalar",
     "neg",
@@ -1171,6 +1194,7 @@ __all__ = [
     "pad",
     "pairwise_distance",
     "per_token_group_quant_fp8",
+    "permute_copy",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
@@ -1238,6 +1262,7 @@ __all__ = [
     "scatter_add_",
     "scatter_reduce_",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
@@ -1254,6 +1279,8 @@ __all__ = [
     "sin_",
     "sinh_",
     "slice_backward",
+    "slice_copy",
+    "slice_copy_out",
     "slice_scatter",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
@@ -1336,11 +1363,14 @@ __all__ = [
     "special_zeta_scalar_tensor_out",
     "special_zeta_tensor_scalar",
     "special_zeta_tensor_scalar_out",
+    "split_copy",
+    "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",
@@ -1363,6 +1393,7 @@ __all__ = [
     "topk",
     "trace",
     "trace_backward",
+    "transpose_copy",
     "tril",
     "tril_",
     "tril_out",
@@ -1375,7 +1406,9 @@ __all__ = [
     "trunc",
     "trunc_",
     "trunc_out",
+    "unbind_copy",
     "unfold_backward",
+    "unfold_copy",
     "uniform_",
     "unique_consecutive",
     "unsafe_index",
@@ -1392,6 +1425,9 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_as_complex_copy",
+    "view_as_real_copy",
+    "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
