@@ -55,6 +55,7 @@ from .arcsinh_ import arcsinh_
 from .arctanh_ import arctanh_
 from .argmax import argmax
 from .argmin import argmin
+from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .asinh import asinh, asinh_out
 from .asinh_ import asinh_
 from .assert_async import _assert_async
@@ -112,6 +113,7 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .clone import clone
 from .col2im import col2im
 from .combinations import combinations
 from .concatenate import concatenate
@@ -137,6 +139,7 @@ from .cumulative_trapezoid import cumulative_trapezoid
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diagonal_copy import diagonal_copy
 from .diff import diff
 from .digamma_ import digamma_
 from .dist import dist
@@ -255,6 +258,7 @@ from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -282,6 +286,7 @@ from .nanquantile import (
     nanquantile_scalar,
     nanquantile_scalar_out,
 )
+from .narrow_copy import narrow_copy
 from .native_group_norm import native_group_norm
 from .native_norm import native_norm
 from .ne import ne, ne_scalar
@@ -312,6 +317,7 @@ from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from .permute_copy import permute_copy
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
@@ -366,6 +372,7 @@ from .segment_reduce import (
     segment_reduce_out,
 )
 from .select_backward import select_backward
+from .select_copy import select_copy
 from .select_scatter import select_scatter
 from .selu import selu
 from .selu_ import selu_
@@ -376,6 +383,7 @@ from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinh_ import sinh_
 from .slice_backward import slice_backward
+from .slice_copy import slice_copy, slice_copy_out
 from .slice_scatter import slice_scatter
 from .smooth_l1_loss import (
     smooth_l1_loss,
@@ -395,8 +403,11 @@ from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
+from .split_copy import split_copy
+from .split_with_sizes_copy import split_with_sizes_copy
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
+from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -411,11 +422,14 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .transpose_copy import transpose_copy
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
 from .triu import triu, triu_
+from .unbind_copy import unbind_copy
 from .unfold_backward import unfold_backward
+from .unfold_copy import unfold_copy
 from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
@@ -431,6 +445,9 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy
+from .view_as_real_copy import view_as_real_copy
+from .view_copy import view_copy
 from .vstack import vstack
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .weightnorm import (
@@ -848,6 +865,8 @@ __all__ = [
     "arctanh_",
     "argmax",
     "argmin",
+    "as_strided_copy",
+    "as_strided_copy_out",
     "asinh",
     "asinh_",
     "asinh_out",
@@ -903,6 +922,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
     "combinations",
     "concatenate",
@@ -935,6 +955,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diagonal_copy",
     "diff",
     "digamma_",
     "dist",
@@ -1090,6 +1111,7 @@ __all__ = [
     "masked_scatter",
     "masked_scatter_",
     "masked_select",
+    "masked_select_backward",
     "max",
     "max_dim",
     "max_pool2d_backward",
@@ -1119,6 +1141,7 @@ __all__ = [
     "nanquantile_out",
     "nanquantile_scalar",
     "nanquantile_scalar_out",
+    "narrow_copy",
     "native_group_norm",
     "native_norm",
     "ne",
@@ -1146,6 +1169,7 @@ __all__ = [
     "pad",
     "pdist",
     "per_token_group_quant_fp8",
+    "permute_copy",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
@@ -1213,6 +1237,7 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
@@ -1229,6 +1254,8 @@ __all__ = [
     "sin_",
     "sinh_",
     "slice_backward",
+    "slice_copy",
+    "slice_copy_out",
     "slice_scatter",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
@@ -1250,11 +1277,14 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "split_copy",
+    "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",
@@ -1279,6 +1309,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "transpose_copy",
     "trapezoid_x",
     "trapz",
     "tril",
@@ -1289,7 +1320,9 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "unbind_copy",
     "unfold_backward",
+    "unfold_copy",
     "uniform_",
     "unique_consecutive",
     "upsample_bicubic2d",
@@ -1304,6 +1337,9 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_as_complex_copy",
+    "view_as_real_copy",
+    "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_differentiable_backward",
