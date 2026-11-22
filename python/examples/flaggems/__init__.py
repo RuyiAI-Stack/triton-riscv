@@ -4,6 +4,8 @@ from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._cslt_sparse_mm import _cslt_sparse_mm
+from ._cummin_helper import _cummin_helper
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._fake_quantize_learnable_per_channel_affine import (
     _fake_quantize_learnable_per_channel_affine,
@@ -44,9 +46,21 @@ from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_tr
 from ._nested_sum_backward import _nested_sum_backward
 from ._philox_normal_ import _philox_normal_
 from ._safe_softmax import _safe_softmax
+from ._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
+from ._scaled_mm_v2 import _scaled_mm_v2
+from ._sparse_mm import _sparse_mm
+from ._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
+from ._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
+from ._sparse_semi_structured_mm import _sparse_semi_structured_mm
+from ._sparse_sparse_matmul import _sparse_sparse_matmul, _sparse_sparse_matmul_out
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._standard_gamma import standard_gamma
+from ._standard_gamma_grad import standard_gamma_grad
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from ._weight_int4pack_mm_with_scales_and_zeros import (
+    _weight_int4pack_mm_with_scales_and_zeros,
+)
 from ._weight_norm import _weight_norm
 from ._weight_norm_differentiable_backward import weight_norm_differentiable_backward
 from ._wrapped_quantized_linear_prepacked import _wrapped_quantized_linear_prepacked
@@ -117,6 +131,8 @@ from .bitwise_or import (
 )
 from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
+from .bmm_w8a8 import bmm_w8a8
+from .bmm_w8a8_fp8 import bmm_w8a8_fp8
 from .cartesian_prod import run as cartesian_prod
 from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
@@ -261,6 +277,7 @@ from .index_put import (
 )
 from .index_select import index_select
 from .inner import inner
+from .int_mm import int_mm, int_mm_out
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -322,6 +339,7 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
+from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mode import mode
 from .mse_loss import mse_loss
@@ -414,6 +432,8 @@ from .round import round, round_, round_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_scalar, rsub_tensor
+from .scaled_grouped_mm import scaled_grouped_mm
+from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
@@ -497,6 +517,8 @@ from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
+from .weight_int4pack_mm import weight_int4pack_mm
+from .weight_int8pack_mm import weight_int8pack_mm
 from .weightnorm import (
     weight_norm_interface,
     weight_norm_interface_backward,
@@ -846,6 +868,8 @@ __all__ = [
     "_cdist_backward",
     "_cdist_forward",
     "_conv_depthwise2d",
+    "_cslt_sparse_mm",
+    "_cummin_helper",
     "_dyn_quant_matmul_4bit",
     "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_learnable_per_channel_affine_backward",
@@ -873,8 +897,16 @@ __all__ = [
     "_nested_sum_backward",
     "_philox_normal_",
     "_safe_softmax",
+    "_scaled_grouped_mm_v2",
+    "_scaled_mm_v2",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_mm",
+    "_sparse_mm_reduce_impl",
+    "_sparse_semi_structured_addmm",
+    "_sparse_semi_structured_mm",
+    "_sparse_sparse_matmul",
+    "_sparse_sparse_matmul_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
     "_trilinear",
@@ -884,6 +916,7 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_weight_int4pack_mm_with_scales_and_zeros",
     "_weight_norm",
     "_wrapped_quantized_linear_prepacked",
     "abs",
@@ -965,6 +998,8 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
+    "bmm_w8a8",
+    "bmm_w8a8_fp8",
     "cartesian_prod",
     "cat",
     "cat_out",
@@ -1133,6 +1168,8 @@ __all__ = [
     "index_put_",
     "index_select",
     "inner",
+    "int_mm",
+    "int_mm_out",
     "isclose",
     "isfinite",
     "isin",
@@ -1208,6 +1245,7 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mixed_dtypes_linear",
     "mm",
     "mm_out",
     "mode",
@@ -1319,6 +1357,9 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_grouped_mm",
+    "scaled_mm",
+    "scaled_mm_out",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "scatter",
@@ -1376,6 +1417,8 @@ __all__ = [
     "sspaddmm",
     "sspaddmm_out",
     "stack",
+    "standard_gamma",
+    "standard_gamma_grad",
     "std",
     "sub",
     "sub_",
@@ -1428,6 +1471,8 @@ __all__ = [
     "vector_norm",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "weight_int4pack_mm",
+    "weight_int8pack_mm",
     "weight_norm_differentiable_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
