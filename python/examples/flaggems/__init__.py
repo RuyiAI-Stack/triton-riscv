@@ -213,6 +213,10 @@ from .hstack import hstack
 from .hypot import hypot, hypot_out
 from .i0 import i0, i0_out
 from .i0_ import i0_
+from .igamma import igamma
+from .igamma_ import igamma_
+from .igammac import igammac, igammac_out
+from .igammac_ import igammac_
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import (
@@ -233,6 +237,7 @@ from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .lgamma_ import lgamma, lgamma_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_norm import linalg_norm
@@ -283,6 +288,8 @@ from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
+from .mvlgamma import mvlgamma
+from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nanquantile import (
@@ -324,6 +331,7 @@ from .per_token_group_quant_fp8 import (
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
+from .polygamma import polygamma, polygamma_, polygamma_out
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -1051,6 +1059,11 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "igamma",
+    "igamma_",
+    "igammac",
+    "igammac_",
+    "igammac_out",
     "index",
     "index_add",
     "index_add_",
@@ -1077,6 +1090,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "lgamma",
+    "lgamma_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linalg_multi_dot",
@@ -1139,6 +1154,8 @@ __all__ = [
     "mul_",
     "multinomial",
     "mv",
+    "mvlgamma",
+    "mvlgamma_",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
@@ -1179,6 +1196,9 @@ __all__ = [
     "pixel_unshuffle",
     "pixel_unshuffle_out",
     "polar",
+    "polygamma",
+    "polygamma_",
+    "polygamma_out",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
