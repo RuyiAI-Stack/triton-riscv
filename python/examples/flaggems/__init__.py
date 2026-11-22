@@ -38,6 +38,7 @@ from .absolute import absolute
 from .acos import acos
 from .act_quant import act_quant_triton
 from .add import add, add_
+from .addbmm import addbmm, addbmm_
 from .addcdiv import addcdiv, addcdiv_out
 from .addcmul import addcmul, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -79,6 +80,7 @@ from .batch_norm_elemt import batch_norm_elemt
 from .batch_norm_stats import batch_norm_stats
 from .batch_norm_update_stats import batch_norm_update_stats
 from .bernoulli_ import bernoulli_
+from .bilinear import bilinear
 from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -103,6 +105,7 @@ from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .chain_matmul import chain_matmul, chain_matmul_out
 from .clamp import (
     clamp,
     clamp_,
@@ -185,6 +188,7 @@ from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .gemma_rms_norm import gemma_rms_norm
+from .ger import ger
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
@@ -204,6 +208,7 @@ from .hardswish_ import hardswish_
 from .histc import histc
 from .histogram import histogram, histogram_bin_ct, histogram_bins_tensor
 from .histogramdd import histogramdd
+from .hspmm import hspmm
 from .hstack import hstack
 from .hypot import hypot, hypot_out
 from .i0 import i0, i0_out
@@ -216,6 +221,7 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .inner import inner
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -228,7 +234,10 @@ from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_norm import linalg_norm
+from .linalg_vecdot import linalg_vecdot, linalg_vecdot_out
+from .linear import linear
 from .linspace import linspace
 from .log import log
 from .log1p_ import log1p_
@@ -377,6 +386,7 @@ from .sin import sin, sin_
 from .sinh_ import sinh_
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
+from .smm import smm
 from .smooth_l1_loss import (
     smooth_l1_loss,
     smooth_l1_loss_backward,
@@ -393,10 +403,12 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
+from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
+from .sspaddmm import sspaddmm, sspaddmm_out
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -406,6 +418,7 @@ from .t_copy import t_copy, t_copy_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
+from .tensordot import tensordot, tensordot_out
 from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_copy
@@ -414,6 +427,7 @@ from .trace import trace
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
+from .trilinear import _trilinear, _trilinear_out
 from .triu import triu, triu_
 from .unfold_backward import unfold_backward
 from .uniform import uniform_
@@ -804,6 +818,8 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_trilinear",
+    "_trilinear_out",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
@@ -817,6 +833,8 @@ __all__ = [
     "act_quant_triton",
     "add",
     "add_",
+    "addbmm",
+    "addbmm_",
     "addcdiv",
     "addcdiv_out",
     "addcmul",
@@ -869,6 +887,7 @@ __all__ = [
     "batch_norm_stats",
     "batch_norm_update_stats",
     "bernoulli_",
+    "bilinear",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -895,6 +914,8 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chain_matmul",
+    "chain_matmul_out",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -999,6 +1020,7 @@ __all__ = [
     "gelu_",
     "gelu_backward",
     "gemma_rms_norm",
+    "ger",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -1022,6 +1044,7 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
+    "hspmm",
     "hstack",
     "hypot",
     "hypot_out",
@@ -1034,6 +1057,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "inner",
     "isclose",
     "isfinite",
     "isin",
@@ -1055,7 +1079,12 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_multi_dot",
+    "linalg_multi_dot_out",
     "linalg_norm",
+    "linalg_vecdot",
+    "linalg_vecdot_out",
+    "linear",
     "linspace",
     "log",
     "log1p_",
@@ -1230,6 +1259,7 @@ __all__ = [
     "sinh_",
     "slice_backward",
     "slice_scatter",
+    "smm",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
@@ -1246,6 +1276,8 @@ __all__ = [
     "sort_stable",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
+    "sparse_sampled_addmm",
+    "sparse_sampled_addmm_out",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
@@ -1255,6 +1287,8 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "sspaddmm",
+    "sspaddmm_out",
     "stack",
     "std",
     "sub",
@@ -1273,6 +1307,8 @@ __all__ = [
     "tanh_backward",
     "te_rmsnorm_bwd",
     "te_rmsnorm_fwd",
+    "tensordot",
+    "tensordot_out",
     "threshold",
     "threshold_backward",
     "tile",
