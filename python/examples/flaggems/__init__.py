@@ -4,6 +4,22 @@ from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._fake_quantize_learnable_per_channel_affine import (
+    _fake_quantize_learnable_per_channel_affine,
+)
+from ._fake_quantize_learnable_per_channel_affine_backward import (
+    _fake_quantize_learnable_per_channel_affine_backward,
+)
+from ._fake_quantize_learnable_per_tensor_affine import (
+    _fake_quantize_learnable_per_tensor_affine,
+)
+from ._fake_quantize_learnable_per_tensor_affine_backward import (
+    _fake_quantize_learnable_per_tensor_affine_backward,
+)
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
+)
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -33,6 +49,7 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from ._weight_norm import _weight_norm
 from ._weight_norm_differentiable_backward import weight_norm_differentiable_backward
+from ._wrapped_quantized_linear_prepacked import _wrapped_quantized_linear_prepacked
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
@@ -137,6 +154,7 @@ from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumulative_trapezoid import cumulative_trapezoid
+from .dequantize import dequantize
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -167,6 +185,22 @@ from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_per_channel_affine import fake_quantize_per_channel_affine
+from .fake_quantize_per_channel_affine_cachemask import (
+    fake_quantize_per_channel_affine_cachemask,
+    fake_quantize_per_channel_affine_cachemask_out,
+)
+from .fake_quantize_per_channel_affine_cachemask_backward import (
+    fake_quantize_per_channel_affine_cachemask_backward,
+)
+from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
+from .fake_quantize_per_tensor_affine_cachemask import (
+    fake_quantize_per_tensor_affine_cachemask,
+    fake_quantize_per_tensor_affine_cachemask_out,
+)
+from .fake_quantize_per_tensor_affine_cachemask_backward import (
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -183,6 +217,7 @@ from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fp8_matmul import fp8_matmul
 from .full import full
 from .full_like import full_like
+from .fused_moving_avg_obs_fake_quant import fused_moving_avg_obs_fake_quant
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
@@ -265,6 +300,11 @@ from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
+from .make_per_channel_quantized_tensor import _make_per_channel_quantized_tensor
+from .make_per_tensor_quantized_tensor import (
+    _make_per_tensor_quantized_tensor,
+    _make_per_tensor_quantized_tensor_out,
+)
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -342,6 +382,8 @@ from .pow import (
 from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
+from .quantize_per_channel import quantize_per_channel, quantize_per_channel_out
+from .quantize_per_tensor import quantize_per_tensor, quantize_per_tensor_out
 from .quantized_batch_norm import quantized_batch_norm, quantized_batch_norm_out
 from .rand import rand
 from .rand_like import rand_like
@@ -804,6 +846,12 @@ __all__ = [
     "_cdist_backward",
     "_cdist_forward",
     "_conv_depthwise2d",
+    "_dyn_quant_matmul_4bit",
+    "_fake_quantize_learnable_per_channel_affine",
+    "_fake_quantize_learnable_per_channel_affine_backward",
+    "_fake_quantize_learnable_per_tensor_affine",
+    "_fake_quantize_learnable_per_tensor_affine_backward",
+    "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_functional_sym_constrain_range_for_size",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
@@ -817,6 +865,9 @@ __all__ = [
     "_is_any_true",
     "_logcumsumexp",
     "_logcumsumexp_out",
+    "_make_per_channel_quantized_tensor",
+    "_make_per_tensor_quantized_tensor",
+    "_make_per_tensor_quantized_tensor_out",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_sum_backward",
@@ -834,6 +885,7 @@ __all__ = [
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
     "_weight_norm",
+    "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
     "absolute",
@@ -961,6 +1013,7 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "cumulative_trapezoid",
+    "dequantize",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -994,6 +1047,14 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fake_quantize_per_channel_affine",
+    "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_backward",
+    "fake_quantize_per_channel_affine_cachemask_out",
+    "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
+    "fake_quantize_per_tensor_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -1018,6 +1079,7 @@ __all__ = [
     "fp8_matmul",
     "full",
     "full_like",
+    "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",
     "gcd",
@@ -1208,6 +1270,10 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantize_per_channel",
+    "quantize_per_channel_out",
+    "quantize_per_tensor",
+    "quantize_per_tensor_out",
     "quantized_batch_norm",
     "quantized_batch_norm_out",
     "rand",
