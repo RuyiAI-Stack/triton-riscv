@@ -28,8 +28,15 @@ if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
     cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
         -DLLVM_DIR="${llvm_cmake}" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG" \
         -DTRITON_AMD_LLVM_REVISION=local
-    cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >/dev/null
+    # Keep the output out of the log, but show it when the build fails: cmake only
+    # reports the first missing symbol otherwise.
+    codegen_log="${amd_codegen_dir}/build.log"
+    if ! cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >"${codegen_log}" 2>&1; then
+        tail -40 "${codegen_log}" >&2
+        exit 1
+    fi
     cp "${amd_codegen_dir}/build/libtriton_amd_codegen.so" "${amd_codegen_lib}"
 else
     echo "warning: ${llvm_cmake}/LLVMConfig.cmake not found; skipping the AMD codegen library" >&2
