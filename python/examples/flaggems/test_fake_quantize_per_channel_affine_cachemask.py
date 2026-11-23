@@ -59,8 +59,15 @@ def test_pc_cachemask_mask_semantics_saturation_and_nan():
     ref_out, ref_mask = _ref(
         nan, torch.tensor([0.1]), torch.tensor([0], dtype=torch.int32), 0, 0, 255
     )
-    torch.testing.assert_close(out, ref_out, rtol=0, atol=0, equal_nan=True)
+    # aten's per-channel CPU kernel casts the NaN quantized value to int64
+    # before clamping, which is undefined behaviour: x86_64 lands on quant_min
+    # and riscv64 on quant_max.  Only the mask (from float comparisons) is
+    # portable, so the NaN slot is checked against this kernel's quant_min
+    # clamp instead of aten's platform-dependent value.
+    torch.testing.assert_close(out[:, 1:], ref_out[:, 1:], rtol=0, atol=0)
+    torch.testing.assert_close(mask, ref_mask, rtol=0, atol=0)
     assert mask.tolist() == [[False, True]]
+    assert out[0, 0].item() == 0.0
 
 
 def test_pc_cachemask_zero_point_edges_and_degenerate_range():
