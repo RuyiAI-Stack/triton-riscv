@@ -502,6 +502,19 @@ struct YieldConverter : public OpConversionPattern<scf::YieldOp> {
   }
 };
 
+// tt.annotate returns its operand unchanged; the attributes only carry hints
+// for later stages, so dropping the op keeps the value.
+struct AnnotateOpConverter : public OpConversionPattern<triton::AnnotateOp> {
+  using OpConversionPattern<triton::AnnotateOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(triton::AnnotateOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getOperands());
+    return success();
+  }
+};
+
 // Remove all Meta ops except for AddPtr which is handled by AddPtrConverter.
 // Use benefit == 10 to ensure that this pattern always takes precedence over
 // other patterns.

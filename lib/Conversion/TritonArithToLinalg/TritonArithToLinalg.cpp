@@ -74,6 +74,7 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
     patterns.add<AssertConverter>(patterns.getContext());
   }
   patterns.add<BroadcastConverter>(patterns.getContext());
+  patterns.add<AnnotateOpConverter>(patterns.getContext());
   patterns.add<TransposeConverter>(patterns.getContext());
   patterns.add<MakeRangeConverter>(patterns.getContext());
   patterns.add<ExpandDimsConverter>(patterns.getContext());
