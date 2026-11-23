@@ -25,11 +25,11 @@ CONTAINER_OUTPUT_DIR="${CONTAINER_PLUGIN_DIR}/build/release/${TARGET_ARCH}/${PY_
 
 case "${TARGET_ARCH}" in
     x86_64)
-        MANYLINUX_IMAGE="quay.io/pypa/manylinux_2_28_x86_64:latest"
+        MANYLINUX_IMAGE="quay.io/pypa/manylinux_2_28_x86_64@sha256:55a36963bc0504cdf004011001c1072306402f0b8b83be5a5eba7068f93eec53"
         DOCKER_PLATFORM="linux/amd64"
         ;;
     riscv64)
-        MANYLINUX_IMAGE="quay.io/pypa/manylinux_2_39_riscv64:latest"
+        MANYLINUX_IMAGE="quay.io/pypa/manylinux_2_39_riscv64@sha256:9608e4053959f4cb1c1c848924bb0d0658c69412554c11c6d9aca434d5b0ef8f"
         DOCKER_PLATFORM="linux/riscv64"
         ;;
     *)

@@ -28,7 +28,6 @@ if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
     cmake -G Ninja -S "${amd_codegen_dir}" -B "${amd_codegen_dir}/build" \
         -DLLVM_DIR="${llvm_cmake}" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG" \
         -DTRITON_AMD_LLVM_REVISION=local
     # Keep the output out of the log, but show it when the build fails: cmake only
     # reports the first missing symbol otherwise.
