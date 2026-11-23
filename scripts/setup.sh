@@ -49,16 +49,19 @@ download_release() {
     echo "Downloading ${name} from ${url}..."
     rm -rf "${dir}"
     mkdir -p "${dir}"
-    curl -fL "${url}" | tar -xzf - -C "${dir}"
+    case "${url}" in
+        *.tar.zst) curl -fL "${url}" | zstd -dc | tar -xf - -C "${dir}" ;;
+        *) curl -fL "${url}" | tar -xzf - -C "${dir}" ;;
+    esac
 }
 
 # Triton links the NVPTX/AMDGPU codegen libraries and lld unconditionally, and
 # the buddy-mlir release provides them.
 download_release llvm \
-    "${BUDDY_RELEASE_URL}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
+    "${BUDDY_RELEASE_URL}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.zst" \
     "${LLVM_SYSPATH}"
 download_release buddy \
-    "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
+    "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.zst" \
     "${ROOT_DIR}/.cache/buddy"
 
 # Keep the token out of the repository's remote URL while authenticating CI
