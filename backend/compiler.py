@@ -283,8 +283,12 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-loop-hoisting",
-                    "--buffer-deallocation-pipeline",
+                    # Promotion must come first: running deallocation before it
+                    # leaves memref.dealloc on buffers that promotion then turns
+                    # into allocas, and the generated kernel frees a stack
+                    # address.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
+                    "--buffer-deallocation-pipeline",
                 ]
             )
             standard_lowering_passes.extend(
