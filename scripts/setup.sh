@@ -13,6 +13,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 LLVM_SYSPATH="${LLVM_SYSPATH:-${ROOT_DIR}/.cache/llvm}"
 
+# The toolchain archives are zstd-packed; install it when missing.
+if ! command -v zstd >/dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get install -y zstd 2>/dev/null || sudo dnf install -y zstd 2>/dev/null || true
+    fi
+fi
+command -v zstd >/dev/null 2>&1 || {
+    echo "error: zstd is required to unpack the toolchain tarballs" >&2
+    exit 1
+}
+
 TRITON_HASH="$(<"${ROOT_DIR}/triton-hash.txt")"
 BUDDY_PYTHON_TAG="cp312-abi3"
 BUDDY_RELEASE_TAG="$(tail -n 1 "${ROOT_DIR}/buddy-hash.txt")"

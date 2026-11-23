@@ -39,7 +39,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build ccache
+          sudo apt-get install -y clang lld ninja-build ccache zstd
 
       - name: Build Triton with the triton-shared backend
         env:

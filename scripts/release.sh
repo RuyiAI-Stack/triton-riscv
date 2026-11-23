@@ -110,7 +110,7 @@ trap cleanup EXIT INT TERM
 export PYTHON="/opt/python/${PY_TAG}/bin/python"
 export PATH="/opt/python/${PY_TAG}/bin:$PATH"
 
-dnf install -y clang lld git libstdc++-devel
+dnf install -y clang lld git libstdc++-devel zstd
 
 # clang needs a GCC installation to find crtbeginS.o, libgcc and libstdc++ when
 # it links, and on this image it does not detect the riscv64 layout by itself --
