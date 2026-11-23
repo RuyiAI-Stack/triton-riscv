@@ -32,7 +32,9 @@ if [ -f "${llvm_cmake}/LLVMConfig.cmake" ]; then
     # Keep the output out of the log, but show it when the build fails: cmake only
     # reports the first missing symbol otherwise.
     codegen_log="${amd_codegen_dir}/build.log"
-    if ! cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen >"${codegen_log}" 2>&1; then
+    # -j2 on purpose: with the full job count these template-heavy files push the
+    # riscv64 runners into an internal compiler error (GCC OOMs).
+    if ! cmake --build "${amd_codegen_dir}/build" --target triton_amd_codegen -j 2 >"${codegen_log}" 2>&1; then
         tail -40 "${codegen_log}" >&2
         exit 1
     fi
