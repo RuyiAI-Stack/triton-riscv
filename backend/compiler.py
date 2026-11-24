@@ -136,18 +136,33 @@ def _optimize_ttsharedir(ttsharedir: str):
 
 
 def _targets_riscv(options=None) -> bool:
-    if platform.machine() == "riscv64":
-        return True
-    target_triple = getattr(options, "target_triple", None) if options else None
-    return bool(target_triple and "riscv" in target_triple)
+    target_triple = getattr(options, "target_triple", None)
+    return (
+        "riscv" in target_triple if target_triple else platform.machine() == "riscv64"
+    )
 
 
-def _use_vir_vector_passes(options=None) -> bool:
-    # VIR on native execution currently breaks some reduction kernels
-    # (FlagGems flash_api). Keep it for explicit RISC-V object emit tests
-    # that pass target_triple.
-    target_triple = getattr(options, "target_triple", None) if options else None
-    return bool(target_triple and "riscv" in target_triple)
+def _vir_vector_bits(options) -> int:
+    if _targets_riscv(options):
+        return _riscv_codegen_vlen(options)
+    triple = getattr(options, "target_triple", None)
+    if triple is None and platform.machine() in {"x86_64", "AMD64"}:
+        triple = "x86_64-unknown-linux-gnu"
+    return _fixed_vector_bits(options, triple or "", _get_llvm_bin_path("opt")) or 128
+
+
+def _vir_vector_passes(options, bits: int) -> list[str]:
+    triple = getattr(options, "target_triple", None) or platform.machine()
+    riscv = _targets_riscv(options)
+    registers = 16 if triple.startswith(("x86_64", "AMD64")) and bits < 512 else 32
+    layout = f"target-vector-bits={bits} target-vector-regs={registers}"
+    lowering = (
+        f"use-scalable=true rvv-vlen={bits} use-avl-loop=true" if riscv else layout
+    )
+    return [
+        "--lower-linalg-to-vir",
+        f"--lower-vir-to-vector={lowering}",
+    ]
 
 
 def _riscv_target_features(options=None) -> str:
@@ -166,16 +181,6 @@ def _riscv_codegen_vlen(options=None) -> int:
         if (match := re.fullmatch(r"\+zvl(\d+)b", feature))
     )
     return max(lengths, default=128)
-
-
-def _riscv_vir_vector_passes(options=None) -> list[str]:
-    # Keep a fixed-VL main loop and one AVL tail. Short constant regions use
-    # the target's minimum VLEN for fixed vectors or at most two AVL iterations.
-    vlen = _riscv_codegen_vlen(options)
-    return [
-        "--lower-linalg-to-vir",
-        f"--lower-vir-to-vector=use-scalable=true rvv-vlen={vlen} use-avl-loop=true",
-    ]
 
 
 _RISCV_POLYNOMIAL_MATH_OPS = (
@@ -217,15 +222,6 @@ def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
         vector_size = 2 * _riscv_codegen_vlen(options) // 32
         return [f"--matmul-vectorization=vector-size={vector_size}"]
     return ["--matmul-vectorization"]
-
-
-def _strided_copy_passes(options=None) -> list[str]:
-    # A store of a tile into a strided view bufferizes to memref.copy, which
-    # finalize-memref-to-llvm lowers to the generic memrefCopy runtime (one
-    # memcpy per element). Rewrite it as a linalg copy so it is vectorized.
-    if _targets_riscv(options):
-        return ["convert-strided-memref-copy-to-linalg"]
-    return []
 
 
 _MEMREF_COPY_TYPES = re.compile(r"memref\.copy\b[^\n]*?:\s*([^\n]*)")
@@ -360,9 +356,18 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             # Split bufferize/loop lowering from LLVM conversion so triton-shared
             # can expand FP8 arith.extf/truncf (and lower atomic CAS helpers)
             # before convert-arith-to-llvm.
+            vector_bits = _vir_vector_bits(options)
             bufferization_passes = _riscv_polynomial_math_passes(options)
             if "__triton_shared_atomic_cas_" not in ttsharedir:
-                bufferization_passes.append("--linalg-fuse-elementwise-ops")
+                bufferization_passes.extend(
+                    [
+                        f"--vectorize-masked-stores=vector-bits={vector_bits}",
+                        "--linalg-fuse-elementwise-ops",
+                        "--crop-neutral-reductions",
+                        "--fold-reduction-transposes",
+                        "--fuse-reduction-producers",
+                    ]
+                )
             bufferization_passes.extend(
                 [
                     "--empty-tensor-to-alloc-tensor",
@@ -374,52 +379,45 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                     # address.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
                     "--elide-masked-tile-copies",
+                    "--stack-temporaries",
                     "--buffer-deallocation-pipeline",
+                    f"--lower-strided-copies=vector-bits={vector_bits}",
                 ]
             )
-            standard_input_path = ttshared_path
-            standard_lowering_passes = list(bufferization_passes)
-            copy_passes = _strided_copy_passes(options)
+            # The strided-copy conversion is a function pass. Run it
+            # separately from the module-level bufferization pipeline.
+            bufferized_path = os.path.join(tmpdir, "bufferized.mlir")
+            copies_path = os.path.join(tmpdir, "bufferized-copies.mlir")
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    ttshared_path,
+                    *bufferization_passes,
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    bufferized_path,
+                ]
+            )
+            standard_input_path = bufferized_path
+            bufferized_ir = Path(bufferized_path).read_text()
+            static_copies = _only_static_memref_copies(bufferized_ir)
             dynamic_copy_lowering = False
-            if copy_passes:
-                # These are function passes; buddy-opt cannot mix
-                # --pass-pipeline with pass flags, so run them separately.
-                bufferized_path = os.path.join(tmpdir, "bufferized.mlir")
-                copies_path = os.path.join(tmpdir, "bufferized-copies.mlir")
+            if static_copies or not _has_dynamic_fp8_copy(bufferized_ir):
                 subprocess.check_call(
                     [
                         buddy_opt_path,
-                        ttshared_path,
-                        *bufferization_passes,
+                        bufferized_path,
+                        "--pass-pipeline=builtin.module(func.func("
+                        "convert-strided-memref-copy-to-linalg))",
                         "--mlir-print-debuginfo",
                         "-o",
-                        bufferized_path,
+                        copies_path,
                     ]
                 )
-                standard_input_path = bufferized_path
-                bufferized_ir = Path(bufferized_path).read_text()
-                static_copies = _only_static_memref_copies(bufferized_ir)
-                if static_copies or not _has_dynamic_fp8_copy(bufferized_ir):
-                    subprocess.check_call(
-                        [
-                            buddy_opt_path,
-                            bufferized_path,
-                            "--pass-pipeline=builtin.module(func.func("
-                            + ",".join(copy_passes)
-                            + "))",
-                            "--mlir-print-debuginfo",
-                            "-o",
-                            copies_path,
-                        ]
-                    )
-                    standard_input_path = copies_path
-                    dynamic_copy_lowering = not static_copies
-                standard_lowering_passes = []
-            standard_lowering_passes.extend(
-                _matmul_vectorization_passes(ttsharedir, options)
-            )
-            if _use_vir_vector_passes(options):
-                standard_lowering_passes.extend(_riscv_vir_vector_passes(options))
+                standard_input_path = copies_path
+                dynamic_copy_lowering = not static_copies
+            standard_lowering_passes = _matmul_vectorization_passes(ttsharedir, options)
+            standard_lowering_passes.extend(_vir_vector_passes(options, vector_bits))
             standard_lowering_passes.extend(
                 [
                     # Dynamic copy bounds are legal SCF values but are not
@@ -431,14 +429,12 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                     ),
                     "--lower-affine",
                     "--convert-linalg-to-loops",
+                    "--forward-masked-loads",
                     "--expand-strided-metadata",
+                    "--convert-vector-to-scf",
+                    "--convert-scf-to-cf",
                 ]
             )
-            # VIR lowering emits vector.transfer_read for tiled copies. Lower
-            # those transfers to scalar SCF loops before converting SCF to CF.
-            if _use_vir_vector_passes(options):
-                standard_lowering_passes.append("--convert-vector-to-scf")
-            standard_lowering_passes.append("--convert-scf-to-cf")
             llvm_lowering_passes = [
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
