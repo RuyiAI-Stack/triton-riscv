@@ -214,8 +214,10 @@ jobs:
       # The same wheels go to the package index too, straight from the build tree.
       # Skipped until the secrets exist, and non-fatal for now so a broken index
       # cannot block a release: the GitHub release stays the primary channel.
+      # Nightlies stay on GitHub releases: pip cannot replace a version it already
+      # holds, and a dev build would block the matching release from the index.
       - name: Publish the wheels to the package index
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' && needs.prepare_release.outputs.is_prerelease != 'true' }}
         continue-on-error: true
         run: |
           set -euo pipefail

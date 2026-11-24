@@ -13,6 +13,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRITON_DIR="${TRITON_DIR:-${ROOT_DIR}/triton}"
 LLVM_SYSPATH="${LLVM_SYSPATH:-${ROOT_DIR}/.cache/llvm}"
 
+# The toolchain archives are zstd-packed; install it when missing.
+if ! command -v zstd >/dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get install -y zstd 2>/dev/null || sudo dnf install -y zstd 2>/dev/null || true
+    fi
+fi
+command -v zstd >/dev/null 2>&1 || {
+    echo "error: zstd is required to unpack the toolchain tarballs" >&2
+    exit 1
+}
+
 TRITON_HASH="$(<"${ROOT_DIR}/triton-hash.txt")"
 BUDDY_PYTHON_TAG="cp312-abi3"
 BUDDY_RELEASE_TAG="$(tail -n 1 "${ROOT_DIR}/buddy-hash.txt")"
@@ -49,16 +60,19 @@ download_release() {
     echo "Downloading ${name} from ${url}..."
     rm -rf "${dir}"
     mkdir -p "${dir}"
-    curl -fL "${url}" | tar -xzf - -C "${dir}"
+    case "${url}" in
+        *.tar.zst) curl -fL "${url}" | zstd -dc | tar -xf - -C "${dir}" ;;
+        *) curl -fL "${url}" | tar -xzf - -C "${dir}" ;;
+    esac
 }
 
 # Triton links the NVPTX/AMDGPU codegen libraries and lld unconditionally, and
 # the buddy-mlir release provides them.
 download_release llvm \
-    "${BUDDY_RELEASE_URL}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
+    "${BUDDY_RELEASE_URL}/llvm-24.0.0git-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.zst" \
     "${LLVM_SYSPATH}"
 download_release buddy \
-    "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.gz" \
+    "${BUDDY_RELEASE_URL}/buddy-${BUDDY_RELEASE_VERSION}-${BUDDY_PYTHON_TAG}-${BUDDY_PLATFORM}.tar.zst" \
     "${ROOT_DIR}/.cache/buddy"
 
 # Keep the token out of the repository's remote URL while authenticating CI
@@ -78,6 +92,7 @@ if ! git -C "${TRITON_DIR}" cat-file -e "${TRITON_HASH}^{commit}" 2>/dev/null; t
     git "${GIT_AUTH_ARGS[@]}" -C "${TRITON_DIR}" fetch origin "${TRITON_HASH}"
 fi
 git -C "${TRITON_DIR}" reset --hard "${TRITON_HASH}"
+"${ROOT_DIR}/scripts/apply_patches.sh"
 
 PYTHON="${PYTHON:-python3}"
 echo "Installing build dependencies into ${PYTHON}..."

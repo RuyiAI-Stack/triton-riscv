@@ -1,0 +1,168 @@
+diff --git a/bin/triton-llvm-opt.cpp b/bin/triton-llvm-opt.cpp
+index 5c5d03af31..363c124ca3 100644
+--- a/bin/triton-llvm-opt.cpp
++++ b/bin/triton-llvm-opt.cpp
+@@ -60,7 +60,7 @@ namespace {
+ static std::function<Error(Module *)> makeOptimizingPipeline() {
+   return [](Module *m) -> Error {
+     PipelineTuningOptions tuningOptions;
+-    PassBuilder pb(nullptr, tuningOptions);
++    PassBuilder pb(m->getContext(), nullptr, tuningOptions);
+ 
+     LoopAnalysisManager lam;
+     FunctionAnalysisManager fam;
+diff --git a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
+index 62a15fff81..b935db07b0 100644
+--- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
+@@ -372,8 +372,14 @@ static void disableLICM(LLVM::BrOp latchBr) {
+   MLIRContext *ctx = b.getContext();
+   auto licmMD = LLVM::LoopLICMAttr::get(ctx, b.getBoolAttr(true), {});
+   auto loopMD =
+-      LLVM::LoopAnnotationAttr::get(b.getContext(), {}, {}, {}, {}, {}, licmMD,
+-                                    {}, {}, {}, {}, {}, {}, {}, {}, {});
++      LLVM::LoopAnnotationAttr::get(
++          b.getContext(), /*id=*/{},
++          /*disableNonforced=*/{}, /*vectorize=*/{}, /*interleave=*/{},
++          /*unroll=*/{}, /*unrollAndJam=*/{}, /*licm=*/licmMD,
++          /*distribute=*/{}, /*pipeline=*/{}, /*peeled=*/{},
++          /*unswitch=*/{}, /*mustProgress=*/{}, /*isVectorized=*/{},
++          /*align=*/0, /*startLoc=*/{}, /*endLoc=*/{},
++          /*parallelAccesses=*/{});
+   latchBr.setLoopAnnotationAttr(loopMD);
+ }
+ 
+diff --git a/python/src/ir.cc b/python/src/ir.cc
+index d266dcf8f2..a41e0d8400 100644
+--- a/python/src/ir.cc
++++ b/python/src/ir.cc
+@@ -1007,8 +1007,13 @@ void init_triton_ir(py::module_ &m) {
+                                          self.getBuilder().getBoolAttr(true));
+              mlir::LLVM::LoopAnnotationAttr la =
+                  mlir::LLVM::LoopAnnotationAttr::get(
+-                     self.getBuilder().getContext(), {}, {}, {}, {}, {},
+-                     licmAttr, {}, {}, {}, {}, {}, {}, {}, {}, {});
++                     self.getBuilder().getContext(), /*id=*/{},
++                     /*disableNonforced=*/{}, /*vectorize=*/{}, /*interleave=*/{},
++                     /*unroll=*/{}, /*unrollAndJam=*/{}, /*licm=*/licmAttr,
++                     /*distribute=*/{}, /*pipeline=*/{}, /*peeled=*/{},
++                     /*unswitch=*/{}, /*mustProgress=*/{}, /*isVectorized=*/{},
++                     /*align=*/0, /*startLoc=*/{}, /*endLoc=*/{},
++                     /*parallelAccesses=*/{});
+              return la;
+            })
+       // Use arith.ConstantOp to create constants
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+index 6a38352922..50b5a7b71a 100644
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -208,11 +208,11 @@ public:
+ 
+   bool isEnabled() const override { return true; }
+ 
+-  bool shouldRunPass(llvm::StringRef passName,
+-                     llvm::StringRef irDescription) const override {
++  bool shouldRunPass(llvm::StringRef passName, llvm::StringRef irDescription,
++                     llvm::StringRef funcName) const override {
+     return passName != "Loop Strength Reduction" &&
+            (!previousGate.isEnabled() ||
+-            previousGate.shouldRunPass(passName, irDescription));
++            previousGate.shouldRunPass(passName, irDescription, funcName));
+   }
+ };
+ 
+@@ -679,7 +679,8 @@ void init_triton_llvm(py::module_ &m) {
+         if (!arch.empty())
+           targetMachine =
+               createTargetMachine(mod, arch, enable_fp_fusion, features);
+-        PassBuilder pb(/*targetMachine=*/targetMachine.get(), tuningOptions,
++        PassBuilder pb(/*Context=*/mod->getContext(),
++                       /*TM=*/targetMachine.get(), tuningOptions,
+                        std::nullopt, instrCbPtr);
+ 
+         if (!pluginFile.empty()) {
+diff --git a/third_party/amd/backend/codegen/DAGBuilder.cpp b/third_party/amd/backend/codegen/DAGBuilder.cpp
+index cd93c99416..c77a13c896 100644
+--- a/third_party/amd/backend/codegen/DAGBuilder.cpp
++++ b/third_party/amd/backend/codegen/DAGBuilder.cpp
+@@ -256,7 +256,7 @@ void DAGBuilder::setupAliasAnalysis() {
+   // Keep in sync with createScopedNoAliasAAWrapperPass() in the MIR-to-ASM
+   // pipeline, which documents why: without it the emitted DAG carries memory
+   // edges the scheduler that compiles this MIR does not believe in.
+-  ScopedAA = std::make_unique<ScopedNoAliasAAResult>(Func.getContext());
++  ScopedAA = std::make_unique<ScopedNoAliasAAResult>();
+   AA->addAAResult(*ScopedAA);
+ }
+ 
+diff --git a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
+index 2591748d1e..d41b5daa79 100644
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
+@@ -206,7 +206,8 @@ Value TargetInfo::loadRelaxed(RewriterBase &rewriter, Location loc, Value ptr,
+         Value loaded = LLVM::LoadOp::create(
+             rewriter, loc, valueTy, ptr, alignment, /*isVolatile=*/false,
+             /*isNonTemporal=*/false, /*isInvariant=*/false,
+-            /*isInvariantGroup=*/false, LLVM::AtomicOrdering::monotonic,
++            /*isInvariantGroup=*/false, /*isNoundef=*/false,
++            LLVM::AtomicOrdering::monotonic,
+             getAtomicSyncScope(scope));
+         return SmallVector<Value>{loaded};
+       });
+diff --git a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
+index dde8f3b326..29aade497c 100644
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
+@@ -13,6 +13,7 @@
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+ #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+ #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
++#include "mlir/Dialect/LLVMIR/ROCDLTargetInfo.h"
+ #include "mlir/Dialect/Math/IR/Math.h"
+ #include "mlir/Dialect/SCF/IR/SCF.h"
+ #include "mlir/Pass/Pass.h"
+@@ -206,8 +207,8 @@ struct ConvertTritonAMDGPUToLLVM
+     mlir::triton::AMD::populateWarpIdOpToLLVMPattern(typeConverter, targetInfo,
+                                                      patterns, commonBenefit);
+ 
+-    FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+-        mlir::amdgpu::Chipset::parse(targetInfo.getBaseArch());
++    FailureOr<mlir::ROCDL::TargetInfo> maybeChipset =
++        mlir::ROCDL::TargetInfo::get(targetInfo.getBaseArch());
+     if (failed(maybeChipset)) {
+       emitError(UnknownLoc::get(&getContext()),
+                 "Invalid AMDGPU chipset name: " + this->gfxArch);
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
+index ec44458c20..0de1e51ea6 100644
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
+@@ -2,6 +2,7 @@
+ #include "PatternTritonGPUOpToLLVM.h"
+ #include "TritonNVIDIAGPUToLLVM/Passes.h"
+ #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
++#include "mlir/Conversion/ArithCommon/CeilFloorDivExpansion.h"
+ #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+ #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
+ #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+diff --git a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
+index 8226f09472..736af0ef94 100644
+--- a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
++++ b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
+@@ -12,6 +12,7 @@
+ #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+ #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
++#include "mlir/Dialect/LLVMIR/ROCDLTargetInfo.h"
+ #include "mlir/Dialect/Math/IR/Math.h"
+ #include "mlir/Dialect/SCF/IR/SCF.h"
+ #include "mlir/Pass/Pass.h"
+@@ -69,8 +70,8 @@ struct ConvertProtonAMDGPUToLLVM
+                                                        tritonTargetInfo);
+     mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
+ 
+-    FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+-        mlir::amdgpu::Chipset::parse(this->gfxArch);
++    FailureOr<mlir::ROCDL::TargetInfo> maybeChipset =
++        mlir::ROCDL::TargetInfo::get(this->gfxArch);
+     if (failed(maybeChipset)) {
+       emitError(UnknownLoc::get(&getContext()),
+                 "Invalid AMDGPU chipset name: " + this->gfxArch);
