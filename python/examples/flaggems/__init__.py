@@ -372,6 +372,66 @@ from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
+from .cholesky import cholesky
+from .cholesky_inverse import cholesky_inverse
+from .cholesky_solve import cholesky_solve
+from .detach_copy import detach_copy
+from .geqrf import geqrf
+from .inverse import inverse
+from .ldl_factor_ex import ldl_factor_ex
+from .linalg__powsum import linalg__powsum
+from .linalg_cholesky import linalg_cholesky
+from .linalg_cholesky_ex import linalg_cholesky_ex
+from .linalg_cond import linalg_cond
+from .linalg_cross import linalg_cross
+from .linalg_det import linalg_det
+from .linalg_eig import linalg_eig
+from .linalg_eigh import linalg_eigh
+from .linalg_eigvalsh import linalg_eigvalsh
+from .linalg_householder_product import linalg_householder_product
+from .linalg_inv import linalg_inv
+from .linalg_inv_ex import linalg_inv_ex
+from .linalg_ldl_factor import linalg_ldl_factor
+from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_lstsq import linalg_lstsq
+from .linalg_lu import linalg_lu
+from .linalg_lu_factor import linalg_lu_factor
+from .linalg_lu_factor_ex import linalg_lu_factor_ex
+from .linalg_lu_solve import linalg_lu_solve
+from .linalg_matrix_exp import linalg_matrix_exp
+from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_power import linalg_matrix_power
+from .linalg_matrix_rank import linalg_matrix_rank
+from .linalg_matrix_sqrth import linalg_matrix_sqrth
+from .linalg_pinv import linalg_pinv
+from .linalg_polar import linalg_polar
+from .linalg_qr import linalg_qr
+from .linalg_slogdet import linalg_slogdet
+from .linalg_solve import linalg_solve
+from .linalg_solve_ex import linalg_solve_ex
+from .linalg_solve_triangular import linalg_solve_triangular
+from .linalg_tensorinv import linalg_tensorinv
+from .linalg_tensorsolve import linalg_tensorsolve
+from .linalg_vander import linalg_vander
+from .logdet import logdet
+from .lu_unpack import lu_unpack
+from .matrix_exp_backward import matrix_exp_backward
+from .matrix_power import matrix_power
+from .orgqr import orgqr
+from .ormqr import ormqr
+from .pinverse import pinverse
+from .slogdet import slogdet
+from .triangular_indices import triangular_indices
+from .triangular_solve import triangular_solve
+from ._cholesky_solve_helper import _cholesky_solve_helper
+from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
+from ._linalg_det import _linalg_det
+from ._linalg_slogdet import _linalg_slogdet
+from ._linalg_solve_ex import _linalg_solve_ex
+from ._lu_with_info import _lu_with_info
+from ._saturate_weight_to_fp16 import _saturate_weight_to_fp16
+from ._spsolve import _spsolve
+
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
@@ -844,4 +904,63 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "cholesky",
+    "cholesky_inverse",
+    "cholesky_solve",
+    "detach_copy",
+    "geqrf",
+    "inverse",
+    "ldl_factor_ex",
+    "linalg__powsum",
+    "linalg_cholesky",
+    "linalg_cholesky_ex",
+    "linalg_cond",
+    "linalg_cross",
+    "linalg_det",
+    "linalg_eig",
+    "linalg_eigh",
+    "linalg_eigvalsh",
+    "linalg_householder_product",
+    "linalg_inv",
+    "linalg_inv_ex",
+    "linalg_ldl_factor",
+    "linalg_ldl_solve",
+    "linalg_lstsq",
+    "linalg_lu",
+    "linalg_lu_factor",
+    "linalg_lu_factor_ex",
+    "linalg_lu_solve",
+    "linalg_matrix_exp",
+    "linalg_matrix_norm",
+    "linalg_matrix_power",
+    "linalg_matrix_rank",
+    "linalg_matrix_sqrth",
+    "linalg_pinv",
+    "linalg_polar",
+    "linalg_qr",
+    "linalg_slogdet",
+    "linalg_solve",
+    "linalg_solve_ex",
+    "linalg_solve_triangular",
+    "linalg_tensorinv",
+    "linalg_tensorsolve",
+    "linalg_vander",
+    "logdet",
+    "lu_unpack",
+    "matrix_exp_backward",
+    "matrix_power",
+    "orgqr",
+    "ormqr",
+    "pinverse",
+    "slogdet",
+    "triangular_indices",
+    "triangular_solve",
+    "_cholesky_solve_helper",
+    "_dyn_quant_pack_4bit_weight",
+    "_linalg_det",
+    "_linalg_slogdet",
+    "_linalg_solve_ex",
+    "_lu_with_info",
+    "_saturate_weight_to_fp16",
+    "_spsolve",
 ]
