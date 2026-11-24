@@ -22,7 +22,7 @@ add_subdirectory(test)
 add_subdirectory(tools/triton-shared-opt)
 
 if (TRITON_SHARED_BUILD_CPU_BACKEND)
-    add_triton_plugin(TritonShared ${CMAKE_CURRENT_SOURCE_DIR}/triton_shared.cc LINK_LIBS TritonSharedAnalysis TritonToLinalg TritonTilingExtIR)
+    add_triton_plugin(TritonShared ${CMAKE_CURRENT_SOURCE_DIR}/triton_shared.cc LINK_LIBS TritonSharedAnalysis TritonToLinalg TritonTilingExtIR MLIRArithBufferizableOpInterfaceImpl MLIRBufferizationBufferizableOpInterfaceImpl MLIRControlFlowBufferizableOpInterfaceImpl MLIRMLProgramBufferizableOpInterfaceImpl MLIRSCFBufferizableOpInterfaceImpl MLIRShapeBufferizableOpInterfaceImpl MLIRSparseTensorBufferizableOpInterfaceImpl MLIRTensorBufferizableOpInterfaceImpl MLIRVectorBufferizableOpInterfaceImpl)
     target_link_libraries(TritonShared PRIVATE Python3::Module nanobind-static)
 endif()
 

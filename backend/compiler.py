@@ -360,10 +360,10 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-loop-hoisting",
-                    # Promote small temporaries to the stack before the
-                    # deallocation pipeline: once ownership-based deallocation
-                    # has placed bufferization.dealloc on an allocation it is
-                    # no longer promoted, so every temporary was malloc/free.
+                    # Promotion must come first: running deallocation before it
+                    # leaves memref.dealloc on buffers that promotion then turns
+                    # into allocas, and the generated kernel frees a stack
+                    # address.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
                     "--buffer-deallocation-pipeline",
                 ]

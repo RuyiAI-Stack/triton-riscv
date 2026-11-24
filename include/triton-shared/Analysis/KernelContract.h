@@ -22,6 +22,7 @@
 #ifndef TRITON_SHARED_ANALYSIS_KERNELCONTRACT_H
 #define TRITON_SHARED_ANALYSIS_KERNELCONTRACT_H
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
