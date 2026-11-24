@@ -25,7 +25,14 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def convert_weight_to_int4pack_kernel(
-    inp_ptr, out_ptr, M, N, innerKTiles: tl.constexpr, BLOCK_SIZE: tl.constexpr
+    inp_ptr,
+    out_ptr,
+    M,
+    N,
+    stride_m: tl.constexpr,
+    stride_n: tl.constexpr,
+    innerKTiles: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """
     Convert weight tensor to int4 packed format.
@@ -39,15 +46,15 @@ def convert_weight_to_int4pack_kernel(
     row_idx = tl.program_id(0)
     if row_idx >= M:
         return
-    col_offs = tl.arange(0, BLOCK_SIZE)
+    col_offs = tl.program_id(1) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     out_n = col_offs
     out_mask = out_n < N // 2
     even_inp_offs = out_n * 2
     odd_inp_offs = out_n * 2 + 1
     inp_even_mask = even_inp_offs < N
     inp_odd_mask = odd_inp_offs < N
-    even_ptrs = inp_ptr + row_idx * N + even_inp_offs
-    odd_ptrs = inp_ptr + row_idx * N + odd_inp_offs
+    even_ptrs = inp_ptr + row_idx * stride_m + even_inp_offs * stride_n
+    odd_ptrs = inp_ptr + row_idx * stride_m + odd_inp_offs * stride_n
     even_val = tl.load(even_ptrs, mask=inp_even_mask, other=0)
     odd_val = tl.load(odd_ptrs, mask=inp_odd_mask, other=0)
     even_val = even_val & 15
@@ -70,9 +77,9 @@ def _convert_weight_to_int4pack(inp: torch.Tensor, innerKTiles: int) -> torch.Te
     BLOCK_SIZE = 64
 
     def grid(META):
-        return (M,)
+        return (M, triton.cdiv(N // 2, META["BLOCK_SIZE"]))
 
     convert_weight_to_int4pack_kernel[grid](
-        inp, out, M, N, innerKTiles, BLOCK_SIZE=BLOCK_SIZE
+        inp, out, M, N, inp.stride(0), inp.stride(1), innerKTiles, BLOCK_SIZE=BLOCK_SIZE
     )
     return out
