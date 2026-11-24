@@ -601,6 +601,101 @@ def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
         return Path(dst_path).read_text()
 
 
+_ATTR_GROUP = re.compile(r"^attributes\s+#(\d+)\s*=\s*\{(.*?)\}", re.M | re.S)
+_DEFINE_HEADER = re.compile(r"^([ \t]*define\b.*?)([ \t]*\{)[ \t]*(?=;|$)", re.M | re.S)
+_FUNCTION_NAME = re.compile(r'@(?:"[^"\n]*"|[-\w.$]+)\s*\(')
+_IR_TOKEN = re.compile(r'"[^"\n]*"|;[^\n]*|[()]')
+_GROUP_REF = re.compile(r'#(\d+)|"[^"\n]*"|;[^\n]*')
+_PREFER_WIDTH = re.compile(r'(?<!\S)"prefer-vector-width"(?:\s*=\s*"[^"\n]*")?')
+
+
+def _prefer_vector_width(llir: str, bits: int) -> str:
+    """Set a string attribute on every definition in LLVM's printed IR."""
+    attr = f'"prefer-vector-width"="{bits}"'
+    used_groups = set()
+
+    def set_reference(match):
+        header = match[1]
+        name = _FUNCTION_NAME.search(header)
+        if name is None:
+            raise ValueError("Missing parameter list in LLVM function definition")
+        depth = 1
+        for token in _IR_TOKEN.finditer(header, name.end()):
+            if token[0] == "(":
+                depth += 1
+            elif token[0] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+        else:
+            raise ValueError("Unterminated parameter list in LLVM function definition")
+        args_end = token.end()
+        tail = _PREFER_WIDTH.sub("", header[args_end:])
+        groups = {ref[1] for ref in _GROUP_REF.finditer(tail) if ref[1] is not None}
+        if groups:
+            used_groups.update(groups)
+        else:
+            tail = f" {attr}" + tail
+        return header[:args_end] + tail + match[2]
+
+    def replace_in_group(match):
+        if match[1] not in used_groups:
+            return match[0]
+        attrs = _PREFER_WIDTH.sub("", match[2]).strip()
+        return f"attributes #{match[1]} = {{ {' '.join(filter(None, (attrs, attr)))} }}"
+
+    llir = _DEFINE_HEADER.sub(set_reference, llir)
+    return _ATTR_GROUP.sub(replace_in_group, llir)
+
+
+@functools.lru_cache
+def _native_x86_features(opt: str) -> str:
+    # Ask LLVM which features its -mcpu=native resolves to.
+    probe = subprocess.check_output(
+        [
+            opt,
+            "-mtriple=x86_64-unknown-linux-gnu",
+            "-mcpu=native",
+            "-passes=no-op-module",
+            "-S",
+            "-o",
+            "-",
+        ],
+        input="define void @probe() { ret void }\n",
+        text=True,
+    )
+    match = re.search(r'"target-features"="([^"]*)"', probe)
+    return match[1] if match else ""
+
+
+def _fixed_vector_bits(options, triple: str, opt: str) -> int | None:
+    bits = getattr(options, "target_vector_bits", None)
+    if bits is not None:
+        return bits
+
+    features = getattr(options, "target_features", None)
+    if triple.startswith("x86_64"):
+        if getattr(options, "target_triple", None) is None:
+            features = _native_x86_features(opt)
+        enabled = set()
+        for feature in (features or "").split(","):
+            if feature.startswith("+"):
+                enabled.add(feature[1:])
+            elif feature.startswith("-"):
+                enabled.discard(feature[1:])
+        if "avx512f" in enabled:
+            return 512
+        if enabled & {"avx", "avx2"}:
+            return 256
+        if not getattr(options, "target_cpu", None):
+            return 128
+    if triple.startswith(("aarch64", "arm64")):
+        features = set((features or "").split(","))
+        if "+neon" in features and not features & {"+sve", "+sve2"}:
+            return 128
+    return None
+
+
 def _optimize_llir(llir: str, options=None):
     # llc's -O3 controls code-generation optimizations but does not run the
     # target-aware LLVM middle-end pipeline.  In particular, scalar linalg
@@ -612,12 +707,18 @@ def _optimize_llir(llir: str, options=None):
     target_triple = getattr(options, "target_triple", None)
     if target_triple and "riscv" in target_triple and not _use_ime_pipeline():
         return _optimize_riscv_llir(llir, target_triple, options)
-    if host_machine == "riscv64" or target_triple:
-        # opt's LCSSA rewrite can detach ownership guards from pointer PHIs
-        # emitted by MLIR buffer deallocation and double-free a carried buffer.
+    if target_triple:
+        if not target_triple.startswith(("x86_64", "aarch64", "arm64")):
+            return llir
+        triple = target_triple
+    elif host_machine in {"x86_64", "AMD64"}:
+        triple = "x86_64-unknown-linux-gnu"
+    else:
         return llir
-    if host_machine not in {"x86_64", "AMD64"}:
-        return llir
+
+    opt = _get_llvm_bin_path("opt")
+    if bits := _fixed_vector_bits(options, triple, opt):
+        llir = _prefer_vector_width(llir, bits)
 
     if getattr(options, "allow_fp_reassoc", False):
         # Per-kernel opt-in for reduction-heavy code whose numerical contract
@@ -681,24 +782,14 @@ def _optimize_llir(llir: str, options=None):
         src_path = os.path.join(tmpdir, "kernel.ll")
         dst_path = os.path.join(tmpdir, "kernel-opt.ll")
         Path(src_path).write_text(llir)
-        command = [_get_llvm_bin_path("opt"), "-O3"]
-        if host_machine in {"x86_64", "AMD64"}:
-            command.extend(
-                [
-                    "-mtriple=x86_64-unknown-linux-gnu",
-                    "-mcpu=native",
-                    "-vector-library=LIBMVEC",
-                ]
-            )
+        command = [opt, "-O3", f"-mtriple={triple}"]
+        if target_triple:
+            if cpu := getattr(options, "target_cpu", None):
+                command.append(f"-mcpu={cpu}")
+            if features := getattr(options, "target_features", None):
+                command.append(f"-mattr={features}")
         else:
-            command.extend(
-                [
-                    "-mtriple=riscv64-unknown-linux-gnu",
-                    f"-mattr={DEFAULT_LLC_FEATURES}",
-                    "-riscv-v-vector-bits-min=128",
-                    "-riscv-v-vector-bits-max=128",
-                ]
-            )
+            command.extend(["-mcpu=native", "-vector-library=LIBMVEC"])
         command.extend(["-S", src_path, "-o", dst_path])
         subprocess.check_call(command)
         _dump_ir_if_needed([dst_path])
@@ -943,7 +1034,15 @@ def _llir_to_bin(llir: str, metadata, options=None):
             # Without explicitly enabling +f,+d, llc defaults to soft-float, causing
             # "can't link soft-float modules with double-float modules" linker errors.
             target_triple = getattr(options, "target_triple", None)
-            if target_triple:
+            if target_triple and target_triple.startswith(
+                ("x86_64", "aarch64", "arm64")
+            ):
+                llc_args.append(f"-mtriple={target_triple}")
+                if cpu := options.target_cpu:
+                    llc_args.append(f"-mcpu={cpu}")
+                if features := options.target_features:
+                    llc_args.append(f"-mattr={features}")
+            elif target_triple:
                 toolchain = replace(
                     RiscvToolchain.from_env(),
                     triple=target_triple,
@@ -1011,11 +1110,15 @@ class CPUOptions:
     fpsan_homomorphic_casts: bool = False
     target_triple: str = None
     target_features: str = None
+    target_cpu: str | None = None
     openmp_num_threads: int = 0
     allow_fp_reassoc: bool = False
+    target_vector_bits: int | None = None
 
     def __post_init__(self):
-        pass
+        bits = self.target_vector_bits
+        if bits is not None and (bits < 32 or bits & (bits - 1)):
+            raise ValueError("target_vector_bits must be a power of two >= 32")
 
     def hash(self):
         key = "_".join([f"{name}-{val}" for name, val in self.__dict__.items()])
@@ -1053,7 +1156,8 @@ class CPUBackend(BaseBackend):
         ):
             toolchain = RiscvToolchain.from_env()
             args.setdefault("target_triple", toolchain.triple)
-            args.setdefault("target_features", toolchain.llc_features)
+            if not args["target_triple"].startswith(("x86_64", "aarch64", "arm64")):
+                args.setdefault("target_features", toolchain.llc_features)
         return CPUOptions(**args)
 
     def get_codegen_implementation(self, options):
