@@ -373,6 +373,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                     # into allocas, and the generated kernel frees a stack
                     # address.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
+                    "--elide-masked-tile-copies",
                     "--buffer-deallocation-pipeline",
                 ]
             )
