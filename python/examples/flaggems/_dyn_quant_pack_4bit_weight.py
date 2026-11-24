@@ -15,6 +15,3 @@ def _dyn_quant_pack_4bit_weight(
         pieces.append(_copy_values(bias).reshape(-1).to(torch.float32))
     _ = (out_features, in_features)
     return torch.cat(pieces)
-
-
-__all__ = ["_dyn_quant_pack_4bit_weight"]

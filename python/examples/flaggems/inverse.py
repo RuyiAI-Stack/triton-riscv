@@ -11,6 +11,3 @@ def inverse(A):
     if bool(info.ne(0).any()):
         raise RuntimeError("inverse: matrix is singular")
     return lu_solve(lu, pivots, eye)
-
-
-__all__ = ["inverse"]

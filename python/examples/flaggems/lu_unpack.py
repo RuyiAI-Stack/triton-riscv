@@ -32,6 +32,3 @@ def lu_unpack(LU, pivots, unpack_data=True, unpack_pivots=True):
         l_factor = torch.empty(0, device=LU.device)
         u_factor = torch.empty(0, device=LU.device)
     return p.reshape(LU.shape), l_factor, u_factor
-
-
-__all__ = ["lu_unpack"]

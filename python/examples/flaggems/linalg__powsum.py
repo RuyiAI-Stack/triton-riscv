@@ -26,6 +26,3 @@ def linalg__powsum(inp, ord=2, dim=None, keepdim=False, *, dtype=None):
         result = powered.sum()
         return result.view([1] * work.ndim) if keepdim else result
     return powered.sum(dim=dim, keepdim=keepdim)
-
-
-__all__ = ["linalg__powsum"]

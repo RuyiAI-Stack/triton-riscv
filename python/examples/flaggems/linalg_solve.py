@@ -7,6 +7,3 @@ def linalg_solve(A, B):
     if bool(info.ne(0).any()):
         raise RuntimeError("linalg_solve: singular matrix")
     return lu_solve(lu, pivots, B)
-
-
-__all__ = ["linalg_solve"]

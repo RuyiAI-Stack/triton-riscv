@@ -114,6 +114,3 @@ def linalg_solve_triangular(A, B, *, upper=False, left=True, unitriangular=False
     return solve_triangular(
         A, B, upper=upper, transpose=False, unitriangular=unitriangular, left=left
     )
-
-
-__all__ = ["linalg_solve_triangular"]

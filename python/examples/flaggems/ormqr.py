@@ -39,6 +39,3 @@ def ormqr(input, tau, other, left=True, transpose=False):
     if not left and not transpose:
         return _batched_mm(other, q)
     return _batched_mm(other, q.transpose(-1, -2))
-
-
-__all__ = ["ormqr"]

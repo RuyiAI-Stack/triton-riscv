@@ -8,6 +8,3 @@ def cholesky_inverse(L, upper=False):
     eye = torch.eye(n, dtype=L.dtype, device=L.device)
     eye = eye.expand(L.shape).contiguous()
     return cholesky_solve(eye, L, upper=upper)
-
-
-__all__ = ["cholesky_inverse"]

@@ -96,6 +96,3 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
     if not left or adjoint:
         raise NotImplementedError("linalg_lu_solve supports left, non-adjoint systems")
     return lu_solve(LU, pivots, B)
-
-
-__all__ = ["linalg_lu_solve"]

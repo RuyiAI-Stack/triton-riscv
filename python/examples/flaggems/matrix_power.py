@@ -49,6 +49,3 @@ def matrix_power(A, n):
             base = _batched_mm(base, base)
         exp >>= 1
     return result
-
-
-__all__ = ["matrix_power"]

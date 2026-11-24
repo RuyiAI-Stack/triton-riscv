@@ -12,6 +12,3 @@ def linalg_cond(A, p=None):
     if p in (1, -1, float("inf"), float("-inf")):
         return linalg_matrix_norm(inverse(A), ord=p) * linalg_matrix_norm(A, ord=p)
     raise NotImplementedError(f"linalg_cond: ord {p} is not implemented")
-
-
-__all__ = ["linalg_cond"]

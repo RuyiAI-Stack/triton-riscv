@@ -8,6 +8,3 @@ def linalg_tensorsolve(A, B, dims=None):
     left = B.numel()
     mat = A.reshape(left, A.numel() // left)
     return linalg_solve(mat, B.reshape(left)).reshape(A.shape[B.ndim :])
-
-
-__all__ = ["linalg_tensorsolve"]

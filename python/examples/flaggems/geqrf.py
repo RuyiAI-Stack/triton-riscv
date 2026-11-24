@@ -61,6 +61,3 @@ def geqrf(A):
     if batch > 0 and k > 0:
         _geqrf_kernel[(batch,)](work, tau, m, n, k, BLOCK=block)
     return work.reshape(A.shape), tau.reshape(A.shape[:-2] + (k,))
-
-
-__all__ = ["geqrf"]

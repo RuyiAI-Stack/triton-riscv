@@ -22,6 +22,3 @@ def _saturate_weight_to_fp16(A):
             flat, out, n, -65504.0, 65504.0, BLOCK=block
         )
     return out.view(A.shape).to(A.dtype)
-
-
-__all__ = ["_saturate_weight_to_fp16"]

@@ -9,6 +9,3 @@ def linalg_tensorinv(A, ind=2):
     inv = inverse(mat)
     out_shape = A.shape[ind:] + A.shape[:ind]
     return inv.reshape(out_shape)
-
-
-__all__ = ["linalg_tensorinv"]

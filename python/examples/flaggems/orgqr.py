@@ -45,6 +45,3 @@ def orgqr(A, tau):
             reflectors, tau_b, out, m, n, k, BLOCK=_block_for(max(m, n))
         )
     return out.reshape(A.shape)
-
-
-__all__ = ["orgqr"]

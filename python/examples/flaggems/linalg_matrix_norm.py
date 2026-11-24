@@ -29,6 +29,3 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
     if keepdim:
         val = val.unsqueeze(-1).unsqueeze(-1)
     return val
-
-
-__all__ = ["linalg_matrix_norm"]

@@ -22,6 +22,3 @@ def linalg_det(A):
     lu, pivots, info = lu_factor(A)
     sign, logabs = _det_from_lu(lu, pivots)
     return sign * torch.exp(logabs)
-
-
-__all__ = ["linalg_det"]

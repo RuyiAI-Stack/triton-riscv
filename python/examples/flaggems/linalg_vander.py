@@ -31,6 +31,3 @@ def linalg_vander(x, N=None):
     if flat.numel():
         _vander_kernel[(flat.shape[0],)](flat, out, flat.shape[0], N, BLOCK=block)
     return out.reshape(x.shape + (N,))
-
-
-__all__ = ["linalg_vander"]

@@ -17,6 +17,3 @@ def linalg_qr(A, mode="reduced"):
     elif m != n:
         raise NotImplementedError("linalg_qr complete mode supports square matrices")
     return q, r
-
-
-__all__ = ["linalg_qr"]

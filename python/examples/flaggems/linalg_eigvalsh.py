@@ -38,6 +38,3 @@ def _singular_values(A):
     gram = _batched_mm(A.transpose(-1, -2), A)
     evals = linalg_eigvalsh(gram).clamp(min=0)
     return torch.sqrt(evals)
-
-
-__all__ = ["linalg_eigvalsh"]

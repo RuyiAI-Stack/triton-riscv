@@ -27,6 +27,3 @@ def ldl_factor_ex(A, hermitian=False, check_errors=False):
     if check_errors and bool(info.ne(0).any()):
         raise RuntimeError("ldl_factor_ex failed")
     return LdlResult(ld, pivots, info)
-
-
-__all__ = ["ldl_factor_ex"]

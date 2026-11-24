@@ -12,6 +12,3 @@ def triangular_solve(B, A, upper=False, transpose=False, unitriangular=False):
         left=True,
     )
     return solution, _copy_values(A)
-
-
-__all__ = ["triangular_solve"]

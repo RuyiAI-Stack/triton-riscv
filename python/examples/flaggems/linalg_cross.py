@@ -32,6 +32,3 @@ def linalg_cross(input, other, dim=-1):
     if nvec:
         _cross_kernel[(nvec,)](a, b, out, nvec, BLOCK=1)
     return out.transpose(dim, -1).contiguous()
-
-
-__all__ = ["linalg_cross"]

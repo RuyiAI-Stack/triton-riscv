@@ -45,6 +45,3 @@ def linalg_eig(A):
         acc = _batched_mm(acc, q)
     eig = torch.diagonal(mat, dim1=-2, dim2=-1).to(torch.complex64)
     return eig, acc.to(torch.complex64)
-
-
-__all__ = ["linalg_eig"]

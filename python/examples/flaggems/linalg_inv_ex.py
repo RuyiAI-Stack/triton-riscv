@@ -15,6 +15,3 @@ def linalg_inv_ex(A, *, check_errors=False):
     if check_errors and bool(info.ne(0).any()):
         raise RuntimeError("linalg_inv_ex: matrix is singular")
     return InvExResult(inv, info.to(torch.int32))
-
-
-__all__ = ["linalg_inv_ex"]

@@ -24,6 +24,3 @@ def linalg_cholesky_ex(A, upper=False, check_errors=False):
     if check_errors and bool(info.ne(0).any()):
         raise RuntimeError("linalg_cholesky_ex: factorization failed")
     return CholeskyExResult(factor, info)
-
-
-__all__ = ["linalg_cholesky_ex"]

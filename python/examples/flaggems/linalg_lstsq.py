@@ -45,6 +45,3 @@ def linalg_lstsq(A, B, rcond=None, driver=None):
     return namedtuple("Lstsq", ["solution", "residuals", "rank", "singular_values"])(
         sol, torch.empty(0, device=A.device), rank, sv
     )
-
-
-__all__ = ["linalg_lstsq"]

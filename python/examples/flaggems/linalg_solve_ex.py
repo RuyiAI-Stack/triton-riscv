@@ -12,6 +12,3 @@ def linalg_solve_ex(A, B, *, check_errors=False):
     if check_errors and bool(info.ne(0).any()):
         raise RuntimeError("linalg_solve_ex: singular matrix")
     return SolveExResult(result, info)
-
-
-__all__ = ["linalg_solve_ex"]

@@ -51,6 +51,3 @@ def linalg_pinv(A, *, atol=None, rtol=None, hermitian=False):
     )
     scaled = vecs * inv_eig.unsqueeze(-2)
     return _batched_mm(_batched_mm(scaled, vecs.transpose(-1, -2)), A.transpose(-1, -2))
-
-
-__all__ = ["linalg_pinv"]

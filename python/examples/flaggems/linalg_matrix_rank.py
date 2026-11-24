@@ -15,6 +15,3 @@ def linalg_matrix_rank(A, tol=None, hermitian=False, *, atol=None, rtol=None):
         if atol is not None:
             cutoff = cutoff + atol
     return (sv > cutoff.unsqueeze(-1)).sum(dim=-1)
-
-
-__all__ = ["linalg_matrix_rank"]

@@ -66,6 +66,3 @@ def linalg_eigh(A, UPLO="L"):
     eig = torch.gather(eig, -1, order)
     vecs = torch.gather(vecs, -1, order.unsqueeze(-2).expand_as(vecs))
     return EigResult(eig, vecs)
-
-
-__all__ = ["linalg_eigh"]

@@ -13,6 +13,3 @@ def linalg_ldl_solve(LD, pivots, B, *, hermitian=False):
     y = solve_triangular(unit, B, upper=False, unitriangular=True)
     y = y / diag
     return solve_triangular(unit, y, upper=False, transpose=True, unitriangular=True)
-
-
-__all__ = ["linalg_ldl_solve"]

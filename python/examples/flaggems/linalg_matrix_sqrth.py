@@ -35,6 +35,3 @@ def linalg_matrix_sqrth(A):
     for _ in range(8):
         y = 0.5 * (y + _batched_mm(A, inverse(y)))
     return y
-
-
-__all__ = ["linalg_matrix_sqrth"]

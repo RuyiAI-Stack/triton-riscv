@@ -13,6 +13,3 @@ def matrix_exp_backward(self, grad):
     block[..., :n, n:] = grad.transpose(-1, -2)
     exp_block = linalg_matrix_exp(block)
     return exp_block[..., :n, n:].transpose(-1, -2).contiguous()
-
-
-__all__ = ["matrix_exp_backward"]

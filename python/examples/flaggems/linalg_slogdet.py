@@ -10,6 +10,3 @@ def linalg_slogdet(A):
     lu, pivots, _ = lu_factor(A)
     sign, logabs = _det_from_lu(lu, pivots)
     return SlogdetResult(sign, logabs)
-
-
-__all__ = ["linalg_slogdet"]

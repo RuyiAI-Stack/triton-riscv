@@ -22,6 +22,3 @@ def _copy_values(x):
 
 def detach_copy(self):
     return _copy_values(self)
-
-
-__all__ = ["detach_copy"]

@@ -6,6 +6,3 @@ def linalg_lu(A, *, pivot=True):
     _ = pivot
     lu, pivots, _info = lu_factor(A)
     return lu_unpack(lu, pivots)
-
-
-__all__ = ["linalg_lu"]

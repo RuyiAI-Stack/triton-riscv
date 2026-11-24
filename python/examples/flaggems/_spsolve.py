@@ -24,6 +24,3 @@ def _spsolve(A, B):
     _csr_dense_kernel[(n,)](A.crow_indices(), A.col_indices(), A.values(), dense, n, n)
     rhs = B if B.dtype == torch.float32 else B.to(torch.float32)
     return linalg_solve(dense, rhs)
-
-
-__all__ = ["_spsolve"]

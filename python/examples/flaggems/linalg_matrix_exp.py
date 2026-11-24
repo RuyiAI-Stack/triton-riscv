@@ -47,6 +47,3 @@ def linalg_matrix_exp(A):
     for _ in range(steps):
         acc = _batched_mm(acc, acc)
     return acc
-
-
-__all__ = ["linalg_matrix_exp"]

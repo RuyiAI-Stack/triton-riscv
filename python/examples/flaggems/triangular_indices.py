@@ -21,6 +21,3 @@ def triangular_indices(
             torch.tensor(cols, dtype=dtype, device=device),
         )
     )
-
-
-__all__ = ["triangular_indices"]

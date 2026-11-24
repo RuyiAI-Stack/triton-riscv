@@ -38,6 +38,3 @@ def linalg_polar(A):
     p = _batched_mm(u.transpose(-1, -2), A)
     p = 0.5 * (p + p.transpose(-1, -2))
     return namedtuple("Polar", ["U", "H"])(u, p)
-
-
-__all__ = ["linalg_polar"]

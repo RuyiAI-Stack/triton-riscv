@@ -50,6 +50,3 @@ def cholesky(A, upper=False):
         raise RuntimeError("cholesky: input is not positive definite")
     factor = out.reshape(A.shape)
     return factor.transpose(-1, -2).contiguous() if upper else factor
-
-
-__all__ = ["cholesky"]
