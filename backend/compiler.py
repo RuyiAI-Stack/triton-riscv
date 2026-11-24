@@ -151,18 +151,32 @@ def _vir_vector_bits(options) -> int:
     return _fixed_vector_bits(options, triple or "", _get_llvm_bin_path("opt")) or 128
 
 
-def _vir_vector_passes(options, bits: int) -> list[str]:
-    triple = getattr(options, "target_triple", None) or platform.machine()
+def _vir_vector_passes(ttsharedir: str, options, bits: int) -> list[str]:
+    target_triple = getattr(options, "target_triple", None)
+    triple = target_triple or platform.machine()
     riscv = _targets_riscv(options)
     registers = 16 if triple.startswith(("x86_64", "AMD64")) and bits < 512 else 32
     layout = f"target-vector-bits={bits} target-vector-regs={registers}"
-    linalg_layout = f"{layout} use-scalable=true" if riscv else layout
-    lowering = (
-        f"use-scalable=true rvv-vlen={bits} use-avl-loop=true" if riscv else layout
-    )
+    if riscv and target_triple:
+        features = {
+            feature[1:]: feature[0] == "+"
+            for feature in _riscv_target_features(options).split(",")
+            if feature.startswith(("+", "-"))
+        }
+        # LLVM cannot scalarize scalable bf16 vectors on targets without
+        # Zvfbfmin. Fixed vectors let it legalize conversions through libcalls.
+        uses_bf16 = re.search(r"(?:\b|(?<=x))bf16\b", ttsharedir)
+        if features.get("v") and (features.get("zvfbfmin") or not uses_bf16):
+            return [
+                f"--lower-linalg-to-vir={layout} use-scalable=true",
+                f"--lower-vir-to-vector=use-scalable=true rvv-vlen={bits} use-avl-loop=true",
+            ]
+
+    # Native RISC-V code generation has no explicit VLEN contract. Fixed
+    # vectors keep its objects valid on hardware with other vector lengths.
     return [
-        f"--lower-linalg-to-vir={linalg_layout}",
-        f"--lower-vir-to-vector={lowering}",
+        f"--lower-linalg-to-vir={layout}",
+        f"--lower-vir-to-vector={layout}",
     ]
 
 
@@ -402,7 +416,9 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                 )
                 standard_input_path = copies_path
                 dynamic_copy_lowering = not static_copies
-            standard_lowering_passes = _vir_vector_passes(options, vector_bits)
+            standard_lowering_passes = _vir_vector_passes(
+                ttsharedir, options, vector_bits
+            )
             standard_lowering_passes.extend(
                 [
                     # Dynamic copy bounds are legal SCF values but are not
@@ -1159,8 +1175,9 @@ class CPUBackend(BaseBackend):
             or args.get("target_triple")
         ):
             toolchain = RiscvToolchain.from_env()
-            args.setdefault("target_triple", toolchain.triple)
-            if not args["target_triple"].startswith(("x86_64", "aarch64", "arm64")):
+            triple = args.get("target_triple") or toolchain.triple
+            args["target_triple"] = triple
+            if not triple.startswith(("x86_64", "aarch64", "arm64")):
                 args.setdefault("target_features", toolchain.llc_features)
         if args.get("target_tune") and (
             "riscv" not in (args.get("target_triple") or "")
