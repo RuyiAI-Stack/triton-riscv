@@ -150,6 +150,24 @@ def _use_vir_vector_passes(options=None) -> bool:
     return bool(target_triple and "riscv" in target_triple)
 
 
+def _riscv_target_features(options=None) -> str:
+    features = getattr(options, "target_features", None)
+    return DEFAULT_LLC_FEATURES if features is None else features
+
+
+def _riscv_codegen_vlen(options=None) -> int:
+    bits = getattr(options, "target_vector_bits", None)
+    if bits is not None:
+        return bits
+    features = _riscv_target_features(options)
+    lengths = (
+        int(match[1])
+        for feature in features.split(",")
+        if (match := re.fullmatch(r"\+zvl(\d+)b", feature))
+    )
+    return max(lengths, default=128)
+
+
 def _riscv_vir_vector_passes(options=None) -> list[str]:
     # Keep a fixed-VL main loop and one AVL tail. Short constant regions use
     # the target's minimum VLEN for fixed vectors or at most two AVL iterations.
@@ -187,16 +205,6 @@ def _riscv_polynomial_math_passes(options=None) -> list[str]:
 
 
 _UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|f8|i8|i16)\b")
-
-
-_ZVL_FEATURE = re.compile(r"\+zvl(\d+)b")
-
-
-def _riscv_codegen_vlen(options=None) -> int:
-    # Fixed-length vectors are legalized against the minimum VLEN that llc
-    # is told about (+zvlNb), or 128 for plain +v.
-    features = getattr(options, "target_features", None) or DEFAULT_LLC_FEATURES
-    return max([128, *(int(v) for v in _ZVL_FEATURE.findall(features))])
 
 
 def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
@@ -580,7 +588,7 @@ def _remove_invalid_stack_frees(llir: str) -> str:
 
 def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
     """Run the LLVM O3 middle end for an explicit RISC-V target."""
-    features = getattr(options, "target_features", None) or DEFAULT_LLC_FEATURES
+    features = _riscv_target_features(options)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ll")
         dst_path = os.path.join(tmpdir, "kernel-opt.ll")
@@ -1046,7 +1054,11 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 toolchain = replace(
                     RiscvToolchain.from_env(),
                     triple=target_triple,
-                    llc_features=options.target_features,
+                    llc_features=(
+                        _riscv_target_features(options)
+                        if "riscv" in target_triple
+                        else options.target_features
+                    ),
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
                 # Match the O3 middle end above with O3 code generation.
