@@ -7,16 +7,15 @@ import torch
 
 def run_case(name, variant):
     torch.manual_seed(1300 + variant)
-    mod = importlib.import_module("." + name, __package__)
+    package = importlib.import_module(__package__)
     aliases = {
-        "cartesian_prod": "run",
-        "histogram": "histogram_bin_ct",
         "trapezoid": "trapezoid_x",
-        "_batch_norm_impl_index": "batch_norm_impl_index",
         "_weight_norm_differentiable_backward": "weight_norm_differentiable_backward",
         "te_rmsnorm": "te_rmsnorm_fwd",
     }
-    fn = getattr(mod, aliases.get(name, name))
+    export_name = aliases.get(name, name)
+    assert export_name in package.__all__, f"{export_name} is missing from __all__"
+    fn = getattr(package, export_name)
     eps = 1e-5
     if (
         name.startswith("batch_norm_")

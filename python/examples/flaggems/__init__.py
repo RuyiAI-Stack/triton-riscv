@@ -1,9 +1,38 @@
+from ._aminmax import _aminmax, _aminmax_out
+from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
+from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
+from ._batch_norm_no_update import _batch_norm_no_update
+from ._batch_norm_with_update import _batch_norm_with_update
+from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_rms_norm import (
+    _fused_rms_norm,
+    _fused_rms_norm_backward,
+    _fused_rms_norm_forward,
+)
+from ._histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
+from ._histogramdd_from_bin_tensors import (
+    _histogramdd_from_bin_tensors,
+    _histogramdd_from_bin_tensors_out,
+)
 from ._is_all_true import _is_all_true
+from ._is_any_true import _is_any_true
+from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
+from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._nested_sum_backward import _nested_sum_backward
+from ._philox_normal_ import _philox_normal_
 from ._safe_softmax import _safe_softmax
+from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from ._weight_norm import _weight_norm
+from ._weight_norm_differentiable_backward import weight_norm_differentiable_backward
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
@@ -44,6 +73,11 @@ from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .avg_pool3d import avg_pool3d, avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt
+from .batch_norm_backward_reduce import batch_norm_backward_reduce
+from .batch_norm_elemt import batch_norm_elemt
+from .batch_norm_stats import batch_norm_stats
+from .batch_norm_update_stats import batch_norm_update_stats
 from .bernoulli_ import bernoulli_
 from .bincount import bincount
 from .bitwise_and import (
@@ -64,7 +98,9 @@ from .bitwise_or import (
 )
 from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
+from .cartesian_prod import run as cartesian_prod
 from .cat import cat, cat_out
+from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .clamp import (
@@ -77,6 +113,7 @@ from .clamp import (
 )
 from .clip import clip, clip_
 from .col2im import col2im
+from .combinations import combinations
 from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .contiguous import contiguous
@@ -86,18 +123,23 @@ from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
+from .corrcoef import corrcoef
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out
 from .count_nonzero import count_nonzero
+from .cov import cov
+from .cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from .cummax import cummax
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
+from .cumulative_trapezoid import cumulative_trapezoid
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diff import diff
 from .digamma_ import digamma_
+from .dist import dist
 from .div import (
     div_mode,
     div_mode_,
@@ -142,6 +184,7 @@ from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .gemma_rms_norm import gemma_rms_norm
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
@@ -159,6 +202,8 @@ from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hardswish_ import hardswish_
 from .histc import histc
+from .histogram import histogram, histogram_bin_ct, histogram_bins_tensor
+from .histogramdd import histogramdd
 from .hstack import hstack
 from .hypot import hypot, hypot_out
 from .i0 import i0, i0_out
@@ -183,6 +228,7 @@ from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linalg_norm import linalg_norm
 from .linspace import linspace
 from .log import log
 from .log1p_ import log1p_
@@ -195,6 +241,7 @@ from .log_softmax import (
     log_softmax_out,
 )
 from .logaddexp import logaddexp, logaddexp_out
+from .logcumsumexp import logcumsumexp, logcumsumexp_out
 from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not
 from .logical_or import logical_or, logical_or_
@@ -222,11 +269,21 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm, mm_out
+from .mode import mode
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
 from .nan_to_num import nan_to_num
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
+from .nanquantile import (
+    nanquantile,
+    nanquantile_out,
+    nanquantile_scalar,
+    nanquantile_scalar_out,
+)
+from .native_group_norm import native_group_norm
+from .native_norm import native_norm
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .new_full import new_full
@@ -239,6 +296,7 @@ from .nllloss import (
 )
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
+from .norm_except_dim import norm_except_dim
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -249,6 +307,7 @@ from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .pdist import pdist
 from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
@@ -266,6 +325,7 @@ from .pow import (
 from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
+from .quantized_batch_norm import quantized_batch_norm, quantized_batch_norm_out
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -276,6 +336,8 @@ from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .relu6 import relu6
+from .renorm import renorm
+from .renorm_ import renorm_
 from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
@@ -287,6 +349,7 @@ from .replication_pad3d import replication_pad3d
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .roll import roll
 from .round import round, round_, round_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -296,6 +359,12 @@ from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .scatter_reduce_ import scatter_reduce_
+from .segment_reduce import (
+    _segment_reduce_backward,
+    _segment_reduce_backward_out,
+    segment_reduce,
+    segment_reduce_out,
+)
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .selu import selu
@@ -323,6 +392,7 @@ from .softmax import (
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
 from .sqrt import sqrt, sqrt_
@@ -331,14 +401,18 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .sum_to_size import sum_to_size
 from .t_copy import t_copy, t_copy_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
+from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .trapezoid import trapezoid_x
+from .trapz import trapz
 from .tril import tril, tril_, tril_out
 from .triu import triu, triu_
 from .unfold_backward import unfold_backward
@@ -352,6 +426,7 @@ from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d import upsample_nearest3d
+from .vander import vander
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
@@ -436,16 +511,45 @@ from ._spsolve import _spsolve
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "_aminmax",
+    "_aminmax_out",
     "_assert_async",
+    "_batch_norm_impl_index",
+    "_batch_norm_impl_index_backward",
+    "_batch_norm_no_update",
+    "_batch_norm_with_update",
+    "_batch_norm_with_update_functional",
+    "_cdist_backward",
+    "_cdist_forward",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
+    "_fused_rms_norm",
+    "_fused_rms_norm_backward",
+    "_fused_rms_norm_forward",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
+    "_histogramdd_from_bin_tensors",
+    "_histogramdd_from_bin_tensors_out",
     "_index_put_impl_",
     "_is_all_true",
+    "_is_any_true",
+    "_logcumsumexp",
+    "_logcumsumexp_out",
+    "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_training",
+    "_nested_sum_backward",
+    "_philox_normal_",
     "_safe_softmax",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
+    "_sparse_sum_backward",
+    "_sparse_sum_backward_out",
     "_unique2",
+    "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_weight_norm",
     "abs",
     "abs_",
     "absolute",
@@ -499,6 +603,11 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "batch_norm_backward_elemt",
+    "batch_norm_backward_reduce",
+    "batch_norm_elemt",
+    "batch_norm_stats",
+    "batch_norm_update_stats",
     "bernoulli_",
     "bincount",
     "bitwise_and_scalar",
@@ -517,8 +626,10 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
+    "cartesian_prod",
     "cat",
     "cat_out",
+    "cdist",
     "ceil",
     "ceil_",
     "ceil_out",
@@ -533,6 +644,7 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "combinations",
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
@@ -544,23 +656,28 @@ __all__ = [
     "copy_",
     "copysign",
     "copysign_out",
+    "corrcoef",
     "cos",
     "cos_",
     "cosh",
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "cov",
+    "cudnn_batch_norm_backward",
     "cummax",
     "cummin",
     "cumprod",
     "cumprod_",
     "cumsum",
     "cumsum_out",
+    "cumulative_trapezoid",
     "diag",
     "diag_embed",
     "diagonal_backward",
     "diff",
     "digamma_",
+    "dist",
     "div_mode",
     "div_mode_",
     "dot",
@@ -621,6 +738,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "gemma_rms_norm",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -640,6 +758,10 @@ __all__ = [
     "hardsigmoid_out",
     "hardswish_",
     "histc",
+    "histogram",
+    "histogram_bin_ct",
+    "histogram_bins_tensor",
+    "histogramdd",
     "hstack",
     "hypot",
     "hypot_out",
@@ -673,6 +795,7 @@ __all__ = [
     "lerp_tensor_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_norm",
     "linspace",
     "log",
     "log1p_",
@@ -686,6 +809,8 @@ __all__ = [
     "log_softmax_out",
     "logaddexp",
     "logaddexp_out",
+    "logcumsumexp",
+    "logcumsumexp_out",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -719,12 +844,23 @@ __all__ = [
     "minimum",
     "mm",
     "mm_out",
+    "mode",
     "mse_loss",
     "mul",
     "mul_",
     "multinomial",
     "mv",
     "nan_to_num",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
+    "nanquantile",
+    "nanquantile_out",
+    "nanquantile_scalar",
+    "nanquantile_scalar_out",
+    "native_group_norm",
+    "native_norm",
     "ne",
     "ne_scalar",
     "neg",
@@ -738,6 +874,7 @@ __all__ = [
     "nll_loss_nd_forward",
     "nonzero",
     "nonzero_numpy",
+    "norm_except_dim",
     "normal_",
     "normal_float_tensor",
     "normal_tensor_float",
@@ -747,6 +884,7 @@ __all__ = [
     "ones",
     "ones_like",
     "pad",
+    "pdist",
     "per_token_group_quant_fp8",
     "pixel_shuffle",
     "pixel_unshuffle",
@@ -761,6 +899,8 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantized_batch_norm",
+    "quantized_batch_norm_out",
     "rand",
     "rand_like",
     "randn",
@@ -777,6 +917,8 @@ __all__ = [
     "relu_",
     "remainder",
     "remainder_",
+    "renorm",
+    "renorm_",
     "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
@@ -789,6 +931,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "rms_norm_w8a16_fp8",
     "roll",
     "round",
     "round_",
@@ -807,6 +950,8 @@ __all__ = [
     "scatter_",
     "scatter_add_",
     "scatter_reduce_",
+    "segment_reduce",
+    "segment_reduce_out",
     "select_backward",
     "select_scatter",
     "selu",
@@ -839,6 +984,8 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "sparse_csr_sum",
+    "sparse_csr_sum_out",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
@@ -856,6 +1003,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "sum_to_size",
     "t_copy",
     "t_copy_out",
     "tan",
@@ -863,12 +1011,16 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "te_rmsnorm_bwd",
+    "te_rmsnorm_fwd",
     "threshold",
     "threshold_backward",
     "tile",
     "to_copy",
     "topk",
     "trace",
+    "trapezoid_x",
+    "trapz",
     "tril",
     "tril_",
     "tril_out",
@@ -885,6 +1037,7 @@ __all__ = [
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
+    "vander",
     "var",
     "var_correction",
     "var_dim",
@@ -893,6 +1046,7 @@ __all__ = [
     "vector_norm",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "weight_norm_differentiable_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
