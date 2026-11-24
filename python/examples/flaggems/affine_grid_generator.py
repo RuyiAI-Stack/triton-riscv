@@ -7,10 +7,8 @@ import triton.language as tl
 def affine_grid_generator_kernel(
     output_ptr,
     theta_ptr,
-    N,
     H,
     W,
-    align_corners,
     OUTPUT_STRIDE0,
     OUTPUT_STRIDE1,
     OUTPUT_STRIDE2,
@@ -18,24 +16,15 @@ def affine_grid_generator_kernel(
     THETA_STRIDE0,
     THETA_STRIDE1,
     THETA_STRIDE2,
-    BLOCK_SIZE: tl.constexpr,
+    ALIGN_CORNERS: tl.constexpr,
 ):
     # output has shape [N, H, W, 2]
     # theta has shape [N, 2, 3]
-    pid = tl.program_id(0)
-    num_tasks = N * H * W * 2
-
-    if pid * BLOCK_SIZE >= num_tasks:
-        return
+    idx = tl.program_id(0)
 
     # Compute 4D index: (n, h, w, c)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < num_tasks
-
-    # Unflatten to 4D
     tmp = idx // 2
     c = idx % 2  # 0 for x, 1 for y
-
     w = tmp % W
     tmp = tmp // W
     h = tmp % H
@@ -45,7 +34,6 @@ def affine_grid_generator_kernel(
     # theta[n, 0, 0], theta[n, 0, 1], theta[n, 0, 2]
     # theta[n, 1, 0], theta[n, 1, 1], theta[n, 1, 2]
     theta_base = n * THETA_STRIDE0
-
     theta_00 = tl.load(
         theta_ptr + theta_base + 0 * THETA_STRIDE1 + 0 * THETA_STRIDE2
     ).to(tl.float32)
@@ -70,24 +58,20 @@ def affine_grid_generator_kernel(
     # align_corners=False: normalized = (2.0 * coord + 1.0) / size - 1.0
     h_float = h.to(tl.float32)
     w_float = w.to(tl.float32)
-    H_float = H.to(tl.float32)
-    W_float = W.to(tl.float32)
-
-    if align_corners:
-        norm_x = 2.0 * w_float / (W_float - 1.0) - 1.0
-        norm_y = 2.0 * h_float / (H_float - 1.0) - 1.0
+    if ALIGN_CORNERS:
+        norm_x = 2.0 * w_float / (W - 1.0) - 1.0
+        norm_y = 2.0 * h_float / (H - 1.0) - 1.0
     else:
-        norm_x = (2.0 * w_float + 1.0) / W_float - 1.0
-        norm_y = (2.0 * h_float + 1.0) / H_float - 1.0
+        norm_x = (2.0 * w_float + 1.0) / W - 1.0
+        norm_y = (2.0 * h_float + 1.0) / H - 1.0
 
     # Apply affine transformation
     # grid[n, h, w, 0] = theta[0,0] * norm_x + theta[0,1] * norm_y + theta[0,2]
     # grid[n, h, w, 1] = theta[1,0] * norm_x + theta[1,1] * norm_y + theta[1,2]
-    result = tl.where(
-        c == 0,
-        theta_00 * norm_x + theta_01 * norm_y + theta_02,
-        theta_10 * norm_x + theta_11 * norm_y + theta_12,
-    )
+    if c == 0:
+        result = theta_00 * norm_x + theta_01 * norm_y + theta_02
+    else:
+        result = theta_10 * norm_x + theta_11 * norm_y + theta_12
 
     # Store result
     output_offset = (
@@ -96,7 +80,7 @@ def affine_grid_generator_kernel(
         + w * OUTPUT_STRIDE2
         + c * OUTPUT_STRIDE3
     )
-    tl.store(output_ptr + output_offset, result, mask=mask)
+    tl.store(output_ptr + output_offset, result)
 
 
 def affine_grid_generator(
@@ -110,17 +94,12 @@ def affine_grid_generator(
     # Output shape is [N, H, W, 2]
     output = torch.empty((N, H, W, 2), dtype=theta.dtype, device=theta.device)
 
-    BLOCK_SIZE = 128
     num_tasks = N * H * W * 2
-    grid = (triton.cdiv(num_tasks, BLOCK_SIZE),)
-
-    affine_grid_generator_kernel[grid](
+    affine_grid_generator_kernel[(num_tasks,)](
         output,
         theta,
-        N,
         H,
         W,
-        align_corners,
         output.stride(0),
         output.stride(1),
         output.stride(2),
@@ -128,7 +107,7 @@ def affine_grid_generator(
         theta.stride(0),
         theta.stride(1),
         theta.stride(2),
-        BLOCK_SIZE=BLOCK_SIZE,
+        ALIGN_CORNERS=align_corners,
     )
 
     return output
