@@ -586,6 +586,12 @@ def _remove_invalid_stack_frees(llir: str) -> str:
     )
 
 
+def _riscv_tune_args(options=None) -> list[str]:
+    tune = getattr(options, "target_tune", None)
+    # -mtune selects scheduling and cost models without enabling extensions.
+    return [f"-mtune={tune}"] if tune else []
+
+
 def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
     """Run the LLVM O3 middle end for an explicit RISC-V target."""
     features = _riscv_target_features(options)
@@ -599,6 +605,7 @@ def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
                 "-O3",
                 f"-mtriple={target_triple}",
                 f"-mattr={features}",
+                *_riscv_tune_args(options),
                 "-S",
                 src_path,
                 "-o",
@@ -1063,6 +1070,8 @@ def _llir_to_bin(llir: str, metadata, options=None):
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
                 # Match the O3 middle end above with O3 code generation.
                 llc_args.insert(2, "-O3")
+                if "riscv" in target_triple:
+                    llc_args.extend(_riscv_tune_args(options))
             elif platform.machine() == "riscv64":
                 # Buffer deallocation can emit free for stack-backed memrefs.
                 llir = _remove_invalid_stack_frees(llir)
@@ -1121,6 +1130,7 @@ class CPUOptions:
     instrumentation_mode: str = ""
     fpsan_homomorphic_casts: bool = False
     target_triple: str = None
+    target_tune: str | None = None
     target_features: str = None
     target_cpu: str | None = None
     openmp_num_threads: int = 0
@@ -1170,6 +1180,12 @@ class CPUBackend(BaseBackend):
             args.setdefault("target_triple", toolchain.triple)
             if not args["target_triple"].startswith(("x86_64", "aarch64", "arm64")):
                 args.setdefault("target_features", toolchain.llc_features)
+        if args.get("target_tune") and (
+            "riscv" not in (args.get("target_triple") or "")
+            or _use_ime_pipeline()
+            or _get_sanitizer_type()
+        ):
+            raise ValueError("target_tune requires an explicit RISC-V LLVM target")
         return CPUOptions(**args)
 
     def get_codegen_implementation(self, options):
