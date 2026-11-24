@@ -202,6 +202,45 @@ WHERE extract_arg(arg_set_id, 'args.provider') = 'triton-riscv'
 GROUP BY stage;
 ```
 
+### Find the MLIR for a recorded kernel launch
+
+To capture the compiler output alongside the host trace, use `--bundle` in
+place of `--output`. From the repository root, choose a new directory name:
+
+```sh
+PYTHONPATH="$PWD/python/performance${PYTHONPATH:+:$PYTHONPATH}" \
+  python python/performance/profile_index_select.py --bundle index-select-bundle
+```
+
+Open `index-select-bundle/trace.json` in Perfetto. In **Query (SQL)**, run the
+following to find the first measured kernel launch for the middle input:
+
+```sql
+SELECT extract_arg(arg_set_id, 'args.kernel_name') AS kernel_name,
+       extract_arg(arg_set_id, 'args.kernel_hash') AS kernel_hash,
+       extract_arg(arg_set_id, 'args.ttir_file') AS ttir_file,
+       extract_arg(arg_set_id, 'args.ttsharedir_file') AS ttsharedir_file
+FROM slice
+WHERE extract_arg(arg_set_id, 'args.scope') = 'kernel_call'
+  AND extract_arg(arg_set_id, 'args.phase') = 'measure'
+  AND extract_arg(arg_set_id, 'args.iteration') = 1
+  AND extract_arg(arg_set_id, 'args.case') =
+      'bench_index_select(rows=512, cols=256, picks=256)';
+```
+
+The single result identifies the compiled kernel returned by that launch.
+The same fields appear under **Arguments** on the kernel-call slice.
+`kernel_hash` is Triton's compilation cache key. The two file paths are
+relative to the bundle directory: open `ttir_file` for the Triton IR or
+`ttsharedir_file` for the MLIR passed to Buddy for further lowering. Each file
+under `kernels/` is named with the SHA-256 of its contents; no cache-directory
+search is needed. To share a run, keep the directory together and review the IR
+for local source paths first.
+
+These files show what was compiled. The slice still times the whole launch
+on the Python host; it adds no instrumentation inside Buddy and does not
+measure individual MLIR operations or execution on a separate board.
+
 ## 6. Benchmark Coverage
 
 All files matching `python/performance/test_performance_*.py` use the common
