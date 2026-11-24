@@ -7,7 +7,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from .linalg_matrix_norm import linalg_matrix_norm
+from ._linalg_matrix_norm_cpu import linalg_matrix_norm
 from .vector_norm import vector_norm
 
 pow = pow_cpu
