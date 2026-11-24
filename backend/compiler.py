@@ -156,11 +156,12 @@ def _vir_vector_passes(options, bits: int) -> list[str]:
     riscv = _targets_riscv(options)
     registers = 16 if triple.startswith(("x86_64", "AMD64")) and bits < 512 else 32
     layout = f"target-vector-bits={bits} target-vector-regs={registers}"
+    linalg_layout = f"{layout} use-scalable=true" if riscv else layout
     lowering = (
         f"use-scalable=true rvv-vlen={bits} use-avl-loop=true" if riscv else layout
     )
     return [
-        "--lower-linalg-to-vir",
+        f"--lower-linalg-to-vir={linalg_layout}",
         f"--lower-vir-to-vector={lowering}",
     ]
 
@@ -207,21 +208,6 @@ def _riscv_polynomial_math_passes(options=None) -> list[str]:
         ops = ",".join(_RISCV_POLYNOMIAL_MATH_OPS)
         return [f"--polynomial-approximate-math=ops={ops}"]
     return []
-
-
-_UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|f8|i8|i16)\b")
-
-
-def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
-    if _UNSAFE_MATMUL_VECTORIZATION_TYPE.search(ttsharedir):
-        return []
-    if _targets_riscv(options):
-        # matmul-vectorization keeps 8 rows x vector-size f32 accumulators in
-        # registers. Two vector registers per row (LMUL=2) fill 16 of the 32
-        # registers and leave room for the B row; LMUL=4 spills.
-        vector_size = 2 * _riscv_codegen_vlen(options) // 32
-        return [f"--matmul-vectorization=vector-size={vector_size}"]
-    return ["--matmul-vectorization"]
 
 
 _MEMREF_COPY_TYPES = re.compile(r"memref\.copy\b[^\n]*?:\s*([^\n]*)")
@@ -416,8 +402,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                 )
                 standard_input_path = copies_path
                 dynamic_copy_lowering = not static_copies
-            standard_lowering_passes = _matmul_vectorization_passes(ttsharedir, options)
-            standard_lowering_passes.extend(_vir_vector_passes(options, vector_bits))
+            standard_lowering_passes = _vir_vector_passes(options, vector_bits)
             standard_lowering_passes.extend(
                 [
                     # Dynamic copy bounds are legal SCF values but are not
