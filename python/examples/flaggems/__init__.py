@@ -595,6 +595,60 @@ from ._lu_with_info import _lu_with_info
 from ._saturate_weight_to_fp16 import _saturate_weight_to_fp16
 from ._spsolve import _spsolve
 
+from .argsort import argsort
+from .binomial import binomial
+from .bucketize import bucketize
+from .cauchy import cauchy
+from .fft_ifftshift import fft_ifftshift
+from .fft_irfftn import fft_irfftn
+from .fft_rfft import fft_rfft
+from .geometric import geometric
+from .gru import gru
+from .gru_cell import gru_cell
+from .is_nonzero import is_nonzero
+from .istft import istft
+from .log_normal import log_normal
+from .log_normal_ import log_normal_
+from .lstm import lstm
+from .lstm_cell import lstm_cell
+from .mkldnn_rnn_layer import mkldnn_rnn_layer
+from .msort import msort
+from .nonzero_static import nonzero_static
+from .normal_functional import normal_functional
+from .quantized_gru import quantized_gru
+from .quantized_lstm import quantized_lstm
+from .randint import randint
+from .randint_like import randint_like
+from .rnn_relu import rnn_relu
+from .rnn_relu_cell import rnn_relu_cell
+from .rnn_tanh import rnn_tanh
+from .rnn_tanh_cell import rnn_tanh_cell
+from .searchsorted import searchsorted
+from .unique_dim import unique_dim
+from .unique_dim_consecutive import unique_dim_consecutive
+from ._dirichlet_grad import _dirichlet_grad
+from ._native_multi_head_attention import _native_multi_head_attention
+from ._philox_uniform_ import _philox_uniform_
+from ._sample_dirichlet import _sample_dirichlet
+from ._scaled_dot_product_attention_math import _scaled_dot_product_attention_math
+from ._sobol_engine_ff_ import _sobol_engine_ff_
+from ._sobol_engine_initialize_state_ import _sobol_engine_initialize_state_
+from ._sobol_engine_scramble_ import _sobol_engine_scramble_
+from ._thnn_differentiable_gru_cell_backward import (
+    _thnn_differentiable_gru_cell_backward,
+)
+from ._thnn_fused_gru_cell import _thnn_fused_gru_cell
+from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
+from ._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_backward
+from .cross_attention import cross_attention
+from .cudnn_attention_backward import cudnn_attention_backward
+from .flash_attention_backward import flash_attention_backward
+from .thnn_differentiable_lstm_cell_backward import (
+    thnn_differentiable_lstm_cell_backward,
+)
+from .thnn_fused_gru_cell_backward import thnn_fused_gru_cell_backward
+from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .underscore_sobol_engine_draw import underscore_sobol_engine_draw
 
 from ._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from ._adaptive_avg_pool3d import (
@@ -1402,4 +1456,54 @@ __all__ = [
     "slow_conv_transpose2d",
     "slow_conv_transpose3d",
     "thnn_conv2d",
+    "argsort",
+    "binomial",
+    "bucketize",
+    "cauchy",
+    "fft_ifftshift",
+    "fft_irfftn",
+    "fft_rfft",
+    "geometric",
+    "gru",
+    "gru_cell",
+    "is_nonzero",
+    "istft",
+    "log_normal",
+    "log_normal_",
+    "lstm",
+    "lstm_cell",
+    "mkldnn_rnn_layer",
+    "msort",
+    "nonzero_static",
+    "normal_functional",
+    "quantized_gru",
+    "quantized_lstm",
+    "randint",
+    "randint_like",
+    "rnn_relu",
+    "rnn_relu_cell",
+    "rnn_tanh",
+    "rnn_tanh_cell",
+    "searchsorted",
+    "unique_dim",
+    "unique_dim_consecutive",
+    "_dirichlet_grad",
+    "_native_multi_head_attention",
+    "_philox_uniform_",
+    "_sample_dirichlet",
+    "_scaled_dot_product_attention_math",
+    "_sobol_engine_ff_",
+    "_sobol_engine_initialize_state_",
+    "_sobol_engine_scramble_",
+    "_thnn_differentiable_gru_cell_backward",
+    "_thnn_fused_gru_cell",
+    "_thnn_fused_lstm_cell",
+    "_thnn_fused_lstm_cell_backward",
+    "cross_attention",
+    "cudnn_attention_backward",
+    "flash_attention_backward",
+    "thnn_differentiable_lstm_cell_backward",
+    "thnn_fused_gru_cell_backward",
+    "topk_w8a16_fp8",
+    "underscore_sobol_engine_draw",
 ]
