@@ -596,6 +596,73 @@ from ._saturate_weight_to_fp16 import _saturate_weight_to_fp16
 from ._spsolve import _spsolve
 
 
+from ._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from ._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d,
+    _adaptive_avg_pool3d_out as adaptive_avg_pool3d_out,
+    adaptive_avg_pool3d,
+)
+from ._convert_weight_to_int4pack import _convert_weight_to_int4pack
+from ._convolution_double_backward import _convolution_double_backward
+from ._slow_conv2d_backward import _slow_conv2d_backward
+from ._slow_conv2d_forward import _slow_conv2d_forward
+from .adaptive_avg_pool2d import (
+    _adaptive_avg_pool2d_out as adaptive_avg_pool2d_out,
+    adaptive_avg_pool2d,
+)
+from .adaptive_avg_pool3d_backward import (
+    _adaptive_avg_pool3d_backward,
+    adaptive_avg_pool3d_backward_grad_input,
+)
+from .adaptive_max_pool2d import adaptive_max_pool2d
+from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
+from .adaptive_max_pool3d import adaptive_max_pool3d
+from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .conv_depthwise3d import conv_depthwise3d
+from .conv_tbc import conv_tbc, conv_tbc_out
+from .conv_tbc_backward import conv_tbc_backward
+from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_coo_to_csr import (
+    _convert_indices_from_coo_to_csr,
+    _convert_indices_from_coo_to_csr_out,
+)
+from .convert_indices_from_csr_to_coo import (
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
+from .convolution import convolution
+from .convolution_backward import convolution_backward, convolution_backward_out
+from .convolution_backward_overrideable import (
+    convolution_backward_overrideable,
+    convolution_backward_overrideable_out,
+)
+from .convolution_overrideable import (
+    convolution_overrideable,
+    convolution_overrideable_out,
+)
+from .cudnn_convolution_transpose import cudnn_convolution_transpose
+from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
+from .fractional_max_pool3d import fractional_max_pool3d
+from .fractional_max_pool3d_backward import fractional_max_pool3d_backward
+from .im2col import im2col
+from .max_pool1d import max_pool1d
+from .max_pool1d_with_indices import max_pool1d_with_indices
+from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
+from .max_unpool2d import max_unpool2d
+from .max_unpool3d import max_unpool3d
+from .mkldnn_reorder_conv2d_weight import (
+    mkldnn_reorder_conv2d_weight,
+    mkldnn_reorder_conv2d_weight_out,
+)
+from .quantized_max_pool1d import quantized_max_pool1d, quantized_max_pool1d_out
+from .quantized_max_pool2d import quantized_max_pool2d, quantized_max_pool2d_out
+from .quantized_max_pool3d import quantized_max_pool3d, quantized_max_pool3d_out
+from .slow_conv_dilated2d import slow_conv_dilated2d, slow_conv_dilated2d_out
+from .slow_conv_dilated3d import slow_conv_dilated3d, slow_conv_dilated3d_out
+from .slow_conv_transpose2d import slow_conv_transpose2d
+from .slow_conv_transpose3d import slow_conv_transpose3d
+from .thnn_conv2d import thnn_conv2d
+
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -1277,4 +1344,62 @@ __all__ = [
     "_lu_with_info",
     "_saturate_weight_to_fp16",
     "_spsolve",
+    "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d",
+    "_adaptive_avg_pool3d_backward",
+    "_convert_indices_from_coo_to_csr",
+    "_convert_indices_from_coo_to_csr_out",
+    "_convert_indices_from_csr_to_coo",
+    "_convert_indices_from_csr_to_coo_out",
+    "_convert_weight_to_int4pack",
+    "_convolution_double_backward",
+    "_slow_conv2d_backward",
+    "_slow_conv2d_forward",
+    "adaptive_avg_pool2d",
+    "adaptive_avg_pool2d_out",
+    "adaptive_avg_pool3d",
+    "adaptive_avg_pool3d_backward_grad_input",
+    "adaptive_avg_pool3d_out",
+    "adaptive_max_pool2d",
+    "adaptive_max_pool2d_backward",
+    "adaptive_max_pool3d",
+    "adaptive_max_pool3d_backward",
+    "conv_depthwise3d",
+    "conv_tbc",
+    "conv_tbc_backward",
+    "conv_tbc_out",
+    "conv_transpose3d",
+    "convolution",
+    "convolution_backward",
+    "convolution_backward_out",
+    "convolution_backward_overrideable",
+    "convolution_backward_overrideable_out",
+    "convolution_overrideable",
+    "convolution_overrideable_out",
+    "cudnn_convolution_transpose",
+    "fractional_max_pool2d",
+    "fractional_max_pool2d_backward",
+    "fractional_max_pool3d",
+    "fractional_max_pool3d_backward",
+    "im2col",
+    "max_pool1d",
+    "max_pool1d_with_indices",
+    "max_pool3d_with_indices_backward",
+    "max_unpool2d",
+    "max_unpool3d",
+    "mkldnn_reorder_conv2d_weight",
+    "mkldnn_reorder_conv2d_weight_out",
+    "quantized_max_pool1d",
+    "quantized_max_pool1d_out",
+    "quantized_max_pool2d",
+    "quantized_max_pool2d_out",
+    "quantized_max_pool3d",
+    "quantized_max_pool3d_out",
+    "slow_conv_dilated2d",
+    "slow_conv_dilated2d_out",
+    "slow_conv_dilated3d",
+    "slow_conv_dilated3d_out",
+    "slow_conv_transpose2d",
+    "slow_conv_transpose3d",
+    "thnn_conv2d",
 ]
