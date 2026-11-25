@@ -150,20 +150,97 @@ def _use_vir_vector_passes(options=None) -> bool:
     return bool(target_triple and "riscv" in target_triple)
 
 
-def _riscv_vir_vector_passes() -> list[str]:
-    # Keep explicit vectors VLEN-aligned for cross-compiled RISC-V objects.
-    return ["--lower-linalg-to-vir", "--lower-vir-to-vector=vector-width=4"]
+def _riscv_vir_vector_passes(options=None) -> list[str]:
+    # Keep a fixed-VL main loop and one AVL tail. Short constant regions use
+    # the target's minimum VLEN for fixed vectors or at most two AVL iterations.
+    vlen = _riscv_codegen_vlen(options)
+    return [
+        "--lower-linalg-to-vir",
+        f"--lower-vir-to-vector=use-scalable=true rvv-vlen={vlen} use-avl-loop=true",
+    ]
+
+
+_RISCV_POLYNOMIAL_MATH_OPS = (
+    "exp",
+    "expm1",
+    "log",
+    "log2",
+    "log1p",
+    "tanh",
+    "erf",
+    "erfc",
+    "sin",
+    "cos",
+    "atan",
+    "atan2",
+    "asin",
+    "acos",
+    "cbrt",
+)
+
+
+def _riscv_polynomial_math_passes(options=None) -> list[str]:
+    if _targets_riscv(options):
+        ops = ",".join(_RISCV_POLYNOMIAL_MATH_OPS)
+        return [f"--polynomial-approximate-math=ops={ops}"]
+    return []
 
 
 _UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|f8|i8|i16)\b")
+
+
+_ZVL_FEATURE = re.compile(r"\+zvl(\d+)b")
+
+
+def _riscv_codegen_vlen(options=None) -> int:
+    # Fixed-length vectors are legalized against the minimum VLEN that llc
+    # is told about (+zvlNb), or 128 for plain +v.
+    features = getattr(options, "target_features", None) or DEFAULT_LLC_FEATURES
+    return max([128, *(int(v) for v in _ZVL_FEATURE.findall(features))])
 
 
 def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
     if _UNSAFE_MATMUL_VECTORIZATION_TYPE.search(ttsharedir):
         return []
     if _targets_riscv(options):
-        return ["--matmul-vectorization=vector-size=4"]
+        # matmul-vectorization keeps 8 rows x vector-size f32 accumulators in
+        # registers. Two vector registers per row (LMUL=2) fill 16 of the 32
+        # registers and leave room for the B row; LMUL=4 spills.
+        vector_size = 2 * _riscv_codegen_vlen(options) // 32
+        return [f"--matmul-vectorization=vector-size={vector_size}"]
     return ["--matmul-vectorization"]
+
+
+def _strided_copy_passes(options=None) -> list[str]:
+    # A store of a tile into a strided view bufferizes to memref.copy, which
+    # finalize-memref-to-llvm lowers to the generic memrefCopy runtime (one
+    # memcpy per element). Rewrite it as a linalg copy so it is vectorized.
+    if _targets_riscv(options):
+        return ["convert-strided-memref-copy-to-linalg"]
+    return []
+
+
+_MEMREF_COPY_TYPES = re.compile(r"memref\.copy\b[^\n]*?:\s*([^\n]*)")
+_MEMREF_SHAPE = re.compile(r"memref<([^,>]*)")
+
+
+def _only_static_memref_copies(mlir: str) -> bool:
+    # Dynamic copies need SCF loop lowering after conversion to linalg.
+    for types in _MEMREF_COPY_TYPES.findall(mlir):
+        for shape in _MEMREF_SHAPE.findall(types):
+            if "?" in shape or "*" in shape:
+                return False
+    return True
+
+
+def _has_dynamic_fp8_copy(mlir: str) -> bool:
+    # FP8 uses fixed VIR vectors, whose affine loops cannot represent these
+    # dynamic bounds. Keep the existing copy path for this IR shape.
+    for types in _MEMREF_COPY_TYPES.findall(mlir):
+        for shape in _MEMREF_SHAPE.findall(types):
+            if "?" in shape and re.search(r"(?:^|x)f8[A-Za-z0-9]+", shape):
+                return True
+    return False
 
 
 def _ttsharedir_to_llir(ttsharedir: str, options=None):
@@ -275,30 +352,74 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             # Split bufferize/loop lowering from LLVM conversion so triton-shared
             # can expand FP8 arith.extf/truncf (and lower atomic CAS helpers)
             # before convert-arith-to-llvm.
-            standard_lowering_passes = []
+            bufferization_passes = _riscv_polynomial_math_passes(options)
             if "__triton_shared_atomic_cas_" not in ttsharedir:
-                standard_lowering_passes.append("--linalg-fuse-elementwise-ops")
-            standard_lowering_passes.extend(
+                bufferization_passes.append("--linalg-fuse-elementwise-ops")
+            bufferization_passes.extend(
                 [
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-loop-hoisting",
-                    # Promotion must come first: running deallocation before it
-                    # leaves memref.dealloc on buffers that promotion then turns
-                    # into allocas, and the generated kernel frees a stack
-                    # address.
+                    # Promote small temporaries to the stack before the
+                    # deallocation pipeline: once ownership-based deallocation
+                    # has placed bufferization.dealloc on an allocation it is
+                    # no longer promoted, so every temporary was malloc/free.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
                     "--buffer-deallocation-pipeline",
                 ]
             )
+            standard_input_path = ttshared_path
+            standard_lowering_passes = list(bufferization_passes)
+            copy_passes = _strided_copy_passes(options)
+            dynamic_copy_lowering = False
+            if copy_passes:
+                # These are function passes; buddy-opt cannot mix
+                # --pass-pipeline with pass flags, so run them separately.
+                bufferized_path = os.path.join(tmpdir, "bufferized.mlir")
+                copies_path = os.path.join(tmpdir, "bufferized-copies.mlir")
+                subprocess.check_call(
+                    [
+                        buddy_opt_path,
+                        ttshared_path,
+                        *bufferization_passes,
+                        "--mlir-print-debuginfo",
+                        "-o",
+                        bufferized_path,
+                    ]
+                )
+                standard_input_path = bufferized_path
+                bufferized_ir = Path(bufferized_path).read_text()
+                static_copies = _only_static_memref_copies(bufferized_ir)
+                if static_copies or not _has_dynamic_fp8_copy(bufferized_ir):
+                    subprocess.check_call(
+                        [
+                            buddy_opt_path,
+                            bufferized_path,
+                            "--pass-pipeline=builtin.module(func.func("
+                            + ",".join(copy_passes)
+                            + "))",
+                            "--mlir-print-debuginfo",
+                            "-o",
+                            copies_path,
+                        ]
+                    )
+                    standard_input_path = copies_path
+                    dynamic_copy_lowering = not static_copies
+                standard_lowering_passes = []
             standard_lowering_passes.extend(
                 _matmul_vectorization_passes(ttsharedir, options)
             )
             if _use_vir_vector_passes(options):
-                standard_lowering_passes.extend(_riscv_vir_vector_passes())
+                standard_lowering_passes.extend(_riscv_vir_vector_passes(options))
             standard_lowering_passes.extend(
                 [
-                    "--convert-linalg-to-affine-loops",
+                    # Dynamic copy bounds are legal SCF values but are not
+                    # necessarily affine dimensions; lower them to SCF below.
+                    *(
+                        []
+                        if dynamic_copy_lowering
+                        else ["--convert-linalg-to-affine-loops"]
+                    ),
                     "--lower-affine",
                     "--convert-linalg-to-loops",
                     "--expand-strided-metadata",
@@ -327,7 +448,7 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             subprocess.check_call(
                 [
                     buddy_opt_path,
-                    ttshared_path,
+                    standard_input_path,
                     *standard_lowering_passes,
                     "--mlir-print-debuginfo",
                     "-o",

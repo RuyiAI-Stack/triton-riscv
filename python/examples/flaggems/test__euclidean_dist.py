@@ -66,7 +66,7 @@ def test_euclidean_dist_kernel_emits_riscv_object(tmp_path, N, M, D):
         text=True,
     )
     assert re.search(r"<_euclidean_dist_kernel>:", asm)
-    assert re.search(r"\bvsetivli\b", asm)
+    assert re.search(r"\bvsetivli\b|\bvsetvli\b", asm)
     assert RVV_VECTOR_LOAD.search(asm)
     assert RVV_VECTOR_STORE.search(asm)
     assert re.search(r"\bvfsub\.vv\b", asm)
