@@ -104,4 +104,5 @@ echo "Installing build dependencies into ${PYTHON}..."
     "nanobind==2.10.2" \
     "pytest" \
     "pytest-xdist" \
+    "nbmake" \
     "lit"
