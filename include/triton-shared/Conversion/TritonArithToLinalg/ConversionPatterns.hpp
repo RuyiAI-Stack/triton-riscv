@@ -18,11 +18,16 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
@@ -493,6 +498,19 @@ struct YieldConverter : public OpConversionPattern<scf::YieldOp> {
   matchAndRewrite(scf::YieldOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<scf::YieldOp>(op, adaptor.getOperands());
+    return success();
+  }
+};
+
+// tt.annotate returns its operand unchanged; the attributes only carry hints
+// for later stages, so dropping the op keeps the value.
+struct AnnotateOpConverter : public OpConversionPattern<triton::AnnotateOp> {
+  using OpConversionPattern<triton::AnnotateOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(triton::AnnotateOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getOperands());
     return success();
   }
 };

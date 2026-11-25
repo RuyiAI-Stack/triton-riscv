@@ -1,0 +1,18 @@
+import torch
+
+from .rnn_relu_cell import rnn_relu_cell
+
+
+def test_rnn_relu_cell():
+    torch.manual_seed(0)
+    cell = torch.nn.RNNCell(3, 4, nonlinearity="relu")
+    inputs = torch.randn(2, 3)
+    hidden = torch.randn(2, 4)
+    torch.testing.assert_close(
+        rnn_relu_cell(
+            inputs, hidden, cell.weight_ih, cell.weight_hh, cell.bias_ih, cell.bias_hh
+        ),
+        cell(inputs, hidden),
+        rtol=1e-4,
+        atol=1e-4,
+    )

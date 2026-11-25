@@ -23,6 +23,7 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -73,6 +74,7 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
     patterns.add<AssertConverter>(patterns.getContext());
   }
   patterns.add<BroadcastConverter>(patterns.getContext());
+  patterns.add<AnnotateOpConverter>(patterns.getContext());
   patterns.add<TransposeConverter>(patterns.getContext());
   patterns.add<MakeRangeConverter>(patterns.getContext());
   patterns.add<ExpandDimsConverter>(patterns.getContext());
