@@ -717,6 +717,57 @@ from .slow_conv_transpose2d import slow_conv_transpose2d
 from .slow_conv_transpose3d import slow_conv_transpose3d
 from .thnn_conv2d import thnn_conv2d
 
+from .ccol_indices_copy import ccol_indices_copy
+from .coalesce import coalesce
+from .col_indices import col_indices
+from .col_indices_copy import col_indices_copy
+from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
+from .crow_indices import crow_indices
+from .crow_indices_copy import crow_indices_copy
+from .indices_copy import indices_copy
+from .nested_to_padded_tensor import nested_to_padded_tensor
+from .row_indices_copy import row_indices_copy
+from .sparse_compressed_tensor import sparse_compressed_tensor
+from .sparse_coo_tensor import sparse_coo_tensor
+from .sparse_csc_tensor import sparse_csc_tensor
+from .sparse_csr_tensor import sparse_csr_tensor
+from .sparse_mask import sparse_mask
+from .sparse_resize_ import sparse_resize_
+from .to_dense_backward import to_dense_backward
+from .values_copy import values_copy
+from ._coalesced_ import _coalesced_
+from ._indices_copy import _indices_copy
+from ._jagged_to_padded_dense_forward import _jagged_to_padded_dense_forward
+from ._nested_from_padded import _nested_from_padded
+from ._nested_from_padded_and_nested_example import (
+    _nested_from_padded_and_nested_example,
+)
+from ._nested_from_padded_tensor import _nested_from_padded_tensor
+from ._nested_select_backward import _nested_select_backward
+from ._nested_tensor_from_mask import _nested_tensor_from_mask
+from ._nested_tensor_from_mask_left_aligned import _nested_tensor_from_mask_left_aligned
+from ._nested_tensor_softmax_with_shape import _nested_tensor_softmax_with_shape
+from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._pack_padded_sequence import _pack_padded_sequence
+from ._sparse_log_softmax import _sparse_log_softmax
+from ._sparse_log_softmax_backward_data import _sparse_log_softmax_backward_data
+from ._sparse_mask_projection import _sparse_mask_projection
+from ._sparse_semi_structured_apply import _sparse_semi_structured_apply
+from ._sparse_semi_structured_apply_dense import _sparse_semi_structured_apply_dense
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
+from ._sparse_semi_structured_tile import _sparse_semi_structured_tile
+from ._sparse_softmax import _sparse_softmax
+from ._sparse_softmax_backward_data import _sparse_softmax_backward_data
+from ._validate_sparse_coo_tensor_args import _validate_sparse_coo_tensor_args
+from ._validate_sparse_csc_tensor_args import _validate_sparse_csc_tensor_args
+from ._values_copy import _values_copy
+from .padded_dense_to_jagged_forward import padded_dense_to_jagged_forward
+from .sparse_broadcast_to import sparse_broadcast_to
+from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe
+from .sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
+from .sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from .to_sparse_semi_structured import to_sparse_semi_structured
+
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
@@ -1506,4 +1557,52 @@ __all__ = [
     "thnn_fused_gru_cell_backward",
     "topk_w8a16_fp8",
     "underscore_sobol_engine_draw",
+    "ccol_indices_copy",
+    "coalesce",
+    "col_indices",
+    "col_indices_copy",
+    "copy_sparse_to_sparse_",
+    "crow_indices",
+    "crow_indices_copy",
+    "indices_copy",
+    "nested_to_padded_tensor",
+    "row_indices_copy",
+    "sparse_compressed_tensor",
+    "sparse_coo_tensor",
+    "sparse_csc_tensor",
+    "sparse_csr_tensor",
+    "sparse_mask",
+    "sparse_resize_",
+    "to_dense_backward",
+    "values_copy",
+    "_coalesced_",
+    "_indices_copy",
+    "_jagged_to_padded_dense_forward",
+    "_nested_from_padded",
+    "_nested_from_padded_and_nested_example",
+    "_nested_from_padded_tensor",
+    "_nested_select_backward",
+    "_nested_tensor_from_mask",
+    "_nested_tensor_from_mask_left_aligned",
+    "_nested_tensor_softmax_with_shape",
+    "_nested_view_from_jagged_copy",
+    "_pack_padded_sequence",
+    "_sparse_log_softmax",
+    "_sparse_log_softmax_backward_data",
+    "_sparse_mask_projection",
+    "_sparse_semi_structured_apply",
+    "_sparse_semi_structured_apply_dense",
+    "_sparse_semi_structured_linear",
+    "_sparse_semi_structured_tile",
+    "_sparse_softmax",
+    "_sparse_softmax_backward_data",
+    "_validate_sparse_coo_tensor_args",
+    "_validate_sparse_csc_tensor_args",
+    "_values_copy",
+    "padded_dense_to_jagged_forward",
+    "sparse_broadcast_to",
+    "sparse_bsc_tensor_unsafe",
+    "sparse_bsr_tensor_unsafe",
+    "sparse_csc_tensor_unsafe",
+    "to_sparse_semi_structured",
 ]
