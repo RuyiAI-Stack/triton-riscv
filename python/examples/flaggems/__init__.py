@@ -447,6 +447,94 @@ from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
+from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
+from ._embedding_bag_per_sample_weights_backward import (
+    _embedding_bag_per_sample_weights_backward,
+)
+from ._embedding_bag_sparse_backward import _embedding_bag_sparse_backward
+from ._gather_sparse_backward import _gather_sparse_backward
+from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
+from ._upsample_bilinear2d_aa_backward import _upsample_bilinear2d_aa_backward
+from ._upsample_lanczos2d_aa_backward import (
+    upsample_lanczos2d_aa_backward,
+    upsample_lanczos2d_aa_backward_grad_input,
+)
+from ._upsample_nearest_exact1d_backward import (
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
+from ._upsample_nearest_exact2d import _upsample_nearest_exact2d
+from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
+from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._upsample_nearest_exact3d_backward import (
+    _upsample_nearest_exact3d_backward,
+    _upsample_nearest_exact3d_backward_grad_input,
+)
+from .affine_grid_generator_backward import affine_grid_generator_backward
+from .as_strided_scatter import as_strided_scatter
+from .batch_norm_gather_stats import batch_norm_gather_stats
+from .batch_norm_gather_stats_with_counts import batch_norm_gather_stats_with_counts
+from .cosine_embedding_loss import cosine_embedding_loss
+from .cudnn_affine_grid_generator_backward import (
+    cudnn_affine_grid_generator_backward,
+    cudnn_affine_grid_generator_backward_out,
+)
+from .cudnn_grid_sampler import cudnn_grid_sampler, cudnn_grid_sampler_out
+from .cudnn_grid_sampler_backward import (
+    cudnn_grid_sampler_backward,
+    cudnn_grid_sampler_backward_out,
+)
+from .diagonal_scatter import diagonal_scatter
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only, embedding_bag
+from .embedding_bag_backward import _embedding_bag_backward
+from .embedding_renorm_ import embedding_renorm_
+from .embedding_sparse_backward import embedding_sparse_backward
+from .embedding_spmdm import embedding_spmdm
+from .embedding_spmdm_grad import embedding_spmdm_grad
+from .gather_block_quantized import gather_block_quantized
+from .grid_sampler import grid_sampler
+from .grid_sampler_2d import grid_sampler_2d
+from .grid_sampler_3d import grid_sampler_3d
+from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .hinge_embedding_loss import hinge_embedding_loss
+from .index_fill import index_fill, index_fill_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
+from .index_select_backward import index_select_backward
+from .masked_scatter_backward import masked_scatter_backward
+from .put import put, put_out
+from .put_ import put_
+from .take import take, take_out
+from .take_along_dim import take_along_dim, take_along_dim_out
+from .upsample_bicubic2d_backward import (
+    upsample_bicubic2d_backward,
+    upsample_bicubic2d_backward_grad_input,
+)
+from .upsample_bilinear2d import upsample_bilinear2d
+from .upsample_bilinear2d_backward import (
+    upsample_bilinear2d_backward,
+    upsample_bilinear2d_backward_grad_input,
+)
+from .upsample_lanczos2d_aa import (
+    _upsample_lanczos2d_aa,
+    _upsample_lanczos2d_aa_out,
+    _upsample_lanczos2d_aa_vec,
+)
+from .upsample_linear1d_backward import upsample_linear1d_backward
+from .upsample_nearest1d_backward import (
+    upsample_nearest1d_backward,
+    upsample_nearest1d_backward_grad_input,
+)
+from .upsample_nearest2d_backward import (
+    upsample_nearest2d_backward,
+    upsample_nearest2d_backward_grad_input,
+)
+from .upsample_nearest3d_backward import (
+    upsample_nearest3d_backward,
+    upsample_nearest3d_backward_grad_input,
+)
+from .upsample_trilinear3d import upsample_trilinear3d
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
+
 from .cholesky import cholesky
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve
@@ -1058,6 +1146,78 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_dense_backward",
+    "_embedding_bag_forward_only",
+    "_embedding_bag_per_sample_weights_backward",
+    "_embedding_bag_sparse_backward",
+    "_gather_sparse_backward",
+    "_upsample_bilinear2d_aa",
+    "_upsample_bilinear2d_aa_backward",
+    "_upsample_lanczos2d_aa",
+    "_upsample_lanczos2d_aa_out",
+    "_upsample_lanczos2d_aa_vec",
+    "_upsample_nearest_exact1d_backward",
+    "_upsample_nearest_exact1d_backward_grad_input",
+    "_upsample_nearest_exact2d",
+    "_upsample_nearest_exact2d_backward",
+    "_upsample_nearest_exact3d",
+    "_upsample_nearest_exact3d_backward",
+    "_upsample_nearest_exact3d_backward_grad_input",
+    "affine_grid_generator_backward",
+    "as_strided_scatter",
+    "batch_norm_gather_stats",
+    "batch_norm_gather_stats_with_counts",
+    "cosine_embedding_loss",
+    "cudnn_affine_grid_generator_backward",
+    "cudnn_affine_grid_generator_backward_out",
+    "cudnn_grid_sampler",
+    "cudnn_grid_sampler_backward",
+    "cudnn_grid_sampler_backward_out",
+    "cudnn_grid_sampler_out",
+    "diagonal_scatter",
+    "embedding_bag",
+    "embedding_renorm_",
+    "embedding_sparse_backward",
+    "embedding_spmdm",
+    "embedding_spmdm_grad",
+    "gather_block_quantized",
+    "grid_sampler",
+    "grid_sampler_2d",
+    "grid_sampler_3d",
+    "grid_sampler_3d_backward",
+    "hinge_embedding_loss",
+    "index_fill",
+    "index_fill_",
+    "index_reduce",
+    "index_reduce_",
+    "index_reduce_out",
+    "index_select_backward",
+    "masked_scatter_backward",
+    "put",
+    "put_",
+    "put_out",
+    "take",
+    "take_along_dim",
+    "take_along_dim_out",
+    "take_out",
+    "upsample_bicubic2d_backward",
+    "upsample_bicubic2d_backward_grad_input",
+    "upsample_bilinear2d",
+    "upsample_bilinear2d_backward",
+    "upsample_bilinear2d_backward_grad_input",
+    "upsample_lanczos2d_aa_backward",
+    "upsample_lanczos2d_aa_backward_grad_input",
+    "upsample_linear1d_backward",
+    "upsample_nearest1d_backward",
+    "upsample_nearest1d_backward_grad_input",
+    "upsample_nearest2d_backward",
+    "upsample_nearest2d_backward_grad_input",
+    "upsample_nearest3d_backward",
+    "upsample_nearest3d_backward_grad_input",
+    "upsample_trilinear3d",
+    "upsample_trilinear3d_backward",
     "cholesky",
     "cholesky_inverse",
     "cholesky_solve",

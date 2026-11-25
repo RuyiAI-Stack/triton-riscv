@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .grid_sample import grid_sample
+from . import grid_sample
 
 
 @pytest.mark.parametrize("align_corners", [True, False])
@@ -57,8 +57,5 @@ def test_grid_sample_2d_bilinear_zeros(align_corners):
         align_corners=align_corners,
     )
 
-    if not align_corners:
-        rtol, atol = 1e-2, 1.1
-    else:
-        rtol, atol = 1e-4, 1e-4
+    rtol, atol = 1e-4, 1e-4
     torch.testing.assert_close(tri, ref, rtol=rtol, atol=atol)
