@@ -136,28 +136,66 @@ def _optimize_ttsharedir(ttsharedir: str):
 
 
 def _targets_riscv(options=None) -> bool:
-    if platform.machine() == "riscv64":
-        return True
-    target_triple = getattr(options, "target_triple", None) if options else None
-    return bool(target_triple and "riscv" in target_triple)
+    target_triple = getattr(options, "target_triple", None)
+    return (
+        "riscv" in target_triple if target_triple else platform.machine() == "riscv64"
+    )
 
 
-def _use_vir_vector_passes(options=None) -> bool:
-    # VIR on native execution currently breaks some reduction kernels
-    # (FlagGems flash_api). Keep it for explicit RISC-V object emit tests
-    # that pass target_triple.
-    target_triple = getattr(options, "target_triple", None) if options else None
-    return bool(target_triple and "riscv" in target_triple)
+def _vir_vector_bits(options) -> int:
+    if _targets_riscv(options):
+        return _riscv_codegen_vlen(options)
+    triple = getattr(options, "target_triple", None)
+    if triple is None and platform.machine() in {"x86_64", "AMD64"}:
+        triple = "x86_64-unknown-linux-gnu"
+    return _fixed_vector_bits(options, triple or "", _get_llvm_bin_path("opt")) or 128
 
 
-def _riscv_vir_vector_passes(options=None) -> list[str]:
-    # Keep a fixed-VL main loop and one AVL tail. Short constant regions use
-    # the target's minimum VLEN for fixed vectors or at most two AVL iterations.
-    vlen = _riscv_codegen_vlen(options)
+def _vir_vector_passes(ttsharedir: str, options, bits: int) -> list[str]:
+    target_triple = getattr(options, "target_triple", None)
+    triple = target_triple or platform.machine()
+    riscv = _targets_riscv(options)
+    registers = 16 if triple.startswith(("x86_64", "AMD64")) and bits < 512 else 32
+    layout = f"target-vector-bits={bits} target-vector-regs={registers}"
+    if riscv and target_triple:
+        features = {
+            feature[1:]: feature[0] == "+"
+            for feature in _riscv_target_features(options).split(",")
+            if feature.startswith(("+", "-"))
+        }
+        # LLVM cannot scalarize scalable bf16 vectors on targets without
+        # Zvfbfmin. Fixed vectors let it legalize conversions through libcalls.
+        uses_bf16 = re.search(r"(?:\b|(?<=x))bf16\b", ttsharedir)
+        if features.get("v") and (features.get("zvfbfmin") or not uses_bf16):
+            return [
+                f"--lower-linalg-to-vir={layout} use-scalable=true",
+                f"--lower-vir-to-vector=use-scalable=true rvv-vlen={bits} use-avl-loop=true",
+            ]
+
+    # Native RISC-V code generation has no explicit VLEN contract. Fixed
+    # vectors keep its objects valid on hardware with other vector lengths.
     return [
-        "--lower-linalg-to-vir",
-        f"--lower-vir-to-vector=use-scalable=true rvv-vlen={vlen} use-avl-loop=true",
+        f"--lower-linalg-to-vir={layout}",
+        f"--lower-vir-to-vector={layout}",
     ]
+
+
+def _riscv_target_features(options=None) -> str:
+    features = getattr(options, "target_features", None)
+    return DEFAULT_LLC_FEATURES if features is None else features
+
+
+def _riscv_codegen_vlen(options=None) -> int:
+    bits = getattr(options, "target_vector_bits", None)
+    if bits is not None:
+        return bits
+    features = _riscv_target_features(options)
+    lengths = (
+        int(match[1])
+        for feature in features.split(",")
+        if (match := re.fullmatch(r"\+zvl(\d+)b", feature))
+    )
+    return max(lengths, default=128)
 
 
 _RISCV_POLYNOMIAL_MATH_OPS = (
@@ -183,40 +221,6 @@ def _riscv_polynomial_math_passes(options=None) -> list[str]:
     if _targets_riscv(options):
         ops = ",".join(_RISCV_POLYNOMIAL_MATH_OPS)
         return [f"--polynomial-approximate-math=ops={ops}"]
-    return []
-
-
-_UNSAFE_MATMUL_VECTORIZATION_TYPE = re.compile(r"x(?:f16|bf16|f8|i8|i16)\b")
-
-
-_ZVL_FEATURE = re.compile(r"\+zvl(\d+)b")
-
-
-def _riscv_codegen_vlen(options=None) -> int:
-    # Fixed-length vectors are legalized against the minimum VLEN that llc
-    # is told about (+zvlNb), or 128 for plain +v.
-    features = getattr(options, "target_features", None) or DEFAULT_LLC_FEATURES
-    return max([128, *(int(v) for v in _ZVL_FEATURE.findall(features))])
-
-
-def _matmul_vectorization_passes(ttsharedir: str, options=None) -> list[str]:
-    if _UNSAFE_MATMUL_VECTORIZATION_TYPE.search(ttsharedir):
-        return []
-    if _targets_riscv(options):
-        # matmul-vectorization keeps 8 rows x vector-size f32 accumulators in
-        # registers. Two vector registers per row (LMUL=2) fill 16 of the 32
-        # registers and leave room for the B row; LMUL=4 spills.
-        vector_size = 2 * _riscv_codegen_vlen(options) // 32
-        return [f"--matmul-vectorization=vector-size={vector_size}"]
-    return ["--matmul-vectorization"]
-
-
-def _strided_copy_passes(options=None) -> list[str]:
-    # A store of a tile into a strided view bufferizes to memref.copy, which
-    # finalize-memref-to-llvm lowers to the generic memrefCopy runtime (one
-    # memcpy per element). Rewrite it as a linalg copy so it is vectorized.
-    if _targets_riscv(options):
-        return ["convert-strided-memref-copy-to-linalg"]
     return []
 
 
@@ -352,65 +356,69 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
             # Split bufferize/loop lowering from LLVM conversion so triton-shared
             # can expand FP8 arith.extf/truncf (and lower atomic CAS helpers)
             # before convert-arith-to-llvm.
+            vector_bits = _vir_vector_bits(options)
             bufferization_passes = _riscv_polynomial_math_passes(options)
             if "__triton_shared_atomic_cas_" not in ttsharedir:
-                bufferization_passes.append("--linalg-fuse-elementwise-ops")
+                bufferization_passes.extend(
+                    [
+                        f"--vectorize-masked-stores=vector-bits={vector_bits}",
+                        "--linalg-fuse-elementwise-ops",
+                        "--crop-neutral-reductions",
+                        "--fold-reduction-transposes",
+                        "--fuse-reduction-producers",
+                    ]
+                )
             bufferization_passes.extend(
                 [
                     "--empty-tensor-to-alloc-tensor",
                     "--one-shot-bufferize=allow-return-allocs-from-loops=true",
                     "--buffer-loop-hoisting",
-                    # Promote small temporaries to the stack before the
-                    # deallocation pipeline: once ownership-based deallocation
-                    # has placed bufferization.dealloc on an allocation it is
-                    # no longer promoted, so every temporary was malloc/free.
+                    # Promotion must come first: running deallocation before it
+                    # leaves memref.dealloc on buffers that promotion then turns
+                    # into allocas, and the generated kernel frees a stack
+                    # address.
                     "--promote-buffers-to-stack=max-alloc-size-in-bytes=65536",
+                    "--elide-masked-tile-copies",
+                    "--stack-temporaries",
                     "--buffer-deallocation-pipeline",
+                    f"--lower-strided-copies=vector-bits={vector_bits}",
                 ]
             )
-            standard_input_path = ttshared_path
-            standard_lowering_passes = list(bufferization_passes)
-            copy_passes = _strided_copy_passes(options)
+            # The strided-copy conversion is a function pass. Run it
+            # separately from the module-level bufferization pipeline.
+            bufferized_path = os.path.join(tmpdir, "bufferized.mlir")
+            copies_path = os.path.join(tmpdir, "bufferized-copies.mlir")
+            subprocess.check_call(
+                [
+                    buddy_opt_path,
+                    ttshared_path,
+                    *bufferization_passes,
+                    "--mlir-print-debuginfo",
+                    "-o",
+                    bufferized_path,
+                ]
+            )
+            standard_input_path = bufferized_path
+            bufferized_ir = Path(bufferized_path).read_text()
+            static_copies = _only_static_memref_copies(bufferized_ir)
             dynamic_copy_lowering = False
-            if copy_passes:
-                # These are function passes; buddy-opt cannot mix
-                # --pass-pipeline with pass flags, so run them separately.
-                bufferized_path = os.path.join(tmpdir, "bufferized.mlir")
-                copies_path = os.path.join(tmpdir, "bufferized-copies.mlir")
+            if static_copies or not _has_dynamic_fp8_copy(bufferized_ir):
                 subprocess.check_call(
                     [
                         buddy_opt_path,
-                        ttshared_path,
-                        *bufferization_passes,
+                        bufferized_path,
+                        "--pass-pipeline=builtin.module(func.func("
+                        "convert-strided-memref-copy-to-linalg))",
                         "--mlir-print-debuginfo",
                         "-o",
-                        bufferized_path,
+                        copies_path,
                     ]
                 )
-                standard_input_path = bufferized_path
-                bufferized_ir = Path(bufferized_path).read_text()
-                static_copies = _only_static_memref_copies(bufferized_ir)
-                if static_copies or not _has_dynamic_fp8_copy(bufferized_ir):
-                    subprocess.check_call(
-                        [
-                            buddy_opt_path,
-                            bufferized_path,
-                            "--pass-pipeline=builtin.module(func.func("
-                            + ",".join(copy_passes)
-                            + "))",
-                            "--mlir-print-debuginfo",
-                            "-o",
-                            copies_path,
-                        ]
-                    )
-                    standard_input_path = copies_path
-                    dynamic_copy_lowering = not static_copies
-                standard_lowering_passes = []
-            standard_lowering_passes.extend(
-                _matmul_vectorization_passes(ttsharedir, options)
+                standard_input_path = copies_path
+                dynamic_copy_lowering = not static_copies
+            standard_lowering_passes = _vir_vector_passes(
+                ttsharedir, options, vector_bits
             )
-            if _use_vir_vector_passes(options):
-                standard_lowering_passes.extend(_riscv_vir_vector_passes(options))
             standard_lowering_passes.extend(
                 [
                     # Dynamic copy bounds are legal SCF values but are not
@@ -422,14 +430,12 @@ def _ttsharedir_to_llir(ttsharedir: str, options=None):
                     ),
                     "--lower-affine",
                     "--convert-linalg-to-loops",
+                    "--forward-masked-loads",
                     "--expand-strided-metadata",
+                    "--convert-vector-to-scf",
+                    "--convert-scf-to-cf",
                 ]
             )
-            # VIR lowering emits vector.transfer_read for tiled copies. Lower
-            # those transfers to scalar SCF loops before converting SCF to CF.
-            if _use_vir_vector_passes(options):
-                standard_lowering_passes.append("--convert-vector-to-scf")
-            standard_lowering_passes.append("--convert-scf-to-cf")
             llvm_lowering_passes = [
                 "--convert-arith-to-llvm",
                 "--convert-math-to-llvm",
@@ -578,9 +584,15 @@ def _remove_invalid_stack_frees(llir: str) -> str:
     )
 
 
+def _riscv_tune_args(options=None) -> list[str]:
+    tune = getattr(options, "target_tune", None)
+    # -mtune selects scheduling and cost models without enabling extensions.
+    return [f"-mtune={tune}"] if tune else []
+
+
 def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
     """Run the LLVM O3 middle end for an explicit RISC-V target."""
-    features = getattr(options, "target_features", None) or DEFAULT_LLC_FEATURES
+    features = _riscv_target_features(options)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ll")
         dst_path = os.path.join(tmpdir, "kernel-opt.ll")
@@ -591,6 +603,7 @@ def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
                 "-O3",
                 f"-mtriple={target_triple}",
                 f"-mattr={features}",
+                *_riscv_tune_args(options),
                 "-S",
                 src_path,
                 "-o",
@@ -599,6 +612,101 @@ def _optimize_riscv_llir(llir: str, target_triple: str, options=None) -> str:
         )
         _dump_ir_if_needed([dst_path])
         return Path(dst_path).read_text()
+
+
+_ATTR_GROUP = re.compile(r"^attributes\s+#(\d+)\s*=\s*\{(.*?)\}", re.M | re.S)
+_DEFINE_HEADER = re.compile(r"^([ \t]*define\b.*?)([ \t]*\{)[ \t]*(?=;|$)", re.M | re.S)
+_FUNCTION_NAME = re.compile(r'@(?:"[^"\n]*"|[-\w.$]+)\s*\(')
+_IR_TOKEN = re.compile(r'"[^"\n]*"|;[^\n]*|[()]')
+_GROUP_REF = re.compile(r'#(\d+)|"[^"\n]*"|;[^\n]*')
+_PREFER_WIDTH = re.compile(r'(?<!\S)"prefer-vector-width"(?:\s*=\s*"[^"\n]*")?')
+
+
+def _prefer_vector_width(llir: str, bits: int) -> str:
+    """Set a string attribute on every definition in LLVM's printed IR."""
+    attr = f'"prefer-vector-width"="{bits}"'
+    used_groups = set()
+
+    def set_reference(match):
+        header = match[1]
+        name = _FUNCTION_NAME.search(header)
+        if name is None:
+            raise ValueError("Missing parameter list in LLVM function definition")
+        depth = 1
+        for token in _IR_TOKEN.finditer(header, name.end()):
+            if token[0] == "(":
+                depth += 1
+            elif token[0] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+        else:
+            raise ValueError("Unterminated parameter list in LLVM function definition")
+        args_end = token.end()
+        tail = _PREFER_WIDTH.sub("", header[args_end:])
+        groups = {ref[1] for ref in _GROUP_REF.finditer(tail) if ref[1] is not None}
+        if groups:
+            used_groups.update(groups)
+        else:
+            tail = f" {attr}" + tail
+        return header[:args_end] + tail + match[2]
+
+    def replace_in_group(match):
+        if match[1] not in used_groups:
+            return match[0]
+        attrs = _PREFER_WIDTH.sub("", match[2]).strip()
+        return f"attributes #{match[1]} = {{ {' '.join(filter(None, (attrs, attr)))} }}"
+
+    llir = _DEFINE_HEADER.sub(set_reference, llir)
+    return _ATTR_GROUP.sub(replace_in_group, llir)
+
+
+@functools.lru_cache
+def _native_x86_features(opt: str) -> str:
+    # Ask LLVM which features its -mcpu=native resolves to.
+    probe = subprocess.check_output(
+        [
+            opt,
+            "-mtriple=x86_64-unknown-linux-gnu",
+            "-mcpu=native",
+            "-passes=no-op-module",
+            "-S",
+            "-o",
+            "-",
+        ],
+        input="define void @probe() { ret void }\n",
+        text=True,
+    )
+    match = re.search(r'"target-features"="([^"]*)"', probe)
+    return match[1] if match else ""
+
+
+def _fixed_vector_bits(options, triple: str, opt: str) -> int | None:
+    bits = getattr(options, "target_vector_bits", None)
+    if bits is not None:
+        return bits
+
+    features = getattr(options, "target_features", None)
+    if triple.startswith("x86_64"):
+        if getattr(options, "target_triple", None) is None:
+            features = _native_x86_features(opt)
+        enabled = set()
+        for feature in (features or "").split(","):
+            if feature.startswith("+"):
+                enabled.add(feature[1:])
+            elif feature.startswith("-"):
+                enabled.discard(feature[1:])
+        if "avx512f" in enabled:
+            return 512
+        if enabled & {"avx", "avx2"}:
+            return 256
+        if not getattr(options, "target_cpu", None):
+            return 128
+    if triple.startswith(("aarch64", "arm64")):
+        features = set((features or "").split(","))
+        if "+neon" in features and not features & {"+sve", "+sve2"}:
+            return 128
+    return None
 
 
 def _optimize_llir(llir: str, options=None):
@@ -612,12 +720,18 @@ def _optimize_llir(llir: str, options=None):
     target_triple = getattr(options, "target_triple", None)
     if target_triple and "riscv" in target_triple and not _use_ime_pipeline():
         return _optimize_riscv_llir(llir, target_triple, options)
-    if host_machine == "riscv64" or target_triple:
-        # opt's LCSSA rewrite can detach ownership guards from pointer PHIs
-        # emitted by MLIR buffer deallocation and double-free a carried buffer.
+    if target_triple:
+        if not target_triple.startswith(("x86_64", "aarch64", "arm64")):
+            return llir
+        triple = target_triple
+    elif host_machine in {"x86_64", "AMD64"}:
+        triple = "x86_64-unknown-linux-gnu"
+    else:
         return llir
-    if host_machine not in {"x86_64", "AMD64"}:
-        return llir
+
+    opt = _get_llvm_bin_path("opt")
+    if bits := _fixed_vector_bits(options, triple, opt):
+        llir = _prefer_vector_width(llir, bits)
 
     if getattr(options, "allow_fp_reassoc", False):
         # Per-kernel opt-in for reduction-heavy code whose numerical contract
@@ -681,24 +795,14 @@ def _optimize_llir(llir: str, options=None):
         src_path = os.path.join(tmpdir, "kernel.ll")
         dst_path = os.path.join(tmpdir, "kernel-opt.ll")
         Path(src_path).write_text(llir)
-        command = [_get_llvm_bin_path("opt"), "-O3"]
-        if host_machine in {"x86_64", "AMD64"}:
-            command.extend(
-                [
-                    "-mtriple=x86_64-unknown-linux-gnu",
-                    "-mcpu=native",
-                    "-vector-library=LIBMVEC",
-                ]
-            )
+        command = [opt, "-O3", f"-mtriple={triple}"]
+        if target_triple:
+            if cpu := getattr(options, "target_cpu", None):
+                command.append(f"-mcpu={cpu}")
+            if features := getattr(options, "target_features", None):
+                command.append(f"-mattr={features}")
         else:
-            command.extend(
-                [
-                    "-mtriple=riscv64-unknown-linux-gnu",
-                    f"-mattr={DEFAULT_LLC_FEATURES}",
-                    "-riscv-v-vector-bits-min=128",
-                    "-riscv-v-vector-bits-max=128",
-                ]
-            )
+            command.extend(["-mcpu=native", "-vector-library=LIBMVEC"])
         command.extend(["-S", src_path, "-o", dst_path])
         subprocess.check_call(command)
         _dump_ir_if_needed([dst_path])
@@ -943,15 +1047,29 @@ def _llir_to_bin(llir: str, metadata, options=None):
             # Without explicitly enabling +f,+d, llc defaults to soft-float, causing
             # "can't link soft-float modules with double-float modules" linker errors.
             target_triple = getattr(options, "target_triple", None)
-            if target_triple:
+            if target_triple and target_triple.startswith(
+                ("x86_64", "aarch64", "arm64")
+            ):
+                llc_args.append(f"-mtriple={target_triple}")
+                if cpu := options.target_cpu:
+                    llc_args.append(f"-mcpu={cpu}")
+                if features := options.target_features:
+                    llc_args.append(f"-mattr={features}")
+            elif target_triple:
                 toolchain = replace(
                     RiscvToolchain.from_env(),
                     triple=target_triple,
-                    llc_features=options.target_features,
+                    llc_features=(
+                        _riscv_target_features(options)
+                        if "riscv" in target_triple
+                        else options.target_features
+                    ),
                 )
                 llc_args = toolchain.llc_command(llc_path, src_path, dst_path)
                 # Match the O3 middle end above with O3 code generation.
                 llc_args.insert(2, "-O3")
+                if "riscv" in target_triple:
+                    llc_args.extend(_riscv_tune_args(options))
             elif platform.machine() == "riscv64":
                 # Buffer deallocation can emit free for stack-backed memrefs.
                 llir = _remove_invalid_stack_frees(llir)
@@ -1010,12 +1128,17 @@ class CPUOptions:
     instrumentation_mode: str = ""
     fpsan_homomorphic_casts: bool = False
     target_triple: str = None
+    target_tune: str | None = None
     target_features: str = None
+    target_cpu: str | None = None
     openmp_num_threads: int = 0
     allow_fp_reassoc: bool = False
+    target_vector_bits: int | None = None
 
     def __post_init__(self):
-        pass
+        bits = self.target_vector_bits
+        if bits is not None and (bits < 32 or bits & (bits - 1)):
+            raise ValueError("target_vector_bits must be a power of two >= 32")
 
     def hash(self):
         key = "_".join([f"{name}-{val}" for name, val in self.__dict__.items()])
@@ -1052,8 +1175,16 @@ class CPUBackend(BaseBackend):
             or args.get("target_triple")
         ):
             toolchain = RiscvToolchain.from_env()
-            args.setdefault("target_triple", toolchain.triple)
-            args.setdefault("target_features", toolchain.llc_features)
+            triple = args.get("target_triple") or toolchain.triple
+            args["target_triple"] = triple
+            if not triple.startswith(("x86_64", "aarch64", "arm64")):
+                args.setdefault("target_features", toolchain.llc_features)
+        if args.get("target_tune") and (
+            "riscv" not in (args.get("target_triple") or "")
+            or _use_ime_pipeline()
+            or _get_sanitizer_type()
+        ):
+            raise ValueError("target_tune requires an explicit RISC-V LLVM target")
         return CPUOptions(**args)
 
     def get_codegen_implementation(self, options):
