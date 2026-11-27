@@ -370,7 +370,7 @@ from .select_scatter import select_scatter
 from .selu import selu
 from .selu_ import selu_
 from .sgn_ import sgn_
-from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from .sigmoid import sigmoid, sigmoid_backward
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
@@ -767,6 +767,66 @@ from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe
 from .sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from .sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from .to_sparse_semi_structured import to_sparse_semi_structured
+from .acosh import acosh, acosh_out
+from .acosh_ import acosh_
+from .amin import amin
+from .arccos import arccos
+from .arcsin import arcsin
+from .arctanh import arctanh
+from .argwhere import argwhere
+from .asin import asin
+from .atanh import atanh
+from .atanh_ import atanh_
+from .bartlett_window import bartlett_window
+from .binary_cross_entropy import binary_cross_entropy
+from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
+from .bitwise_xor import (
+    bitwise_xor_scalar,
+    bitwise_xor_scalar_,
+    bitwise_xor_scalar_tensor,
+    bitwise_xor_tensor,
+    bitwise_xor_tensor_,
+)
+from .blackman_window import blackman_window
+from .copysign_ import copysign_
+from .deg2rad import deg2rad
+from .fix_ import fix_
+from .fmax import fmax, fmax_out
+from .frac_ import frac_
+from .frobenius_norm import frobenius_norm
+from .gcd_ import gcd_
+from .hamming_window import hamming_window
+from .hardshrink import hardshrink, hardshrink_out
+from .hardsigmoid_ import hardsigmoid_
+from .hardswish import hardswish, hardswish_out
+from .hardtanh import hardtanh, hardtanh_out
+from .hardtanh_ import hardtanh_
+from .heaviside import heaviside, heaviside_out
+from .heaviside_ import heaviside_
+from .huber_loss import huber_loss
+from .kaiser_window import kaiser_window
+from .kl_div import kl_div
+from .l1_loss import l1_loss
+from .lcm import lcm
+from .log1p import log1p
+from .log2 import log2
+from .log_sigmoid_forward import log_sigmoid_forward
+from .logaddexp2 import logaddexp2, logaddexp2_out
+from .mish import mish
+from .mish_ import mish_
+from .nan_to_num_ import nan_to_num_
+from .nanmean import nanmean
+from .nansum import nansum
+from .negative_ import negative_
+from .nextafter import nextafter
+from .nextafter_ import nextafter_
+from .norm import norm
+from .rad2deg import rad2deg
+from .relu6_ import relu6_
+from .sigmoid_ import sigmoid_
+from .sign import sign
+from .sinc import sinc
+from .std_mean import std_mean
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
@@ -1605,4 +1665,68 @@ __all__ = [
     "sparse_bsr_tensor_unsafe",
     "sparse_csc_tensor_unsafe",
     "to_sparse_semi_structured",
+    "acosh",
+    "acosh_",
+    "acosh_out",
+    "amin",
+    "arccos",
+    "arcsin",
+    "arctanh",
+    "argwhere",
+    "asin",
+    "atanh",
+    "atanh_",
+    "bartlett_window",
+    "binary_cross_entropy",
+    "binary_cross_entropy_with_logits",
+    "bitwise_xor_scalar",
+    "bitwise_xor_scalar_",
+    "bitwise_xor_scalar_tensor",
+    "bitwise_xor_tensor",
+    "bitwise_xor_tensor_",
+    "blackman_window",
+    "copysign_",
+    "deg2rad",
+    "fix_",
+    "fmax",
+    "fmax_out",
+    "frac_",
+    "frobenius_norm",
+    "gcd_",
+    "hamming_window",
+    "hardshrink",
+    "hardshrink_out",
+    "hardsigmoid_",
+    "hardswish",
+    "hardswish_out",
+    "hardtanh",
+    "hardtanh_",
+    "hardtanh_out",
+    "heaviside",
+    "heaviside_",
+    "heaviside_out",
+    "huber_loss",
+    "kaiser_window",
+    "kl_div",
+    "l1_loss",
+    "lcm",
+    "log1p",
+    "log2",
+    "log_sigmoid_forward",
+    "logaddexp2",
+    "logaddexp2_out",
+    "mish",
+    "mish_",
+    "nan_to_num_",
+    "nanmean",
+    "nansum",
+    "negative_",
+    "nextafter",
+    "nextafter_",
+    "norm",
+    "rad2deg",
+    "relu6_",
+    "sign",
+    "sinc",
+    "std_mean",
 ]
