@@ -4,6 +4,8 @@ from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._chunk_cat import chunk_cat
+from ._conj_copy import _conj_copy, _conj_copy_out
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -25,10 +27,21 @@ from ._is_any_true import _is_any_true
 from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from ._nested_sum_backward import _nested_sum_backward
+from ._new_zeros_with_same_feature_meta import _new_zeros_with_same_feature_meta
+from ._pad_circular import _pad_circular
+from ._pad_enum import _pad_enum
+from ._pad_packed_sequence import _pad_packed_sequence
 from ._philox_normal_ import _philox_normal_
+from ._reshape_alias_copy import _reshape_alias_copy
+from ._reshape_copy import _reshape_copy
+from ._reshape_from_tensor import _reshape_from_tensor
+from ._resize_output import _resize_output, _resize_output_
+from ._rowwise_prune import _rowwise_prune
 from ._safe_softmax import _safe_softmax
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._stack import _stack
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from ._weight_norm import _weight_norm
@@ -55,11 +68,14 @@ from .arcsinh_ import arcsinh_
 from .arctanh_ import arctanh_
 from .argmax import argmax
 from .argmin import argmin
+from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .asinh import asinh, asinh_out
 from .asinh_ import asinh_
 from .assert_async import _assert_async
 from .atan import atan, atan_
 from .atan2 import atan2, atan2_out
+from .atleast_1d import atleast_1d
+from .atleast_3d import atleast_3d
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -97,12 +113,20 @@ from .bitwise_or import (
     bitwise_or_tensor_,
 )
 from .bitwise_right_shift import bitwise_right_shift
+from .block_diag import block_diag
 from .bmm import bmm, bmm_out
 from .cartesian_prod import run as cartesian_prod
+from .cast_Byte import cast_Byte
+from .cast_Char import cast_Char
+from .cast_Double import cast_Double
+from .cast_Float import cast_Float
+from .cast_Long import cast_Long
+from .cast_Short import cast_Short
 from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .channel_shuffle import channel_shuffle
 from .clamp import (
     clamp,
     clamp_,
@@ -112,7 +136,9 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .clone import clone
 from .col2im import col2im
+from .column_stack import column_stack, column_stack_out
 from .combinations import combinations
 from .concatenate import concatenate
 from .conj_physical import conj_physical
@@ -136,9 +162,12 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumulative_trapezoid import cumulative_trapezoid
 from .diag import diag
 from .diag_embed import diag_embed
+from .diagflat import diagflat
 from .diagonal import diagonal_backward
+from .diagonal_copy import diagonal_copy
 from .diff import diff
 from .digamma_ import digamma_
+from .dim_arange import _dim_arange
 from .dist import dist
 from .div import (
     div_mode,
@@ -153,9 +182,12 @@ from .div import (
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
+from .dstack import dstack
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
+from .empty import empty
+from .empty_permuted import empty_permuted
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
@@ -173,13 +205,18 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .fill_diagonal_ import fill_diagonal_
+from .flatten_dense_tensors import flatten_dense_tensors
 from .flip import flip
+from .fliplr import fliplr
+from .flipud import flipud
 from .floor_ import floor_
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fp8_matmul import fp8_matmul
 from .full import full
 from .full_like import full_like
+from .fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
@@ -216,6 +253,7 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .is_same_size import is_same_size
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -251,10 +289,12 @@ from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
+from .make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -282,11 +322,15 @@ from .nanquantile import (
     nanquantile_scalar,
     nanquantile_scalar_out,
 )
+from .narrow_copy import narrow_copy
+from .native_channel_shuffle import native_channel_shuffle
 from .native_group_norm import native_group_norm
 from .native_norm import native_norm
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .new_full import new_full
+from .new_ones import new_ones
+from .new_zeros import new_zeros, new_zeros_out
 from .nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from .nllloss import (
     nll_loss2d_backward,
@@ -307,11 +351,13 @@ from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .pad_sequence import pad_sequence
 from .pdist import pdist
 from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from .permute_copy import permute_copy
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
@@ -331,9 +377,14 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad1d_backward import reflection_pad1d_backward
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from .reflection_pad2d_backward import reflection_pad2d_backward
+from .reflection_pad3d import reflection_pad3d, reflection_pad3d_out
+from .reflection_pad3d_backward import reflection_pad3d_backward
 from .relu import relu, relu_
 from .relu6 import relu6
 from .renorm import renorm
@@ -345,16 +396,28 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad1d import replication_pad1d, replication_pad1d_out
+from .replication_pad1d_backward import replication_pad1d_backward
+from .replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
 from .replication_pad3d import replication_pad3d
+from .replication_pad3d_backward import replication_pad3d_backward
+from .reshape_as import reshape_as
+from .resize import resize, resize_
+from .resize_as import resize_as, resize_as_
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .roll import roll
+from .rot90 import rot90
 from .round import round, round_, round_out
+from .row_stack import row_stack, row_stack_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_scalar, rsub_tensor
+from .scalar_tensor import scalar_tensor
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
@@ -366,6 +429,7 @@ from .segment_reduce import (
     segment_reduce_out,
 )
 from .select_backward import select_backward
+from .select_copy import select_copy
 from .select_scatter import select_scatter
 from .selu import selu
 from .selu_ import selu_
@@ -376,6 +440,7 @@ from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinh_ import sinh_
 from .slice_backward import slice_backward
+from .slice_copy import slice_copy, slice_copy_out
 from .slice_scatter import slice_scatter
 from .smooth_l1_loss import (
     smooth_l1_loss,
@@ -393,10 +458,14 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
+from .spdiags import spdiags
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
+from .split_copy import split_copy
+from .split_with_sizes_copy import split_with_sizes_copy
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
+from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -411,11 +480,14 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .transpose_copy import transpose_copy
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
 from .triu import triu, triu_
+from .unbind_copy import unbind_copy
 from .unfold_backward import unfold_backward
+from .unfold_copy import unfold_copy
 from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
@@ -431,6 +503,9 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy
+from .view_as_real_copy import view_as_real_copy
+from .view_copy import view_copy
 from .vstack import vstack
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .weightnorm import (
@@ -781,11 +856,16 @@ __all__ = [
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
+    "_conj_copy",
+    "_conj_copy_out",
     "_conv_depthwise2d",
+    "_dim_arange",
     "_functional_sym_constrain_range_for_size",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
+    "_fw_primal_copy",
+    "_fw_primal_copy_out",
     "_histogramdd_from_bin_cts",
     "_histogramdd_from_bin_cts_out",
     "_histogramdd_from_bin_tensors",
@@ -795,15 +875,30 @@ __all__ = [
     "_is_any_true",
     "_logcumsumexp",
     "_logcumsumexp_out",
+    "_make_dual_copy",
+    "_make_dual_copy_out",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
+    "_neg_view_copy",
+    "_neg_view_copy_out",
     "_nested_sum_backward",
+    "_new_zeros_with_same_feature_meta",
+    "_pad_circular",
+    "_pad_enum",
+    "_pad_packed_sequence",
     "_philox_normal_",
+    "_reshape_alias_copy",
+    "_reshape_copy",
+    "_reshape_from_tensor",
+    "_resize_output",
+    "_resize_output_",
+    "_rowwise_prune",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_stack",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
@@ -848,6 +943,8 @@ __all__ = [
     "arctanh_",
     "argmax",
     "argmin",
+    "as_strided_copy",
+    "as_strided_copy_out",
     "asinh",
     "asinh_",
     "asinh_out",
@@ -855,6 +952,8 @@ __all__ = [
     "atan2",
     "atan2_out",
     "atan_",
+    "atleast_1d",
+    "atleast_3d",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
@@ -884,9 +983,16 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bitwise_right_shift",
+    "block_diag",
     "bmm",
     "bmm_out",
     "cartesian_prod",
+    "cast_Byte",
+    "cast_Char",
+    "cast_Double",
+    "cast_Float",
+    "cast_Long",
+    "cast_Short",
     "cat",
     "cat_out",
     "cdist",
@@ -895,6 +1001,8 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "channel_shuffle",
+    "chunk_cat",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -903,7 +1011,10 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
+    "column_stack",
+    "column_stack_out",
     "combinations",
     "concatenate",
     "conj_physical",
@@ -934,7 +1045,9 @@ __all__ = [
     "cumulative_trapezoid",
     "diag",
     "diag_embed",
+    "diagflat",
     "diagonal_backward",
+    "diagonal_copy",
     "diff",
     "digamma_",
     "dist",
@@ -943,12 +1056,15 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dstack",
     "elu",
     "elu_",
     "elu_backward",
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
+    "empty",
+    "empty_permuted",
     "eq",
     "eq_scalar",
     "equal",
@@ -967,6 +1083,7 @@ __all__ = [
     "eye_m",
     "feature_dropout",
     "feature_dropout_",
+    "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
@@ -976,7 +1093,10 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
+    "flatten_dense_tensors",
     "flip",
+    "fliplr",
+    "flipud",
     "floor_",
     "floor_divide",
     "floor_divide_",
@@ -1034,6 +1154,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "is_same_size",
     "isclose",
     "isfinite",
     "isin",
@@ -1090,6 +1211,7 @@ __all__ = [
     "masked_scatter",
     "masked_scatter_",
     "masked_select",
+    "masked_select_backward",
     "max",
     "max_dim",
     "max_pool2d_backward",
@@ -1119,6 +1241,8 @@ __all__ = [
     "nanquantile_out",
     "nanquantile_scalar",
     "nanquantile_scalar_out",
+    "narrow_copy",
+    "native_channel_shuffle",
     "native_group_norm",
     "native_norm",
     "ne",
@@ -1126,6 +1250,9 @@ __all__ = [
     "neg",
     "neg_",
     "new_full",
+    "new_ones",
+    "new_zeros",
+    "new_zeros_out",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
@@ -1144,8 +1271,10 @@ __all__ = [
     "ones",
     "ones_like",
     "pad",
+    "pad_sequence",
     "pdist",
     "per_token_group_quant_fp8",
+    "permute_copy",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
@@ -1166,12 +1295,18 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "ravel",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
+    "reflection_pad1d_backward",
     "reflection_pad1d_out",
     "reflection_pad2d",
+    "reflection_pad2d_backward",
     "reflection_pad2d_out",
+    "reflection_pad3d",
+    "reflection_pad3d_backward",
+    "reflection_pad3d_out",
     "relu",
     "relu6",
     "relu_",
@@ -1184,8 +1319,17 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
     "replication_pad3d",
+    "replication_pad3d_backward",
+    "reshape_as",
+    "resize",
+    "resize_",
+    "resize_as",
+    "resize_as_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -1193,14 +1337,18 @@ __all__ = [
     "rms_norm_forward",
     "rms_norm_w8a16_fp8",
     "roll",
+    "rot90",
     "round",
     "round_",
     "round_out",
+    "row_stack",
+    "row_stack_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1213,6 +1361,7 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
@@ -1229,6 +1378,8 @@ __all__ = [
     "sin_",
     "sinh_",
     "slice_backward",
+    "slice_copy",
+    "slice_copy_out",
     "slice_scatter",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
@@ -1246,15 +1397,19 @@ __all__ = [
     "sort_stable",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
+    "spdiags",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "split_copy",
+    "split_with_sizes_copy",
     "sqrt",
     "sqrt_",
     "square",
     "square_",
     "square_out",
+    "squeeze_copy",
     "stack",
     "std",
     "sub",
@@ -1279,6 +1434,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "transpose_copy",
     "trapezoid_x",
     "trapz",
     "tril",
@@ -1289,7 +1445,9 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "unbind_copy",
     "unfold_backward",
+    "unfold_copy",
     "uniform_",
     "unique_consecutive",
     "upsample_bicubic2d",
@@ -1304,6 +1462,9 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_as_complex_copy",
+    "view_as_real_copy",
+    "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_differentiable_backward",
