@@ -50,10 +50,15 @@ def _pad_packed_sequence_kernel(
     # padded; t >= num_steps is always padding. The active flag is a scalar
     # predicate (no data-dependent branches), so both paths are masked selects.
     step_active = t < num_steps
-    bs_t = tl.load(batch_sizes + t, mask=step_active, other=0)
+    # This CPU backend dereferences masked lanes' load addresses; clamp t
+    # so the padded rows (t >= num_steps) never read past the
+    # batch_sizes/time_offsets tables (the garbage offsets previously
+    # drove wild data reads that crashed the riscv64 CI workers).
+    t_safe = tl.minimum(t, num_steps - 1)
+    bs_t = tl.load(batch_sizes + t_safe, mask=step_active, other=0)
     row_active = step_active & (b < bs_t)
 
-    src_row = tl.load(time_offsets + t, mask=row_active, other=0) + b
+    src_row = tl.load(time_offsets + t_safe, mask=row_active, other=0) + b
     src_offset = src_row * feature_size
     for j in tl.static_range(NUM_TILES):
         cols = j * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
