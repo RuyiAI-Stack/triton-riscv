@@ -153,6 +153,94 @@ path rather than a tuned CPU math library implementation.
 For ELF/QEMU execution, use the workflow in
 [`docs/06-RISCV-QEMU.md`](06-RISCV-QEMU.md).
 
+### Profile a single `index_select` call in Perfetto
+
+Use this when a benchmark shows a slow input and you want to distinguish
+output allocation from the kernel launch. Run the commands on the machine
+that executes the Python benchmark. For a native RVV trial, this means a
+RISC-V Linux machine with a working PyTorch and Triton-RISCV CPU backend.
+If you cross-compile on a workstation and only run a standalone ELF on the
+board, use the ELF workflow linked above and collect timing on the board.
+
+From the repository root, after the environment setup above:
+
+```sh
+run_dir=$(mktemp -d)
+echo "Writing benchmark files to $run_dir"
+python python/performance/run_all.py index_select --torch-threads 1 \
+  --csv "$run_dir/baseline.csv" &&
+PYTHONPATH="$PWD/python/performance${PYTHONPATH:+:$PYTHONPATH}" \
+  python python/performance/profile_index_select.py --torch-threads 1 \
+    --output "$run_dir/trace.json"
+```
+
+Use the baseline CSV for speed comparisons because recording adds overhead. The
+second command checks the Triton output against PyTorch and records separate
+correctness, warmup and measurement calls. If the board has no browser,
+copy `trace.json` to your workstation. In [Perfetto](https://ui.perfetto.dev),
+choose **Open trace file** and select it.
+
+Select a Triton call and check **Arguments** for the input (`case`) and
+`phase = measure`, then press **F** to zoom to the selection. Compare the
+output allocation and kernel launch nested inside that call. The parent
+already includes both children. The launch interval measures host elapsed
+time, including runtime overhead. Measuring RVV instruction cycles requires
+separate hardware counters.
+
+To compare the 20 measured calls for the middle input without stepping
+through the warmup calls, open **Query (SQL)** and run this query. The rows
+report mean elapsed host time per call in microseconds.
+
+```sql
+SELECT extract_arg(arg_set_id, 'args.scope') AS stage,
+       count(*) AS calls, round(avg(dur) / 1000.0, 3) AS mean_us
+FROM slice
+WHERE extract_arg(arg_set_id, 'args.provider') = 'triton-riscv'
+  AND extract_arg(arg_set_id, 'args.phase') = 'measure'
+  AND extract_arg(arg_set_id, 'args.case') =
+      'bench_index_select(rows=512, cols=256, picks=256)'
+GROUP BY stage;
+```
+
+### Find the MLIR for a recorded kernel launch
+
+To capture the compiler output alongside the host trace, use `--bundle` in
+place of `--output`. From the repository root, choose a new directory name:
+
+```sh
+PYTHONPATH="$PWD/python/performance${PYTHONPATH:+:$PYTHONPATH}" \
+  python python/performance/profile_index_select.py --bundle index-select-bundle
+```
+
+Open `index-select-bundle/trace.json` in Perfetto. In **Query (SQL)**, run the
+following to find the first measured kernel launch for the middle input:
+
+```sql
+SELECT extract_arg(arg_set_id, 'args.kernel_name') AS kernel_name,
+       extract_arg(arg_set_id, 'args.kernel_hash') AS kernel_hash,
+       extract_arg(arg_set_id, 'args.ttir_file') AS ttir_file,
+       extract_arg(arg_set_id, 'args.ttsharedir_file') AS ttsharedir_file
+FROM slice
+WHERE extract_arg(arg_set_id, 'args.scope') = 'kernel_call'
+  AND extract_arg(arg_set_id, 'args.phase') = 'measure'
+  AND extract_arg(arg_set_id, 'args.iteration') = 1
+  AND extract_arg(arg_set_id, 'args.case') =
+      'bench_index_select(rows=512, cols=256, picks=256)';
+```
+
+The single result identifies the compiled kernel returned by that launch.
+The same fields appear under **Arguments** on the kernel-call slice.
+`kernel_hash` is Triton's compilation cache key. The two file paths are
+relative to the bundle directory: open `ttir_file` for the Triton IR or
+`ttsharedir_file` for the MLIR passed to Buddy for further lowering. Each file
+under `kernels/` is named with the SHA-256 of its contents; no cache-directory
+search is needed. To share a run, keep the directory together and review the IR
+for local source paths first.
+
+These files show what was compiled. The slice still times the whole launch
+on the Python host; it adds no instrumentation inside Buddy and does not
+measure individual MLIR operations or execution on a separate board.
+
 ## 6. Benchmark Coverage
 
 All files matching `python/performance/test_performance_*.py` use the common

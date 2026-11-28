@@ -1,12 +1,12 @@
+import benchmark
 import torch
-
 import triton
 import triton.language as tl
-import benchmark
 from triton.backends.triton_shared.driver import CPUDriver
 
-
 triton.runtime.driver.set_active(CPUDriver())
+
+INDEX_SELECT_CASES = ((256, 128, 128), (512, 256, 256), (1024, 512, 512))
 
 
 @triton.jit
@@ -30,11 +30,15 @@ def index_select_row_kernel(
             tl.store(output_ptr + pick * OUTPUT_STRIDE_M + col, value)
 
 
-def run_index_select(input_tensor, indices):
+def run_index_select(input_tensor, indices, *, allocate=None, launch=None):
     picks = indices.numel()
     cols = input_tensor.shape[1]
-    output = torch.empty((picks, cols), device="cpu", dtype=torch.float32)
-    index_select_row_kernel[(1,)](
+    if allocate is None:
+        allocate = torch.empty
+    output = allocate((picks, cols), device="cpu", dtype=torch.float32)
+    if launch is None:
+        launch = index_select_row_kernel[(1,)]
+    launch(
         input_tensor,
         output,
         indices,
@@ -47,7 +51,7 @@ def run_index_select(input_tensor, indices):
     return output
 
 
-def bench_index_select(rows, cols, picks):
+def make_index_select_inputs(rows, cols, picks):
     input_tensor = torch.arange(rows * cols, device="cpu", dtype=torch.float32).reshape(
         rows, cols
     )
@@ -56,6 +60,11 @@ def bench_index_select(rows, cols, picks):
     else:
         step = max((rows - 1) // (picks - 1), 1)
         indices = (torch.arange(picks, device="cpu") * step).to(torch.int64)
+    return input_tensor, indices
+
+
+def bench_index_select(rows, cols, picks):
+    input_tensor, indices = make_index_select_inputs(rows, cols, picks)
     benchmark.compare_providers(
         f"bench_index_select(rows={rows}, cols={cols}, picks={picks})",
         {
@@ -67,9 +76,5 @@ def bench_index_select(rows, cols, picks):
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for rows, cols, picks in [
-        (8 * 32, 4 * 32, 4 * 32),
-        (16 * 32, 8 * 32, 8 * 32),
-        (32 * 32, 16 * 32, 16 * 32),
-    ]:
+    for rows, cols, picks in INDEX_SELECT_CASES:
         bench_index_select(rows, cols, picks)
