@@ -39,6 +39,7 @@ def _ctc_loss_backward_kernel(
     c,
     states,
     BLOCK: tl.constexpr,
+    ZERO_INFINITY: tl.constexpr,
 ):
     lane = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     lmask = lane < n_lanes
@@ -93,6 +94,14 @@ def _ctc_loss_backward_kernel(
     # autograd (and aten's raw backward) return exactly zero there.
     iln = tl.load(il_ptr + n, mask=lmask, other=0).to(tl.int64)
     res = tl.where(t < iln, g * (sm - p), 0.0)
+    # Infinite loss (no valid CTC alignment): upstream and aten return
+    # NaN gradients on the valid input frames unless zero_infinity
+    # zeroes them.
+    inf_loss = nll_n == float("inf")
+    if ZERO_INFINITY:
+        res = tl.where(inf_loss, 0.0, res)
+    else:
+        res = tl.where(inf_loss & (t < iln), float("nan"), res)
     tl.store(out_ptr + lane, res.to(out_ptr.dtype.element_ty), mask=lmask)
 
 
@@ -105,8 +114,13 @@ def _ctc_loss_backward(
     neg_log_likelihood,
     log_alpha,
     blank=0,
+    zero_infinity=False,
 ):
-    """CTC backward returning grad_log_probs (T, N, C)."""
+    """CTC backward returning grad_log_probs (T, N, C).
+
+    Infinite losses get NaN gradients on the valid input frames
+    unless zero_infinity is set.
+    """
     lp = log_probs.contiguous()
     t_max, n, c = lp.shape
     il = torch.as_tensor(input_lengths, dtype=torch.long, device=lp.device).reshape(-1)
@@ -185,5 +199,6 @@ def _ctc_loss_backward(
         c,
         states,
         BLOCK=256,
+        ZERO_INFINITY=zero_infinity,
     )
     return out

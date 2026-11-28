@@ -89,3 +89,64 @@ def test_ctc_loss_backward_short_input_lengths():
     )
     assert bool(torch.isfinite(tri).all())
     torch.testing.assert_close(tri, ref, rtol=0.0, atol=1e-4)
+
+
+def test_ctc_loss_backward_infinite_loss():
+    # Two input frames cannot align the target [1, 1] (the repeated
+    # label needs a separating blank), so the loss is inf: the gradient
+    # is NaN on the valid input frames, and zero with zero_infinity.
+    T, N, C = 2, 1, 4
+    torch.manual_seed(0)
+    lp = torch.randn(T, N, C).log_softmax(2)
+    tg = torch.tensor([[1, 1]])
+    il = torch.tensor([T])
+    tl = torch.tensor([2])
+
+    nll, alpha = torch.ops.aten._ctc_loss(lp, tg, il.tolist(), tl.tolist(), 0, False)
+    assert nll.item() == float("inf")
+
+    lp_leaf = lp.detach().clone().requires_grad_(True)
+    loss = torch.nn.functional.ctc_loss(
+        lp_leaf, tg, il, tl, reduction="none", zero_infinity=False
+    )
+    loss.backward(torch.ones_like(loss))
+
+    tri = _ctc_loss_backward(
+        torch.ones(N), lp, tg, il.tolist(), tl.tolist(), nll, alpha, 0
+    )
+    assert bool(torch.isnan(tri).all())
+    torch.testing.assert_close(tri, lp_leaf.grad, equal_nan=True, rtol=0.0, atol=0.0)
+
+    zeroed = _ctc_loss_backward(
+        torch.ones(N), lp, tg, il.tolist(), tl.tolist(), nll, alpha, 0, True
+    )
+    assert bool((zeroed == 0).all())
+
+
+def test_ctc_loss_backward_mixed_infinite_and_finite():
+    # One sample without a valid alignment: only that sample gets NaN
+    # gradients; the finite sample and the padded tail frames keep
+    # their normal values.
+    T, N, C = 6, 2, 4
+    torch.manual_seed(7)
+    lp = torch.randn(T, N, C).log_softmax(2)
+    tg = torch.tensor([[1, 2], [1, 1]])
+    il = torch.tensor([6, 2])
+    tl = torch.tensor([2, 2])
+
+    nll, alpha = torch.ops.aten._ctc_loss(lp, tg, il.tolist(), tl.tolist(), 0, False)
+    assert bool(nll[0].isfinite()) and nll[1].item() == float("inf")
+
+    lp_leaf = lp.detach().clone().requires_grad_(True)
+    loss = torch.nn.functional.ctc_loss(
+        lp_leaf, tg, il, tl, reduction="none", zero_infinity=False
+    )
+    loss.backward(torch.ones_like(loss))
+
+    tri = _ctc_loss_backward(
+        torch.ones(N), lp, tg, il.tolist(), tl.tolist(), nll, alpha, 0
+    )
+    assert bool(torch.isnan(tri[:2, 1]).all())
+    assert bool((tri[2:, 1] == 0).all())
+    assert bool(torch.isfinite(tri[:, 0]).all())
+    torch.testing.assert_close(tri, lp_leaf.grad, rtol=0.0, atol=1e-4, equal_nan=True)
