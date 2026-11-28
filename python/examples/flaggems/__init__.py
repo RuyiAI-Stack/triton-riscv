@@ -767,6 +767,23 @@ from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe
 from .sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from .sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from .to_sparse_semi_structured import to_sparse_semi_structured
+from ._euclidean_dist import _euclidean_dist
+from .affine_grid_generator import affine_grid_generator
+from .conv_transpose1d import conv_transpose1d
+from .conv_transpose2d import conv_transpose2d
+from .ctc_loss import ctc_loss
+from .cudnn_convolution import cudnn_convolution
+from .fft import fft
+from .flash_api import mha_fwd
+from .fp8_mqa_logits import fp8_mqa_logits
+from .fp8_paged_mqa_logits import fp8_paged_mqa_logits
+from .index_copy_ import index_copy
+from .median import median, median_dim
+from .mm_streamk import mm_streamk
+from .poisson import poisson
+from .replication_pad2d import replication_pad2d, replication_pad2d_out
+from .scatter_reduce import scatter_reduce
+from .svd import svd
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
@@ -1605,4 +1622,23 @@ __all__ = [
     "sparse_bsr_tensor_unsafe",
     "sparse_csc_tensor_unsafe",
     "to_sparse_semi_structured",
+    "_euclidean_dist",
+    "affine_grid_generator",
+    "conv_transpose1d",
+    "conv_transpose2d",
+    "ctc_loss",
+    "cudnn_convolution",
+    "fft",
+    "fp8_mqa_logits",
+    "fp8_paged_mqa_logits",
+    "index_copy",
+    "median",
+    "median_dim",
+    "mha_fwd",
+    "mm_streamk",
+    "poisson",
+    "replication_pad2d",
+    "replication_pad2d_out",
+    "scatter_reduce",
+    "svd",
 ]
