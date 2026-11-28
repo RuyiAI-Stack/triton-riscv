@@ -268,3 +268,22 @@ def test_compute_linear_combination_triton_path(monkeypatch):
     torch.testing.assert_close(
         res, torch_clc(input, coefficients), rtol=1e-5, atol=1e-5
     )
+
+
+def test_compute_linear_combination_masked_lanes_stay_in_bounds():
+    # This CPU backend dereferences masked lanes' load addresses, so the
+    # lanes past the contraction length must not read past the tensors:
+    # garbage behind them used to leak into the result as NaN. The pools
+    # behind the sliced tensors are filled with NaN to pin the path.
+    nan_pool = torch.full((64,), float("nan"))
+    nan_pool[0] = 0.7
+    input = nan_pool[0:1]
+
+    coeff_pool = torch.full((16,), float("nan"))
+    coeff_pool[0] = 0.5
+    coeff_pool[1] = -0.3
+    coefficients = coeff_pool[0:2].view(2, 1)
+
+    res = _compute_linear_combination(input, coefficients)
+    assert bool(torch.isfinite(res).all())
+    torch.testing.assert_close(res, torch.tensor([0.35, -0.21]), rtol=1e-6, atol=1e-6)

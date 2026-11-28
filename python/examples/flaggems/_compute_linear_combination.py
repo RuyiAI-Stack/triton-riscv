@@ -92,12 +92,19 @@ def _compute_linear_combination_kernel(
         for kk in tl.static_range(0, BLOCK_K):
             k = k0 + kk
             k_mask = k < K
+            # This CPU backend dereferences masked lanes' load addresses
+            # (read-then-select); an out-of-bounds masked address is
+            # undefined and the garbage leaks into the select, so clamp
+            # every lane to the last valid contraction row.
+            k_safe = tl.minimum(k, K - 1)
             av = tl.load(
-                coeff_base + kk * COEFF_SK, mask=m_mask & k_mask, other=0.0
+                coeff_base + (k_safe - k0) * COEFF_SK,
+                mask=m_mask & k_mask,
+                other=0.0,
             ).to(tl.float32)
-            bv = tl.load(in_base + kk * IN_S0, mask=p_mask & k_mask, other=0.0).to(
-                tl.float32
-            )
+            bv = tl.load(
+                in_base + (k_safe - k0) * IN_S0, mask=p_mask & k_mask, other=0.0
+            ).to(tl.float32)
             acc += av[:, None] * bv[None, :]
         coeff_base += BLOCK_K * COEFF_SK
         in_base += BLOCK_K * IN_S0
