@@ -1,17 +1,134 @@
+from .__ilshift__ import __ilshift__
+from .__irshift__ import __irshift__
+from .__rshift__ import __rshift__, __rshift___out
+from .__xor__ import xor, xor_, xor_scalar, xor_scalar_, xor_scalar_tensor
 from ._aminmax import _aminmax, _aminmax_out
+from ._amp_foreach_non_finite_check_and_unscale_ import (
+    _amp_foreach_non_finite_check_and_unscale_,
+)
+from ._amp_update_scale_ import _amp_update_scale_
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._compute_linear_combination import (
+    _compute_linear_combination,
+    _compute_linear_combination_out,
+)
+from ._conj import _conj
+from ._foreach_binary import (
+    _foreach_copy,
+    _foreach_copy_,
+    _foreach_pow_ScalarAndTensor,
+    registered_wrappers,
+)
+from ._foreach_complex_math import (
+    c_acos,
+    c_asin,
+    c_atan,
+    c_cos,
+    c_cosh,
+    c_div,
+    c_exp,
+    c_expm1,
+    c_log,
+    c_log10,
+    c_log1p,
+    c_log2,
+    c_mul,
+    c_neg,
+    c_reciprocal,
+    c_rsqrt,
+    c_sigmoid,
+    c_sin,
+    c_sinh,
+    c_sqrt,
+    c_tan,
+    c_tanh,
+)
+from ._foreach_reduction import (
+    _foreach_max,
+    _foreach_norm,
+    _foreach_zero,
+    _foreach_zero_,
+)
+from ._foreach_unary import (
+    _foreach_abs,
+    _foreach_abs_,
+    _foreach_acos,
+    _foreach_acos_,
+    _foreach_asin,
+    _foreach_asin_,
+    _foreach_atan,
+    _foreach_atan_,
+    _foreach_ceil,
+    _foreach_ceil_,
+    _foreach_cos,
+    _foreach_cos_,
+    _foreach_cosh,
+    _foreach_cosh_,
+    _foreach_erf,
+    _foreach_erf_,
+    _foreach_erfc,
+    _foreach_erfc_,
+    _foreach_exp,
+    _foreach_exp_,
+    _foreach_expm1,
+    _foreach_expm1_,
+    _foreach_floor,
+    _foreach_floor_,
+    _foreach_frac,
+    _foreach_frac_,
+    _foreach_lgamma,
+    _foreach_lgamma_,
+    _foreach_log,
+    _foreach_log10,
+    _foreach_log10_,
+    _foreach_log1p,
+    _foreach_log1p_,
+    _foreach_log2,
+    _foreach_log2_,
+    _foreach_log_,
+    _foreach_neg,
+    _foreach_neg_,
+    _foreach_reciprocal,
+    _foreach_reciprocal_,
+    _foreach_round,
+    _foreach_round_,
+    _foreach_rsqrt,
+    _foreach_rsqrt_,
+    _foreach_sigmoid,
+    _foreach_sigmoid_,
+    _foreach_sign,
+    _foreach_sign_,
+    _foreach_sin,
+    _foreach_sin_,
+    _foreach_sinh,
+    _foreach_sinh_,
+    _foreach_sqrt,
+    _foreach_sqrt_,
+    _foreach_tan,
+    _foreach_tan_,
+    _foreach_tanh,
+    _foreach_tanh_,
+    _foreach_trunc,
+    _foreach_trunc_,
+)
+from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_adagrad_ import _fused_adagrad_
+from ._fused_adam import _fused_adam, _fused_adam_
+from ._fused_adamw_ import _fused_adamw, _fused_adamw_
+from ._fused_moving_avg_obs_fq_helper import _fused_moving_avg_obs_fq_helper
 from ._fused_rms_norm import (
     _fused_rms_norm,
     _fused_rms_norm_backward,
     _fused_rms_norm_forward,
 )
+from ._fused_sgd_ import _fused_sgd_
 from ._histogramdd_from_bin_cts import (
     _histogramdd_from_bin_cts,
     _histogramdd_from_bin_cts_out,
@@ -22,17 +139,26 @@ from ._histogramdd_from_bin_tensors import (
 )
 from ._is_all_true import _is_all_true
 from ._is_any_true import _is_any_true
+from ._list_to_tensor import _list_to_tensor
 from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out
+from ._masked_scale import _masked_scale
+from ._masked_softmax import _masked_softmax
+from ._masked_softmax_backward import _masked_softmax_backward
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_sum_backward import _nested_sum_backward
+from ._pdist_backward import _pdist_backward
+from ._pdist_forward import _pdist_forward
 from ._philox_normal_ import _philox_normal_
 from ._safe_softmax import _safe_softmax
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
+from ._unsafe_masked_index import _unsafe_masked_index
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from ._weight_norm import _weight_norm
 from ._weight_norm_differentiable_backward import weight_norm_differentiable_backward
+from ._wrapped_linear_prepack import _wrapped_linear_prepack
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
@@ -50,8 +176,11 @@ from .aminmax import aminmax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .arccosh import arccosh, arccosh_out
 from .arcsinh import arcsinh, arcsinh_out
 from .arcsinh_ import arcsinh_
+from .arctan2 import arctan2, arctan2_, arctan2_out
+from .arctan_ import arctan_
 from .arctanh_ import arctanh_
 from .argmax import argmax
 from .argmin import argmin
@@ -79,6 +208,7 @@ from .batch_norm_elemt import batch_norm_elemt
 from .batch_norm_stats import batch_norm_stats
 from .batch_norm_update_stats import batch_norm_update_stats
 from .bernoulli_ import bernoulli_
+from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -103,6 +233,8 @@ from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .chalf import chalf
+from .choose_qparams_optimized import choose_qparams_optimized
 from .clamp import (
     clamp,
     clamp_,
@@ -111,6 +243,7 @@ from .clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from .clamp_max import clamp_max, clamp_max_, clamp_max_out
 from .clip import clip, clip_
 from .col2im import col2im
 from .combinations import combinations
@@ -145,8 +278,6 @@ from .div import (
     div_mode_,
     floor_divide,
     floor_divide_,
-    remainder,
-    remainder_,
     true_divide,
     true_divide_,
     true_divide_out,
@@ -178,8 +309,10 @@ from .floor_ import floor_
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fp8_matmul import fp8_matmul
+from .frexp import frexp
 from .full import full
 from .full_like import full_like
+from .functional_assert_async import _functional_assert_async
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
@@ -201,6 +334,7 @@ from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hardswish_ import hardswish_
+from .hash_tensor import hash_tensor
 from .histc import histc
 from .histogram import histogram, histogram_bin_ct, histogram_bins_tensor
 from .histogramdd import histogramdd
@@ -216,17 +350,23 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .int_repr import int_repr
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
+from .isposinf import isposinf, isposinf_out
+from .isreal import isreal
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .less_equal import less_equal, less_equal_scalar
+from .less_equal_ import less_equal_, less_equal_scalar_
+from .lift_fresh import lift_fresh
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from .linalg_norm import linalg_norm
 from .linspace import linspace
@@ -251,6 +391,7 @@ from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
+from .mT import mT
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -303,10 +444,12 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .numpy_T import numpy_T
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .pairwise_distance import pairwise_distance
 from .pdist import pdist
 from .per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
@@ -331,11 +474,13 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .range import range
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .relu6 import relu6
+from .remainder import remainder, remainder_
 from .renorm import renorm
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -411,14 +556,18 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .trace_backward import trace_backward
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
 from .triu import triu, triu_
+from .trunc_ import trunc, trunc_, trunc_out
 from .unfold_backward import unfold_backward
 from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
+from .unsafe_index import unsafe_index
+from .unsafe_index_put import unsafe_index_put, unsafe_index_put_impl
 from .upsample_bicubic2d import upsample_bicubic2d
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -768,11 +917,42 @@ from .sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from .sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from .to_sparse_semi_structured import to_sparse_semi_structured
 
+from .and_tensor import and_tensor
+from .arccosh_ import arccosh_
+from .cosine_similarity import cosine_similarity
+from .float_power_ import (
+    float_power_tensor_tensor,
+    float_power_tensor_scalar,
+    float_power_scalar_tensor,
+    float_power_tensor_tensor_out,
+    float_power_tensor_scalar_out,
+    float_power_scalar_tensor_out,
+)
+from .fmod_ import fmod, fmod_
+from .ldexp import ldexp, ldexp_out
+from .ldexp_ import ldexp_
+from .not_equal import not_equal, not_equal_scalar
+from .or_tensor import or_tensor
+from .xlogy import (
+    xlogy,
+    xlogy_out,
+    xlogy_tensor_scalar,
+    xlogy_tensor_scalar_out,
+    xlogy_scalar_tensor,
+    xlogy_scalar_tensor_out,
+)
+
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "__ilshift__",
+    "__irshift__",
+    "__rshift__",
+    "__rshift___out",
     "_aminmax",
     "_aminmax_out",
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_amp_update_scale_",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
@@ -781,11 +961,90 @@ __all__ = [
     "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
+    "_compute_linear_combination",
+    "_compute_linear_combination_out",
+    "_conj",
     "_conv_depthwise2d",
+    "_foreach_abs",
+    "_foreach_abs_",
+    "_foreach_acos",
+    "_foreach_acos_",
+    "_foreach_asin",
+    "_foreach_asin_",
+    "_foreach_atan",
+    "_foreach_atan_",
+    "_foreach_ceil",
+    "_foreach_ceil_",
+    "_foreach_copy",
+    "_foreach_copy_",
+    "_foreach_cos",
+    "_foreach_cos_",
+    "_foreach_cosh",
+    "_foreach_cosh_",
+    "_foreach_erf",
+    "_foreach_erf_",
+    "_foreach_erfc",
+    "_foreach_erfc_",
+    "_foreach_exp",
+    "_foreach_exp_",
+    "_foreach_expm1",
+    "_foreach_expm1_",
+    "_foreach_floor",
+    "_foreach_floor_",
+    "_foreach_frac",
+    "_foreach_frac_",
+    "_foreach_lgamma",
+    "_foreach_lgamma_",
+    "_foreach_log",
+    "_foreach_log10",
+    "_foreach_log10_",
+    "_foreach_log1p",
+    "_foreach_log1p_",
+    "_foreach_log2",
+    "_foreach_log2_",
+    "_foreach_log_",
+    "_foreach_max",
+    "_foreach_neg",
+    "_foreach_neg_",
+    "_foreach_norm",
+    "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal",
+    "_foreach_reciprocal_",
+    "_foreach_round",
+    "_foreach_round_",
+    "_foreach_rsqrt",
+    "_foreach_rsqrt_",
+    "_foreach_sigmoid",
+    "_foreach_sigmoid_",
+    "_foreach_sign",
+    "_foreach_sign_",
+    "_foreach_sin",
+    "_foreach_sin_",
+    "_foreach_sinh",
+    "_foreach_sinh_",
+    "_foreach_sqrt",
+    "_foreach_sqrt_",
+    "_foreach_tan",
+    "_foreach_tan_",
+    "_foreach_tanh",
+    "_foreach_tanh_",
+    "_foreach_trunc",
+    "_foreach_trunc_",
+    "_foreach_zero",
+    "_foreach_zero_",
+    "_functional_assert_async",
+    "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adagrad_",
+    "_fused_adam",
+    "_fused_adam_",
+    "_fused_adamw",
+    "_fused_adamw_",
+    "_fused_moving_avg_obs_fq_helper",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
+    "_fused_sgd_",
     "_histogramdd_from_bin_cts",
     "_histogramdd_from_bin_cts_out",
     "_histogramdd_from_bin_tensors",
@@ -793,23 +1052,32 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_is_any_true",
+    "_list_to_tensor",
     "_logcumsumexp",
     "_logcumsumexp_out",
+    "_masked_scale",
+    "_masked_softmax",
+    "_masked_softmax_backward",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_sum_backward",
+    "_pdist_backward",
+    "_pdist_forward",
     "_philox_normal_",
     "_safe_softmax",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_transform_bias_rescale_qkv",
     "_unique2",
+    "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
     "_weight_norm",
+    "_wrapped_linear_prepack",
     "abs",
     "abs_",
     "absolute",
@@ -836,15 +1104,23 @@ __all__ = [
     "allclose",
     "amax",
     "aminmax",
+    "and_tensor",
     "angle",
     "any",
     "any_dim",
     "any_dims",
     "arange",
     "arange_start",
+    "arccosh",
+    "arccosh_",
+    "arccosh_out",
     "arcsinh",
     "arcsinh_",
     "arcsinh_out",
+    "arctan2",
+    "arctan2_",
+    "arctan2_out",
+    "arctan_",
     "arctanh_",
     "argmax",
     "argmin",
@@ -869,6 +1145,7 @@ __all__ = [
     "batch_norm_stats",
     "batch_norm_update_stats",
     "bernoulli_",
+    "binary_cross_entropy_backward",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -886,6 +1163,28 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
+    "c_acos",
+    "c_asin",
+    "c_atan",
+    "c_cos",
+    "c_cosh",
+    "c_div",
+    "c_exp",
+    "c_expm1",
+    "c_log",
+    "c_log10",
+    "c_log1p",
+    "c_log2",
+    "c_mul",
+    "c_neg",
+    "c_reciprocal",
+    "c_rsqrt",
+    "c_sigmoid",
+    "c_sin",
+    "c_sinh",
+    "c_sqrt",
+    "c_tan",
+    "c_tanh",
     "cartesian_prod",
     "cat",
     "cat_out",
@@ -895,8 +1194,13 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chalf",
+    "choose_qparams_optimized",
     "clamp",
     "clamp_",
+    "clamp_max",
+    "clamp_max_",
+    "clamp_max_out",
     "clamp_min",
     "clamp_min_",
     "clamp_tensor",
@@ -922,6 +1226,7 @@ __all__ = [
     "cosh",
     "cosh_",
     "cosh_out",
+    "cosine_similarity",
     "count_nonzero",
     "cov",
     "cudnn_batch_norm_backward",
@@ -977,16 +1282,25 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_scalar_tensor",
+    "float_power_scalar_tensor_out",
+    "float_power_tensor_scalar",
+    "float_power_tensor_scalar_out",
+    "float_power_tensor_tensor",
+    "float_power_tensor_tensor_out",
     "floor_",
     "floor_divide",
     "floor_divide_",
     "fmin",
     "fmin_out",
+    "fmod",
+    "fmod_",
     "fmod_scalar",
     "fmod_scalar_",
     "fmod_tensor",
     "fmod_tensor_",
     "fp8_matmul",
+    "frexp",
     "full",
     "full_like",
     "gather",
@@ -1017,6 +1331,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
+    "hash_tensor",
     "histc",
     "histogram",
     "histogram_bin_ct",
@@ -1034,6 +1349,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "int_repr",
     "isclose",
     "isfinite",
     "isin",
@@ -1041,9 +1357,15 @@ __all__ = [
     "isnan",
     "isneginf",
     "isneginf_out",
+    "isposinf",
+    "isposinf_out",
+    "isreal",
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "ldexp",
+    "ldexp_",
+    "ldexp_out",
     "le",
     "le_scalar",
     "leaky_relu",
@@ -1053,6 +1375,11 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "less_equal",
+    "less_equal_",
+    "less_equal_scalar",
+    "less_equal_scalar_",
+    "lift_fresh",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linalg_norm",
@@ -1084,6 +1411,7 @@ __all__ = [
     "logsumexp",
     "lt",
     "lt_scalar",
+    "mT",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
@@ -1140,10 +1468,15 @@ __all__ = [
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
+    "not_equal",
+    "not_equal_scalar",
+    "numpy_T",
     "one_hot",
     "ones",
     "ones_like",
+    "or_tensor",
     "pad",
+    "pairwise_distance",
     "pdist",
     "per_token_group_quant_fp8",
     "pixel_shuffle",
@@ -1166,12 +1499,14 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "range",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
     "reflection_pad1d_out",
     "reflection_pad2d",
     "reflection_pad2d_out",
+    "registered_wrappers",
     "relu",
     "relu6",
     "relu_",
@@ -1279,6 +1614,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "trace_backward",
     "trapezoid_x",
     "trapz",
     "tril",
@@ -1289,9 +1625,15 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "trunc",
+    "trunc_",
+    "trunc_out",
     "unfold_backward",
     "uniform_",
     "unique_consecutive",
+    "unsafe_index",
+    "unsafe_index_put",
+    "unsafe_index_put_impl",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_nearest1d",
@@ -1313,6 +1655,17 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xlogy",
+    "xlogy_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_out",
+    "xor",
+    "xor_",
+    "xor_scalar",
+    "xor_scalar_",
+    "xor_scalar_tensor",
     "zero",
     "zero_",
     "zero_out",
