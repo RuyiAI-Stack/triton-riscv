@@ -1,0 +1,198 @@
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def _weight_int4pack_mm_kernel(
+    A_ptr,  # (M, K) activation matrix, fp16/bf16
+    mat2_ptr,  # (N, K2) packed int4 weights, uint8
+    qScale_ptr,  # (G, N) per-group scales
+    qZeros_ptr,  # (G, N) per-group zeros
+    C_ptr,  # (M, N) output matrix
+    M,
+    N,
+    K,
+    K2,
+    qGroupSize,
+    G,
+    stride_am,
+    stride_ak,
+    stride_mn,
+    stride_mk,
+    stride_sg,
+    stride_sn,
+    stride_zg,
+    stride_zn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Int4 quantized matrix multiplication kernel.
+
+    Computes C = A @ W_deq where W_deq is obtained by dequantizing mat2
+    (packed uint8 int4 weights) using per-group qScale and qZeros.
+
+    A BLOCK_K slice of the weight is dequantized per step and contracted with
+    `tl.dot`, so the multiply runs on tensor cores. Two int4 values share a byte
+    (k = 2j is the low nibble, k = 2j + 1 the high one), so each nibble is
+    decoded over its own half-width fragment and `tl.join` interleaves them back.
+    """
+    pid = tl.program_id(0)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_kp = tl.arange(0, BLOCK_K // 2)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    for k0 in range(0, K, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        a = tl.load(
+            A_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak,
+            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K),
+            other=0.0,
+        )
+
+        # One byte per two K positions, laid out [BLOCK_K // 2, BLOCK_N].
+        byte_idx = k0 // 2 + offs_kp
+        packed = tl.load(
+            mat2_ptr + offs_n[None, :] * stride_mn + byte_idx[:, None] * stride_mk,
+            mask=(offs_n[None, :] < N) & (byte_idx[:, None] < K2),
+            other=0,
+        )
+
+        # Each nibble carries its own K index, so each gets its own group. They
+        # coincide whenever qGroupSize is even, but deriving both keeps the
+        # kernel correct for any group size.
+        k_low = 2 * byte_idx
+        k_high = k_low + 1
+        n_mask = offs_n[None, :] < N
+
+        group_low = k_low[:, None] // qGroupSize
+        scale_low = tl.load(
+            qScale_ptr + group_low * stride_sg + offs_n[None, :] * stride_sn,
+            mask=n_mask & (k_low[:, None] < K),
+            other=1.0,
+        ).to(tl.float32)
+        zero_low = tl.load(
+            qZeros_ptr + group_low * stride_zg + offs_n[None, :] * stride_zn,
+            mask=n_mask & (k_low[:, None] < K),
+            other=0.0,
+        ).to(tl.float32)
+        low = (((packed & 0xF).to(tl.float32) - zero_low) * scale_low).to(
+            A_ptr.dtype.element_ty
+        )
+
+        group_high = k_high[:, None] // qGroupSize
+        scale_high = tl.load(
+            qScale_ptr + group_high * stride_sg + offs_n[None, :] * stride_sn,
+            mask=n_mask & (k_high[:, None] < K),
+            other=1.0,
+        ).to(tl.float32)
+        zero_high = tl.load(
+            qZeros_ptr + group_high * stride_zg + offs_n[None, :] * stride_zn,
+            mask=n_mask & (k_high[:, None] < K),
+            other=0.0,
+        ).to(tl.float32)
+        high = ((((packed >> 4) & 0xF).to(tl.float32) - zero_high) * scale_high).to(
+            A_ptr.dtype.element_ty
+        )
+
+        # (BLOCK_K // 2, BLOCK_N) x2 -> (BLOCK_K, BLOCK_N), interleaved on K.
+        # Keep the cast above the join: an elementwise op between the join and
+        # the dot blocks the fold that lets the mma see one wide operand.
+        w = tl.reshape(tl.permute(tl.join(low, high), (0, 2, 1)), (BLOCK_K, BLOCK_N))
+
+        acc = tl.dot(a, w, acc=acc)
+
+    # Store result
+    c_ptrs = C_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(c_ptrs, acc.to(C_ptr.dtype.element_ty), mask=c_mask)
+
+
+def _weight_int4pack_mm_with_scales_and_zeros(
+    A: torch.Tensor,
+    mat2: torch.Tensor,
+    qGroupSize: int,
+    qScale: torch.Tensor,
+    qZeros: torch.Tensor,
+) -> torch.Tensor:
+    """Int4 quantized matrix multiplication with separate scales and zeros.
+
+    Args:
+        A: Activation matrix of shape (M, K), dtype fp16 or bf16.
+        mat2: Packed int4 weights of shape (N, K//2), dtype uint8.
+              The packing is byte-pair: each uint8 byte stores two int4 values,
+              low nibble for even column, high nibble for odd column.
+        qGroupSize: Number of K-columns per quantization group. Must divide K.
+        qScale: Per-group scales of shape (K//qGroupSize, N), dtype same as A.
+        qZeros: Per-group zeros of shape (K//qGroupSize, N), dtype same as A.
+
+    Returns:
+        Output tensor of shape (M, N), dtype matching A.
+    """
+    M, K = A.shape
+    N = mat2.shape[0]
+    K2 = mat2.shape[1]
+
+    # Validate shapes and types
+    assert K == K2 * 2, f"K ({K}) must equal 2 * K2 ({K2}) for packed int4 format"
+    assert K % qGroupSize == 0, (
+        f"K ({K}) must be divisible by qGroupSize ({qGroupSize})"
+    )
+    G = K // qGroupSize
+    assert qScale.shape == (G, N), f"qScale shape {qScale.shape} != expected ({G}, {N})"
+    assert qZeros.shape == (G, N), f"qZeros shape {qZeros.shape} != expected ({G}, {N})"
+    assert mat2.dtype == torch.uint8, f"mat2 must be uint8, got {mat2.dtype}"
+    assert A.is_floating_point(), "A must be floating point"
+
+    # Make inputs contiguous for predictable strides
+    A = A.contiguous()
+    mat2 = mat2.contiguous()
+    qScale = qScale.contiguous()
+    qZeros = qZeros.contiguous()
+
+    C = torch.empty((M, N), dtype=A.dtype, device=A.device)
+
+    BLOCK_M = 32
+    BLOCK_N = 64
+    # Two int4 values share a byte, so BLOCK_K has to be even; 64 also keeps a
+    # whole number of native mma K steps for both fp16 and bf16.
+    BLOCK_K = 64
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+
+    _weight_int4pack_mm_kernel[grid](
+        A,
+        mat2,
+        qScale,
+        qZeros,
+        C,
+        M,
+        N,
+        K,
+        K2,
+        qGroupSize,
+        G,
+        A.stride(0),
+        A.stride(1),
+        mat2.stride(0),
+        mat2.stride(1),
+        qScale.stride(0),
+        qScale.stride(1),
+        qZeros.stride(0),
+        qZeros.stride(1),
+        C.stride(0),
+        C.stride(1),
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+    )
+
+    return C

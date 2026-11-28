@@ -4,6 +4,24 @@ from ._batch_norm_impl_index_backward import _batch_norm_impl_index_backward
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._batch_norm_with_update import _batch_norm_with_update
 from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
+from ._cslt_sparse_mm import _cslt_sparse_mm
+from ._cummin_helper import _cummin_helper
+from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._fake_quantize_learnable_per_channel_affine import (
+    _fake_quantize_learnable_per_channel_affine,
+)
+from ._fake_quantize_learnable_per_channel_affine_backward import (
+    _fake_quantize_learnable_per_channel_affine_backward,
+)
+from ._fake_quantize_learnable_per_tensor_affine import (
+    _fake_quantize_learnable_per_tensor_affine,
+)
+from ._fake_quantize_learnable_per_tensor_affine_backward import (
+    _fake_quantize_learnable_per_tensor_affine_backward,
+)
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
+)
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -28,16 +46,30 @@ from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_tr
 from ._nested_sum_backward import _nested_sum_backward
 from ._philox_normal_ import _philox_normal_
 from ._safe_softmax import _safe_softmax
+from ._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
+from ._scaled_mm_v2 import _scaled_mm_v2
+from ._sparse_mm import _sparse_mm
+from ._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
+from ._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
+from ._sparse_semi_structured_mm import _sparse_semi_structured_mm
+from ._sparse_sparse_matmul import _sparse_sparse_matmul, _sparse_sparse_matmul_out
 from ._sparse_sum_backward import _sparse_sum_backward, _sparse_sum_backward_out
+from ._standard_gamma import standard_gamma
+from ._standard_gamma_grad import standard_gamma_grad
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from ._weight_int4pack_mm_with_scales_and_zeros import (
+    _weight_int4pack_mm_with_scales_and_zeros,
+)
 from ._weight_norm import _weight_norm
 from ._weight_norm_differentiable_backward import weight_norm_differentiable_backward
+from ._wrapped_quantized_linear_prepacked import _wrapped_quantized_linear_prepacked
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
 from .act_quant import act_quant_triton
 from .add import add, add_
+from .addbmm import addbmm, addbmm_
 from .addcdiv import addcdiv, addcdiv_out
 from .addcmul import addcmul, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -79,6 +111,7 @@ from .batch_norm_elemt import batch_norm_elemt
 from .batch_norm_stats import batch_norm_stats
 from .batch_norm_update_stats import batch_norm_update_stats
 from .bernoulli_ import bernoulli_
+from .bilinear import bilinear
 from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -98,11 +131,14 @@ from .bitwise_or import (
 )
 from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
+from .bmm_w8a8 import bmm_w8a8
+from .bmm_w8a8_fp8 import bmm_w8a8_fp8
 from .cartesian_prod import run as cartesian_prod
 from .cat import cat, cat_out
 from .cdist import _cdist_backward, _cdist_forward, cdist
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .chain_matmul import chain_matmul, chain_matmul_out
 from .clamp import (
     clamp,
     clamp_,
@@ -134,6 +170,7 @@ from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumulative_trapezoid import cumulative_trapezoid
+from .dequantize import dequantize
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -164,6 +201,22 @@ from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_per_channel_affine import fake_quantize_per_channel_affine
+from .fake_quantize_per_channel_affine_cachemask import (
+    fake_quantize_per_channel_affine_cachemask,
+    fake_quantize_per_channel_affine_cachemask_out,
+)
+from .fake_quantize_per_channel_affine_cachemask_backward import (
+    fake_quantize_per_channel_affine_cachemask_backward,
+)
+from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
+from .fake_quantize_per_tensor_affine_cachemask import (
+    fake_quantize_per_tensor_affine_cachemask,
+    fake_quantize_per_tensor_affine_cachemask_out,
+)
+from .fake_quantize_per_tensor_affine_cachemask_backward import (
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -180,11 +233,13 @@ from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fp8_matmul import fp8_matmul
 from .full import full
 from .full_like import full_like
+from .fused_moving_avg_obs_fake_quant import fused_moving_avg_obs_fake_quant
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .gemma_rms_norm import gemma_rms_norm
+from .ger import ger
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
@@ -204,10 +259,15 @@ from .hardswish_ import hardswish_
 from .histc import histc
 from .histogram import histogram, histogram_bin_ct, histogram_bins_tensor
 from .histogramdd import histogramdd
+from .hspmm import hspmm
 from .hstack import hstack
 from .hypot import hypot, hypot_out
 from .i0 import i0, i0_out
 from .i0_ import i0_
+from .igamma import igamma
+from .igamma_ import igamma_
+from .igammac import igammac, igammac_out
+from .igammac_ import igammac_
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import (
@@ -216,6 +276,8 @@ from .index_put import (
     index_put_,
 )
 from .index_select import index_select
+from .inner import inner
+from .int_mm import int_mm, int_mm_out
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -227,8 +289,12 @@ from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .lgamma_ import lgamma, lgamma_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_norm import linalg_norm
+from .linalg_vecdot import linalg_vecdot, linalg_vecdot_out
+from .linear import linear
 from .linspace import linspace
 from .log import log
 from .log1p_ import log1p_
@@ -251,6 +317,11 @@ from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import lt, lt_scalar
+from .make_per_channel_quantized_tensor import _make_per_channel_quantized_tensor
+from .make_per_tensor_quantized_tensor import (
+    _make_per_tensor_quantized_tensor,
+    _make_per_tensor_quantized_tensor_out,
+)
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -268,12 +339,15 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
+from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mode import mode
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
+from .mvlgamma import mvlgamma
+from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nanquantile import (
@@ -315,6 +389,7 @@ from .per_token_group_quant_fp8 import (
 from .pixel_shuffle import pixel_shuffle
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
+from .polygamma import polygamma, polygamma_, polygamma_out
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -325,6 +400,8 @@ from .pow import (
 from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
+from .quantize_per_channel import quantize_per_channel, quantize_per_channel_out
+from .quantize_per_tensor import quantize_per_tensor, quantize_per_tensor_out
 from .quantized_batch_norm import quantized_batch_norm, quantized_batch_norm_out
 from .rand import rand
 from .rand_like import rand_like
@@ -355,6 +432,8 @@ from .round import round, round_, round_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub_scalar, rsub_tensor
+from .scaled_grouped_mm import scaled_grouped_mm
+from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
@@ -377,6 +456,7 @@ from .sin import sin, sin_
 from .sinh_ import sinh_
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
+from .smm import smm
 from .smooth_l1_loss import (
     smooth_l1_loss,
     smooth_l1_loss_backward,
@@ -393,10 +473,12 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
+from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
+from .sspaddmm import sspaddmm, sspaddmm_out
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -406,6 +488,7 @@ from .t_copy import t_copy, t_copy_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
+from .tensordot import tensordot, tensordot_out
 from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_copy
@@ -414,6 +497,7 @@ from .trace import trace
 from .trapezoid import trapezoid_x
 from .trapz import trapz
 from .tril import tril, tril_, tril_out
+from .trilinear import _trilinear, _trilinear_out
 from .triu import triu, triu_
 from .unfold_backward import unfold_backward
 from .uniform import uniform_
@@ -433,6 +517,8 @@ from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
+from .weight_int4pack_mm import weight_int4pack_mm
+from .weight_int8pack_mm import weight_int8pack_mm
 from .weightnorm import (
     weight_norm_interface,
     weight_norm_interface_backward,
@@ -782,6 +868,14 @@ __all__ = [
     "_cdist_backward",
     "_cdist_forward",
     "_conv_depthwise2d",
+    "_cslt_sparse_mm",
+    "_cummin_helper",
+    "_dyn_quant_matmul_4bit",
+    "_fake_quantize_learnable_per_channel_affine",
+    "_fake_quantize_learnable_per_channel_affine_backward",
+    "_fake_quantize_learnable_per_tensor_affine",
+    "_fake_quantize_learnable_per_tensor_affine_backward",
+    "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_functional_sym_constrain_range_for_size",
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
@@ -795,21 +889,36 @@ __all__ = [
     "_is_any_true",
     "_logcumsumexp",
     "_logcumsumexp_out",
+    "_make_per_channel_quantized_tensor",
+    "_make_per_tensor_quantized_tensor",
+    "_make_per_tensor_quantized_tensor_out",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_sum_backward",
     "_philox_normal_",
     "_safe_softmax",
+    "_scaled_grouped_mm_v2",
+    "_scaled_mm_v2",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_mm",
+    "_sparse_mm_reduce_impl",
+    "_sparse_semi_structured_addmm",
+    "_sparse_semi_structured_mm",
+    "_sparse_sparse_matmul",
+    "_sparse_sparse_matmul_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_trilinear",
+    "_trilinear_out",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_weight_int4pack_mm_with_scales_and_zeros",
     "_weight_norm",
+    "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
     "absolute",
@@ -817,6 +926,8 @@ __all__ = [
     "act_quant_triton",
     "add",
     "add_",
+    "addbmm",
+    "addbmm_",
     "addcdiv",
     "addcdiv_out",
     "addcmul",
@@ -869,6 +980,7 @@ __all__ = [
     "batch_norm_stats",
     "batch_norm_update_stats",
     "bernoulli_",
+    "bilinear",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -886,6 +998,8 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
+    "bmm_w8a8",
+    "bmm_w8a8_fp8",
     "cartesian_prod",
     "cat",
     "cat_out",
@@ -895,6 +1009,8 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chain_matmul",
+    "chain_matmul_out",
     "clamp",
     "clamp_",
     "clamp_min",
@@ -932,6 +1048,7 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "cumulative_trapezoid",
+    "dequantize",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -965,6 +1082,14 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fake_quantize_per_channel_affine",
+    "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_backward",
+    "fake_quantize_per_channel_affine_cachemask_out",
+    "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
+    "fake_quantize_per_tensor_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -989,6 +1114,7 @@ __all__ = [
     "fp8_matmul",
     "full",
     "full_like",
+    "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",
     "gcd",
@@ -999,6 +1125,7 @@ __all__ = [
     "gelu_",
     "gelu_backward",
     "gemma_rms_norm",
+    "ger",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -1022,18 +1149,27 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
+    "hspmm",
     "hstack",
     "hypot",
     "hypot_out",
     "i0",
     "i0_",
     "i0_out",
+    "igamma",
+    "igamma_",
+    "igammac",
+    "igammac_",
+    "igammac_out",
     "index",
     "index_add",
     "index_add_",
     "index_put",
     "index_put_",
     "index_select",
+    "inner",
+    "int_mm",
+    "int_mm_out",
     "isclose",
     "isfinite",
     "isin",
@@ -1053,9 +1189,16 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "lgamma",
+    "lgamma_",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
+    "linalg_multi_dot",
+    "linalg_multi_dot_out",
     "linalg_norm",
+    "linalg_vecdot",
+    "linalg_vecdot_out",
+    "linear",
     "linspace",
     "log",
     "log1p_",
@@ -1102,6 +1245,7 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mixed_dtypes_linear",
     "mm",
     "mm_out",
     "mode",
@@ -1110,6 +1254,8 @@ __all__ = [
     "mul_",
     "multinomial",
     "mv",
+    "mvlgamma",
+    "mvlgamma_",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
@@ -1150,6 +1296,9 @@ __all__ = [
     "pixel_unshuffle",
     "pixel_unshuffle_out",
     "polar",
+    "polygamma",
+    "polygamma_",
+    "polygamma_out",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
@@ -1159,6 +1308,10 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantize_per_channel",
+    "quantize_per_channel_out",
+    "quantize_per_tensor",
+    "quantize_per_tensor_out",
     "quantized_batch_norm",
     "quantized_batch_norm_out",
     "rand",
@@ -1204,6 +1357,9 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_grouped_mm",
+    "scaled_mm",
+    "scaled_mm_out",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "scatter",
@@ -1230,6 +1386,7 @@ __all__ = [
     "sinh_",
     "slice_backward",
     "slice_scatter",
+    "smm",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
     "smooth_l1_loss_out",
@@ -1246,6 +1403,8 @@ __all__ = [
     "sort_stable",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
+    "sparse_sampled_addmm",
+    "sparse_sampled_addmm_out",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
@@ -1255,7 +1414,11 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "sspaddmm",
+    "sspaddmm_out",
     "stack",
+    "standard_gamma",
+    "standard_gamma_grad",
     "std",
     "sub",
     "sub_",
@@ -1273,6 +1436,8 @@ __all__ = [
     "tanh_backward",
     "te_rmsnorm_bwd",
     "te_rmsnorm_fwd",
+    "tensordot",
+    "tensordot_out",
     "threshold",
     "threshold_backward",
     "tile",
@@ -1306,6 +1471,8 @@ __all__ = [
     "vector_norm",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "weight_int4pack_mm",
+    "weight_int8pack_mm",
     "weight_norm_differentiable_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
