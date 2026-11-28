@@ -158,6 +158,7 @@ from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
+from .erfinv_ import erfinv, erfinv_, erfinv_out
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
 from .expm1 import expm1, expm1_, expm1_out
@@ -393,8 +394,76 @@ from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
+from .special_airy_ai import special_airy_ai, special_airy_ai_out
+from .special_bessel_j0 import special_bessel_j0
+from .special_bessel_j1 import special_bessel_j1
+from .special_bessel_y0 import special_bessel_y0
+from .special_bessel_y1 import special_bessel_y1
+from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
+from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
+from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
+from .special_chebyshev_polynomial_w import special_chebyshev_polynomial_w
+from .special_entr import special_entr
+from .special_erfc import special_erfc
+from .special_erfcx import special_erfcx
+from .special_erfinv import special_erfinv
+from .special_expit import special_expit
+from .special_gammainc import special_gammainc
+from .special_gammaln import special_gammaln, special_gammaln_out
+from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
+from .special_i0 import special_i0, special_i0_out
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
+from .special_i1e import special_i1e
+from .special_laguerre_polynomial_l import special_laguerre_polynomial_l
+from .special_legendre_polynomial_p import special_legendre_polynomial_p
+from .special_log1p import special_log1p, special_log1p_out
+from .special_log_ndtr import special_log_ndtr, special_log_ndtr_
+from .special_log_softmax import special_log_softmax
+from .special_logit import special_logit, special_logit_out
+from .special_logsumexp import special_logsumexp
+from .special_modified_bessel_i0 import (
+    special_modified_bessel_i0,
+    special_modified_bessel_i0_out,
+)
+from .special_modified_bessel_i1 import (
+    special_modified_bessel_i1,
+    special_modified_bessel_i1_out,
+)
+from .special_modified_bessel_k1 import (
+    special_modified_bessel_k1,
+    special_modified_bessel_k1_out,
+)
+from .special_ndtr import special_ndtr
+from .special_ndtri import special_ndtri
+from .special_psi import special_psi, special_psi_out
+from .special_round import special_round, special_round_out
+from .special_shifted_chebyshev_polynomial_t import (
+    special_shifted_chebyshev_polynomial_t,
+)
+from .special_shifted_chebyshev_polynomial_u import (
+    special_shifted_chebyshev_polynomial_u,
+    special_shifted_chebyshev_polynomial_u_,
+)
+from .special_shifted_chebyshev_polynomial_v import (
+    special_shifted_chebyshev_polynomial_v,
+)
+from .special_shifted_chebyshev_polynomial_w import (
+    special_shifted_chebyshev_polynomial_w,
+)
+from .special_sinc import special_sinc
+from .special_spherical_bessel_j0 import special_spherical_bessel_j0
+from .special_xlog1py import special_xlog1py
+from .special_xlogy import special_xlogy, special_xlogy_
+from .special_zeta import (
+    special_zeta,
+    special_zeta_out,
+    special_zeta_scalar_tensor,
+    special_zeta_scalar_tensor_out,
+    special_zeta_tensor_scalar,
+    special_zeta_tensor_scalar_out,
+)
 from .sqrt import sqrt, sqrt_
 from .square import square, square_, square_out
 from .stack import stack
@@ -954,6 +1023,9 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
+    "erfinv",
+    "erfinv_",
+    "erfinv_out",
     "exp",
     "exp2",
     "exp2_",
@@ -1246,10 +1318,71 @@ __all__ = [
     "sort_stable",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
+    "special_airy_ai",
+    "special_airy_ai_out",
+    "special_bessel_j0",
+    "special_bessel_j1",
+    "special_bessel_y0",
+    "special_bessel_y1",
+    "special_chebyshev_polynomial_t",
+    "special_chebyshev_polynomial_u",
+    "special_chebyshev_polynomial_v",
+    "special_chebyshev_polynomial_w",
+    "special_entr",
+    "special_erfc",
+    "special_erfcx",
+    "special_erfinv",
+    "special_expit",
+    "special_gammainc",
+    "special_gammaln",
+    "special_gammaln_out",
+    "special_hermite_polynomial_h",
+    "special_hermite_polynomial_he",
+    "special_i0",
+    "special_i0_out",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_i1e",
+    "special_laguerre_polynomial_l",
+    "special_legendre_polynomial_p",
+    "special_log1p",
+    "special_log1p_out",
+    "special_log_ndtr",
+    "special_log_ndtr_",
+    "special_log_softmax",
+    "special_logit",
+    "special_logit_out",
+    "special_logsumexp",
+    "special_modified_bessel_i0",
+    "special_modified_bessel_i0_out",
+    "special_modified_bessel_i1",
+    "special_modified_bessel_i1_out",
+    "special_modified_bessel_k1",
+    "special_modified_bessel_k1_out",
+    "special_ndtr",
+    "special_ndtri",
+    "special_psi",
+    "special_psi_out",
+    "special_round",
+    "special_round_out",
+    "special_shifted_chebyshev_polynomial_t",
+    "special_shifted_chebyshev_polynomial_u",
+    "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_v",
+    "special_shifted_chebyshev_polynomial_w",
+    "special_sinc",
+    "special_spherical_bessel_j0",
+    "special_xlog1py",
+    "special_xlogy",
+    "special_xlogy_",
+    "special_zeta",
+    "special_zeta_out",
+    "special_zeta_scalar_tensor",
+    "special_zeta_scalar_tensor_out",
+    "special_zeta_tensor_scalar",
+    "special_zeta_tensor_scalar_out",
     "sqrt",
     "sqrt_",
     "square",
